@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // better-sqlite3 has native bindings that should not be bundled
+  serverExternalPackages: ["better-sqlite3"],
 };
 
 export default nextConfig;

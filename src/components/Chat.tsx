@@ -63,9 +63,14 @@ function createChatTransport(conversationId: string) {
 
 function ChatInner({
   conversationId,
+  onTitleUpdated,
 }: {
   conversationId: string;
+  onTitleUpdated?: () => void;
 }) {
+  // Track initial message count to detect first message completion
+  const initialMessageCountRef = useRef<number | null>(null);
+
   const {
     messages,
     setMessages,
@@ -76,6 +81,47 @@ function ChatInner({
     error,
   } = useChat({
     transport: createChatTransport(conversationId),
+    onFinish: async () => {
+      // Detect if this is the first message in a new conversation
+      if (initialMessageCountRef.current === 0 && messages.length > 0) {
+        // Server is asynchronously generating the title (takes ~1-3 seconds).
+        // Use lightweight polling to check for title update.
+        let attempts = 0;
+        const maxAttempts = 5;
+
+        const pollForTitle = async () => {
+          attempts++;
+          try {
+            const res = await fetch("/api/conversations");
+            if (res.ok) {
+              const data = await res.json();
+              const current = (data.conversations || []).find(
+                (c: ConversationItem) => c.id === conversationId
+              );
+
+              // Title is updated when it's no longer the raw truncated user message
+              // AI-generated titles are typically short (< 20 chars)
+              if (current && current.title.length <= 20) {
+                onTitleUpdated?.();
+                return;
+              }
+            }
+          } catch {
+            // Network error, silently continue polling
+          }
+
+          if (attempts < maxAttempts) {
+            setTimeout(pollForTitle, 1000);
+          } else {
+            // Final fallback: refresh regardless
+            onTitleUpdated?.();
+          }
+        };
+
+        // First poll after 1.5s to give server time for LLM call
+        setTimeout(pollForTitle, 1500);
+      }
+    },
   });
 
   // Load messages on mount
@@ -91,7 +137,12 @@ function ChatInner({
 
         const data = await res.json();
         if (!cancelled && data.messages && data.messages.length > 0) {
+          // Record initial count so onFinish can detect first message
+          initialMessageCountRef.current = data.messages.length;
           setMessages(data.messages as UIMessage[]);
+        } else {
+          // No existing messages - this is a brand new conversation
+          initialMessageCountRef.current = 0;
         }
       } catch {
         // Failed to load
@@ -413,6 +464,19 @@ export default function Chat({ conversationId: urlConversationId }: ChatProps) {
     []
   );
 
+  /** Refresh conversation list from server (used after AI title generation) */
+  const handleRefreshConversations = useCallback(async () => {
+    try {
+      const res = await fetch("/api/conversations");
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data.conversations || []);
+      }
+    } catch {
+      // Failed to refresh
+    }
+  }, []);
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -432,7 +496,11 @@ export default function Chat({ conversationId: urlConversationId }: ChatProps) {
 
       {/* Main Chat Area */}
       {activeConversationId ? (
-        <ChatInner key={chatKey} conversationId={activeConversationId} />
+        <ChatInner 
+          key={chatKey} 
+          conversationId={activeConversationId}
+          onTitleUpdated={handleRefreshConversations}
+        />
       ) : (
         <div className="flex flex-1 items-center justify-center">
           <ConversationEmptyState

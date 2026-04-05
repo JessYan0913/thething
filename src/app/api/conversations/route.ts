@@ -7,46 +7,78 @@ import {
 
 // GET: List all conversations
 export async function GET() {
-  const conversations = listConversations();
-  return Response.json({ conversations });
+  try {
+    const conversations = listConversations();
+    return Response.json({ conversations });
+  } catch (error) {
+    console.error('[Conversations API] GET error:', error);
+    return Response.json(
+      { error: 'Failed to load conversations' },
+      { status: 500 }
+    );
+  }
 }
 
 // POST: Create a new conversation
 export async function POST(req: Request) {
-  const { id, title }: { id?: string; title?: string } = await req.json();
+  try {
+    const { id, title }: { id?: string; title?: string } = await req.json();
 
-  if (!id) {
-    return Response.json({ error: "Missing conversation id" }, { status: 400 });
+    if (!id) {
+      return Response.json({ error: "Missing conversation id" }, { status: 400 });
+    }
+
+    const conversation = createConversation(id, title);
+    return Response.json({ conversation });
+  } catch (error) {
+    console.error('[Conversations API] POST error:', error);
+    return Response.json(
+      { error: 'Failed to create conversation' },
+      { status: 500 }
+    );
   }
-
-  const conversation = createConversation(id, title);
-  return Response.json({ conversation });
 }
 
 // PATCH: Update conversation title
 export async function PATCH(req: Request) {
-  const { id, title }: { id: string; title: string } = await req.json();
+  try {
+    const { id, title }: { id: string; title: string } = await req.json();
 
-  if (!id || !title) {
+    if (!id || !title) {
+      return Response.json(
+        { error: "Missing id or title" },
+        { status: 400 }
+      );
+    }
+
+    updateConversationTitle(id, title);
+    return Response.json({ success: true });
+  } catch (error) {
+    console.error('[Conversations API] PATCH error:', error);
     return Response.json(
-      { error: "Missing id or title" },
-      { status: 400 }
+      { error: 'Failed to update conversation' },
+      { status: 500 }
     );
   }
-
-  updateConversationTitle(id, title);
-  return Response.json({ success: true });
 }
 
 // DELETE: Delete a conversation
 export async function DELETE(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
 
-  if (!id) {
-    return Response.json({ error: "Missing conversation id" }, { status: 400 });
+    if (!id) {
+      return Response.json({ error: "Missing conversation id" }, { status: 400 });
+    }
+
+    deleteConversation(id);
+    return Response.json({ success: true });
+  } catch (error) {
+    console.error('[Conversations API] DELETE error:', error);
+    return Response.json(
+      { error: 'Failed to delete conversation' },
+      { status: 500 }
+    );
   }
-
-  deleteConversation(id);
-  return Response.json({ success: true });
 }
