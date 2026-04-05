@@ -234,7 +234,7 @@ export default function Chat({
   );
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
       {/* Conversation Area */}
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
@@ -244,7 +244,7 @@ export default function Chat({
           />
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden pt-4">
+        <div className="flex-1 min-h-0 overflow-y-auto pt-4">
           <Conversation>
             <ConversationContent>
             {messages.map((message, messageIndex) => (
@@ -312,7 +312,7 @@ export default function Chat({
       )}
 
       {/* Prompt Input */}
-      <div className="border-t p-4">
+      <div className="shrink-0 border-t p-4">
         <div className="mx-auto max-w-3xl">
           <PromptInput onSubmit={handleSend}>
             <PromptInputTextarea placeholder="Message AI Assistant..." />

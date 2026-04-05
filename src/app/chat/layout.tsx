@@ -206,26 +206,28 @@ export default function ChatLayout({
 
   return (
     <ChatContext.Provider value={contextValue}>
-      <SidebarProvider>
-        {/* Sidebar - persists across route changes */}
-        <ConversationSidebar
-          activeConversationId={activeConversationId}
-          conversations={conversations}
-          isLoading={isLoadingConversations}
-          onCreateConversation={handleCreateConversation}
-          onDeleteConversation={handleDeleteConversation}
-          onRenameConversation={handleRenameConversation}
-          onSelectConversation={handleSelectConversation}
-        />
+      <SidebarProvider style={{ height: "100dvh" }}>
+        <div className="flex h-full w-full overflow-hidden">
+          {/* Sidebar - persists across route changes */}
+          <ConversationSidebar
+            activeConversationId={activeConversationId}
+            conversations={conversations}
+            isLoading={isLoadingConversations}
+            onCreateConversation={handleCreateConversation}
+            onDeleteConversation={handleDeleteConversation}
+            onRenameConversation={handleRenameConversation}
+            onSelectConversation={handleSelectConversation}
+          />
 
-        {/* Main Content - changes per route */}
-        <SidebarInset>
-          {/* Top bar with sidebar toggle */}
-          <div className="flex items-center border-b px-4 py-2">
-            <SidebarTrigger />
-          </div>
-          {children}
-        </SidebarInset>
+          {/* Main Content - changes per route */}
+          <SidebarInset className="flex flex-col flex-1 overflow-hidden">
+            {/* Top bar with sidebar toggle */}
+            <div className="flex shrink-0 items-center border-b px-4 py-2">
+              <SidebarTrigger />
+            </div>
+            {children}
+          </SidebarInset>
+        </div>
       </SidebarProvider>
     </ChatContext.Provider>
   );
