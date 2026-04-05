@@ -60,16 +60,12 @@ export async function POST(req: Request) {
         try {
           await saveMessages(conversationId, completedMessages);
 
-          // Generate AI title for new conversations (async, non-blocking)
+          // Generate AI title for new conversations
+          // Must be awaited to ensure completion before the serverless function exits
           if (isFirstMessage) {
-            generateConversationTitle(completedMessages)
-              .then((title) => {
-                updateConversationTitle(conversationId, title);
-                console.log(`[Title Generated] ${conversationId}: ${title}`);
-              })
-              .catch((err) => {
-                console.error(`[Title Generation Failed] ${conversationId}:`, err);
-              });
+            const title = await generateConversationTitle(completedMessages);
+            updateConversationTitle(conversationId, title);
+            console.log(`[Title Generated] ${conversationId}: ${title}`);
           }
         } catch (error) {
           console.error('[Chat API] onFinish error:', error);

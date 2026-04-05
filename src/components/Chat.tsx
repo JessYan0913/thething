@@ -21,13 +21,11 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
-import { ConversationSidebar, type ConversationItem } from "@/components/ConversationSidebar";
+import type { ConversationItem } from "@/components/ConversationSidebar";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart, UIMessage } from "ai";
 import { CopyIcon, RefreshCcwIcon } from "lucide-react";
-import { nanoid } from "nanoid";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef } from "react";
 
 // ============================================================================
 // Conversation ID persistence (localStorage)
@@ -35,7 +33,7 @@ import { useRouter } from "next/navigation";
 
 const CONVERSATION_ID_KEY = "chat_conversation_id";
 
-function getStoredConversationId(): string | null {
+export function getStoredConversationId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(CONVERSATION_ID_KEY);
 }
@@ -58,18 +56,33 @@ function createChatTransport(conversationId: string) {
 }
 
 // ============================================================================
-// Inner Chat Component (re-created when conversation changes via key prop)
+// Chat Component Props
 // ============================================================================
 
-function ChatInner({
+export interface ChatProps {
+  /** Conversation ID to display. */
+  conversationId: string;
+  /** Callback when the AI-generated title updates (triggers sidebar refresh). */
+  onTitleUpdated?: () => void;
+}
+
+// ============================================================================
+// Main Chat Component
+// ============================================================================
+
+export default function Chat({
   conversationId,
   onTitleUpdated,
-}: {
-  conversationId: string;
-  onTitleUpdated?: () => void;
-}) {
+}: ChatProps) {
   // Track initial message count to detect first message completion
   const initialMessageCountRef = useRef<number | null>(null);
+
+  // Ref to hold the original title, set when messages are loaded.
+  // Used to detect when the AI-generated title replaces the fallback title.
+  const originalTitleRef = useRef<string | null>(null);
+
+  // Ref to hold the latest messages, avoiding stale closure in onFinish
+  const messagesRef = useRef<UIMessage[]>([]);
 
   const {
     messages,
@@ -81,13 +94,17 @@ function ChatInner({
     error,
   } = useChat({
     transport: createChatTransport(conversationId),
-    onFinish: async () => {
+    onFinish: async ({ messages: finishedMessages }) => {
+      // Use the messages passed by the SDK, NOT the stale closure variable
+      const msgCount = finishedMessages.length;
+
       // Detect if this is the first message in a new conversation
-      if (initialMessageCountRef.current === 0 && messages.length > 0) {
+      if (initialMessageCountRef.current === 0 && msgCount > 0) {
         // Server is asynchronously generating the title (takes ~1-3 seconds).
         // Use lightweight polling to check for title update.
         let attempts = 0;
         const maxAttempts = 5;
+        let timerId: ReturnType<typeof setTimeout> | null = null;
 
         const pollForTitle = async () => {
           attempts++;
@@ -99,9 +116,9 @@ function ChatInner({
                 (c: ConversationItem) => c.id === conversationId
               );
 
-              // Title is updated when it's no longer the raw truncated user message
-              // AI-generated titles are typically short (< 20 chars)
-              if (current && current.title.length <= 20) {
+              // Compare against the original title stored when messages were loaded.
+              // If the title changed (AI generation completed), refresh the sidebar.
+              if (current && current.title !== originalTitleRef.current) {
                 onTitleUpdated?.();
                 return;
               }
@@ -111,7 +128,7 @@ function ChatInner({
           }
 
           if (attempts < maxAttempts) {
-            setTimeout(pollForTitle, 1000);
+            timerId = setTimeout(pollForTitle, 1000);
           } else {
             // Final fallback: refresh regardless
             onTitleUpdated?.();
@@ -119,10 +136,15 @@ function ChatInner({
         };
 
         // First poll after 1.5s to give server time for LLM call
-        setTimeout(pollForTitle, 1500);
+        timerId = setTimeout(pollForTitle, 1500);
       }
     },
   });
+
+  // Keep ref in sync with latest messages
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // Load messages on mount
   useEffect(() => {
@@ -143,6 +165,18 @@ function ChatInner({
         } else {
           // No existing messages - this is a brand new conversation
           initialMessageCountRef.current = 0;
+        }
+
+        // Also capture the current title for this conversation
+        if (!cancelled) {
+          const convRes = await fetch("/api/conversations");
+          if (convRes.ok) {
+            const convData = await convRes.json();
+            const current = (convData.conversations || []).find(
+              (c: ConversationItem) => c.id === conversationId
+            );
+            originalTitleRef.current = current?.title ?? null;
+          }
         }
       } catch {
         // Failed to load
@@ -201,30 +235,6 @@ function ChatInner({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <header className="border-b px-6 py-4">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <div>
-            <h1 className="font-semibold text-lg">AI Assistant</h1>
-            <p className="text-muted-foreground text-sm">
-              Powered by Qwen 3.5
-            </p>
-          </div>
-          {error && (
-            <div className="flex items-center gap-2 text-destructive text-sm">
-              <span>Connection error</span>
-              <button
-                type="button"
-                onClick={() => regenerate()}
-                className="underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
       {/* Conversation Area */}
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
@@ -234,8 +244,9 @@ function ChatInner({
           />
         </div>
       ) : (
-        <Conversation>
-          <ConversationContent>
+        <div className="flex-1 overflow-hidden pt-4">
+          <Conversation>
+            <ConversationContent>
             {messages.map((message, messageIndex) => (
               <Message from={message.role} key={message.id}>
                 <MessageContent>
@@ -296,7 +307,8 @@ function ChatInner({
             ))}
           </ConversationContent>
           <ConversationScrollButton />
-        </Conversation>
+          </Conversation>
+        </div>
       )}
 
       {/* Prompt Input */}
@@ -311,204 +323,6 @@ function ChatInner({
           </PromptInput>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Main Chat Component with Sidebar
-// ============================================================================
-
-interface ChatProps {
-  /** Conversation ID from URL params. Null means no active conversation. */
-  conversationId: string | null;
-}
-
-export default function Chat({ conversationId: urlConversationId }: ChatProps) {
-  const router = useRouter();
-
-  // Conversation list state
-  const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
-
-  // Track the active conversation ID (may differ from URL during transitions)
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    urlConversationId
-  );
-
-  // Counter to force re-creation of ChatInner when switching conversations
-  const [chatKey, setChatKey] = useState(0);
-
-  // Ref to prevent double-initialization
-  const initializedRef = useRef(false);
-
-  // Redirect to stored conversation on first mount if URL has no conversation
-  useEffect(() => {
-    if (initializedRef.current) return;
-    if (urlConversationId) {
-      initializedRef.current = true;
-      return;
-    }
-    const storedId = getStoredConversationId();
-    if (storedId) {
-      router.replace(`/chat/${storedId}`);
-    }
-    initializedRef.current = true;
-  }, [urlConversationId, router]);
-
-  // Sync activeConversationId when URL param changes
-  useEffect(() => {
-    if (urlConversationId && urlConversationId !== activeConversationId) {
-      setActiveConversationId(urlConversationId);
-      setChatKey((k) => k + 1);
-    }
-  }, [urlConversationId]);
-
-  // Load conversations on mount
-  useEffect(() => {
-    async function loadConversations() {
-      try {
-        const res = await fetch("/api/conversations");
-        if (res.ok) {
-          const data = await res.json();
-          setConversations(data.conversations || []);
-        }
-      } catch {
-        // Failed to load conversations
-      } finally {
-        setIsLoadingConversations(false);
-      }
-    }
-    loadConversations();
-  }, []);
-
-  // ============================================================================
-  // Conversation management handlers
-  // ============================================================================
-
-  const switchToConversation = useCallback((id: string) => {
-    setConversationId(id);
-    router.push(`/chat/${id}`);
-  }, [router]);
-
-  const handleSelectConversation = useCallback(
-    (id: string) => {
-      if (id === activeConversationId) return;
-      switchToConversation(id);
-    },
-    [activeConversationId, switchToConversation]
-  );
-
-  const handleCreateConversation = useCallback(async () => {
-    const newId = nanoid();
-    try {
-      const res = await fetch("/api/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: newId }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setConversations((prev) => [data.conversation, ...prev]);
-        switchToConversation(newId);
-      }
-    } catch {
-      // Failed to create
-    }
-  }, [switchToConversation]);
-
-  const handleDeleteConversation = useCallback(
-    async (id: string) => {
-      try {
-        const res = await fetch(
-          `/api/conversations?id=${encodeURIComponent(id)}`,
-          { method: "DELETE" }
-        );
-        if (res.ok) {
-          setConversations((prev) => prev.filter((c) => c.id !== id));
-          if (id === activeConversationId) {
-            const remaining = conversations.filter((c) => c.id !== id);
-            if (remaining.length > 0) {
-              switchToConversation(remaining[0].id);
-            } else {
-              // No conversations left, go to base /chat
-              setActiveConversationId(null);
-              router.push("/chat");
-            }
-          }
-        }
-      } catch {
-        // Failed to delete
-      }
-    },
-    [activeConversationId, conversations, switchToConversation, router]
-  );
-
-  const handleRenameConversation = useCallback(
-    async (id: string, title: string) => {
-      try {
-        const res = await fetch("/api/conversations", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, title }),
-        });
-        if (res.ok) {
-          setConversations((prev) =>
-            prev.map((c) => (c.id === id ? { ...c, title } : c))
-          );
-        }
-      } catch {
-        // Failed to rename
-      }
-    },
-    []
-  );
-
-  /** Refresh conversation list from server (used after AI title generation) */
-  const handleRefreshConversations = useCallback(async () => {
-    try {
-      const res = await fetch("/api/conversations");
-      if (res.ok) {
-        const data = await res.json();
-        setConversations(data.conversations || []);
-      }
-    } catch {
-      // Failed to refresh
-    }
-  }, []);
-
-  // ============================================================================
-  // Render
-  // ============================================================================
-
-  return (
-    <div className="flex h-screen w-full">
-      {/* Sidebar */}
-      <ConversationSidebar
-        activeConversationId={activeConversationId}
-        conversations={conversations}
-        isLoading={isLoadingConversations}
-        onCreateConversation={handleCreateConversation}
-        onDeleteConversation={handleDeleteConversation}
-        onRenameConversation={handleRenameConversation}
-        onSelectConversation={handleSelectConversation}
-      />
-
-      {/* Main Chat Area */}
-      {activeConversationId ? (
-        <ChatInner 
-          key={chatKey} 
-          conversationId={activeConversationId}
-          onTitleUpdated={handleRefreshConversations}
-        />
-      ) : (
-        <div className="flex flex-1 items-center justify-center">
-          <ConversationEmptyState
-            title="Start a new conversation"
-            description="Click the + button in the sidebar to begin."
-          />
-        </div>
-      )}
     </div>
   );
 }

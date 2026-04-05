@@ -1,7 +1,14 @@
-import Chat from '@/components/Chat';
+"use client";
+
+import { ConversationEmptyState } from "@/components/ai-elements/conversation";
 
 export default function ChatHome() {
-  // No conversation ID in URL - Chat component will handle
-  // redirecting to stored conversation if one exists
-  return <Chat conversationId={null} />;
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <ConversationEmptyState
+        title="Start a new conversation"
+        description="Click the + button in the sidebar to begin."
+      />
+    </div>
+  );
 }

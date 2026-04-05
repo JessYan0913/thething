@@ -1,6 +1,18 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
   CheckIcon,
@@ -18,6 +30,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { Button } from "@/components/ui/button";
 
 // ============================================================================
 // Types
@@ -54,47 +67,59 @@ export const ConversationSidebar = ({
   isLoading = false,
 }: ConversationSidebarProps) => {
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-muted/30">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b p-3">
-        <h2 className="font-medium text-sm">Conversations</h2>
-        <Button
-          onClick={onCreateConversation}
-          size="icon-xs"
-          variant="ghost"
-          title="New conversation"
-        >
-          <PlusIcon className="size-4" />
-        </Button>
-      </div>
+    <Sidebar collapsible="icon">
+      {/* Header with New Conversation button */}
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={onCreateConversation}
+              tooltip="New conversation"
+            >
+              <PlusIcon />
+              <span>New conversation</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-      {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
-            Loading...
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-xs">
-            <MessageSquareIcon className="size-6 opacity-50" />
-            <span>No conversations yet</span>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {conversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isActive={conv.id === activeConversationId}
-                onSelect={() => onSelectConversation(conv.id)}
-                onDelete={() => onDeleteConversation(conv.id)}
-                onRename={(title) => onRenameConversation(conv.id, title)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Conversation List - hidden when collapsed */}
+      <SidebarContent>
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
+                Loading...
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-xs px-2">
+                <MessageSquareIcon className="size-6 opacity-50" />
+                <span>No conversations yet</span>
+              </div>
+            ) : (
+              <SidebarMenu>
+                {conversations.map((conv) => (
+                  <ConversationItem
+                    key={conv.id}
+                    conversation={conv}
+                    isActive={conv.id === activeConversationId}
+                    onSelect={() => onSelectConversation(conv.id)}
+                    onDelete={() => onDeleteConversation(conv.id)}
+                    onRename={(title) => onRenameConversation(conv.id, title)}
+                  />
+                ))}
+              </SidebarMenu>
+            )}
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      {/* Footer */}
+      <SidebarFooter />
+
+      {/* Rail for hover-to-toggle */}
+      <SidebarRail />
+    </Sidebar>
   );
 };
 
@@ -117,7 +142,6 @@ const ConversationItem = ({
   onDelete,
   onRename,
 }: ConversationItemProps) => {
-  const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(conversation.title);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -196,87 +220,77 @@ const ConversationItem = ({
   );
 
   return (
-    <div
-      className={cn(
-        "group relative flex cursor-pointer items-center rounded-md px-3 py-2 text-sm transition-colors",
-        isActive
-          ? "bg-accent font-medium text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-      )}
-      onClick={onSelect}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        setIsDeleting(false);
-      }}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") onSelect();
-      }}
-    >
-      {/* Title or Edit Input */}
-      {isEditing ? (
-        <input
-          className="w-full bg-transparent text-foreground text-sm outline-none"
-          onBlur={handleSaveEdit}
-          onChange={(e) => setEditTitle(e.target.value)}
-          onKeyDown={handleEditKeyDown}
-          onClick={(e) => e.stopPropagation()}
-          ref={inputRef}
-          value={editTitle}
-        />
-      ) : isDeleting ? (
-        <div
-          className="flex w-full items-center justify-between"
-          onKeyDown={handleDeleteKeyDown}
-          tabIndex={0}
-        >
-          <span className="truncate text-destructive text-xs">Delete?</span>
-          <div className="flex items-center gap-0.5">
-            <Button
-              className="size-5 rounded-sm"
-              onClick={handleConfirmDelete}
-              size="icon"
-              variant="ghost"
-            >
-              <CheckIcon className="size-3 text-destructive" />
-            </Button>
-            <Button
-              className="size-5 rounded-sm"
-              onClick={handleCancelDelete}
-              size="icon"
-              variant="ghost"
-            >
-              <XIcon className="size-3" />
-            </Button>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={isActive}
+        onClick={onSelect}
+        tooltip={conversation.title}
+      >
+        {isEditing ? (
+          <input
+            className="w-full bg-transparent text-sidebar-foreground text-sm outline-none"
+            onBlur={handleSaveEdit}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onKeyDown={handleEditKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            ref={inputRef}
+            value={editTitle}
+          />
+        ) : isDeleting ? (
+          <div
+            className="flex w-full items-center justify-between"
+            onKeyDown={handleDeleteKeyDown}
+            tabIndex={0}
+          >
+            <span className="truncate text-destructive text-xs">Delete?</span>
+            <div className="flex items-center gap-0.5">
+              <Button
+                className="size-5 rounded-sm"
+                onClick={handleConfirmDelete}
+                size="icon"
+                variant="ghost"
+              >
+                <CheckIcon className="size-3 text-destructive" />
+              </Button>
+              <Button
+                className="size-5 rounded-sm"
+                onClick={handleCancelDelete}
+                size="icon"
+                variant="ghost"
+              >
+                <XIcon className="size-3" />
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <span className="flex-1 truncate">{conversation.title}</span>
-      )}
+        ) : (
+          <>
+            <MessageSquareIcon />
+            <span className="truncate">{conversation.title}</span>
+          </>
+        )}
+      </SidebarMenuButton>
 
-      {/* Action Buttons (hover or active) */}
-      {!isEditing && !isDeleting && (isHovered || isActive) && (
-        <div className="flex items-center gap-0.5">
-          <Button
-            className="size-5 rounded-sm opacity-60 hover:opacity-100"
+      {/* Action Buttons (rename/delete) */}
+      {!isEditing && !isDeleting && (
+        <>
+          <SidebarMenuAction
+            className="right-7"
             onClick={handleStartEdit}
-            size="icon"
-            variant="ghost"
+            showOnHover
+            title="Rename"
           >
-            <PencilIcon className="size-3" />
-          </Button>
-          <Button
-            className="size-5 rounded-sm opacity-60 hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+            <PencilIcon />
+          </SidebarMenuAction>
+          <SidebarMenuAction
+            className="hover:bg-destructive/10 hover:text-destructive"
             onClick={handleStartDelete}
-            size="icon"
-            variant="ghost"
+            showOnHover
+            title="Delete"
           >
-            <TrashIcon className="size-3" />
-          </Button>
-        </div>
+            <TrashIcon />
+          </SidebarMenuAction>
+        </>
       )}
-    </div>
+    </SidebarMenuItem>
   );
 };
