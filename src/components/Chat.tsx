@@ -15,6 +15,11 @@ import {
   MessageToolbar,
 } from "@/components/ai-elements/message";
 import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
+import {
   PromptInput,
   PromptInputFooter,
   PromptInputSubmit,
@@ -25,7 +30,7 @@ import type { ConversationItem } from "@/components/ConversationSidebar";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart, UIMessage } from "ai";
 import { CopyIcon, RefreshCcwIcon } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 // ============================================================================
 // Conversation ID persistence (localStorage)
@@ -74,15 +79,14 @@ export default function Chat({
   conversationId,
   onTitleUpdated,
 }: ChatProps) {
-  // Track initial message count to detect first message completion
   const initialMessageCountRef = useRef<number | null>(null);
-
-  // Ref to hold the original title, set when messages are loaded.
-  // Used to detect when the AI-generated title replaces the fallback title.
   const originalTitleRef = useRef<string | null>(null);
-
-  // Ref to hold the latest messages, avoiding stale closure in onFinish
   const messagesRef = useRef<UIMessage[]>([]);
+
+  const transport = useMemo(
+    () => createChatTransport(conversationId),
+    [conversationId]
+  );
 
   const {
     messages,
@@ -93,15 +97,12 @@ export default function Chat({
     regenerate,
     error,
   } = useChat({
-    transport: createChatTransport(conversationId),
+    id: conversationId,
+    transport,
     onFinish: async ({ messages: finishedMessages }) => {
-      // Use the messages passed by the SDK, NOT the stale closure variable
       const msgCount = finishedMessages.length;
 
-      // Detect if this is the first message in a new conversation
       if (initialMessageCountRef.current === 0 && msgCount > 0) {
-        // Server is asynchronously generating the title (takes ~1-3 seconds).
-        // Use lightweight polling to check for title update.
         let attempts = 0;
         const maxAttempts = 5;
         let timerId: ReturnType<typeof setTimeout> | null = null;
@@ -116,8 +117,6 @@ export default function Chat({
                 (c: ConversationItem) => c.id === conversationId
               );
 
-              // Compare against the original title stored when messages were loaded.
-              // If the title changed (AI generation completed), refresh the sidebar.
               if (current && current.title !== originalTitleRef.current) {
                 onTitleUpdated?.();
                 return;
@@ -130,13 +129,15 @@ export default function Chat({
           if (attempts < maxAttempts) {
             timerId = setTimeout(pollForTitle, 1000);
           } else {
-            // Final fallback: refresh regardless
             onTitleUpdated?.();
           }
         };
 
-        // First poll after 1.5s to give server time for LLM call
         timerId = setTimeout(pollForTitle, 1500);
+
+        return () => {
+          if (timerId) clearTimeout(timerId);
+        };
       }
     },
   });
@@ -235,6 +236,13 @@ export default function Chat({
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      {/* Error Display */}
+      {error && (
+        <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error.message}
+        </div>
+      )}
+
       {/* Conversation Area */}
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
@@ -247,64 +255,89 @@ export default function Chat({
         <div className="flex-1 min-h-0 overflow-y-auto pt-4">
           <Conversation>
             <ConversationContent>
-            {messages.map((message, messageIndex) => (
-              <Message from={message.role} key={message.id}>
-                <MessageContent>
-                  {message.parts.map((part, index) => {
-                    if (part.type === "text") {
-                      return (
-                        <MessageResponse key={`${message.id}-${index}`}>
-                          {part.text}
-                        </MessageResponse>
-                      );
-                    }
+            {messages.map((message, messageIndex) => {
+              // Consolidate all reasoning parts into one block
+              const reasoningParts = message.parts.filter(
+                (part) => part.type === "reasoning"
+              );
+              const reasoningText = reasoningParts.map((part) => part.text).join("\n\n");
+              const hasReasoning = reasoningParts.length > 0;
 
-                    if (isToolUIPart(part)) {
-                      return (
-                        <div
-                          key={`${message.id}-${index}`}
-                          className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"
+              // Check if reasoning is still streaming (last part is reasoning on last message)
+              const lastPart = message.parts.at(-1);
+              const isReasoningStreaming =
+                messageIndex === messages.length - 1 &&
+                status === "streaming" &&
+                lastPart?.type === "reasoning";
+
+              return (
+                <Message from={message.role} key={message.id}>
+                  <MessageContent>
+                    {hasReasoning && (
+                      <Reasoning
+                        className="w-full"
+                        isStreaming={isReasoningStreaming}
+                      >
+                        <ReasoningTrigger />
+                        <ReasoningContent>{reasoningText}</ReasoningContent>
+                      </Reasoning>
+                    )}
+                    {message.parts.map((part, index) => {
+                      if (part.type === "text") {
+                        return (
+                          <MessageResponse key={`${message.id}-${index}`}>
+                            {part.text}
+                          </MessageResponse>
+                        );
+                      }
+
+                      if (isToolUIPart(part)) {
+                        return (
+                          <div
+                            key={`${message.id}-${index}`}
+                            className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"
+                          >
+                            Using tool: {part.type.replace("tool-", "")}
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })}
+                  </MessageContent>
+
+                  {message.role === "assistant" && (
+                    <MessageToolbar>
+                      <MessageActions>
+                        <MessageAction
+                          label="Regenerate"
+                          onClick={() => handleRegenerate(messageIndex)}
+                          tooltip="Regenerate response"
                         >
-                          Using tool: {part.type.replace("tool-", "")}
-                        </div>
-                      );
-                    }
-
-                    return null;
-                  })}
-                </MessageContent>
-
-                {message.role === "assistant" && (
-                  <MessageToolbar>
-                    <MessageActions>
-                      <MessageAction
-                        label="Regenerate"
-                        onClick={() => handleRegenerate(messageIndex)}
-                        tooltip="Regenerate response"
-                      >
-                        <RefreshCcwIcon className="size-4" />
-                      </MessageAction>
-                      <MessageAction
-                        label="Copy"
-                        onClick={() =>
-                          handleCopy(
-                            message.parts
-                              .filter((p) => p.type === "text")
-                              .map((p) =>
-                                p.type === "text" ? p.text : ""
-                              )
-                              .join("")
-                          )
-                        }
-                        tooltip="Copy to clipboard"
-                      >
-                        <CopyIcon className="size-4" />
-                      </MessageAction>
-                    </MessageActions>
-                  </MessageToolbar>
-                )}
-              </Message>
-            ))}
+                          <RefreshCcwIcon className="size-4" />
+                        </MessageAction>
+                        <MessageAction
+                          label="Copy"
+                          onClick={() =>
+                            handleCopy(
+                              message.parts
+                                .filter((p) => p.type === "text")
+                                .map((p) =>
+                                  p.type === "text" ? p.text : ""
+                                )
+                                .join("")
+                            )
+                          }
+                          tooltip="Copy to clipboard"
+                        >
+                          <CopyIcon className="size-4" />
+                        </MessageAction>
+                      </MessageActions>
+                    </MessageToolbar>
+                  )}
+                </Message>
+              );
+            })}
           </ConversationContent>
           <ConversationScrollButton />
           </Conversation>

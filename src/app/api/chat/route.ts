@@ -101,6 +101,7 @@ export async function POST(req: Request) {
       headers: {
         'X-Conversation-Id': conversationId,
       },
+      sendReasoning: true,
       // Save messages to SQLite after streaming completes
       onFinish: async ({ messages: completedMessages }) => {
         try {
