@@ -21,7 +21,7 @@ class ToolRegistry {
   private registerDefaultTools(): void {
     this.register({
       name: 'web_search',
-      description: '搜索互联网获取最新信息。当用户询问实时新闻、当前事件、最新技术动态时使用。',
+      description: '搜索互联网获取最新信息。支持实时搜索新闻、技术文章、博客等内容，返回包含标题、URL、摘要的结构化JSON结果。当用户询问实时新闻、当前事件、最新技术动态或需要联网查询时使用。',
       enabled: true,
     });
 
