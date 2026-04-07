@@ -20,24 +20,6 @@ export function createSessionGuidanceSection(
     parts.push(`这是对话中的第 ${meta.messageCount + 1} 条消息。请基于之前的上下文继续对话。`);
   }
 
-  // Add time-based guidance if applicable
-  const hour = new Date().getHours();
-  if (hour < 6) {
-    parts.push('现在是深夜时分，请注意简洁高效。');
-  } else if (hour < 9) {
-    parts.push('现在是早晨时分。');
-  } else if (hour < 12) {
-    parts.push('现在是上午时分。');
-  } else if (hour < 14) {
-    parts.push('现在是中午时分。');
-  } else if (hour < 18) {
-    parts.push('现在是下午时分。');
-  } else if (hour < 22) {
-    parts.push('现在是晚间时分。');
-  } else {
-    parts.push('现在是深夜时分。');
-  }
-
   const content = `【会话指导】\n\n${parts.join('\n')}`;
 
   return {
@@ -45,6 +27,26 @@ export function createSessionGuidanceSection(
     content,
     cacheStrategy: 'dynamic', // Changes every message
     priority: 100, // Highest priority number = comes last
+  };
+}
+
+/**
+ * Creates a system context section with current date/time.
+ * Always injected so the model always knows what time it is.
+ */
+export function createSystemContextSection(): SystemPromptSection {
+  const now = new Date();
+  const iso = now.toISOString(); // Always UTC, e.g. "2026-04-07T12:02:00.000Z"
+  const dateStr = iso.slice(0, 10);  // YYYY-MM-DD
+  const timeStr = iso.slice(11, 16); // HH:mm
+
+  const content = `当前日期时间：${dateStr} ${timeStr} (UTC)`;
+
+  return {
+    name: 'system-context',
+    content,
+    cacheStrategy: 'dynamic', // Changes per request
+    priority: 51, // Just after dynamic boundary (50), before project-context (60)
   };
 }
 

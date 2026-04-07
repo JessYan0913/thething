@@ -83,6 +83,13 @@ export interface BuiltSystemPrompt {
   /** The assembled system prompt string */
   prompt: string;
 
+  /**
+   * The raw sections array, ordered and filtered.
+   * Cache-aware consumers (e.g. Anthropic TextBlockParam[]) can use this
+   * to attach cache_control per section based on cacheStrategy.
+   */
+  sections: SystemPromptSection[];
+
   /** All sections that were included (for debugging/inspection) */
   includedSections: string[];
 

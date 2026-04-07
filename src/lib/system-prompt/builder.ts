@@ -17,6 +17,7 @@ import {
 import {
   createSessionGuidanceSection,
   createFirstMessageGuidance,
+  createSystemContextSection,
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
 import { createProjectContextSection } from "./sections/project-context";
@@ -139,6 +140,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
  */
 const DYNAMIC_SECTION_FACTORIES: SectionFactory[] = [
   {
+    name: "system-context",
+    create: () => createSystemContextSection(),
+    cacheStrategy: "dynamic",
+  },
+  {
     name: "session-guidance",
     create: (options) =>
       options.conversationMeta
@@ -217,10 +223,12 @@ export async function buildSystemPrompt(
 
   // Simple mode for testing/development
   if (isSimpleMode()) {
+    const simplePrompt = getSimpleModePrompt();
     return {
-      prompt: getSimpleModePrompt(),
+      prompt: simplePrompt,
+      sections: [{ name: "simple-mode", content: simplePrompt, cacheStrategy: "dynamic", priority: 0 }],
       includedSections: ["simple-mode"],
-      estimatedTokens: estimateTokens(getSimpleModePrompt()),
+      estimatedTokens: estimateTokens(simplePrompt),
     };
   }
 
@@ -228,6 +236,7 @@ export async function buildSystemPrompt(
   if (opts.override) {
     return {
       prompt: opts.override,
+      sections: [{ name: "override", content: opts.override, cacheStrategy: "dynamic", priority: 0 }],
       includedSections: ["override"],
       estimatedTokens: estimateTokens(opts.override),
     };
@@ -313,8 +322,11 @@ export async function buildSystemPrompt(
     .map((s) => s.content)
     .join("\n\n");
 
+  const finalSections = allSections.filter((s) => s.content !== null);
+
   return {
     prompt,
+    sections: finalSections,
     includedSections,
     estimatedTokens: estimateTokens(prompt),
   };

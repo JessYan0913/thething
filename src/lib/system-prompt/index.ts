@@ -80,6 +80,7 @@ export {
 export {
   createSessionGuidanceSection,
   createFirstMessageGuidance,
+  createSystemContextSection,
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
 
