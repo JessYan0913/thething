@@ -2,15 +2,18 @@ import type { UIMessage } from "ai";
 
 export type CompactionType = "auto" | "manual" | "micro";
 
+export interface PreservedSegment {
+  headUuid: string;
+  anchorUuid: string;
+  tailUuid: string;
+}
+
 export interface CompactMetadata {
   compactType: CompactionType;
   preCompactTokenCount: number;
   lastUserMessageUuid: string;
   preCompactDiscoveredTools?: string[];
-  preservedSegment?: {
-    summaryMessageUuid: string;
-    preservedMessageUuids: string[];
-  };
+  preservedSegment?: PreservedSegment;
 }
 
 export interface CompactBoundaryMessage extends UIMessage {
@@ -40,6 +43,8 @@ export interface MicroCompactConfig {
   timeWindowMs: number;
   imageMaxTokenSize: number;
   compactableTools: Set<string>;
+  gapThresholdMinutes: number;
+  keepRecent: number;
 }
 
 export interface PostCompactConfig {
@@ -66,7 +71,7 @@ export const DEFAULT_SESSION_MEMORY_CONFIG: SessionMemoryCompactConfig = {
 };
 
 export const DEFAULT_MICRO_COMPACT_CONFIG: MicroCompactConfig = {
-  timeWindowMs: 15 * 60 * 1000, // 15 minutes
+  timeWindowMs: 15 * 60 * 1000,
   imageMaxTokenSize: 2000,
   compactableTools: new Set([
     "web_search",
@@ -79,6 +84,8 @@ export const DEFAULT_MICRO_COMPACT_CONFIG: MicroCompactConfig = {
     "Edit",
     "Write",
   ]),
+  gapThresholdMinutes: 60,
+  keepRecent: 5,
 };
 
 export const DEFAULT_POST_COMPACT_CONFIG: PostCompactConfig = {

@@ -7,6 +7,31 @@ import { estimateMessageTokens } from "./token-counter";
 
 const CLEARED_MARKER = "[Old tool result content cleared]";
 
+export function evaluateTimeBasedTrigger(
+  messages: UIMessage[],
+  config: MicroCompactConfig = DEFAULT_MICRO_COMPACT_CONFIG
+): { gapMinutes: number } | null {
+  const lastAssistant = messages.findLast((m) => m.role === "assistant");
+  if (!lastAssistant) {
+    return null;
+  }
+
+  const msgWithTimestamp = lastAssistant as unknown as Record<string, unknown>;
+  const timestamp = msgWithTimestamp.timestamp as string | number | undefined;
+  if (!timestamp) {
+    return null;
+  }
+
+  const lastTime = new Date(timestamp).getTime();
+  const gapMinutes = (Date.now() - lastTime) / 60_000;
+
+  if (!Number.isFinite(gapMinutes) || gapMinutes < config.gapThresholdMinutes) {
+    return null;
+  }
+
+  return { gapMinutes };
+}
+
 function isToolPart(part: UIMessage["parts"][number]): boolean {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
 }
@@ -24,6 +49,14 @@ export function microCompactMessages(
   _config: Partial<MicroCompactConfig> = {}
 ): { messages: UIMessage[]; executed: boolean; tokensFreed: number } {
   const resolvedConfig = { ...DEFAULT_MICRO_COMPACT_CONFIG, ..._config };
+  
+  // Try time-based microcompact first
+  const timeBasedResult = maybeTimeBasedMicrocompact(messages, resolvedConfig);
+  if (timeBasedResult) {
+    return timeBasedResult;
+  }
+  
+  // Fall through to legacy logic
   let tokensFreed = 0;
   let executed = false;
 
@@ -67,6 +100,98 @@ export function microCompactMessages(
     executed,
     tokensFreed,
   };
+}
+
+function maybeTimeBasedMicrocompact(
+  messages: UIMessage[],
+  config: MicroCompactConfig
+): { messages: UIMessage[]; executed: boolean; tokensFreed: number } | null {
+  const trigger = evaluateTimeBasedTrigger(messages, config);
+  if (!trigger) {
+    return null;
+  }
+
+  const { gapMinutes } = trigger;
+  const compactableIds = collectCompactableToolIds(messages);
+
+  const keepRecent = Math.max(1, config.keepRecent);
+  const keepSet = new Set(compactableIds.slice(-keepRecent));
+  const clearSet = new Set(compactableIds.filter((id) => !keepSet.has(id)));
+
+  if (clearSet.size === 0) {
+    return null;
+  }
+
+  let tokensSaved = 0;
+  const result: UIMessage[] = messages.map((message) => {
+    if (message.role !== "user" || !Array.isArray(message.parts)) {
+      return message;
+    }
+
+    let touched = false;
+    const newParts = message.parts.map((part) => {
+      const p = part as unknown as Record<string, unknown>;
+      if (
+        p.type === "tool_result" &&
+        clearSet.has((p.tool_use_id as string) || "") &&
+        getToolOutputText(part) !== CLEARED_MARKER
+      ) {
+        tokensSaved += estimateMessageTokens({ ...message, parts: [part] } as unknown as UIMessage);
+        touched = true;
+        return { ...part, content: CLEARED_MARKER } as UIMessage["parts"][number];
+      }
+      return part;
+    });
+
+    if (!touched) return message;
+    return { ...message, parts: newParts };
+  });
+
+  if (tokensSaved === 0) {
+    return null;
+  }
+
+  console.log(
+    `[Time-Based MC] gap ${Math.round(gapMinutes)}min > ${config.gapThresholdMinutes}min, ` +
+    `cleared ${clearSet.size} tool results (~${tokensSaved} tokens), kept last ${keepSet.size}`
+  );
+
+  return { messages: result, executed: true, tokensFreed: tokensSaved };
+}
+
+function collectCompactableToolIds(messages: UIMessage[]): string[] {
+  const ids: string[] = [];
+  for (const message of messages) {
+    if (message.role === "assistant" && Array.isArray(message.parts)) {
+      for (const part of message.parts) {
+        const p = part as unknown as Record<string, unknown>;
+        if (
+          p.type === "tool_use" &&
+          DEFAULT_MICRO_COMPACT_CONFIG.compactableTools.has(
+            (p.name as string) || ""
+          )
+        ) {
+          ids.push((p.id as string) || "");
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+function getToolOutputText(part: UIMessage["parts"][number]): string {
+  const p = part as unknown as Record<string, unknown>;
+  if (p.type === "tool_result") {
+    const content = p.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter((b): b is { type: "text"; text: string } => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+    }
+  }
+  return "";
 }
 
 function createClearedToolPart(

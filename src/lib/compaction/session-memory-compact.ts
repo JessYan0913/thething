@@ -14,6 +14,23 @@ import {
 import type { StoredSummary } from "./types";
 import { getDb } from "@/lib/db";
 
+function isFeatureEnabled(featureName: string): boolean {
+  const envKey = `FEATURE_${featureName.toUpperCase().replace(/-/g, "_")}`;
+  return process.env[envKey] === "true" || process.env[envKey] === "1";
+}
+
+export function shouldUseSessionMemoryCompaction(): boolean {
+  if (process.env.ENABLE_SM_COMPACT === "true") {
+    return true;
+  }
+  if (process.env.DISABLE_SM_COMPACT === "true") {
+    return false;
+  }
+  const sessionMemoryFlag = isFeatureEnabled("session_memory");
+  const smCompactFlag = isFeatureEnabled("sm_compact");
+  return sessionMemoryFlag && smCompactFlag;
+}
+
 function getSummaryByConversation(conversationId: string): StoredSummary | null {
   try {
     const db = getDb();
@@ -92,6 +109,7 @@ function preserveToolPairs(
 ): number {
   let adjustedStart = startIndex;
 
+  // Step 1: Handle tool_use/tool_result pairs
   for (let i = startIndex; i < messages.length; i++) {
     const toolResultIds = extractToolResultIds(messages[i]);
     for (const toolCallId of toolResultIds) {
@@ -99,6 +117,30 @@ function preserveToolPairs(
       if (toolUseIndex >= 0 && toolUseIndex < adjustedStart) {
         adjustedStart = toolUseIndex;
       }
+    }
+  }
+
+  // Step 2: Handle thinking blocks that share message.id with kept assistant messages
+  // Streaming splits one assistant message into multiple records (thinking, tool_use, etc.)
+  // Each has unique uuid but shares the same message.id
+  const messageIdsInKeptRange = new Set<string>();
+  for (let i = adjustedStart; i < messages.length; i++) {
+    const msg = messages[i] as unknown as Record<string, unknown>;
+    if (messages[i].role === "assistant" && typeof msg.id === "string") {
+      messageIdsInKeptRange.add(msg.id);
+    }
+  }
+
+  // Look backwards for assistant messages with the same message.id
+  // These may contain thinking blocks that need to be merged
+  for (let i = adjustedStart - 1; i >= 0; i--) {
+    const msg = messages[i] as unknown as Record<string, unknown>;
+    if (
+      messages[i].role === "assistant" &&
+      typeof msg.id === "string" &&
+      messageIdsInKeptRange.has(msg.id)
+    ) {
+      adjustedStart = i;
     }
   }
 
@@ -147,6 +189,10 @@ export async function trySessionMemoryCompact(
   tokensFreed: number;
   summaryInjected: boolean;
 } | null> {
+  if (!shouldUseSessionMemoryCompaction()) {
+    return null;
+  }
+
   const resolvedConfig = { ...DEFAULT_SESSION_MEMORY_CONFIG, ...config };
 
   const summary = getSummaryByConversation(conversationId);
@@ -219,9 +265,15 @@ export async function trySessionMemoryCompact(
 export function createSessionMemoryBoundary(
   preCompactTokenCount: number,
   lastUserMessageId: string,
-  preservedMessageIds: string[],
+  preservedMessages: UIMessage[],
   summaryId: string
 ): CompactBoundaryMessage {
+  const preservedSegment = preservedMessages.length > 0 ? {
+    headUuid: preservedMessages[0].id,
+    anchorUuid: summaryId,
+    tailUuid: preservedMessages[preservedMessages.length - 1].id,
+  } : undefined;
+
   return {
     id: `boundary-${Date.now()}`,
     role: "system",
@@ -234,10 +286,7 @@ export function createSessionMemoryBoundary(
             compactType: "auto" as const,
             preCompactTokenCount,
             lastUserMessageUuid: lastUserMessageId,
-            preservedSegment: {
-              summaryMessageUuid: summaryId,
-              preservedMessageUuids: preservedMessageIds,
-            },
+            preservedSegment,
           },
         }),
       },

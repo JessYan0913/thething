@@ -10,8 +10,11 @@ export function createCompactBoundaryMessage(
   compactType: CompactionType,
   preCompactTokenCount: number,
   lastUserMessageId: string,
-  preservedMessageIds: string[] = [],
-  summaryMessageId: string = ""
+  preservedSegment?: {
+    headUuid: string;
+    anchorUuid: string;
+    tailUuid: string;
+  }
 ): CompactBoundaryMessage {
   const metadata: CompactMetadata = {
     compactType,
@@ -19,11 +22,8 @@ export function createCompactBoundaryMessage(
     lastUserMessageUuid: lastUserMessageId,
   };
 
-  if (preservedMessageIds.length > 0 || summaryMessageId) {
-    metadata.preservedSegment = {
-      summaryMessageUuid: summaryMessageId,
-      preservedMessageUuids: preservedMessageIds,
-    };
+  if (preservedSegment) {
+    metadata.preservedSegment = preservedSegment;
   }
 
   return {

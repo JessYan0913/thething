@@ -107,6 +107,7 @@ function preserveToolPairs(
 ): number {
   let adjustedStart = startIndex;
 
+  // Step 1: Handle tool_use/tool_result pairs
   for (let i = messages.length - 1; i >= startIndex; i--) {
     for (const part of messages[i].parts) {
       if (part.type === "dynamic-tool") {
@@ -118,6 +119,26 @@ function preserveToolPairs(
           }
         }
       }
+    }
+  }
+
+  // Step 2: Handle thinking blocks that share message.id with kept assistant messages
+  const messageIdsInKeptRange = new Set<string>();
+  for (let i = adjustedStart; i < messages.length; i++) {
+    const msg = messages[i] as unknown as Record<string, unknown>;
+    if (messages[i].role === "assistant" && typeof msg.id === "string") {
+      messageIdsInKeptRange.add(msg.id);
+    }
+  }
+
+  for (let i = adjustedStart - 1; i >= 0; i--) {
+    const msg = messages[i] as unknown as Record<string, unknown>;
+    if (
+      messages[i].role === "assistant" &&
+      typeof msg.id === "string" &&
+      messageIdsInKeptRange.has(msg.id)
+    ) {
+      adjustedStart = i;
     }
   }
 
@@ -274,7 +295,11 @@ export async function compactViaAPI(
   const lastUserMessage = messagesToKeep.findLast((m) => m.role === "user");
   const lastUserMessageId = lastUserMessage?.id || "";
 
-  const preservedMessageIds = messagesToKeep.map((m) => m.id).filter(Boolean);
+  const preservedSegment = messagesToKeep.length > 0 ? {
+    headUuid: messagesToKeep[0].id,
+    anchorUuid: summaryMessage.id,
+    tailUuid: messagesToKeep[messagesToKeep.length - 1].id,
+  } : undefined;
 
   const boundaryMessage: CompactBoundaryMessage = {
     id: `boundary-${Date.now()}`,
@@ -288,10 +313,7 @@ export async function compactViaAPI(
             compactType: "auto" as const,
             preCompactTokenCount,
             lastUserMessageUuid: lastUserMessageId,
-            preservedSegment: {
-              summaryMessageUuid: summaryMessage.id,
-              preservedMessageUuids: preservedMessageIds,
-            },
+            preservedSegment,
           },
         }),
       },
@@ -398,6 +420,12 @@ export async function compactWithCustomInstructions(
   const lastUserMessage = messagesToKeep.findLast((m) => m.role === "user");
   const lastUserMessageId = lastUserMessage?.id || "";
 
+  const preservedSegment = messagesToKeep.length > 0 ? {
+    headUuid: messagesToKeep[0].id,
+    anchorUuid: summaryMessage.id,
+    tailUuid: messagesToKeep[messagesToKeep.length - 1].id,
+  } : undefined;
+
   const boundaryMessage: CompactBoundaryMessage = {
     id: `boundary-${Date.now()}`,
     role: "system",
@@ -410,10 +438,7 @@ export async function compactWithCustomInstructions(
             compactType: "manual" as const,
             preCompactTokenCount,
             lastUserMessageUuid: lastUserMessageId,
-            preservedSegment: {
-              summaryMessageUuid: summaryMessage.id,
-              preservedMessageUuids: messagesToKeep.map((m) => m.id).filter(Boolean),
-            },
+            preservedSegment,
           },
         }),
       },
