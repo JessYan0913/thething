@@ -20,6 +20,13 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
 import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput,
+} from "@/components/ai-elements/tool";
+import {
   PromptInput,
   PromptInputFooter,
   PromptInputSubmit,
@@ -28,7 +35,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import type { ConversationItem } from "@/components/ConversationSidebar";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, isToolUIPart, UIMessage } from "ai";
+import { DefaultChatTransport, type ToolUIPart, UIMessage } from "ai";
 import { CopyIcon, RefreshCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
@@ -41,12 +48,6 @@ const CONVERSATION_ID_KEY = "chat_conversation_id";
 export function getStoredConversationId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(CONVERSATION_ID_KEY);
-}
-
-function setConversationId(id: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(CONVERSATION_ID_KEY, id);
-  }
 }
 
 // ============================================================================
@@ -291,14 +292,22 @@ export default function Chat({
                         );
                       }
 
-                      if (isToolUIPart(part)) {
+                      if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
+                        const toolPart = part as ToolUIPart;
                         return (
-                          <div
-                            key={`${message.id}-${index}`}
-                            className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"
-                          >
-                            Using tool: {part.type.replace("tool-", "")}
-                          </div>
+                          <Tool key={`${message.id}-${index}`} defaultOpen={toolPart.state === "output-available" || toolPart.state === "output-error"}>
+                            <ToolHeader
+                              type={toolPart.type}
+                              state={toolPart.state}
+                            />
+                            <ToolContent>
+                              <ToolInput input={toolPart.input} />
+                              <ToolOutput
+                                output={toolPart.output}
+                                errorText={toolPart.errorText}
+                              />
+                            </ToolContent>
+                          </Tool>
                         );
                       }
 
