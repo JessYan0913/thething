@@ -2,17 +2,24 @@ import type {
   SystemPromptSection,
   BuildSystemPromptOptions,
   BuiltSystemPrompt,
-  UserPreferences,
-  ConversationMeta,
-} from './types';
+} from "./types";
 
-import { createIdentitySection } from './sections/identity';
-import { createCapabilitiesSection } from './sections/capabilities';
-import { createRulesSection, createLanguageRulesSection } from './sections/rules';
-import { createToolsSection } from './sections/tools';
-import { createUserPreferencesSection, createResponseStyleSection } from './sections/user-preferences';
-import { createSessionGuidanceSection, createFirstMessageGuidance, DYNAMIC_BOUNDARY } from './sections/session';
-import { createProjectContextSection } from './sections/project-context';
+import { createIdentitySection } from "./sections/identity";
+import { createCapabilitiesSection } from "./sections/capabilities";
+import {
+  createRulesSection,
+  createLanguageRulesSection,
+} from "./sections/rules";
+import {
+  createUserPreferencesSection,
+  createResponseStyleSection,
+} from "./sections/user-preferences";
+import {
+  createSessionGuidanceSection,
+  createFirstMessageGuidance,
+  DYNAMIC_BOUNDARY,
+} from "./sections/session";
+import { createProjectContextSection } from "./sections/project-context";
 
 // ============================================================================
 // Simple Mode Configuration
@@ -23,7 +30,7 @@ import { createProjectContextSection } from './sections/project-context';
  * Controlled by CLAUDE_CODE_SIMPLE environment variable.
  */
 function isSimpleMode(): boolean {
-  return process.env.CLAUDE_CODE_SIMPLE === 'true';
+  return process.env.CLAUDE_CODE_SIMPLE === "true";
 }
 
 /**
@@ -32,7 +39,7 @@ function isSimpleMode(): boolean {
 export function getSimpleModePrompt(): string {
   const cwd = process.cwd();
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
 
   return `You are Aura, a helpful AI assistant.\n\nCWD: ${cwd}\nDate: ${dateStr}`;
 }
@@ -46,7 +53,6 @@ const DEFAULT_OPTIONS: BuildSystemPromptOptions = {
   customInstructions: null,
   userPreferences: null,
   includeProjectContext: true,
-  includeTools: true,
   conversationMeta: null,
 };
 
@@ -60,8 +66,10 @@ const DEFAULT_OPTIONS: BuildSystemPromptOptions = {
  */
 interface SectionFactory {
   name: string;
-  create: (options: BuildSystemPromptOptions) => SystemPromptSection | Promise<SystemPromptSection>;
-  cacheStrategy: 'static' | 'session' | 'dynamic';
+  create: (
+    options: BuildSystemPromptOptions,
+  ) => SystemPromptSection | Promise<SystemPromptSection>;
+  cacheStrategy: "static" | "session" | "dynamic";
 }
 
 /**
@@ -69,19 +77,19 @@ interface SectionFactory {
  */
 const STATIC_SECTION_FACTORIES: SectionFactory[] = [
   {
-    name: 'identity',
+    name: "identity",
     create: () => createIdentitySection(),
-    cacheStrategy: 'static',
+    cacheStrategy: "static",
   },
   {
-    name: 'capabilities',
+    name: "capabilities",
     create: () => createCapabilitiesSection(),
-    cacheStrategy: 'static',
+    cacheStrategy: "static",
   },
   {
-    name: 'rules',
+    name: "rules",
     create: () => createRulesSection(),
-    cacheStrategy: 'static',
+    cacheStrategy: "static",
   },
 ];
 
@@ -90,32 +98,39 @@ const STATIC_SECTION_FACTORIES: SectionFactory[] = [
  */
 const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   {
-    name: 'language-rules',
-    create: (options) => createLanguageRulesSection(options.userPreferences?.language),
-    cacheStrategy: 'session',
+    name: "language-rules",
+    create: (options) =>
+      createLanguageRulesSection(options.userPreferences?.language),
+    cacheStrategy: "session",
   },
   {
-    name: 'response-style',
+    name: "response-style",
     create: (options) =>
       options.userPreferences?.responseStyle
-        ? createResponseStyleSection(options.userPreferences.responseStyle as 'concise' | 'detailed' | 'balanced')
-        : { name: 'response-style', content: null, cacheStrategy: 'session' as const, priority: 15 },
-    cacheStrategy: 'session',
+        ? createResponseStyleSection(
+            options.userPreferences.responseStyle as
+              | "concise"
+              | "detailed"
+              | "balanced",
+          )
+        : {
+            name: "response-style",
+            content: null,
+            cacheStrategy: "session" as const,
+            priority: 15,
+          },
+    cacheStrategy: "session",
   },
   {
-    name: 'user-preferences',
-    create: (options) => createUserPreferencesSection(options.userPreferences ?? null),
-    cacheStrategy: 'session',
+    name: "user-preferences",
+    create: (options) =>
+      createUserPreferencesSection(options.userPreferences ?? null),
+    cacheStrategy: "session",
   },
   {
-    name: 'tools',
-    create: () => createToolsSection(),
-    cacheStrategy: 'session',
-  },
-  {
-    name: 'project-context',
+    name: "project-context",
     create: () => createProjectContextSection(),
-    cacheStrategy: 'session',
+    cacheStrategy: "session",
   },
 ];
 
@@ -124,20 +139,30 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
  */
 const DYNAMIC_SECTION_FACTORIES: SectionFactory[] = [
   {
-    name: 'session-guidance',
+    name: "session-guidance",
     create: (options) =>
       options.conversationMeta
         ? createSessionGuidanceSection(options.conversationMeta)
-        : { name: 'session-guidance', content: null, cacheStrategy: 'dynamic' as const, priority: 100 },
-    cacheStrategy: 'dynamic',
+        : {
+            name: "session-guidance",
+            content: null,
+            cacheStrategy: "dynamic" as const,
+            priority: 100,
+          },
+    cacheStrategy: "dynamic",
   },
   {
-    name: 'first-message-guidance',
+    name: "first-message-guidance",
     create: (options) =>
       options.conversationMeta?.isNewConversation
         ? createFirstMessageGuidance()
-        : { name: 'first-message-guidance', content: null, cacheStrategy: 'dynamic' as const, priority: 99 },
-    cacheStrategy: 'dynamic',
+        : {
+            name: "first-message-guidance",
+            content: null,
+            cacheStrategy: "dynamic" as const,
+            priority: 99,
+          },
+    cacheStrategy: "dynamic",
   },
 ];
 
@@ -182,7 +207,7 @@ const PRIORITY = {
  * Custom instructions are appended at the end unless override is set.
  */
 export async function buildSystemPrompt(
-  options: BuildSystemPromptOptions = {}
+  options: BuildSystemPromptOptions = {},
 ): Promise<BuiltSystemPrompt> {
   // Merge with defaults
   const opts: BuildSystemPromptOptions = {
@@ -194,7 +219,7 @@ export async function buildSystemPrompt(
   if (isSimpleMode()) {
     return {
       prompt: getSimpleModePrompt(),
-      includedSections: ['simple-mode'],
+      includedSections: ["simple-mode"],
       estimatedTokens: estimateTokens(getSimpleModePrompt()),
     };
   }
@@ -203,7 +228,7 @@ export async function buildSystemPrompt(
   if (opts.override) {
     return {
       prompt: opts.override,
-      includedSections: ['override'],
+      includedSections: ["override"],
       estimatedTokens: estimateTokens(opts.override),
     };
   }
@@ -221,12 +246,8 @@ export async function buildSystemPrompt(
 
   // Add session sections (async)
   for (const factory of SESSION_SECTION_FACTORIES) {
-    // Skip project context if disabled
-    if (factory.name === 'project-context' && !opts.includeProjectContext) {
-      continue;
-    }
-    // Skip tools if disabled
-    if (factory.name === 'tools' && !opts.includeTools) {
+    // Skip sections that are explicitly disabled in options
+    if (opts.override && opts.override.includes(factory.name)) {
       continue;
     }
 
@@ -241,19 +262,21 @@ export async function buildSystemPrompt(
 
   // Insert dynamic boundary marker
   const dynamicBoundarySection: SystemPromptSection = {
-    name: 'dynamic-boundary',
+    name: "dynamic-boundary",
     content: `\n\n${DYNAMIC_BOUNDARY}\n\n`,
-    cacheStrategy: 'dynamic',
+    cacheStrategy: "dynamic",
     priority: PRIORITY.DYNAMIC_BOUNDARY,
   };
 
   // Find where to insert the dynamic boundary (after tools, before project context)
-  const toolsIndex = allSections.findIndex((s) => s.name === 'tools');
+  const toolsIndex = allSections.findIndex((s) => s.name === "tools");
   if (toolsIndex !== -1) {
     allSections.splice(toolsIndex + 1, 0, dynamicBoundarySection);
   } else {
     // Insert before project context if tools not present
-    const projectIndex = allSections.findIndex((s) => s.name === 'project-context');
+    const projectIndex = allSections.findIndex(
+      (s) => s.name === "project-context",
+    );
     if (projectIndex !== -1) {
       allSections.splice(projectIndex, 0, dynamicBoundarySection);
     } else {
@@ -272,9 +295,9 @@ export async function buildSystemPrompt(
   // Add custom instructions at the end
   if (opts.customInstructions) {
     const customSection: SystemPromptSection = {
-      name: 'custom-instructions',
+      name: "custom-instructions",
       content: opts.customInstructions,
-      cacheStrategy: 'static',
+      cacheStrategy: "static",
       priority: 200,
     };
     allSections.push(customSection);
@@ -288,7 +311,7 @@ export async function buildSystemPrompt(
   const prompt = allSections
     .filter((s) => s.content !== null)
     .map((s) => s.content)
-    .join('\n\n');
+    .join("\n\n");
 
   return {
     prompt,
@@ -308,7 +331,7 @@ export function buildSimpleSystemPrompt(): string {
   sections.push(createCapabilitiesSection().content!);
   sections.push(createRulesSection().content!);
 
-  return sections.filter(Boolean).join('\n\n');
+  return sections.filter(Boolean).join("\n\n");
 }
 
 /**
@@ -316,7 +339,7 @@ export function buildSimpleSystemPrompt(): string {
  * This is used internally for conversation title generation.
  */
 export function buildTitleGenerationPrompt(): string {
-  return '你是一个对话标题生成助手。请根据用户的首条消息和AI的回复，生成一个简洁、准确的对话标题。';
+  return "你是一个对话标题生成助手。请根据用户的首条消息和AI的回复，生成一个简洁、准确的对话标题。";
 }
 
 // ============================================================================
@@ -351,7 +374,7 @@ export function getAvailableSections(): string[] {
  * Build a system prompt with just the identity.
  */
 export function buildIdentityOnlyPrompt(): string {
-  return createIdentitySection().content || '';
+  return createIdentitySection().content || "";
 }
 
 /**
@@ -367,5 +390,5 @@ export function buildBasicPrompt(): string {
   if (capabilities.content) sections.push(capabilities.content);
   if (rules.content) sections.push(rules.content);
 
-  return sections.join('\n\n');
+  return sections.join("\n\n");
 }

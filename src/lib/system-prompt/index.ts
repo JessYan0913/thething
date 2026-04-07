@@ -34,9 +34,8 @@ export type {
   BuiltSystemPrompt,
   UserPreferences,
   ConversationMeta,
-  ToolDefinition,
   AgentIdentity,
-} from './types';
+} from "./types";
 
 // Re-export builder functions
 export {
@@ -47,37 +46,66 @@ export {
   buildBasicPrompt,
   getAvailableSections,
   getSimpleModePrompt,
-} from './builder';
+} from "./builder";
 
 // Re-export section factories for advanced usage
-export { createIdentitySection, getAgentIdentity, updateAgentIdentity, AGENT_NAME, AGENT_ROLE } from './sections/identity';
-export { createCapabilitiesSection, createSelectiveCapabilitiesSection, CAPABILITY_CATEGORIES } from './sections/capabilities';
-export { createRulesSection, createLanguageRulesSection } from './sections/rules';
-export { createToolsSection, getToolRegistry, registerTool, enableTool, disableTool, getToolNames, getEnabledToolNames } from './sections/tools';
-export { createUserPreferencesSection, createResponseStyleSection, RESPONSE_STYLES } from './sections/user-preferences';
-export { createProjectContextSection, loadProjectContext, clearProjectContextCache, reloadProjectContext, getCachedProjectContext } from './sections/project-context';
-export { createSessionGuidanceSection, createFirstMessageGuidance, DYNAMIC_BOUNDARY } from './sections/session';
+export {
+  createIdentitySection,
+  getAgentIdentity,
+  updateAgentIdentity,
+  AGENT_NAME,
+  AGENT_ROLE,
+} from "./sections/identity";
+export {
+  createCapabilitiesSection,
+  createSelectiveCapabilitiesSection,
+  CAPABILITY_CATEGORIES,
+} from "./sections/capabilities";
+export {
+  createRulesSection,
+  createLanguageRulesSection,
+} from "./sections/rules";
+export {
+  createUserPreferencesSection,
+  createResponseStyleSection,
+  RESPONSE_STYLES,
+} from "./sections/user-preferences";
+export {
+  createProjectContextSection,
+  loadProjectContext,
+  clearProjectContextCache,
+  reloadProjectContext,
+  getCachedProjectContext,
+} from "./sections/project-context";
+export {
+  createSessionGuidanceSection,
+  createFirstMessageGuidance,
+  DYNAMIC_BOUNDARY,
+} from "./sections/session";
 
 // ============================================================================
 // Convenience Re-exports
 // ============================================================================
 
-import { buildSystemPrompt as _buildSystemPrompt } from './builder';
-import type { BuildSystemPromptOptions } from './types';
+import { buildSystemPrompt as _buildSystemPrompt } from "./builder";
+import type { BuildSystemPromptOptions } from "./types";
 
 /**
  * Convenience function: Build a complete system prompt with default options.
  */
-export async function getSystemPrompt(options?: BuildSystemPromptOptions): Promise<string> {
+export async function getSystemPrompt(
+  options?: BuildSystemPromptOptions,
+): Promise<string> {
   const result = await _buildSystemPrompt(options);
   return result.prompt;
 }
+
+import { buildIdentityOnlyPrompt } from "./builder";
 
 /**
  * Convenience function: Build a minimal system prompt for quick responses.
  */
 export function getMinimalSystemPrompt(): string {
-  const { buildIdentityOnlyPrompt } = require('./builder');
   return buildIdentityOnlyPrompt();
 }
 
@@ -89,7 +117,7 @@ export function getMinimalSystemPrompt(): string {
  * Module version following semver.
  * Update this when breaking changes are introduced.
  */
-export const SYSTEM_PROMPT_MODULE_VERSION = '1.0.0';
+export const SYSTEM_PROMPT_MODULE_VERSION = "1.0.0";
 
 /**
  * Feature flags for the system prompt module.
@@ -100,9 +128,6 @@ export const FEATURES = {
 
   /** Whether dynamic boundary splitting is supported */
   DYNAMIC_BOUNDARY: true,
-
-  /** Whether tool registry is supported */
-  TOOL_REGISTRY: true,
 
   /** Whether user preferences are supported */
   USER_PREFERENCES: true,

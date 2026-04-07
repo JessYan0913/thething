@@ -41,9 +41,6 @@ export interface BuildSystemPromptOptions {
   /** Whether to include project context (CLAUDE.md files) */
   includeProjectContext?: boolean;
 
-  /** Whether to include tools section */
-  includeTools?: boolean;
-
   /** Current conversation metadata for session guidance */
   conversationMeta?: ConversationMeta | null;
 }
@@ -91,23 +88,6 @@ export interface BuiltSystemPrompt {
 
   /** Estimated token count (approximate) */
   estimatedTokens: number;
-}
-
-/**
- * Tool definition for the tools section.
- */
-export interface ToolDefinition {
-  /** Unique name of the tool */
-  name: string;
-
-  /** Human-readable description of what the tool does */
-  description: string;
-
-  /** Example usage (optional) */
-  example?: string;
-
-  /** Whether this tool is enabled for the current session */
-  enabled: boolean;
 }
 
 /**

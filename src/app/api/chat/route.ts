@@ -34,7 +34,6 @@ async function createChatAgent(conversationMeta?: {
   const { prompt, includedSections, estimatedTokens } = await buildSystemPrompt(
     {
       includeProjectContext: true, // Enable CLAUDE.md loading
-      includeTools: true, // Enable tools for web search and other capabilities
       conversationMeta: conversationMeta ?? undefined,
     },
   );
