@@ -30,6 +30,15 @@ export interface StoredMessage {
   createdAt: string;
 }
 
+export interface StoredSummary {
+  id: string;
+  conversationId: string;
+  summary: string;
+  compactedAt: string;
+  lastMessageOrder: number;
+  preCompactTokenCount: number;
+}
+
 // ============================================================================
 // Conversation CRUD
 // ============================================================================
@@ -87,7 +96,7 @@ export function updateConversationTitle(id: string, title: string): void {
 
 export function deleteConversation(id: string): void {
   const db = getDb();
-  // Foreign key CASCADE will delete associated messages
+  deleteSummariesByConversation(id);
   const stmt = db.prepare("DELETE FROM conversations WHERE id = ?");
   stmt.run(id);
 }
@@ -244,4 +253,79 @@ export async function generateConversationTitle(
   } catch {
     return fallbackTitle;
   }
+}
+
+// ============================================================================
+// Summary Storage for Compaction
+// ============================================================================
+
+export function saveSummary(
+  conversationId: string,
+  summary: string,
+  lastMessageOrder: number,
+  preCompactTokenCount: number
+): StoredSummary {
+  const db = getDb();
+  
+  const existing = getSummaryByConversation(conversationId);
+  
+  let id: string;
+  
+  if (existing) {
+    id = existing.id;
+    const updateStmt = db.prepare(
+      "UPDATE summaries SET summary = ?, last_message_order = ?, pre_compact_token_count = ?, compacted_at = CURRENT_TIMESTAMP WHERE id = ?"
+    );
+    updateStmt.run(summary, lastMessageOrder, preCompactTokenCount, id);
+  } else {
+    id = nanoid();
+    const insertStmt = db.prepare(
+      "INSERT INTO summaries (id, conversation_id, summary, last_message_order, pre_compact_token_count) VALUES (?, ?, ?, ?, ?)"
+    );
+    insertStmt.run(id, conversationId, summary, lastMessageOrder, preCompactTokenCount);
+  }
+
+  return getSummaryById(id)!;
+}
+
+export function getSummaryById(id: string): StoredSummary | null {
+  const db = getDb();
+  const stmt = db.prepare("SELECT * FROM summaries WHERE id = ?");
+  const row = stmt.get(id) as StoredSummaryRow | undefined;
+  return row ? mapSummaryRow(row) : null;
+}
+
+export function getSummaryByConversation(conversationId: string): StoredSummary | null {
+  const db = getDb();
+  const stmt = db.prepare(
+    "SELECT * FROM summaries WHERE conversation_id = ? ORDER BY compacted_at DESC LIMIT 1"
+  );
+  const row = stmt.get(conversationId) as StoredSummaryRow | undefined;
+  return row ? mapSummaryRow(row) : null;
+}
+
+export function deleteSummariesByConversation(conversationId: string): void {
+  const db = getDb();
+  const stmt = db.prepare("DELETE FROM summaries WHERE conversation_id = ?");
+  stmt.run(conversationId);
+}
+
+interface StoredSummaryRow {
+  id: string;
+  conversation_id: string;
+  summary: string;
+  compacted_at: string;
+  last_message_order: number;
+  pre_compact_token_count: number;
+}
+
+function mapSummaryRow(row: StoredSummaryRow): StoredSummary {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    summary: row.summary,
+    compactedAt: row.compacted_at,
+    lastMessageOrder: row.last_message_order,
+    preCompactTokenCount: row.pre_compact_token_count,
+  };
 }

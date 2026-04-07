@@ -55,5 +55,20 @@ function initializeSchema(database: Database.Database): void {
     -- Index for conversation ordering
     CREATE INDEX IF NOT EXISTS idx_conversations_updated 
       ON conversations(updated_at DESC);
+
+    -- Summaries table for session memory compaction
+    CREATE TABLE IF NOT EXISTS summaries (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      compacted_at TEXT DEFAULT (datetime('now')),
+      last_message_order INTEGER NOT NULL,
+      pre_compact_token_count INTEGER NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    -- Index for efficient summary lookup
+    CREATE INDEX IF NOT EXISTS idx_summaries_conversation 
+      ON summaries(conversation_id, compacted_at DESC);
   `);
 }

@@ -8,6 +8,8 @@ import {
 } from "@/lib/chat-store";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 import { exaSearchTool } from "@/lib/tools/exa-search";
+import { compactMessagesIfNeeded, estimateMessagesTokens } from "@/lib/compaction";
+import { runCompactInBackground } from "@/lib/compaction/background-queue";
 
 const dashscope = createOpenAICompatible({
   name: "dashscope",
@@ -101,19 +103,35 @@ export async function POST(req: Request) {
     const existingMessages = getMessagesByConversation(conversationId);
     const isFirstMessage = existingMessages.length === 0;
 
-    // Get current message count for conversation meta
-    const messageCount = messages.length;
+    const { messages: compactedMessages, executed: compactionExecuted, tokensFreed } =
+      await compactMessagesIfNeeded(messages, conversationId);
+
+    if (compactionExecuted) {
+      console.log(
+        `[Compaction] Applied to conversation ${conversationId}: freed ${tokensFreed} tokens`
+      );
+    }
+
+    const preCompactionTokens = estimateMessagesTokens(messages);
+    const postCompactionTokens = estimateMessagesTokens(compactedMessages);
+    console.log(
+      `[Tokens] Pre: ${preCompactionTokens}, Post: ${postCompactionTokens}`
+    );
 
     // Create agent with fresh system prompt (async)
     const chatAgent = await createChatAgent({
-      messageCount,
+      messageCount: compactedMessages.length,
       isNewConversation: isFirstMessage,
       conversationStartTime: Date.now(),
     });
 
+    // Start background compaction for the next request (non-blocking)
+    // This pre-compacts the conversation so the next user message won't wait
+    runCompactInBackground(messages, conversationId);
+
     return createAgentUIStreamResponse({
       agent: chatAgent,
-      uiMessages: messages,
+      uiMessages: compactedMessages,
       headers: {
         "X-Conversation-Id": conversationId,
       },

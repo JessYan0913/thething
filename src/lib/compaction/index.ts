@@ -1,0 +1,231 @@
+import type { UIMessage } from "ai";
+import {
+  COMPACT_TOKEN_THRESHOLD,
+  type CompactionResult,
+} from "./types";
+import {
+  estimateMessagesTokens,
+} from "./token-counter";
+import { microCompactMessages } from "./micro-compact";
+import { trySessionMemoryCompact } from "./session-memory-compact";
+import { compactViaAPI } from "./api-compact";
+import {
+  getMessagesAfterCompactBoundary,
+} from "./boundary";
+import { tryPtlDegradation } from "./ptl-degradation";
+import {
+  isAutoCompactEnabled,
+  autoCompactIfNeeded,
+  recordCompactFailure,
+  recordCompactSuccess,
+} from "./auto-compact";
+
+export async function compactMessagesIfNeeded(
+  messages: UIMessage[],
+  conversationId: string
+): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  // 检查自动压缩是否启用
+  if (!isAutoCompactEnabled()) {
+    console.log("[Compaction] Auto compact is disabled via environment variable");
+    return { messages, executed: false, tokensFreed: 0 };
+  }
+
+  // 检查是否需要自动压缩
+  const shouldAutoCompact = await autoCompactIfNeeded(messages, conversationId);
+  if (!shouldAutoCompact) {
+    return { messages, executed: false, tokensFreed: 0 };
+  }
+
+  const tokenCount = estimateMessagesTokens(messages);
+
+  if (tokenCount < COMPACT_TOKEN_THRESHOLD) {
+    return { messages, executed: false, tokensFreed: 0 };
+  }
+
+  const messagesAfterBoundary = getMessagesAfterCompactBoundary(messages);
+  const tokensAfterBoundary = estimateMessagesTokens(messagesAfterBoundary);
+
+  if (tokensAfterBoundary < COMPACT_TOKEN_THRESHOLD * 0.5) {
+    const summaryMessage = messages.find(
+      (m) =>
+        m.role === "system" &&
+        m.parts.some(
+          (p) =>
+            p.type === "text" && p.text.includes("[Previous conversation summary]")
+        )
+    );
+
+    if (summaryMessage) {
+      return {
+        messages: [summaryMessage, ...messagesAfterBoundary],
+        executed: false,
+        tokensFreed: 0,
+      };
+    }
+  }
+
+  try {
+    const sessionMemoryResult = await trySessionMemoryCompact(
+      messagesAfterBoundary,
+      conversationId
+    );
+
+    if (sessionMemoryResult) {
+      console.log(
+        `[Compaction] Session Memory Compact: freed ${sessionMemoryResult.tokensFreed} tokens`
+      );
+      recordCompactSuccess(conversationId);
+      return {
+        messages: sessionMemoryResult.messages,
+        executed: true,
+        tokensFreed: sessionMemoryResult.tokensFreed,
+      };
+    }
+  } catch (error) {
+    console.error("[Compaction] Session Memory Compact failed:", error);
+    recordCompactFailure(conversationId);
+  }
+
+  const microResult = microCompactMessages(messagesAfterBoundary);
+
+  if (microResult.executed) {
+    const tokensAfterMicro = estimateMessagesTokens(microResult.messages);
+    console.log(
+      `[Compaction] MicroCompact: freed ${microResult.tokensFreed} tokens, remaining: ${tokensAfterMicro}`
+    );
+
+    if (tokensAfterMicro < COMPACT_TOKEN_THRESHOLD) {
+      recordCompactSuccess(conversationId);
+      return {
+        messages: microResult.messages,
+        executed: true,
+        tokensFreed: microResult.tokensFreed,
+      };
+    }
+  }
+
+  try {
+    const apiResult = await compactViaAPI(
+      microResult.messages,
+      conversationId
+    );
+
+    console.log(
+      `[Compaction] API Compact: freed ${apiResult.tokensFreed} tokens`
+    );
+
+    recordCompactSuccess(conversationId);
+
+    return {
+      messages: apiResult.messages,
+      executed: true,
+      tokensFreed: apiResult.tokensFreed,
+    };
+  } catch (error) {
+    console.error("[Compaction] API Compact failed:", error);
+    recordCompactFailure(conversationId);
+
+    // PTL emergency degradation: if API compact failed, try hard truncation
+    const ptlResult = tryPtlDegradation(microResult.messages);
+    if (ptlResult.executed) {
+      console.log(
+        `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`
+      );
+      return {
+        messages: ptlResult.messages,
+        executed: true,
+        tokensFreed: ptlResult.tokensFreed,
+      };
+    }
+
+    return {
+      messages: microResult.messages,
+      executed: microResult.executed,
+      tokensFreed: microResult.tokensFreed,
+    };
+  }
+}
+
+export async function compactMessagesWithCustomInstructions(
+  messages: UIMessage[],
+  conversationId: string,
+  customInstructions: string
+): Promise<CompactionResult> {
+  const { compactWithCustomInstructions } = await import("./api-compact");
+  return compactWithCustomInstructions(
+    messages,
+    conversationId,
+    customInstructions
+  );
+}
+
+export {
+  estimateMessagesTokens,
+} from "./token-counter";
+
+export { microCompactMessages } from "./micro-compact";
+
+export { trySessionMemoryCompact } from "./session-memory-compact";
+
+export { compactViaAPI } from "./api-compact";
+
+export {
+  createCompactBoundaryMessage,
+  isCompactBoundaryMessage,
+  parseCompactBoundaryMetadata,
+  getMessagesAfterCompactBoundary,
+  getLastBoundaryMessage,
+  hasCompactBoundary,
+  stripCompactBoundaries,
+} from "./boundary";
+
+export {
+  runCompactInBackground,
+  isCompactInProgress,
+  getQueueSize,
+} from "./background-queue";
+
+export {
+  reinjectAfterCompact,
+  POST_COMPACT_CONFIG,
+  type ReinjectContext,
+} from "./post-compact-reinject";
+
+export { tryPtlDegradation } from "./ptl-degradation";
+
+export {
+  registerCompactHook,
+  unregisterCompactHook,
+  executeCompactHooks,
+  getRegisteredHooks,
+  type CompactHookPhase,
+  type CompactHookContext,
+  type CompactHookResult,
+} from "./hooks";
+
+export {
+  COMPACT_TOKEN_THRESHOLD,
+  DEFAULT_SESSION_MEMORY_CONFIG,
+  DEFAULT_MICRO_COMPACT_CONFIG,
+  DEFAULT_POST_COMPACT_CONFIG,
+} from "./types";
+
+export {
+  isAutoCompactEnabled,
+  shouldTriggerAutoCompact,
+  autoCompactIfNeeded,
+  recordCompactFailure,
+  recordCompactSuccess,
+  getAutoCompactStatus,
+} from "./auto-compact";
+
+export type {
+  CompactionResult,
+  CompactMetadata,
+  CompactBoundaryMessage,
+  CompactionType,
+  SessionMemoryCompactConfig,
+  MicroCompactConfig,
+  PostCompactConfig,
+  StoredSummary,
+} from "./types";

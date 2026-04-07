@@ -1,0 +1,249 @@
+import type { UIMessage } from "ai";
+import { estimateMessagesTokens } from "./token-counter";
+import { COMPACT_TOKEN_THRESHOLD } from "./types";
+
+/**
+ * Auto Compact 触发阈值配置
+ * 参考指导文档中的设计：
+ * - AUTOCOMPACT_BUFFER_TOKENS = 13,000 (触发阈值)
+ * - WARNING_THRESHOLD_BUFFER_TOKENS = 20,000 (用户警告)
+ * - ERROR_THRESHOLD_BUFFER_TOKENS = 20,000 (错误限制)
+ */
+
+// 电路断路器状态
+interface CircuitBreakerState {
+  failureCount: number;
+  lastFailureTime: number;
+  isTripped: boolean;
+}
+
+const circuitBreakers = new Map<string, CircuitBreakerState>();
+
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000; // 5 分钟后重置
+
+/**
+ * 解析环境变量配置
+ */
+function getAutoCompactConfig() {
+  // 禁用所有压缩
+  const disableCompact = process.env.DISABLE_COMPACT === "true";
+  
+  // 仅禁用自动压缩
+  const disableAutoCompact = process.env.DISABLE_AUTO_COMPACT === "true";
+  
+  // 自定义有效窗口（override 默认阈值）
+  const customWindow = parseInt(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || "0", 10);
+  
+  // 按百分比触发（override 固定阈值）
+  const percentageOverride = parseInt(process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || "0", 10);
+  
+  // 基础阈值（指导文档：13,000 buffer）
+  const baseThreshold = COMPACT_TOKEN_THRESHOLD - 13_000;
+  
+  // 警告阈值（指导文档：20,000 buffer）
+  const warningThreshold = COMPACT_TOKEN_THRESHOLD - 20_000;
+  
+  // 错误阈值（指导文档：20,000 buffer for blocking）
+  const errorThreshold = COMPACT_TOKEN_THRESHOLD - 20_000;
+  
+  return {
+    disabled: disableCompact || disableAutoCompact,
+    customWindow: customWindow > 0 ? customWindow : null,
+    percentageOverride: percentageOverride > 0 ? percentageOverride / 100 : null,
+    baseThreshold: Math.max(0, baseThreshold),
+    warningThreshold: Math.max(0, warningThreshold),
+    errorThreshold: Math.max(0, errorThreshold),
+  };
+}
+
+/**
+ * 检查自动压缩是否已启用
+ */
+export function isAutoCompactEnabled(): boolean {
+  const config = getAutoCompactConfig();
+  return !config.disabled;
+}
+
+/**
+ * 获取电路断路器状态
+ */
+function getCircuitBreaker(conversationId: string): CircuitBreakerState {
+  const state = circuitBreakers.get(conversationId);
+  
+  if (!state) {
+    return { failureCount: 0, lastFailureTime: 0, isTripped: false };
+  }
+  
+  // 检查是否应该重置（超时后）
+  const timeSinceLastFailure = Date.now() - state.lastFailureTime;
+  if (timeSinceLastFailure > CIRCUIT_BREAKER_RESET_TIMEOUT_MS) {
+    const resetState: CircuitBreakerState = { failureCount: 0, lastFailureTime: 0, isTripped: false };
+    circuitBreakers.set(conversationId, resetState);
+    return resetState;
+  }
+  
+  return state;
+}
+
+/**
+ * 记录压缩失败
+ */
+export function recordCompactFailure(conversationId: string): void {
+  const state = getCircuitBreaker(conversationId);
+  state.failureCount += 1;
+  state.lastFailureTime = Date.now();
+  
+  if (state.failureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    state.isTripped = true;
+    console.warn(
+      `[Auto Compact] Circuit breaker TRIPPED for ${conversationId} after ${state.failureCount} consecutive failures`
+    );
+  }
+  
+  circuitBreakers.set(conversationId, state);
+}
+
+/**
+ * 记录压缩成功（重置电路断路器）
+ */
+export function recordCompactSuccess(conversationId: string): void {
+  circuitBreakers.delete(conversationId);
+  console.log(`[Auto Compact] Circuit breaker reset for ${conversationId}`);
+}
+
+/**
+ * 检查电路断路器是否跳闸
+ */
+function isCircuitBreakerTripped(conversationId: string): boolean {
+  const state = getCircuitBreaker(conversationId);
+  return state.isTripped;
+}
+
+/**
+ * 计算 token 使用量（考虑已释放的 token）
+ * 参考指导文档：tokenCountWithEstimation(messages) - snipTokensFreed
+ */
+function calculateTokenUsage(
+  messages: UIMessage[],
+  snipTokensFreed: number = 0
+): number {
+  const totalTokens = estimateMessagesTokens(messages);
+  return totalTokens - snipTokensFreed;
+}
+
+/**
+ * 自动压缩触发检查
+ * 
+ * 参考指导文档中的触发条件：
+ * 1. 检查自动压缩是否启用（isAutoCompactEnabled()）
+ * 2. 计算当前 token 使用 = tokenCountWithEstimation(messages) - snipTokensFreed
+ * 3. 若 ≥ threshold - 13K 且 < blockingLimit - 3K，触发压缩
+ * 4. 电路断路器: 连续失败 ≥3 次后停止重试
+ * 
+ * @param messages - 当前消息数组
+ * @param conversationId - 会话 ID
+ * @param snipTokensFreed - 已释放的 token 数（可选）
+ * @returns 是否应该触发自动压缩
+ */
+export function shouldTriggerAutoCompact(
+  messages: UIMessage[],
+  conversationId: string,
+  snipTokensFreed: number = 0
+): boolean {
+  const config = getAutoCompactConfig();
+  
+  // 1. 检查是否启用
+  if (config.disabled) {
+    return false;
+  }
+  
+  // 2. 检查电路断路器
+  if (isCircuitBreakerTripped(conversationId)) {
+    console.log(`[Auto Compact] Circuit breaker tripped, skipping auto compact for ${conversationId}`);
+    return false;
+  }
+  
+  // 3. 计算当前 token 使用
+  const currentUsage = calculateTokenUsage(messages, snipTokensFreed);
+  
+  // 4. 计算触发阈值
+  let triggerThreshold = config.baseThreshold;
+  
+  // 如果指定了自定义窗口
+  if (config.customWindow !== null) {
+    triggerThreshold = config.customWindow;
+  }
+  
+  // 如果指定了百分比覆盖
+  if (config.percentageOverride !== null) {
+    triggerThreshold = COMPACT_TOKEN_THRESHOLD * config.percentageOverride;
+  }
+  
+  // 5. 检查是否达到触发阈值
+  const shouldTrigger = currentUsage >= triggerThreshold;
+  
+  if (shouldTrigger) {
+    console.log(
+      `[Auto Compact] Trigger condition met for ${conversationId}: ` +
+      `${currentUsage} tokens >= ${triggerThreshold} threshold`
+    );
+  }
+  
+  return shouldTrigger;
+}
+
+/**
+ * 获取当前 token 使用状态（用于 UI 显示和警告）
+ */
+export function getAutoCompactStatus(
+  messages: UIMessage[],
+  conversationId: string,
+  snipTokensFreed: number = 0
+): {
+  currentUsage: number;
+  triggerThreshold: number;
+  warningThreshold: number;
+  errorThreshold: number;
+  isWarning: boolean;
+  isError: boolean;
+  shouldTrigger: boolean;
+  circuitBreakerTripped: boolean;
+} {
+  const config = getAutoCompactConfig();
+  const currentUsage = calculateTokenUsage(messages, snipTokensFreed);
+  const circuitBreakerTripped = isCircuitBreakerTripped(conversationId);
+  
+  return {
+    currentUsage,
+    triggerThreshold: config.baseThreshold,
+    warningThreshold: config.warningThreshold,
+    errorThreshold: config.errorThreshold,
+    isWarning: currentUsage >= config.warningThreshold,
+    isError: currentUsage >= config.errorThreshold,
+    shouldTrigger: shouldTriggerAutoCompact(messages, conversationId, snipTokensFreed),
+    circuitBreakerTripped,
+  };
+}
+
+/**
+ * 主触发函数：在 API 调用前检查是否需要自动压缩
+ * 
+ * @param messages - 当前消息数组
+ * @param conversationId - 会话 ID
+ * @returns 是否应该执行压缩
+ */
+export async function autoCompactIfNeeded(
+  messages: UIMessage[],
+  conversationId: string
+): Promise<boolean> {
+  if (!shouldTriggerAutoCompact(messages, conversationId)) {
+    return false;
+  }
+  
+  console.log(
+    `[Auto Compact] Auto compact triggered for ${conversationId}`
+  );
+  
+  return true;
+}
