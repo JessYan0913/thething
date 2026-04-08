@@ -8,7 +8,6 @@ import {
 } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
 import { trySessionMemoryCompact } from "./session-memory-compact";
-import { compactViaAPI } from "./api-compact";
 import {
   getMessagesAfterCompactBoundary,
 } from "./boundary";
@@ -16,9 +15,9 @@ import { tryPtlDegradation } from "./ptl-degradation";
 import {
   isAutoCompactEnabled,
   autoCompactIfNeeded,
-  recordCompactFailure,
   recordCompactSuccess,
 } from "./auto-compact";
+import { getSummaryByConversation } from "@/lib/chat-store";
 
 export async function compactMessagesIfNeeded(
   messages: UIMessage[],
@@ -64,6 +63,7 @@ export async function compactMessagesIfNeeded(
     }
   }
 
+  // Fast path 1: use existing DB summary (no LLM call, instant)
   try {
     const sessionMemoryResult = await trySessionMemoryCompact(
       messagesAfterBoundary,
@@ -83,9 +83,9 @@ export async function compactMessagesIfNeeded(
     }
   } catch (error) {
     console.error("[Compaction] Session Memory Compact failed:", error);
-    recordCompactFailure(conversationId);
   }
 
+  // Fast path 2: micro-compact (no LLM call)
   const microResult = microCompactMessages(messagesAfterBoundary);
 
   if (microResult.executed) {
@@ -104,46 +104,47 @@ export async function compactMessagesIfNeeded(
     }
   }
 
-  try {
-    const apiResult = await compactViaAPI(
-      microResult.messages,
-      conversationId
-    );
-
+  // Fast path 3: PTL emergency hard-truncation (no LLM call)
+  const ptlResult = tryPtlDegradation(microResult.messages);
+  if (ptlResult.executed) {
     console.log(
-      `[Compaction] API Compact: freed ${apiResult.tokensFreed} tokens`
+      `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`
     );
-
-    recordCompactSuccess(conversationId);
-
-    return {
-      messages: apiResult.messages,
-      executed: true,
-      tokensFreed: apiResult.tokensFreed,
-    };
-  } catch (error) {
-    console.error("[Compaction] API Compact failed:", error);
-    recordCompactFailure(conversationId);
-
-    // PTL emergency degradation: if API compact failed, try hard truncation
-    const ptlResult = tryPtlDegradation(microResult.messages);
-    if (ptlResult.executed) {
-      console.log(
-        `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`
-      );
+    // Inject existing DB summary to restore context lost by truncation
+    const storedSummary = getSummaryByConversation(conversationId);
+    if (storedSummary) {
+      const summaryMessage: UIMessage = {
+        id: `summary-${Date.now()}`,
+        role: "system",
+        parts: [{
+          type: "text",
+          text: `[Previous conversation summary]\n${storedSummary.summary}\n\n[End of summary]`,
+        }],
+      };
       return {
-        messages: ptlResult.messages,
+        messages: [summaryMessage, ...ptlResult.messages],
         executed: true,
         tokensFreed: ptlResult.tokensFreed,
       };
     }
-
+    recordCompactSuccess(conversationId);
     return {
-      messages: microResult.messages,
-      executed: microResult.executed,
-      tokensFreed: microResult.tokensFreed,
+      messages: ptlResult.messages,
+      executed: true,
+      tokensFreed: ptlResult.tokensFreed,
     };
   }
+
+  // All fast paths exhausted — LLM summary will be generated async after this response
+  console.warn(
+    `[Compaction] No fast-path compaction succeeded for ${conversationId}. ` +
+    `LLM summary will be generated in background after this response.`
+  );
+  return {
+    messages: microResult.messages,
+    executed: microResult.executed,
+    tokensFreed: microResult.tokensFreed,
+  };
 }
 
 export async function compactMessagesWithCustomInstructions(

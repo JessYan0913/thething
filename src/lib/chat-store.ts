@@ -159,9 +159,14 @@ export function saveMessages(
     // Delete all existing messages for this conversation first
     deleteStmt.run(conversationId);
 
+    // Deduplicate by id, keeping the last occurrence
+    const deduped = messages.filter((msg, idx, arr) =>
+      arr.findLastIndex((m) => (m.id || "") === (msg.id || "")) === idx
+    );
+
     // Re-insert all messages with fresh order numbers
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
+    for (let i = 0; i < deduped.length; i++) {
+      const msg = deduped[i];
       // Auto-generate ID for messages without one (e.g., assistant messages from ToolLoopAgent)
       const stableId = msg.id || nanoid();
       // Ensure the in-memory object also gets the ID so JSON is consistent

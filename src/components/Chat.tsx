@@ -58,6 +58,15 @@ function createChatTransport(conversationId: string) {
   return new DefaultChatTransport({
     api: "/api/chat",
     body: { conversationId },
+    prepareSendMessagesRequest({messages, body}) {
+      return {
+        body: {
+          message: messages.at(-1),
+          conversationId,
+          ...body,
+        }
+      }
+    }
   });
 }
 

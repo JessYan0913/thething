@@ -8,7 +8,10 @@ import {
 } from "@/lib/chat-store";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 import { exaSearchTool } from "@/lib/tools/exa-search";
-import { compactMessagesIfNeeded, estimateMessagesTokens } from "@/lib/compaction";
+import {
+  compactMessagesIfNeeded,
+  estimateMessagesTokens,
+} from "@/lib/compaction";
 import { runCompactInBackground } from "@/lib/compaction/background-queue";
 
 const dashscope = createOpenAICompatible({
@@ -88,9 +91,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const {
-      messages,
+      message,
       conversationId,
-    }: { messages: UIMessage[]; conversationId: string } = await req.json();
+    }: { message: UIMessage; conversationId: string } = await req.json();
 
     if (!conversationId) {
       return Response.json(
@@ -99,23 +102,29 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if this is a new conversation (no messages before this request)
+    // Load existing messages from DB and append the latest user message
     const existingMessages = getMessagesByConversation(conversationId);
     const isFirstMessage = existingMessages.length === 0;
+    const messages: UIMessage[] = [...existingMessages, message];
 
-    const { messages: compactedMessages, executed: compactionExecuted, tokensFreed } =
+    // Compact messages for LLM input (runtime only, does not affect database)
+    const { messages: compactedMessages, executed: compactionExecuted } =
       await compactMessagesIfNeeded(messages, conversationId);
-
-    if (compactionExecuted) {
-      console.log(
-        `[Compaction] Applied to conversation ${conversationId}: freed ${tokensFreed} tokens`
-      );
-    }
 
     const preCompactionTokens = estimateMessagesTokens(messages);
     const postCompactionTokens = estimateMessagesTokens(compactedMessages);
     console.log(
-      `[Tokens] Pre: ${preCompactionTokens}, Post: ${postCompactionTokens}`
+      `[Tokens] Pre: ${preCompactionTokens}, Post: ${postCompactionTokens}`,
+    );
+    console.log(
+      `[LLM Input] ${compactedMessages.length} messages:\n` +
+        compactedMessages
+          .map((m, i) => {
+            const part = m.parts[0];
+            const text = part?.type === "text" ? part.text : `[${part?.type}]`;
+            return `  [${i}] ${m.role}: ${text.replace(/\n/g, " ").slice(0, 60)}${text.length > 60 ? "…" : ""}`;
+          })
+          .join("\n"),
     );
 
     // Create agent with fresh system prompt (async)
@@ -125,21 +134,38 @@ export async function POST(req: Request) {
       conversationStartTime: Date.now(),
     });
 
-    // Start background compaction for the next request (non-blocking)
-    // This pre-compacts the conversation so the next user message won't wait
-    runCompactInBackground(messages, conversationId);
-
     return createAgentUIStreamResponse({
       agent: chatAgent,
-      uiMessages: compactedMessages,
+      uiMessages: compactedMessages, // Use compacted messages for LLM
       headers: {
         "X-Conversation-Id": conversationId,
       },
       sendReasoning: true,
-      // Save messages to SQLite after streaming completes
+      // Save ORIGINAL messages to SQLite after streaming completes
+      // CRITICAL: We save the original messages, not the compacted ones
+      // Compaction is only for LLM context, not for database storage
       onFinish: async ({ messages: completedMessages }) => {
         try {
-          await saveMessages(conversationId, completedMessages);
+          // Merge original messages with new assistant response
+          // completedMessages contains: compactedMessages + new assistant response
+          // We need to reconstruct: original messages + new assistant response
+
+          // Extract only the new assistant messages (after the compacted messages)
+          const newAssistantMessages = completedMessages.slice(
+            compactedMessages.length,
+          );
+
+          // Combine original messages with new assistant response
+          const messagesToSave = [...messages, ...newAssistantMessages];
+
+          console.log(
+            `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+          );
+          console.log(
+            `[Storage] Compaction was ${compactionExecuted ? "executed" : "not executed"}, but database receives ORIGINAL messages`,
+          );
+
+          await saveMessages(conversationId, messagesToSave);
 
           // Generate AI title for new conversations
           if (isFirstMessage) {
@@ -147,6 +173,10 @@ export async function POST(req: Request) {
             updateConversationTitle(conversationId, title);
             console.log(`[Title Generated] ${conversationId}: ${title}`);
           }
+
+          // Async update summary for next request (non-blocking).
+          // Run AFTER saving so the summary covers the full turn including new assistant reply.
+          runCompactInBackground(messagesToSave, conversationId);
         } catch (error) {
           console.error("[Chat API] onFinish error:", error);
         }

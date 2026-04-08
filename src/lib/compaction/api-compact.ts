@@ -1,4 +1,4 @@
-import { generateText, type UIMessage, type LanguageModel } from "ai";
+import { generateText, type UIMessage } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
@@ -34,31 +34,38 @@ const dashscope = createOpenAICompatible({
   baseURL: process.env.DASHSCOPE_BASE_URL!,
 });
 
-const COMPACT_SUMMARY_PROMPT = `You are a session logger, not a content reproducer. Summarize this conversation in 5-8 short sentences.
+const COMPACT_SUMMARY_PROMPT = `你是一个对话摘要助手。请用简洁的语言总结对话，捕捉关键信息和价值。
 
-CRITICAL — YOUR SUMMARY MUST:
-1. Be under 200 words — SHORT and CONCISE
-2. Describe what the user asked and how the conversation TOPIC EVOLVED
-3. NEVER copy or include any code, tables, search results, or detailed explanations from the conversation
-4. NEVER write as if you are answering the user's question
-5. Write FROM A THIRD-PARTY perspective: "The user asked about X, then shifted to Y..."
-6. Focus on describing the FLOW of the conversation, not reproducing its contents
+核心要求：
+1. 长度：200-300字
+2. 视角：第三人称客观记录（"用户询问了X，助手回答了Y，随后讨论深入到Z"）
+3. 内容平衡：既要记录用户的问题，也要记录助手的关键回复和结论
 
-WRONG (this is copying content, NOT summarizing):
-- "Here is the Agent Todo implementation with 4 steps: Step 1 defines schema with fields id, parent_task_id..."
-- Copying a web search result with URLs and highlights
+必须包含的要素：
+- 用户的核心问题是什么
+- 助手提供了什么关键信息或建议
+- 对话如何演进（从A话题转到B话题）
+- 最终讨论的焦点是什么
 
-RIGHT (this is a session log):
-- "User asked how to implement todo in agents. Assistant researched and provided a 4-step approach covering schema design, memory storage, and workflow integration. User requested more detail on production-level implementation."
+增量摘要处理：
+- 如果输入包含【历史摘要】和【新增对话】，请整合两者
+- 保留历史摘要的核心信息，补充新对话的关键内容
+- 用"随后"、"接着"、"进一步"等词衔接历史和新内容
+- 确保整体摘要连贯、完整，体现对话的完整演进过程
 
-SUMMARY FORMAT:
-1. **Initial request**: What user first wanted
-2. **Topic changes**: How conversation evolved (use "then", "later", "subsequently")
-3. **Actions taken**: What assistant did (searched, explained, provided patterns) — WITHOUT reproducing content
-4. **Current state**: What user is working on right now
-5. **Next steps**: What user expects
+避免的错误：
+❌ 只列出用户的提问，不记录助手的回复
+❌ 复制粘贴大段原文、代码、搜索结果
+❌ 用"这是一个很好的问题"等空话
+❌ 增量摘要时丢弃历史内容，只总结新对话
 
-ONLY output the summary text. Nothing else.`;
+正确示例（首次摘要）：
+"用户询问如何实现 Agent 的 todo 功能。助手通过检索提供了包含 schema 设计、内存存储、工作流集成的四步方案。用户随后要求更详细的生产级实现细节，助手补充了错误处理和并发控制的建议。"
+
+正确示例（增量摘要）：
+"用户询问富豪榜信息，助手提供了2026年中国和全球排名数据。随后对话深入到富豪发迹史，助手总结了第一性原理、长期主义等5条启发。接着用户表达30+年龄的自我怀疑，助手分析了'无法忍受现状'的驱动力价值，并提供财务诊断建议。最终用户提出能源行业Agent开发的职业瓶颈问题。"
+
+请直接输出摘要，不要任何前缀或解释。`;
 
 function calculateMessagesToKeepIndex(
   messages: UIMessage[],
@@ -145,22 +152,6 @@ function preserveToolPairs(
   return adjustedStart;
 }
 
-const COMPACT_API_TIMEOUT = 15000; // 15 seconds timeout
-
-async function generateTextWithTimeout(options: {
-  model: LanguageModel;
-  system: string;
-  prompt: string;
-  maxOutputTokens: number;
-  temperature: number;
-}): Promise<string> {
-  return Promise.race([
-    generateText(options).then((r) => r.text),
-    new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error("Compact API timeout")), COMPACT_API_TIMEOUT)
-    ),
-  ]);
-}
 
 function createContextHint(messages: UIMessage[], maxMessages: number = 2): string {
   const previewMessages = messages.slice(0, maxMessages);
@@ -179,13 +170,35 @@ const MAX_SUMMARY_LENGTH = 1500;
 function generateFallbackSummary(messages: UIMessage[]): string {
   const userMessages = messages.filter((m) => m.role === "user");
 
+  // 提取最近的用户问题和助手回复
+  const recentPairs: string[] = [];
+  for (let i = Math.max(0, messages.length - 10); i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "user") {
+      const userText = extractMessageText(msg).substring(0, 50);
+      // 查找下一条助手回复
+      const nextAssistant = messages.slice(i + 1).find(m => m.role === "assistant");
+      if (nextAssistant) {
+        const assistantText = extractMessageText(nextAssistant).substring(0, 80);
+        recentPairs.push(`用户询问${userText}，助手回复${assistantText}`);
+      } else {
+        recentPairs.push(`用户询问${userText}`);
+      }
+    }
+  }
+
+  if (recentPairs.length > 0) {
+    return recentPairs.slice(-3).join("。") + "。";
+  }
+
+  // 完全降级：只列出话题
   const topicHints = userMessages
     .slice(-5)
     .map((m) => extractMessageText(m).substring(0, 60))
     .join("; ")
     .replace(/\n/g, " ");
 
-  return `Conversation covered these topics: ${topicHints}`;
+  return `对话涵盖以下话题：${topicHints}`;
 }
 
 function validateSummaryQuality(summary: string, messagesToSummarize: UIMessage[]): boolean {
@@ -216,6 +229,16 @@ function validateSummaryQuality(summary: string, messagesToSummarize: UIMessage[
   const matchCount = keyPhrases.filter((phrase) => summaryLower.includes(phrase)).length;
 
   return matchCount >= 1 || summaryLower.includes("topic") || summaryLower.includes("then") || summaryLower.includes("later");
+}
+
+async function getExistingSummarySafe(conversationId: string): Promise<string | null> {
+  try {
+    const { getSummaryByConversation } = await import("@/lib/chat-store");
+    const summary = getSummaryByConversation(conversationId);
+    return summary?.summary || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function compactViaAPI(
@@ -256,19 +279,35 @@ export async function compactViaAPI(
     ? createContextHint(messagesToKeep)
     : "";
 
-  const promptWithContext = contextHint
-    ? `${conversationText}\n\n[NOTE: The conversation continues with the following messages]\n[Do not summarize these - they are preserved in full]\n[Use them only to understand what topic the discussion shifted to]\n${contextHint}`
-    : conversationText;
+  // 获取已有摘要，实现增量更新
+  const existingSummary = await getExistingSummarySafe(conversationId);
+
+  let promptWithContext: string;
+  if (existingSummary) {
+    // 增量摘要：包含历史摘要 + 新对话
+    promptWithContext = `【历史摘要】\n${existingSummary}\n\n【新增对话】\n${conversationText}`;
+    if (contextHint) {
+      promptWithContext += `\n\n[NOTE: The conversation continues with the following messages]\n[Do not summarize these - they are preserved in full]\n[Use them only to understand what topic the discussion shifted to]\n${contextHint}`;
+    }
+    console.log(`[Compaction] Incremental summary: appending to existing summary (${existingSummary.length} chars)`);
+  } else {
+    // 首次摘要：只有新对话
+    promptWithContext = contextHint
+      ? `${conversationText}\n\n[NOTE: The conversation continues with the following messages]\n[Do not summarize these - they are preserved in full]\n[Use them only to understand what topic the discussion shifted to]\n${contextHint}`
+      : conversationText;
+    console.log(`[Compaction] First-time summary: no existing summary found`);
+  }
 
   let summary = "";
   try {
-    summary = await generateTextWithTimeout({
+    const result = await generateText({
       model: dashscope(process.env.DASHSCOPE_MODEL!),
       system: COMPACT_SUMMARY_PROMPT,
       prompt: promptWithContext,
       maxOutputTokens: 400,
       temperature: 0.1,
     });
+    summary = result.text;
 
     if (!validateSummaryQuality(summary, messagesToSummarize)) {
       summary = generateFallbackSummary(messagesToSummarize);
@@ -324,7 +363,10 @@ export async function compactViaAPI(
   const postCompactTokens = estimateMessagesTokens(resultMessages);
   const tokensFreed = preCompactTokenCount - postCompactTokens;
 
-  const lastSummarizedOrder = (messagesToSummarize[messagesToSummarize.length - 1] as unknown as { order?: number })?.order ?? 0;
+  // startIndex is the first message to keep; messages before it were summarized.
+  // Since saveMessages stores order as the 0-based array index, startIndex-1
+  // is the correct lastMessageOrder for the boundary lookup in trySessionMemoryCompact.
+  const lastSummarizedOrder = startIndex - 1;
 
   try {
     await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount);
@@ -387,13 +429,14 @@ export async function compactWithCustomInstructions(
 
   let summary = "";
   try {
-    summary = await generateTextWithTimeout({
+    const result = await generateText({
       model: dashscope(process.env.DASHSCOPE_MODEL!),
       system: `${COMPACT_SUMMARY_PROMPT}\n\nADDITIONAL INSTRUCTIONS: ${customInstructions}`,
       prompt: promptWithContext,
       maxOutputTokens: 400,
       temperature: 0.1,
     });
+    summary = result.text;
 
     if (!validateSummaryQuality(summary, messagesToSummarize)) {
       summary = generateFallbackSummary(messagesToSummarize);
@@ -449,7 +492,7 @@ export async function compactWithCustomInstructions(
   const postCompactTokens = estimateMessagesTokens(resultMessages);
   const tokensFreed = preCompactTokenCount - postCompactTokens;
 
-  const lastSummarizedOrder = (messagesToSummarize[messagesToSummarize.length - 1] as unknown as { order?: number })?.order ?? 0;
+  const lastSummarizedOrder = startIndex - 1;
 
   try {
     await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount);

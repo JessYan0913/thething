@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai";
-import { estimateMessagesTokens } from "./token-counter";
+import { estimateMessagesTokens, estimateMessageTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
 
 /**
@@ -65,7 +65,7 @@ function hardTruncateToTarget(
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    const msgTokens = estimateMessageTokensQuick(msg);
+    const msgTokens = estimateMessageTokens(msg);
     totalTokens += msgTokens;
 
     if (totalTokens >= targetTokens) {
@@ -107,17 +107,3 @@ function isBoundaryText(text: string): boolean {
   }
 }
 
-/**
- * Quick token estimation for a single message (avoids full parser overhead).
- */
-function estimateMessageTokensQuick(message: UIMessage): number {
-  let tokens = 4; // overhead
-  for (const part of message.parts) {
-    if (part.type === "text") {
-      tokens += Math.ceil((part.text.length || 0) / 3.5);
-    } else if (part.type === "reasoning") {
-      tokens += Math.ceil((part.text.length || 0) / 3.5);
-    }
-  }
-  return tokens;
-}

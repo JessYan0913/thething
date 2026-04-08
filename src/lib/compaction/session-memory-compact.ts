@@ -9,26 +9,15 @@ import {
   estimateMessagesTokens,
   estimateMessageTokens,
   hasTextBlocks,
-  extractMessageText,
 } from "./token-counter";
 import type { StoredSummary } from "./types";
 import { getDb } from "@/lib/db";
 
-function isFeatureEnabled(featureName: string): boolean {
-  const envKey = `FEATURE_${featureName.toUpperCase().replace(/-/g, "_")}`;
-  return process.env[envKey] === "true" || process.env[envKey] === "1";
-}
-
 export function shouldUseSessionMemoryCompaction(): boolean {
-  if (process.env.ENABLE_SM_COMPACT === "true") {
-    return true;
-  }
   if (process.env.DISABLE_SM_COMPACT === "true") {
     return false;
   }
-  const sessionMemoryFlag = isFeatureEnabled("session_memory");
-  const smCompactFlag = isFeatureEnabled("sm_compact");
-  return sessionMemoryFlag && smCompactFlag;
+  return true;
 }
 
 function getSummaryByConversation(conversationId: string): StoredSummary | null {
@@ -44,39 +33,6 @@ function getSummaryByConversation(conversationId: string): StoredSummary | null 
   }
 }
 
-function validateSummaryBoundary(
-  summary: StoredSummary,
-  messages: UIMessage[],
-  expectedBoundaryIndex: number
-): boolean {
-  if (expectedBoundaryIndex < 0 || expectedBoundaryIndex >= messages.length) {
-    console.warn(
-      `[Compaction] Summary boundary index out of range: ${expectedBoundaryIndex}`
-    );
-    return false;
-  }
-
-  const boundaryMessage = messages[expectedBoundaryIndex];
-  const boundaryText = extractMessageText(boundaryMessage);
-
-  const summaryText = summary.summary.toLowerCase();
-  const boundarySnippet = boundaryText.substring(0, 50).toLowerCase();
-
-  const keyTerms = boundarySnippet
-    .split(/\s+/)
-    .filter((w) => w.length > 3 && !["the", "and", "for", "with", "this", "that"].includes(w));
-
-  const matchCount = keyTerms.filter((term) => summaryText.includes(term)).length;
-
-  if (matchCount === 0 && keyTerms.length > 0) {
-    console.warn(
-      `[Compaction] Summary appears stale - no overlap with boundary message at index ${expectedBoundaryIndex}`
-    );
-    return false;
-  }
-
-  return true;
-}
 
 function findToolUseIndex(
   messages: UIMessage[],
@@ -198,36 +154,12 @@ export async function trySessionMemoryCompact(
   const summary = getSummaryByConversation(conversationId);
   if (!summary) return null;
 
-  const lastSummarizedOrder = summary.lastMessageOrder;
-  let lastSummarizedIndex = -1;
+  // lastMessageOrder is stored as the 0-based array index of the last summarized message
+  // (set by api-compact.ts as startIndex - 1). Since saveMessages re-numbers messages
+  // from 0 on every save, the order equals the array index directly.
+  const lastSummarizedIndex = summary.lastMessageOrder;
 
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i] as unknown as Record<string, unknown>;
-    if (msg.order === lastSummarizedOrder) {
-      lastSummarizedIndex = i;
-      break;
-    }
-  }
-
-  if (lastSummarizedIndex < 0) {
-    let runningOrder = 0;
-    for (let i = 0; i < messages.length; i++) {
-      runningOrder++;
-      if (runningOrder > lastSummarizedOrder) {
-        lastSummarizedIndex = i - 1;
-        break;
-      }
-    }
-  }
-
-  if (lastSummarizedIndex < 0) return null;
-
-  if (!validateSummaryBoundary(summary, messages, lastSummarizedIndex)) {
-    console.warn(
-      "[Compaction] Summary boundary validation failed, falling back to full compaction"
-    );
-    return null;
-  }
+  if (lastSummarizedIndex < 0 || lastSummarizedIndex >= messages.length - 1) return null;
 
   const keepFromIndex = calculateMessagesToKeepIndex(
     messages,
@@ -253,6 +185,11 @@ export async function trySessionMemoryCompact(
   };
 
   const tokensFreed = preCompactTokens - estimateMessagesTokens(preservedMessages);
+
+  const minEffectiveTokensFreed = Math.floor(preCompactTokens * 0.1);
+  if (tokensFreed < minEffectiveTokensFreed) {
+    return null;
+  }
 
   return {
     messages: [summaryMessage, ...preservedMessages],
