@@ -14,9 +14,6 @@ import type { StoredSummary } from "./types";
 import { getDb } from "@/lib/db";
 
 export function shouldUseSessionMemoryCompaction(): boolean {
-  if (process.env.DISABLE_SM_COMPACT === "true") {
-    return false;
-  }
   return true;
 }
 

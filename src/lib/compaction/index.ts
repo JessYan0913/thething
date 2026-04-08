@@ -1,34 +1,17 @@
 import type { UIMessage } from "ai";
-import {
-  COMPACT_TOKEN_THRESHOLD,
-  type CompactionResult,
-} from "./types";
-import {
-  estimateMessagesTokens,
-} from "./token-counter";
+import { COMPACT_TOKEN_THRESHOLD, type CompactionResult } from "./types";
+import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
 import { trySessionMemoryCompact } from "./session-memory-compact";
-import {
-  getMessagesAfterCompactBoundary,
-} from "./boundary";
+import { getMessagesAfterCompactBoundary } from "./boundary";
 import { tryPtlDegradation } from "./ptl-degradation";
-import {
-  isAutoCompactEnabled,
-  autoCompactIfNeeded,
-  recordCompactSuccess,
-} from "./auto-compact";
+import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
 import { getSummaryByConversation } from "@/lib/chat-store";
 
 export async function compactMessagesIfNeeded(
   messages: UIMessage[],
-  conversationId: string
+  conversationId: string,
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
-  // 检查自动压缩是否启用
-  if (!isAutoCompactEnabled()) {
-    console.log("[Compaction] Auto compact is disabled via environment variable");
-    return { messages, executed: false, tokensFreed: 0 };
-  }
-
   // 检查是否需要自动压缩
   const shouldAutoCompact = await autoCompactIfNeeded(messages, conversationId);
   if (!shouldAutoCompact) {
@@ -50,8 +33,9 @@ export async function compactMessagesIfNeeded(
         m.role === "system" &&
         m.parts.some(
           (p) =>
-            p.type === "text" && p.text.includes("[Previous conversation summary]")
-        )
+            p.type === "text" &&
+            p.text.includes("[Previous conversation summary]"),
+        ),
     );
 
     if (summaryMessage) {
@@ -67,12 +51,12 @@ export async function compactMessagesIfNeeded(
   try {
     const sessionMemoryResult = await trySessionMemoryCompact(
       messagesAfterBoundary,
-      conversationId
+      conversationId,
     );
 
     if (sessionMemoryResult) {
       console.log(
-        `[Compaction] Session Memory Compact: freed ${sessionMemoryResult.tokensFreed} tokens`
+        `[Compaction] Session Memory Compact: freed ${sessionMemoryResult.tokensFreed} tokens`,
       );
       recordCompactSuccess(conversationId);
       return {
@@ -91,7 +75,7 @@ export async function compactMessagesIfNeeded(
   if (microResult.executed) {
     const tokensAfterMicro = estimateMessagesTokens(microResult.messages);
     console.log(
-      `[Compaction] MicroCompact: freed ${microResult.tokensFreed} tokens, remaining: ${tokensAfterMicro}`
+      `[Compaction] MicroCompact: freed ${microResult.tokensFreed} tokens, remaining: ${tokensAfterMicro}`,
     );
 
     if (tokensAfterMicro < COMPACT_TOKEN_THRESHOLD) {
@@ -108,7 +92,7 @@ export async function compactMessagesIfNeeded(
   const ptlResult = tryPtlDegradation(microResult.messages);
   if (ptlResult.executed) {
     console.log(
-      `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`
+      `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
     );
     // Inject existing DB summary to restore context lost by truncation
     const storedSummary = getSummaryByConversation(conversationId);
@@ -116,10 +100,12 @@ export async function compactMessagesIfNeeded(
       const summaryMessage: UIMessage = {
         id: `summary-${Date.now()}`,
         role: "system",
-        parts: [{
-          type: "text",
-          text: `[Previous conversation summary]\n${storedSummary.summary}\n\n[End of summary]`,
-        }],
+        parts: [
+          {
+            type: "text",
+            text: `[Previous conversation summary]\n${storedSummary.summary}\n\n[End of summary]`,
+          },
+        ],
       };
       return {
         messages: [summaryMessage, ...ptlResult.messages],
@@ -138,7 +124,7 @@ export async function compactMessagesIfNeeded(
   // All fast paths exhausted — LLM summary will be generated async after this response
   console.warn(
     `[Compaction] No fast-path compaction succeeded for ${conversationId}. ` +
-    `LLM summary will be generated in background after this response.`
+      `LLM summary will be generated in background after this response.`,
   );
   return {
     messages: microResult.messages,
@@ -150,19 +136,17 @@ export async function compactMessagesIfNeeded(
 export async function compactMessagesWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
-  customInstructions: string
+  customInstructions: string,
 ): Promise<CompactionResult> {
   const { compactWithCustomInstructions } = await import("./api-compact");
   return compactWithCustomInstructions(
     messages,
     conversationId,
-    customInstructions
+    customInstructions,
   );
 }
 
-export {
-  estimateMessagesTokens,
-} from "./token-counter";
+export { estimateMessagesTokens } from "./token-counter";
 
 export { microCompactMessages } from "./micro-compact";
 
@@ -212,7 +196,6 @@ export {
 } from "./types";
 
 export {
-  isAutoCompactEnabled,
   shouldTriggerAutoCompact,
   autoCompactIfNeeded,
   recordCompactFailure,

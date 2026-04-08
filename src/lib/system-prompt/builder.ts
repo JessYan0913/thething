@@ -23,29 +23,6 @@ import {
 import { createProjectContextSection } from "./sections/project-context";
 
 // ============================================================================
-// Simple Mode Configuration
-// ============================================================================
-
-/**
- * Whether to use simple mode (minimal system prompt).
- * Controlled by CLAUDE_CODE_SIMPLE environment variable.
- */
-function isSimpleMode(): boolean {
-  return process.env.CLAUDE_CODE_SIMPLE === "true";
-}
-
-/**
- * Get the simple mode system prompt - a minimal one-liner for testing.
- */
-export function getSimpleModePrompt(): string {
-  const cwd = process.cwd();
-  const now = new Date();
-  const dateStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
-
-  return `You are Aura, a helpful AI assistant.\n\nCWD: ${cwd}\nDate: ${dateStr}`;
-}
-
-// ============================================================================
 // Default Options
 // ============================================================================
 
@@ -220,17 +197,6 @@ export async function buildSystemPrompt(
     ...DEFAULT_OPTIONS,
     ...options,
   };
-
-  // Simple mode for testing/development
-  if (isSimpleMode()) {
-    const simplePrompt = getSimpleModePrompt();
-    return {
-      prompt: simplePrompt,
-      sections: [{ name: "simple-mode", content: simplePrompt, cacheStrategy: "dynamic", priority: 0 }],
-      includedSections: ["simple-mode"],
-      estimatedTokens: estimateTokens(simplePrompt),
-    };
-  }
 
   // Override mode - use only the override text
   if (opts.override) {

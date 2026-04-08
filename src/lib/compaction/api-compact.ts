@@ -37,7 +37,7 @@ const dashscope = createOpenAICompatible({
 const COMPACT_SUMMARY_PROMPT = `你是一个对话摘要助手。请用简洁的语言总结对话，捕捉关键信息和价值。
 
 核心要求：
-1. 长度：200-300字
+1. 长度：200-500字
 2. 视角：第三人称客观记录（"用户询问了X，助手回答了Y，随后讨论深入到Z"）
 3. 内容平衡：既要记录用户的问题，也要记录助手的关键回复和结论
 
@@ -165,7 +165,7 @@ function createContextHint(messages: UIMessage[], maxMessages: number = 2): stri
     .join("\n");
 }
 
-const MAX_SUMMARY_LENGTH = 1500;
+const MAX_SUMMARY_LENGTH = 3000;
 
 function generateFallbackSummary(messages: UIMessage[]): string {
   const userMessages = messages.filter((m) => m.role === "user");
@@ -175,11 +175,11 @@ function generateFallbackSummary(messages: UIMessage[]): string {
   for (let i = Math.max(0, messages.length - 10); i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === "user") {
-      const userText = extractMessageText(msg).substring(0, 50);
+      const userText = extractMessageText(msg).substring(0, 150);
       // 查找下一条助手回复
       const nextAssistant = messages.slice(i + 1).find(m => m.role === "assistant");
       if (nextAssistant) {
-        const assistantText = extractMessageText(nextAssistant).substring(0, 80);
+        const assistantText = extractMessageText(nextAssistant).substring(0, 200);
         recentPairs.push(`用户询问${userText}，助手回复${assistantText}`);
       } else {
         recentPairs.push(`用户询问${userText}`);
@@ -304,7 +304,7 @@ export async function compactViaAPI(
       model: dashscope(process.env.DASHSCOPE_MODEL!),
       system: COMPACT_SUMMARY_PROMPT,
       prompt: promptWithContext,
-      maxOutputTokens: 400,
+      maxOutputTokens: 800,
       temperature: 0.1,
     });
     summary = result.text;
@@ -433,7 +433,7 @@ export async function compactWithCustomInstructions(
       model: dashscope(process.env.DASHSCOPE_MODEL!),
       system: `${COMPACT_SUMMARY_PROMPT}\n\nADDITIONAL INSTRUCTIONS: ${customInstructions}`,
       prompt: promptWithContext,
-      maxOutputTokens: 400,
+      maxOutputTokens: 800,
       temperature: 0.1,
     });
     summary = result.text;
