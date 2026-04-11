@@ -210,23 +210,36 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   const handleRegenerate = useCallback(
     (messageIndex: number) => {
-      const truncated = messages.slice(0, messageIndex);
+      // 重新生成逻辑：删除要重新生成的助手消息及之后的所有消息
+      // 然后重新发送触发该助手消息的用户消息
+      //
+      // 例如：[U1, A1, U2, A2] 点击 A2（索引 3）重新生成
+      // 1. 找到触发 A2 的用户消息（U2，索引 2）
+      // 2. 删除 U2 和 A2，保留 [U1, A1]
+      // 3. 重新发送 U2，变成 [U1, A1, U2, (新的 A2)]
 
-      const placeholderId = `regen-placeholder-${Date.now()}`;
-      const withPlaceholder: UIMessage[] = [
-        ...truncated,
-        {
-          id: placeholderId,
-          role: 'assistant',
-          parts: [],
-          createdAt: new Date(),
-        } as UIMessage,
-      ];
+      // 找到要重新生成的助手消息对应的用户消息
+      // 从后往前找最后一条用户消息
+      const lastUserMessageIndex = messages.findLastIndex(
+        (m, idx) => m.role === 'user' && idx < messageIndex,
+      );
 
-      setMessages(withPlaceholder);
-      setTimeout(() => regenerate(), 0);
+      if (lastUserMessageIndex === -1) {
+        return;
+      }
+
+      // 保留到该用户消息之前的所有消息（不包含该用户消息）
+      // 因为 sendMessage 会自动添加该用户消息到末尾
+      const messagesBeforeRegen = messages.slice(0, lastUserMessageIndex);
+
+      // 设置消息状态
+      setMessages(messagesBeforeRegen);
+
+      // 重新发送用户消息以触发重新生成
+      const userMessageToResend = messages[lastUserMessageIndex];
+      sendMessage(userMessageToResend);
     },
-    [messages, setMessages, regenerate],
+    [messages, setMessages, sendMessage],
   );
 
   return (
