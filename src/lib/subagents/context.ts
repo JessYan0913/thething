@@ -97,6 +97,16 @@ export interface BuildSubAgentPromptOptions {
   parentContext?: string;
 }
 
+const SUB_AGENT_ROLE_PROMPT = `## Your Role
+You are a sub-agent assisting a parent agent. Your output will be fed back to the parent agent's context, which has limited capacity.
+
+## Output Guidelines
+- Be concise and focused on actionable results
+- Avoid verbose explanations, intermediate reasoning, or step-by-step narration
+- State findings and conclusions directly with supporting evidence
+- The parent agent already knows the task context — no need to re-explain
+- If the parent agent needs more details, it will ask follow-up questions`;
+
 export function buildSubAgentPrompt(options: BuildSubAgentPromptOptions): string {
   const { instructions, task, parentContext } = options;
 
@@ -105,7 +115,8 @@ export function buildSubAgentPrompt(options: BuildSubAgentPromptOptions): string
   prompt += instructions;
   prompt += '\n\n';
 
-  prompt += `---\n\n`;
+  prompt += SUB_AGENT_ROLE_PROMPT;
+  prompt += '\n\n---\n\n';
 
   if (parentContext) {
     prompt += parentContext;
