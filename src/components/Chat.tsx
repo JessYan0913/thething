@@ -22,60 +22,14 @@ import {
   PromptInputTools,
 } from '@/components/ai-elements/prompt-input';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
+import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
+import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage } from 'ai';
-import { CopyIcon, RefreshCcwIcon, WrenchIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-
-interface SubDataPart {
-  type: string;
-  id?: string;
-  data?: Record<string, unknown>;
-}
-
-function SubAgentStream({ parts }: { parts: SubDataPart[] }) {
-  if (parts.length === 0) return null;
-
-  const lastTextDelta = [...parts].reverse().find((p) => p.type === 'data-sub-text-delta');
-  const accumulatedText = (lastTextDelta?.data?.accumulated as string | undefined) ?? '';
-
-  const toolCalls = parts.filter((p) => p.type === 'data-sub-tool-call').map((p) => p.data?.name as string);
-
-  const donePart = parts.find((p) => p.type === 'data-sub-done');
-  const isRunning = !donePart;
-
-  if (toolCalls.length === 0 && !accumulatedText && !isRunning) return null;
-
-  return (
-    <div className="mt-2 space-y-2 border-t pt-2 text-sm">
-      {isRunning && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
-          <span className="size-1.5 shrink-0 rounded-full bg-blue-400" />
-          Sub-agent running…
-        </div>
-      )}
-      {toolCalls.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Steps</p>
-          {toolCalls.map((name, i) => (
-            <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <WrenchIcon className="size-3 shrink-0" />
-              {name}
-            </div>
-          ))}
-        </div>
-      )}
-      {accumulatedText && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Output</p>
-          <p className="text-xs whitespace-pre-wrap leading-relaxed">{accumulatedText}</p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
 
@@ -116,6 +70,19 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
     id: conversationId,
     transport,
     onFinish: async ({ messages: finishedMessages }) => {
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId, messages: finishedMessages }),
+        });
+        if (!res.ok) {
+          console.error('[Chat] Failed to save messages');
+        }
+      } catch (err) {
+        console.error('[Chat] Error saving messages:', err);
+      }
+
       const msgCount = finishedMessages.length;
 
       if (initialMessageCountRef.current === 0 && msgCount > 0) {
@@ -210,16 +177,6 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   const handleRegenerate = useCallback(
     (messageIndex: number) => {
-      // 重新生成逻辑：删除要重新生成的助手消息及之后的所有消息
-      // 然后重新发送触发该助手消息的用户消息
-      //
-      // 例如：[U1, A1, U2, A2] 点击 A2（索引 3）重新生成
-      // 1. 找到触发 A2 的用户消息（U2，索引 2）
-      // 2. 删除 U2 和 A2，保留 [U1, A1]
-      // 3. 重新发送 U2，变成 [U1, A1, U2, (新的 A2)]
-
-      // 找到要重新生成的助手消息对应的用户消息
-      // 从后往前找最后一条用户消息
       const lastUserMessageIndex = messages.findLastIndex(
         (m, idx) => m.role === 'user' && idx < messageIndex,
       );
@@ -228,15 +185,10 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
         return;
       }
 
-      // 保留到该用户消息之前的所有消息（不包含该用户消息）
-      // 因为 sendMessage 会自动添加该用户消息到末尾
-      const messagesBeforeRegen = messages.slice(0, lastUserMessageIndex);
-
-      // 设置消息状态
-      setMessages(messagesBeforeRegen);
-
-      // 重新发送用户消息以触发重新生成
       const userMessageToResend = messages[lastUserMessageIndex];
+
+      setMessages(messages.slice(0, lastUserMessageIndex));
+
       sendMessage(userMessageToResend);
     },
     [messages, setMessages, sendMessage],
@@ -296,16 +248,22 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                               )
                             : [];
 
+                          const isSubAgent = subParts.length > 0;
+                          const isStreaming = toolPart.state === 'input-available' || toolPart.state === 'input-streaming';
+
                           return (
                             <Tool
                               key={`${message.id}-${index}`}
-                              defaultOpen={toolPart.state === 'output-available' || toolPart.state === 'output-error'}
+                              defaultOpen={toolPart.state === 'output-available' || toolPart.state === 'output-error' || isStreaming}
                             >
-                              <ToolHeader type={toolPart.type} state={toolPart.state} />
+                              <ToolHeader type={toolPart.type} state={toolPart.state} isStreaming={isStreaming} />
                               <ToolContent>
                                 <ToolInput input={toolPart.input} />
-                                <SubAgentStream parts={subParts} />
-                                <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                                {isSubAgent ? (
+                                  <SubAgentStream parts={subParts} />
+                                ) : (
+                                  <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                                )}
                               </ToolContent>
                             </Tool>
                           );

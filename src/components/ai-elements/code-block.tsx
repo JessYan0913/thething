@@ -142,9 +142,10 @@ const tokensCache = new Map<string, TokenizedCode>();
 const subscribers = new Map<string, Set<(result: TokenizedCode) => void>>();
 
 const getTokensCacheKey = (code: string, language: BundledLanguage) => {
-  const start = code.slice(0, 100);
-  const end = code.length > 100 ? code.slice(-100) : "";
-  return `${language}:${code.length}:${start}:${end}`;
+  const safeCode = code ?? "";
+  const start = safeCode.slice(0, 100);
+  const end = safeCode.length > 100 ? safeCode.slice(-100) : "";
+  return `${language}:${safeCode.length}:${start}:${end}`;
 };
 
 const getHighlighter = (
@@ -168,7 +169,7 @@ const getHighlighter = (
 const createRawTokens = (code: string): TokenizedCode => ({
   bg: "transparent",
   fg: "inherit",
-  tokens: code.split("\n").map((line) =>
+  tokens: (code ?? "").split("\n").map((line) =>
     line === ""
       ? []
       : [
@@ -380,13 +381,14 @@ export const CodeBlockContent = ({
   language: BundledLanguage;
   showLineNumbers?: boolean;
 }) => {
+  const safeCode = code ?? "";
   // Memoized raw tokens for immediate display
-  const rawTokens = useMemo(() => createRawTokens(code), [code]);
+  const rawTokens = useMemo(() => createRawTokens(safeCode), [safeCode]);
 
   // Synchronous cache lookup — avoids setState in effect for cached results
   const syncTokens = useMemo(
-    () => highlightCode(code, language) ?? rawTokens,
-    [code, language, rawTokens]
+    () => highlightCode(safeCode, language) ?? rawTokens,
+    [safeCode, language, rawTokens]
   );
 
   // Async highlighting result (populated after shiki loads)
@@ -395,7 +397,7 @@ export const CodeBlockContent = ({
   useEffect(() => {
     let cancelled = false;
 
-    highlightCode(code, language, (result) => {
+    highlightCode(safeCode, language, (result) => {
       if (!cancelled) {
         setAsyncTokens(result);
       }
@@ -404,7 +406,7 @@ export const CodeBlockContent = ({
     return () => {
       cancelled = true;
     };
-  }, [code, language]);
+  }, [safeCode, language]);
 
   const tokenized = asyncTokens ?? syncTokens;
 

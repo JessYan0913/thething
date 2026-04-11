@@ -125,14 +125,28 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { message, conversationId }: { message: UIMessage; conversationId: string } = await req.json();
+    const { message, conversationId }: {
+      message: UIMessage;
+      conversationId: string;
+    } = await req.json();
 
     if (!conversationId) {
       return Response.json({ error: 'Missing conversationId' }, { status: 400 });
     }
 
-    const existingMessages = getMessagesByConversation(conversationId);
+    let existingMessages = getMessagesByConversation(conversationId);
     const isFirstMessage = existingMessages.length === 0;
+
+    const existingMessageIndex = existingMessages.findIndex((m) => m.id === message.id);
+    if (existingMessageIndex >= 0) {
+      existingMessages = existingMessages.slice(0, existingMessageIndex);
+    } else {
+      const lastUserMessageIndex = existingMessages.findLastIndex((m) => m.role === 'user');
+      if (lastUserMessageIndex >= 0 && existingMessages[lastUserMessageIndex].id === message.id) {
+        existingMessages = existingMessages.slice(0, lastUserMessageIndex);
+      }
+    }
+
     const messages: UIMessage[] = [...existingMessages, message];
 
     const { messages: compactedMessages, executed: compactionExecuted } = await compactMessagesIfNeeded(
@@ -219,5 +233,22 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('[Chat API] POST error:', error);
     return Response.json({ error: 'Failed to process chat request' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const { conversationId, messages }: { conversationId: string; messages: UIMessage[] } = await req.json();
+
+    if (!conversationId || !messages) {
+      return Response.json({ error: 'Missing conversationId or messages' }, { status: 400 });
+    }
+
+    await saveMessages(conversationId, messages);
+
+    return Response.json({ success: true });
+  } catch (error) {
+    console.error('[Chat API] PATCH error:', error);
+    return Response.json({ error: 'Failed to save messages' }, { status: 500 });
   }
 }

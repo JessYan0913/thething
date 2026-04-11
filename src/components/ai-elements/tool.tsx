@@ -13,6 +13,7 @@ import {
   ChevronDownIcon,
   CircleIcon,
   ClockIcon,
+  Loader2Icon,
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -20,12 +21,13 @@ import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
+import { Shimmer } from "./shimmer";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-4 w-full rounded-md border", className)}
+    className={cn("group not-prose mb-4 w-full overflow-hidden rounded-md border", className)}
     {...props}
   />
 );
@@ -35,6 +37,7 @@ export type ToolPart = ToolUIPart | DynamicToolUIPart;
 export type ToolHeaderProps = {
   title?: string;
   className?: string;
+  isStreaming?: boolean;
 } & (
   | { type: ToolUIPart["type"]; state: ToolUIPart["state"]; toolName?: never }
   | {
@@ -57,8 +60,8 @@ const statusLabels: Record<ToolPart["state"], string> = {
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
   "approval-requested": <ClockIcon className="size-4 text-yellow-600" />,
   "approval-responded": <CheckCircleIcon className="size-4 text-blue-600" />,
-  "input-available": <ClockIcon className="size-4 animate-pulse" />,
-  "input-streaming": <CircleIcon className="size-4" />,
+  "input-available": <Loader2Icon className="size-4 animate-spin text-blue-500" />,
+  "input-streaming": <CircleIcon className="size-4 animate-pulse" />,
   "output-available": <CheckCircleIcon className="size-4 text-green-600" />,
   "output-denied": <XCircleIcon className="size-4 text-orange-600" />,
   "output-error": <XCircleIcon className="size-4 text-red-600" />,
@@ -77,6 +80,7 @@ export const ToolHeader = ({
   type,
   state,
   toolName,
+  isStreaming,
   ...props
 }: ToolHeaderProps) => {
   const derivedName =
@@ -90,12 +94,18 @@ export const ToolHeader = ({
       )}
       {...props}
     >
-      <div className="flex items-center gap-2">
-        <WrenchIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-sm">{title ?? derivedName}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
+        {isStreaming ? (
+          <Shimmer className="truncate font-medium text-sm" duration={1.5} spread={1}>
+            {title ?? derivedName}
+          </Shimmer>
+        ) : (
+          <span className="truncate font-medium text-sm">{title ?? derivedName}</span>
+        )}
         {getStatusBadge(state)}
       </div>
-      <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
   );
 };
@@ -122,7 +132,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
       Parameters
     </h4>
     <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      <CodeBlock code={JSON.stringify(input ?? null, null, 2)} language="json" />
     </div>
   </div>
 );
@@ -171,3 +181,10 @@ export const ToolOutput = ({
     </div>
   );
 };
+
+export const ToolStreamingPlaceholder = () => (
+  <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+    <Loader2Icon className="size-3 shrink-0 animate-spin text-blue-500" />
+    <span className="animate-pulse">Processing...</span>
+  </div>
+);

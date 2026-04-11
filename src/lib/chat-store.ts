@@ -159,22 +159,28 @@ export function saveMessages(
     // Delete all existing messages for this conversation first
     deleteStmt.run(conversationId);
 
+    // First pass: assign IDs to messages that don't have one
+    const messagesWithIds = messages.map((msg) => ({
+      ...msg,
+      id: msg.id || nanoid(),
+    }));
+
     // Deduplicate by id, keeping the last occurrence
-    const deduped = messages.filter((msg, idx, arr) =>
-      arr.findLastIndex((m) => (m.id || "") === (msg.id || "")) === idx
-    );
+    const seenIds = new Set<string>();
+    const deduped = messagesWithIds.filter((msg) => {
+      if (seenIds.has(msg.id)) {
+        console.warn(`[ChatStore] Deduplicating message with duplicate id: ${msg.id}, role: ${msg.role}`);
+        return false;
+      }
+      seenIds.add(msg.id);
+      return true;
+    });
 
     // Re-insert all messages with fresh order numbers
     for (let i = 0; i < deduped.length; i++) {
       const msg = deduped[i];
-      // Auto-generate ID for messages without one (e.g., assistant messages from ToolLoopAgent)
-      const stableId = msg.id || nanoid();
-      // Ensure the in-memory object also gets the ID so JSON is consistent
-      if (!msg.id) {
-        msg.id = stableId;
-      }
       insertStmt.run(
-        stableId,
+        msg.id,
         conversationId,
         msg.role,
         JSON.stringify(msg),

@@ -150,7 +150,9 @@ export function createAgentTool(config: AgentToolConfig) {
           data: {
             success: true,
             durationMs: duration,
-            totalTokens: usage?.totalTokens ?? 0,
+            inputTokens: Number(usage?.inputTokens ?? 0),
+            outputTokens: Number(usage?.outputTokens ?? 0),
+            totalTokens: Number(usage?.totalTokens ?? 0),
           },
         });
 
