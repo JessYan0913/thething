@@ -91,6 +91,7 @@ async function createChatAgent(
   const stopWhen = createDefaultStopConditions<typeof tools>(sessionState.costTracker, {
     maxSteps: 50,
     denialTracker: sessionState.denialTracker,
+    sessionState,
   });
 
   return {
@@ -180,6 +181,12 @@ export async function POST(req: Request) {
       writerRef,
     );
 
+    const abortController = new AbortController();
+    req.signal.addEventListener('abort', () => {
+      sessionState.abort();
+      abortController.abort();
+    });
+
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
         writerRef.current = writer as unknown as SubAgentStreamWriter;
@@ -187,6 +194,7 @@ export async function POST(req: Request) {
         const agentStream = await createAgentUIStream({
           agent,
           uiMessages: compactedMessages,
+          abortSignal: abortController.signal,
           sendReasoning: true,
           onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {

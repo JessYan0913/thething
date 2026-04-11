@@ -1,9 +1,6 @@
 import { tool } from 'ai';
-import { exec as execCallback } from 'child_process';
-import { promisify } from 'util';
+import { exec as execCallback, ChildProcess } from 'child_process';
 import { z } from 'zod';
-
-const exec = promisify(execCallback);
 
 const DANGEROUS_PATTERNS = [
   /^\s*rm\s+(-rf?|--recursive)\s+\/?/i,
@@ -40,6 +37,42 @@ function isCommandDangerous(command: string): { dangerous: boolean; reason?: str
   return { dangerous: false };
 }
 
+function execWithAbort(
+  command: string,
+  options: { timeout: number; maxBuffer: number; encoding: string; signal?: AbortSignal },
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child: ChildProcess = execCallback(command, {
+      encoding: options.encoding as BufferEncoding,
+      timeout: options.timeout,
+      maxBuffer: options.maxBuffer,
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+
+    if (options.signal) {
+      options.signal.addEventListener('abort', () => {
+        const pid = child.pid;
+        if (pid) {
+          try { process.kill(-pid, 'SIGTERM'); } catch {}
+          setTimeout(() => {
+            if (!child.killed) {
+              try { process.kill(-pid, 'SIGKILL'); } catch {}
+            }
+          }, 2000);
+        } else if (child.kill) {
+          child.kill('SIGTERM');
+        }
+        reject(new DOMException('The operation was aborted.', 'AbortError'));
+      });
+    }
+  });
+}
+
 export const bashTool = tool({
   description:
     '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。',
@@ -47,17 +80,18 @@ export const bashTool = tool({
     command: z.string().describe('要执行的 shell 命令'),
     timeoutMs: z.number().min(1000).max(120000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒'),
   }),
-  execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }) => {
+  execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, options) => {
     const safety = isCommandDangerous(command);
     if (safety.dangerous) {
       throw new Error(`安全阻止: ${safety.reason}\n\n该命令包含危险操作，已被安全策略拒绝。`);
     }
 
     try {
-      const { stdout, stderr } = await exec(command, {
+      const { stdout, stderr } = await execWithAbort(command, {
         encoding: 'utf-8',
         timeout: timeoutMs,
         maxBuffer: MAX_OUTPUT_CHARS * 10,
+        signal: options?.abortSignal,
       });
 
       const truncatedStdout =
@@ -78,6 +112,10 @@ export const bashTool = tool({
         timedOut: false,
       };
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new Error('命令执行被用户中止。');
+      }
+
       if (error.killed || error.code === 'ETIMEDOUT') {
         throw new Error(`命令执行超时 (${timeoutMs}ms)。请增加 timeoutMs 或优化命令。`);
       }
