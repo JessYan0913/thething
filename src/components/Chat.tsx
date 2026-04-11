@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
 import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
+} from '@/components/ai-elements/conversation';
 import {
   Message,
   MessageAction,
@@ -13,100 +13,106 @@ import {
   MessageContent,
   MessageResponse,
   MessageToolbar,
-} from "@/components/ai-elements/message";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "@/components/ai-elements/tool";
+} from '@/components/ai-elements/message';
 import {
   PromptInput,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
-} from "@/components/ai-elements/prompt-input";
-import type { ConversationItem } from "@/components/ConversationSidebar";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type ToolUIPart, UIMessage } from "ai";
-import { CopyIcon, RefreshCcwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+} from '@/components/ai-elements/prompt-input';
+import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
+import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
+import type { ConversationItem } from '@/components/ConversationSidebar';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport, type ToolUIPart, UIMessage } from 'ai';
+import { CopyIcon, RefreshCcwIcon, WrenchIcon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
-// ============================================================================
-// Conversation ID persistence (localStorage)
-// ============================================================================
+interface SubDataPart {
+  type: string;
+  id?: string;
+  data?: Record<string, unknown>;
+}
 
-const CONVERSATION_ID_KEY = "chat_conversation_id";
+function SubAgentStream({ parts }: { parts: SubDataPart[] }) {
+  if (parts.length === 0) return null;
+
+  const lastTextDelta = [...parts].reverse().find((p) => p.type === 'data-sub-text-delta');
+  const accumulatedText = (lastTextDelta?.data?.accumulated as string | undefined) ?? '';
+
+  const toolCalls = parts.filter((p) => p.type === 'data-sub-tool-call').map((p) => p.data?.name as string);
+
+  const donePart = parts.find((p) => p.type === 'data-sub-done');
+  const isRunning = !donePart;
+
+  if (toolCalls.length === 0 && !accumulatedText && !isRunning) return null;
+
+  return (
+    <div className="mt-2 space-y-2 border-t pt-2 text-sm">
+      {isRunning && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+          <span className="size-1.5 shrink-0 rounded-full bg-blue-400" />
+          Sub-agent running…
+        </div>
+      )}
+      {toolCalls.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Steps</p>
+          {toolCalls.map((name, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <WrenchIcon className="size-3 shrink-0" />
+              {name}
+            </div>
+          ))}
+        </div>
+      )}
+      {accumulatedText && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Output</p>
+          <p className="text-xs whitespace-pre-wrap leading-relaxed">{accumulatedText}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CONVERSATION_ID_KEY = 'chat_conversation_id';
 
 export function getStoredConversationId(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === 'undefined') return null;
   return localStorage.getItem(CONVERSATION_ID_KEY);
 }
 
-// ============================================================================
-// Custom transport that includes conversationId
-// ============================================================================
-
 function createChatTransport(conversationId: string) {
   return new DefaultChatTransport({
-    api: "/api/chat",
+    api: '/api/chat',
     body: { conversationId },
-    prepareSendMessagesRequest({messages, body}) {
+    prepareSendMessagesRequest({ messages, body }) {
       return {
         body: {
           message: messages.at(-1),
           conversationId,
           ...body,
-        }
-      }
-    }
+        },
+      };
+    },
   });
 }
 
-// ============================================================================
-// Chat Component Props
-// ============================================================================
-
 export interface ChatProps {
-  /** Conversation ID to display. */
   conversationId: string;
-  /** Callback when the AI-generated title updates (triggers sidebar refresh). */
   onTitleUpdated?: () => void;
 }
 
-// ============================================================================
-// Main Chat Component
-// ============================================================================
-
-export default function Chat({
-  conversationId,
-  onTitleUpdated,
-}: ChatProps) {
+export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
   const initialMessageCountRef = useRef<number | null>(null);
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
 
-  const transport = useMemo(
-    () => createChatTransport(conversationId),
-    [conversationId]
-  );
+  const transport = useMemo(() => createChatTransport(conversationId), [conversationId]);
 
-  const {
-    messages,
-    setMessages,
-    sendMessage,
-    status,
-    stop,
-    regenerate,
-    error,
-  } = useChat({
+  const { messages, setMessages, sendMessage, status, stop, regenerate, error } = useChat({
     id: conversationId,
     transport,
     onFinish: async ({ messages: finishedMessages }) => {
@@ -120,12 +126,10 @@ export default function Chat({
         const pollForTitle = async () => {
           attempts++;
           try {
-            const res = await fetch("/api/conversations");
+            const res = await fetch('/api/conversations');
             if (res.ok) {
               const data = await res.json();
-              const current = (data.conversations || []).find(
-                (c: ConversationItem) => c.id === conversationId
-              );
+              const current = (data.conversations || []).find((c: ConversationItem) => c.id === conversationId);
 
               if (current && current.title !== originalTitleRef.current) {
                 onTitleUpdated?.();
@@ -152,40 +156,31 @@ export default function Chat({
     },
   });
 
-  // Keep ref in sync with latest messages
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Load messages on mount
   useEffect(() => {
     let cancelled = false;
 
     async function loadMessages() {
       try {
-        const res = await fetch(
-          `/api/chat?conversationId=${encodeURIComponent(conversationId)}`
-        );
+        const res = await fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`);
         if (!res.ok) return;
 
         const data = await res.json();
         if (!cancelled && data.messages && data.messages.length > 0) {
-          // Record initial count so onFinish can detect first message
           initialMessageCountRef.current = data.messages.length;
           setMessages(data.messages as UIMessage[]);
         } else {
-          // No existing messages - this is a brand new conversation
           initialMessageCountRef.current = 0;
         }
 
-        // Also capture the current title for this conversation
         if (!cancelled) {
-          const convRes = await fetch("/api/conversations");
+          const convRes = await fetch('/api/conversations');
           if (convRes.ok) {
             const convData = await convRes.json();
-            const current = (convData.conversations || []).find(
-              (c: ConversationItem) => c.id === conversationId
-            );
+            const current = (convData.conversations || []).find((c: ConversationItem) => c.id === conversationId);
             originalTitleRef.current = current?.title ?? null;
           }
         }
@@ -206,54 +201,40 @@ export default function Chat({
         sendMessage({ text });
       }
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const handleCopy = useCallback((content: string) => {
     navigator.clipboard.writeText(content);
   }, []);
 
-  /**
-   * Regenerate from a specific assistant message.
-   * Truncates the message at `messageIndex` and all subsequent messages,
-   * then triggers regeneration with a placeholder assistant message.
-   */
   const handleRegenerate = useCallback(
     (messageIndex: number) => {
-      // Remove the target message and all messages after it
       const truncated = messages.slice(0, messageIndex);
 
-      // Add a placeholder assistant message so regenerate() has something to replace.
-      // The SDK's regenerate() finds the last assistant message, removes it,
-      // and generates a new response based on the remaining messages.
       const placeholderId = `regen-placeholder-${Date.now()}`;
       const withPlaceholder: UIMessage[] = [
         ...truncated,
         {
           id: placeholderId,
-          role: "assistant",
+          role: 'assistant',
           parts: [],
           createdAt: new Date(),
         } as UIMessage,
       ];
 
       setMessages(withPlaceholder);
-      // Defer to next tick so React state update is flushed
       setTimeout(() => regenerate(), 0);
     },
-    [messages, setMessages, regenerate]
+    [messages, setMessages, regenerate],
   );
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      {/* Error Display */}
       {error && (
-        <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error.message}
-        </div>
+        <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</div>
       )}
 
-      {/* Conversation Area */}
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <ConversationEmptyState
@@ -265,104 +246,98 @@ export default function Chat({
         <div className="flex-1 min-h-0 overflow-y-auto pt-4">
           <Conversation>
             <ConversationContent>
-            {messages.map((message, messageIndex) => {
-              // Consolidate all reasoning parts into one block
-              const reasoningParts = message.parts.filter(
-                (part) => part.type === "reasoning"
-              );
-              const reasoningText = reasoningParts.map((part) => part.text).join("\n\n");
-              const hasReasoning = reasoningParts.length > 0;
+              {messages.map((message, messageIndex) => {
+                const reasoningParts = message.parts.filter((part) => part.type === 'reasoning');
+                const reasoningText = reasoningParts.map((part) => part.text).join('\n\n');
+                const hasReasoning = reasoningParts.length > 0;
 
-              // Check if reasoning is still streaming (last part is reasoning on last message)
-              const lastPart = message.parts.at(-1);
-              const isReasoningStreaming =
-                messageIndex === messages.length - 1 &&
-                status === "streaming" &&
-                lastPart?.type === "reasoning";
+                const lastPart = message.parts.at(-1);
+                const isReasoningStreaming =
+                  messageIndex === messages.length - 1 && status === 'streaming' && lastPart?.type === 'reasoning';
 
-              return (
-                <Message from={message.role} key={message.id}>
-                  <MessageContent>
-                    {hasReasoning && (
-                      <Reasoning
-                        className="w-full"
-                        isStreaming={isReasoningStreaming}
-                      >
-                        <ReasoningTrigger />
-                        <ReasoningContent>{reasoningText}</ReasoningContent>
-                      </Reasoning>
+                return (
+                  <Message from={message.role} key={message.id}>
+                    <MessageContent>
+                      {hasReasoning && (
+                        <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
+                          <ReasoningTrigger />
+                          <ReasoningContent>{reasoningText}</ReasoningContent>
+                        </Reasoning>
+                      )}
+                      {message.parts.map((part, index) => {
+                        if (part.type === 'text') {
+                          return <MessageResponse key={`${message.id}-${index}`}>{part.text}</MessageResponse>;
+                        }
+
+                        if (part.type.startsWith('data-sub-')) {
+                          return null;
+                        }
+
+                        if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+                          const toolPart = part as ToolUIPart;
+                          const toolCallId = (toolPart as unknown as { toolCallId?: string }).toolCallId;
+
+                          const subParts = toolCallId
+                            ? (message.parts as SubDataPart[]).filter(
+                                (p) => p.type.startsWith('data-sub-') && p.id === toolCallId,
+                              )
+                            : [];
+
+                          return (
+                            <Tool
+                              key={`${message.id}-${index}`}
+                              defaultOpen={toolPart.state === 'output-available' || toolPart.state === 'output-error'}
+                            >
+                              <ToolHeader type={toolPart.type} state={toolPart.state} />
+                              <ToolContent>
+                                <ToolInput input={toolPart.input} />
+                                <SubAgentStream parts={subParts} />
+                                <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                              </ToolContent>
+                            </Tool>
+                          );
+                        }
+
+                        return null;
+                      })}
+                    </MessageContent>
+
+                    {message.role === 'assistant' && (
+                      <MessageToolbar>
+                        <MessageActions>
+                          <MessageAction
+                            label="Regenerate"
+                            onClick={() => handleRegenerate(messageIndex)}
+                            tooltip="Regenerate response"
+                          >
+                            <RefreshCcwIcon className="size-4" />
+                          </MessageAction>
+                          <MessageAction
+                            label="Copy"
+                            onClick={() =>
+                              handleCopy(
+                                message.parts
+                                  .filter((p) => p.type === 'text')
+                                  .map((p) => (p.type === 'text' ? p.text : ''))
+                                  .join(''),
+                              )
+                            }
+                            tooltip="Copy to clipboard"
+                          >
+                            <CopyIcon className="size-4" />
+                          </MessageAction>
+                        </MessageActions>
+                      </MessageToolbar>
                     )}
-                    {message.parts.map((part, index) => {
-                      if (part.type === "text") {
-                        return (
-                          <MessageResponse key={`${message.id}-${index}`}>
-                            {part.text}
-                          </MessageResponse>
-                        );
-                      }
-
-                      if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
-                        const toolPart = part as ToolUIPart;
-                        return (
-                          <Tool key={`${message.id}-${index}`} defaultOpen={toolPart.state === "output-available" || toolPart.state === "output-error"}>
-                            <ToolHeader
-                              type={toolPart.type}
-                              state={toolPart.state}
-                            />
-                            <ToolContent>
-                              <ToolInput input={toolPart.input} />
-                              <ToolOutput
-                                output={toolPart.output}
-                                errorText={toolPart.errorText}
-                              />
-                            </ToolContent>
-                          </Tool>
-                        );
-                      }
-
-                      return null;
-                    })}
-                  </MessageContent>
-
-                  {message.role === "assistant" && (
-                    <MessageToolbar>
-                      <MessageActions>
-                        <MessageAction
-                          label="Regenerate"
-                          onClick={() => handleRegenerate(messageIndex)}
-                          tooltip="Regenerate response"
-                        >
-                          <RefreshCcwIcon className="size-4" />
-                        </MessageAction>
-                        <MessageAction
-                          label="Copy"
-                          onClick={() =>
-                            handleCopy(
-                              message.parts
-                                .filter((p) => p.type === "text")
-                                .map((p) =>
-                                  p.type === "text" ? p.text : ""
-                                )
-                                .join("")
-                            )
-                          }
-                          tooltip="Copy to clipboard"
-                        >
-                          <CopyIcon className="size-4" />
-                        </MessageAction>
-                      </MessageActions>
-                    </MessageToolbar>
-                  )}
-                </Message>
-              );
-            })}
-          </ConversationContent>
-          <ConversationScrollButton />
+                  </Message>
+                );
+              })}
+            </ConversationContent>
+            <ConversationScrollButton />
           </Conversation>
         </div>
       )}
 
-      {/* Prompt Input */}
       <div className="shrink-0 border-t p-4">
         <div className="mx-auto max-w-3xl">
           <PromptInput onSubmit={handleSend}>

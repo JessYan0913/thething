@@ -1,0 +1,56 @@
+import { tool } from 'ai';
+import * as fs from 'fs/promises';
+import { z } from 'zod';
+
+export const editFileTool = tool({
+  description:
+    '使用搜索替换方式编辑文件。指定要查找的原文字符串和替换后的新字符串。若原文出现多次可设置 replaceFirst 控制替换范围。',
+  inputSchema: z.object({
+    filePath: z.string().describe('要编辑的文件路径（相对于工作目录）'),
+    oldString: z.string().describe('要查找并替换的原始文本（必须与文件内容精确匹配）'),
+    newString: z.string().describe('替换后的新文本'),
+    replaceAll: z.boolean().optional().default(false).describe('是否替换所有匹配项（默认仅替换第一个）'),
+  }),
+  execute: async ({ filePath, oldString, newString, replaceAll = false }) => {
+    const absolutePath = filePath.startsWith('/') ? filePath : require('path').resolve(filePath);
+
+    const content = await fs.readFile(absolutePath, 'utf-8');
+
+    const matchCount = (content.match(new RegExp(escapeRegex(oldString), 'g')) || []).length;
+    if (matchCount === 0) {
+      throw new Error(
+        `在文件中未找到要替换的文本: ${filePath}\n\n请确认 oldString 与文件内容完全匹配（包括空格、换行）。`,
+      );
+    }
+
+    let result: string;
+    let replacements: number;
+
+    if (replaceAll) {
+      result = content.split(oldString).join(newString);
+      replacements = matchCount;
+    } else {
+      const index = content.indexOf(oldString);
+      result = content.slice(0, index) + newString + content.slice(index + oldString.length);
+      replacements = 1;
+    }
+
+    if (result === content) {
+      throw new Error(`替换未改变内容，请检查 oldString 和 newString`);
+    }
+
+    await fs.writeFile(absolutePath, result, 'utf-8');
+
+    return {
+      path: filePath,
+      replacements,
+      occurrences: matchCount,
+      oldString: oldString.length > 100 ? oldString.slice(0, 100) + '...' : oldString,
+      newString: newString.length > 100 ? newString.slice(0, 100) + '...' : newString,
+    };
+  },
+});
+
+function escapeRegex(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
