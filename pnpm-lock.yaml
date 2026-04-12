@@ -41,6 +41,9 @@ importers:
       ai:
         specifier: ^6.0.149
         version: 6.0.158(zod@4.3.6)
+      ai-elements:
+        specifier: ^1.9.0
+        version: 1.9.0
       better-sqlite3:
         specifier: ^12.8.0
         version: 12.8.0
@@ -63,7 +66,7 @@ importers:
         specifier: ^4.0.3
         version: 4.0.3
       lucide-react:
-        specifier: ^1.7.0
+        specifier: ^1.8.0
         version: 1.8.0(react@19.2.4)
       motion:
         specifier: ^12.38.0
@@ -1794,6 +1797,10 @@ packages:
   acorn@8.16.0:
     resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
     engines: {node: '>=0.4.0'}
+    hasBin: true
+
+  ai-elements@1.9.0:
+    resolution: {integrity: sha512-lIBC48Y5ZWd9tKFDx6V6LoLl7RlKs9L/tAQA3J4N5SFDqqJglM+PX7kocAiuS/w0KeRFUXzXVsSgJNLGp3BwNQ==}
     hasBin: true
 
   ai@6.0.158:
@@ -6097,6 +6104,8 @@ snapshots:
       acorn: 8.16.0
 
   acorn@8.16.0: {}
+
+  ai-elements@1.9.0: {}
 
   ai@6.0.158(zod@4.3.6):
     dependencies:

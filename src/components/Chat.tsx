@@ -23,6 +23,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
 import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
+import { TaskPanel } from '@/components/chat-task-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import type { ConversationItem } from '@/components/ConversationSidebar';
@@ -311,6 +312,9 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
       <div className="shrink-0 border-t p-4">
         <div className="mx-auto max-w-3xl">
+          {/* Task List Panel - always visible above input */}
+          <TaskPanel />
+
           <PromptInput onSubmit={handleSend}>
             <PromptInputTextarea placeholder="Message AI Assistant..." />
             <PromptInputFooter>
