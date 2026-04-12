@@ -7,7 +7,7 @@
 
 import type { Tool } from 'ai';
 import type { TaskStore } from '../types';
-import { createTaskCreateTool } from './task-create-tool';
+import { createTaskCreateTool, createTaskCreateToolForConversation } from './task-create-tool';
 import { createTaskListTool } from './task-list-tool';
 import { createTaskUpdateTool } from './task-update-tool';
 import { createTaskGetTool } from './task-get-tool';
@@ -48,6 +48,27 @@ export interface TaskTools {
 export function createTaskTools(store: TaskStore): TaskTools {
   return {
     task_create: createTaskCreateTool(store),
+    task_list: createTaskListTool(store),
+    task_update: createTaskUpdateTool(store),
+    task_get: createTaskGetTool(store),
+    task_stop: createTaskStopTool(store),
+    task_delete: createTaskDeleteTool(store),
+  };
+}
+
+/**
+ * Create task tools with conversation context injected
+ * 
+ * This is useful when task tools are used within a specific conversation,
+ * ensuring tasks are automatically associated with that conversation.
+ * 
+ * @param store - The task store
+ * @param conversationId - The conversation ID to associate tasks with
+ * @returns Object containing all task tools
+ */
+export function createTaskToolsForConversation(store: TaskStore, conversationId: string): TaskTools {
+  return {
+    task_create: createTaskCreateToolForConversation(store, conversationId),
     task_list: createTaskListTool(store),
     task_update: createTaskUpdateTool(store),
     task_get: createTaskGetTool(store),
@@ -102,7 +123,7 @@ export function getTaskToolNames(): TaskToolName[] {
 }
 
 // Re-export individual tools
-export { createTaskCreateTool } from './task-create-tool';
+export { createTaskCreateTool, createTaskCreateToolForConversation } from './task-create-tool';
 export { createTaskListTool } from './task-list-tool';
 export { createTaskUpdateTool } from './task-update-tool';
 export { createTaskGetTool } from './task-get-tool';

@@ -11,6 +11,8 @@ import { createTask } from '../task-create';
 export const taskCreateToolSchema = z.object({
   /** Task subject/title (required) */
   subject: z.string().min(1).describe('The task subject/title'),
+  /** Conversation ID this task belongs to (required) */
+  conversationId: z.string().describe('The conversation ID this task belongs to'),
   /** IDs of tasks this task is blocked by (optional) */
   blockedBy: z.array(z.string()).optional().describe('IDs of tasks this task depends on'),
   /** Task metadata (optional) */
@@ -66,6 +68,49 @@ export function createTaskCreateTool(store: TaskStore) {
     execute: async (input: TaskCreateToolInput) => {
       try {
         const task = createTask(store, {
+          conversationId: input.conversationId || 'default',
+          subject: input.subject,
+          blockedBy: input.blockedBy,
+          metadata: input.metadata,
+        });
+
+        return {
+          success: true as const,
+          task: {
+            id: task.id,
+            subject: task.subject,
+            status: task.status,
+            blockedBy: task.blockedBy,
+            blocks: task.blocks,
+            createdAt: task.createdAt,
+            metadata: task.metadata,
+          },
+        };
+      } catch (error) {
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  });
+}
+
+/**
+ * Create a TaskCreateTool with conversation context
+ * 
+ * @param store - The task store
+ * @param conversationId - The conversation ID to associate tasks with
+ * @returns The tool definition
+ */
+export function createTaskCreateToolForConversation(store: TaskStore, conversationId: string) {
+  return tool({
+    description: 'Create a new task. Use this to create tasks that can be claimed by agents.',
+    inputSchema: taskCreateToolSchema,
+    execute: async (input: TaskCreateToolInput) => {
+      try {
+        const task = createTask(store, {
+          conversationId,
           subject: input.subject,
           blockedBy: input.blockedBy,
           metadata: input.metadata,

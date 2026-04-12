@@ -2,16 +2,21 @@
  * Tasks API
  * 
  * Provides REST API for task management operations.
+ * Supports conversation-based task isolation.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getGlobalTaskStore } from '@/lib/tasks';
-import type { Task } from '@/lib/tasks/types';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const conversationId = searchParams.get('conversationId');
+
     const store = getGlobalTaskStore();
-    const tasks = store.getAllTasks();
+    const tasks = conversationId
+      ? store.getTasksByConversation(conversationId)
+      : store.getAllTasks();
 
     // Group by status for easier consumption
     const tasksByStatus = {

@@ -313,7 +313,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
       <div className="shrink-0 border-t p-4">
         <div className="mx-auto max-w-3xl">
           {/* Task List Panel - always visible above input */}
-          <TaskPanel />
+          <TaskPanel conversationId={conversationId} />
 
           <PromptInput onSubmit={handleSend}>
             <PromptInputTextarea placeholder="Message AI Assistant..." />

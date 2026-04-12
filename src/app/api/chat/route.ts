@@ -16,7 +16,7 @@ import type { SubAgentStreamWriter } from '@/lib/subagents/agent-tool';
 import { buildSystemPrompt } from '@/lib/system-prompt';
 import { bashTool, editFileTool, exaSearchTool, globTool, grepTool, readFileTool, writeFileTool } from '@/lib/tools';
 import { getGlobalTaskStore } from '@/lib/tasks';
-import { createTaskTools } from '@/lib/tasks/tools';
+import { createTaskToolsForConversation } from '@/lib/tasks/tools';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
   createAgentUIStream,
@@ -83,7 +83,7 @@ async function createChatAgent(
       writerRef,
     }),
     // Task management tools
-    ...createTaskTools(getGlobalTaskStore()),
+    ...createTaskToolsForConversation(getGlobalTaskStore(), conversationId),
   };
 
   const prepareStep = createAgentPipeline<typeof tools>({

@@ -60,16 +60,21 @@ export class InMemoryTaskStore implements TaskStore {
     const now = Date.now();
     const id = this.hwm.next();
 
-    // Validate blockedBy tasks exist
+    // Validate blockedBy tasks exist and belong to same conversation
     const blockedBy = input.blockedBy || [];
     for (const blockedById of blockedBy) {
-      if (!this.tasks.has(blockedById)) {
+      const existingTask = this.tasks.get(blockedById);
+      if (!existingTask) {
         throw new Error(`BlockedBy task ${blockedById} does not exist`);
+      }
+      if (existingTask.conversationId !== input.conversationId) {
+        throw new Error(`Cannot create dependency across conversations`);
       }
     }
 
     const task: Task = {
       id,
+      conversationId: input.conversationId,
       subject: input.subject,
       status: 'pending',
       claimedBy: null,
@@ -100,6 +105,15 @@ export class InMemoryTaskStore implements TaskStore {
 
   getAllTasks(): Task[] {
     return Array.from(this.tasks.values());
+  }
+
+  /**
+   * Get tasks for a specific conversation
+   */
+  getTasksByConversation(conversationId: string): Task[] {
+    return Array.from(this.tasks.values()).filter(
+      (task) => task.conversationId === conversationId
+    );
   }
 
   updateTask(input: TaskUpdateInput): Task | undefined {

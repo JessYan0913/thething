@@ -54,7 +54,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   cancelled: "text-gray-400",
 };
 
-export function TaskPanel() {
+export function TaskPanel({ conversationId }: { conversationId: string }) {
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [stats, setStats] = React.useState<TaskStats | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -63,7 +63,7 @@ export function TaskPanel() {
 
   const fetchTasks = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch(`/api/tasks?conversationId=${encodeURIComponent(conversationId)}`);
       if (!res.ok) throw new Error("Failed to fetch tasks");
       const data: TasksResponse = await res.json();
       setTasks(data.tasks);
@@ -72,7 +72,7 @@ export function TaskPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     }
-  }, []);
+  }, [conversationId]);
 
   // Poll for task updates
   React.useEffect(() => {
@@ -108,7 +108,10 @@ export function TaskPanel() {
     );
   }
 
-  const hasTasks = totalTasks > 0;
+  // Only show panel when there are tasks
+  if (totalTasks === 0) {
+    return null;
+  }
 
   return (
     <div className="shrink-0 border-b bg-background/95 backdrop-blur">
@@ -128,50 +131,42 @@ export function TaskPanel() {
 
         <CollapsibleContent>
           <div className="px-3 pb-3 space-y-2 max-h-64 overflow-y-auto">
-            {!hasTasks ? (
-              <div className="text-sm text-muted-foreground py-4 text-center">
-                No tasks yet. Ask AI to create a task!
-              </div>
-            ) : (
-              <>
-                {/* In Progress */}
-                {tasksByStatus.in_progress.length > 0 && (
-                  <TaskSection
-                    title="In Progress"
-                    tasks={tasksByStatus.in_progress}
-                    icon={STATUS_ICONS.in_progress}
-                  />
-                )}
+            {/* In Progress */}
+            {tasksByStatus.in_progress.length > 0 && (
+              <TaskSection
+                title="In Progress"
+                tasks={tasksByStatus.in_progress}
+                icon={STATUS_ICONS.in_progress}
+              />
+            )}
 
-                {/* Pending */}
-                {tasksByStatus.pending.length > 0 && (
-                  <TaskSection
-                    title="Pending"
-                    tasks={tasksByStatus.pending}
-                    icon={STATUS_ICONS.pending}
-                  />
-                )}
+            {/* Pending */}
+            {tasksByStatus.pending.length > 0 && (
+              <TaskSection
+                title="Pending"
+                tasks={tasksByStatus.pending}
+                icon={STATUS_ICONS.pending}
+              />
+            )}
 
-                {/* Completed */}
-                {tasksByStatus.completed.length > 0 && (
-                  <TaskSection
-                    title="Completed"
-                    tasks={tasksByStatus.completed}
-                    icon={STATUS_ICONS.completed}
-                    defaultCollapsed
-                  />
-                )}
+            {/* Completed */}
+            {tasksByStatus.completed.length > 0 && (
+              <TaskSection
+                title="Completed"
+                tasks={tasksByStatus.completed}
+                icon={STATUS_ICONS.completed}
+                defaultCollapsed
+              />
+            )}
 
-                {/* Failed */}
-                {tasksByStatus.failed.length > 0 && (
-                  <TaskSection
-                    title="Failed"
-                    tasks={tasksByStatus.failed}
-                    icon={STATUS_ICONS.failed}
-                    defaultCollapsed
-                  />
-                )}
-              </>
+            {/* Failed */}
+            {tasksByStatus.failed.length > 0 && (
+              <TaskSection
+                title="Failed"
+                tasks={tasksByStatus.failed}
+                icon={STATUS_ICONS.failed}
+                defaultCollapsed
+              />
             )}
           </div>
         </CollapsibleContent>

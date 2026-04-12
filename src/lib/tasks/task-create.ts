@@ -36,6 +36,7 @@ export function createTasks(store: TaskStore, inputs: TaskCreateInput[]): Task[]
  * in the correct order
  * 
  * @param store - The task store
+ * @param conversationId - The conversation ID this task belongs to
  * @param subject - The task subject
  * @param dependencySubjects - Subjects of tasks this task depends on (created if not exist)
  * @param metadata - Optional metadata for the main task
@@ -45,6 +46,7 @@ export function createTasks(store: TaskStore, inputs: TaskCreateInput[]): Task[]
  * ```typescript
  * const { task: mainTask, dependencies } = createTaskWithDependencies(
  *   store,
+ *   'conv-123',
  *   'Build frontend',
  *   ['Design database schema', 'Design API endpoints']
  * );
@@ -52,12 +54,13 @@ export function createTasks(store: TaskStore, inputs: TaskCreateInput[]): Task[]
  */
 export function createTaskWithDependencies(
   store: TaskStore,
+  conversationId: string,
   subject: string,
   dependencySubjects: string[],
   metadata?: TaskCreateInput['metadata']
 ): { task: Task; dependencies: Task[] } {
   // Create dependencies first if they don't exist
-  const existingTasks = store.getAllTasks();
+  const existingTasks = store.getTasksByConversation(conversationId);
   const dependencies: Task[] = [];
   const dependencyIds: string[] = [];
 
@@ -67,7 +70,7 @@ export function createTaskWithDependencies(
       dependencies.push(existing);
       dependencyIds.push(existing.id);
     } else {
-      const dep = store.createTask({ subject: depSubject });
+      const dep = store.createTask({ conversationId, subject: depSubject });
       dependencies.push(dep);
       dependencyIds.push(dep.id);
     }
@@ -75,6 +78,7 @@ export function createTaskWithDependencies(
 
   // Create the main task with dependencies
   const task = store.createTask({
+    conversationId,
     subject,
     blockedBy: dependencyIds,
     metadata,
