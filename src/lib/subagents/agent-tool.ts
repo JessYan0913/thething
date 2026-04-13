@@ -7,6 +7,11 @@ import {
   extractContextForSubAgent,
   finalizeSubAgentContext,
 } from './context';
+import { getGlobalTaskStore, completeTask, failTask } from '@/lib/tasks';
+
+function fireAndForget<T>(fn: () => T): void {
+  setTimeout(fn, 0);
+}
 
 export type SubAgentTools = ToolSet;
 
@@ -44,6 +49,7 @@ export interface AgentToolResult {
 
 const AgentInputSchema = z.object({
   task: z.string().describe('The sub-task to delegate to the sub-agent'),
+  taskId: z.string().optional().describe('Optional task ID to update when sub-agent completes'),
 });
 
 type AgentInput = z.infer<typeof AgentInputSchema>;
@@ -61,7 +67,7 @@ export function createAgentTool(config: AgentToolConfig) {
   return tool<AgentInput, ExecuteReturn>({
     description: toolDescription,
     inputSchema: AgentInputSchema,
-    execute: async ({ task }: AgentInput, options: { abortSignal?: AbortSignal; toolCallId?: string }) => {
+    execute: async ({ task, taskId }: AgentInput, options: { abortSignal?: AbortSignal; toolCallId?: string }) => {
       const startTime = Date.now();
       const toolCallId = options.toolCallId ?? `sub-${Date.now()}`;
       const writer = config.writerRef?.current ?? null;
@@ -144,6 +150,17 @@ export function createAgentTool(config: AgentToolConfig) {
 
         console.log(`[SubAgent:${toolName}] Completed in ${duration}ms, ${usage?.totalTokens ?? 0} tokens`);
 
+        if (taskId) {
+          try {
+            const store = getGlobalTaskStore();
+            fireAndForget(() => {
+              completeTask(store, taskId, finalText);
+            });
+          } catch (err) {
+            console.error('[SubAgent] Failed to update task:', err);
+          }
+        }
+
         writer?.write({
           type: 'data-sub-done',
           id: toolCallId,
@@ -177,6 +194,17 @@ export function createAgentTool(config: AgentToolConfig) {
         finalizeSubAgentContext(context, [], status, errorMsg);
 
         console.error(`[SubAgent:${toolName}] ${status}: ${errorMsg}`);
+
+        if (taskId) {
+          try {
+            const store = getGlobalTaskStore();
+            fireAndForget(() => {
+              failTask(store, taskId, errorMsg);
+            });
+          } catch (err) {
+            console.error('[SubAgent] Failed to update task:', err);
+          }
+        }
 
         writer?.write({
           type: 'data-sub-done',

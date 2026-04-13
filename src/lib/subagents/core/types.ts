@@ -1,4 +1,5 @@
 import { type LanguageModel, type StopCondition, type ToolSet, type UIMessage } from 'ai';
+import type { TaskStore } from '@/lib/tasks';
 
 export type { LanguageModel, ToolSet, UIMessage, StopCondition };
 
@@ -27,6 +28,8 @@ export interface AgentExecutionContext {
   abortSignal: AbortSignal;
   toolCallId: string;
   recursionDepth: number;
+  taskStore?: TaskStore;
+  taskId?: string;
 }
 
 export interface AgentExecutionResult {
@@ -62,6 +65,8 @@ export interface AgentToolConfig {
   parentMessages: UIMessage[];
   writerRef: { current: SubAgentStreamWriter | null };
   recursionDepth?: number;
+  taskStore?: TaskStore;
+  taskId?: string;
 }
 
 export type AgentRouteDecision = {

@@ -255,7 +255,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                           return (
                             <Tool
                               key={`${message.id}-${index}`}
-                              defaultOpen={toolPart.state === 'output-available' || toolPart.state === 'output-error' || isStreaming}
+                              defaultOpen={toolPart.state === 'output-error'}
                             >
                               <ToolHeader type={toolPart.type} state={toolPart.state} isStreaming={isStreaming} />
                               <ToolContent>

@@ -74,6 +74,8 @@ If no agentType specified, will auto-route based on task characteristics.`,
           abortSignal: abortSignal ?? new AbortController().signal,
           toolCallId,
           recursionDepth: depth,
+          taskStore: config.taskStore,
+          taskId: config.taskId,
         };
 
         const routeDecision = resolveAgentRoute({ agentType, task }, context);

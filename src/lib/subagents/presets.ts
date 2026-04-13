@@ -13,7 +13,13 @@ export interface ResearchPresetOptions {
 export function createResearchAgent(options: ResearchPresetOptions) {
   const config: AgentToolConfig = {
     name: 'research',
-    description: 'Research a topic by exploring available sources and returning structured findings.',
+    description: `Research a topic by exploring available sources and returning structured findings.
+
+Parameters:
+- task: The research task description (required)
+- taskId: The task ID from task_create (optional, but recommended if you created a task)
+
+If you provide taskId, this tool will automatically update the task status to 'completed' when finished. You do NOT need to call task_update afterwards.`,
     instructions: `You are a specialized Research Agent. Your role is to thoroughly investigate topics and return well-structured, factual findings.
 
 ## Core Principles

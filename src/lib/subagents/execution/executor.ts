@@ -7,6 +7,11 @@ import type {
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
+import { completeTask, failTask } from '@/lib/tasks';
+
+function fireAndForget<T>(fn: () => T): void {
+  setTimeout(fn, 0);
+}
 
 export async function executeRoutedAgent(
   definition: AgentDefinition,
@@ -14,7 +19,7 @@ export async function executeRoutedAgent(
   task: string,
 ): Promise<AgentExecutionResult> {
   const startTime = Date.now();
-  const { toolCallId, writerRef, abortSignal } = context;
+  const { toolCallId, writerRef, abortSignal, taskStore, taskId } = context;
   const writer = writerRef.current;
 
   try {
@@ -84,7 +89,7 @@ export async function executeRoutedAgent(
         }
       : undefined;
 
-    return {
+    const result: AgentExecutionResult = {
       success: true,
       summary: textContent || 'Agent completed with no text output.',
       durationMs: duration,
@@ -93,12 +98,20 @@ export async function executeRoutedAgent(
       toolsUsed: [...new Set(toolsUsed)],
       status: 'completed',
     };
+
+    if (taskStore && taskId) {
+      fireAndForget(() => {
+        completeTask(taskStore, taskId, result.summary);
+      });
+    }
+
+    return result;
   } catch (error) {
     const duration = Date.now() - startTime;
     const isAborted = error instanceof Error && error.name === 'AbortError';
     const errorMsg = error instanceof Error ? error.message : String(error);
 
-    return {
+    const result: AgentExecutionResult = {
       success: false,
       summary: `Agent ${isAborted ? 'aborted' : 'failed'}: ${errorMsg}`,
       durationMs: duration,
@@ -107,5 +120,13 @@ export async function executeRoutedAgent(
       error: errorMsg,
       status: isAborted ? 'aborted' : 'failed',
     };
+
+    if (taskStore && taskId) {
+      fireAndForget(() => {
+        failTask(taskStore, taskId, errorMsg);
+      });
+    }
+
+    return result;
   }
 }
