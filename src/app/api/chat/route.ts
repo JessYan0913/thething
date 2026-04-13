@@ -45,7 +45,7 @@ async function createChatAgent(
   },
   writerRef?: { current: SubAgentStreamWriter | null },
 ) {
-  const { prompt, includedSections, estimatedTokens } = await buildSystemPrompt({
+  const { prompt } = await buildSystemPrompt({
     includeProjectContext: true,
     conversationMeta: conversationMeta ?? undefined,
   });

@@ -4,7 +4,6 @@ import type {
   TaskCreateInput,
   TaskUpdateInput,
   TaskClaimResult,
-  TaskListResult,
   TaskEvent,
   TaskEventListener,
   TaskStatus,
