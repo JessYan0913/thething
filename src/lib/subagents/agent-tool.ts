@@ -7,7 +7,7 @@ import {
   extractContextForSubAgent,
   finalizeSubAgentContext,
 } from './context';
-import { getGlobalTaskStore, completeTask, failTask } from '@/lib/tasks';
+import { getGlobalTaskStore, completeTask, failTask, updateTaskStatus } from '@/lib/tasks';
 
 function fireAndForget<T>(fn: () => T): void {
   setTimeout(fn, 0);
@@ -94,6 +94,15 @@ export function createAgentTool(config: AgentToolConfig) {
         id: toolCallId,
         data: { agentName: toolName, task },
       });
+
+      if (taskId) {
+        try {
+          const store = getGlobalTaskStore();
+          updateTaskStatus(store, taskId, 'in_progress');
+        } catch (err) {
+          console.error('[SubAgent] Failed to update task status:', err);
+        }
+      }
 
       try {
         const subAgent = new ToolLoopAgent({

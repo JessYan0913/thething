@@ -7,7 +7,7 @@ import type {
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
-import { completeTask, failTask } from '@/lib/tasks';
+import { completeTask, failTask, updateTaskStatus } from '@/lib/tasks';
 
 function fireAndForget<T>(fn: () => T): void {
   setTimeout(fn, 0);
@@ -43,6 +43,10 @@ export async function executeRoutedAgent(
         : task,
       abortSignal,
     });
+
+    if (taskStore && taskId) {
+      updateTaskStatus(taskStore, taskId, 'in_progress');
+    }
 
     let textContent = '';
     let stepsExecuted = 0;
