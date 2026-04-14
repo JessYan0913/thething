@@ -25,6 +25,7 @@ import {
   ToolLoopAgent,
   UIMessage,
   wrapLanguageModel,
+  type Tool,
 } from 'ai';
 import {
   determineActiveSkills,
@@ -60,7 +61,7 @@ async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
     Array.from(activeSkillNames).map(async (name) => {
       const metadata = skillsMetadata.find((s) => s.name === name);
       if (!metadata) return null;
-      return loadFullSkill(metadata);
+      return loadFullSkill(metadata.sourcePath);
     })
   );
 
@@ -149,7 +150,7 @@ async function createChatAgent(
     middleware: [telemetryMiddleware(), costTrackingMiddleware(sessionState.costTracker)],
   });
 
-  const allTools: Record<string, any> = {
+  const allTools: Record<string, Tool> = {
     web_search: exaSearchTool,
     read_file: readFileTool,
     write_file: writeFileTool,
@@ -199,7 +200,7 @@ async function createChatAgent(
   };
 }
 
-type ChatToolsType = Record<string, any>;
+type ChatToolsType = Record<string, Tool>;
 
 export async function GET(req: Request) {
   try {
