@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/static-components */
 
 import { cn } from "@/lib/utils";
 import type { MotionProps } from "motion/react";
