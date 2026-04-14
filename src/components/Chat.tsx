@@ -321,7 +321,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                               <TaskTrigger title={toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')} >
                                 <div className="flex w-full cursor-pointer items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground">
                                   <ToolIcon className="size-4" />
-                                  {toolPart.state !== 'output-available' && toolPart.state !== 'output-error' ? (
+                                  {toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && status === 'streaming' ? (
                                     <Shimmer className="text-sm" duration={1.5} spread={1}>{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</Shimmer>
                                   ) : (
                                     <p className="text-sm">{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</p>
