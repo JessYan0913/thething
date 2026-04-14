@@ -45,7 +45,6 @@ export {
   buildIdentityOnlyPrompt,
   buildBasicPrompt,
   getAvailableSections,
-  getSimpleModePrompt,
 } from "./builder";
 
 // Re-export section factories for advanced usage
@@ -77,6 +76,7 @@ export {
   reloadProjectContext,
   getCachedProjectContext,
 } from "./sections/project-context";
+export { createSkillsSection } from "./sections/skills";
 export {
   createSessionGuidanceSection,
   createFirstMessageGuidance,

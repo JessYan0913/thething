@@ -1,4 +1,9 @@
-import type { Skill } from './types';
+import type { Skill, SkillMetadata } from './types';
+
+interface HasWhenToUse {
+  name: string;
+  whenToUse?: string;
+}
 
 export function injectSkillsIntoPrompt(systemPrompt: string, skills: Skill[], activeSkillNames: Set<string>): string {
   if (skills.length === 0 || activeSkillNames.size === 0) {
@@ -16,12 +21,35 @@ export function injectSkillsIntoPrompt(systemPrompt: string, skills: Skill[], ac
   return `${systemPrompt}\n\n${skillsSection}`;
 }
 
-function formatSkillsSection(skills: Skill[]): string {
-  const skillsList = skills.map((skill) => formatSingleSkill(skill)).join('\n\n');
+export function formatSkillMetadataOnly(skills: SkillMetadata[]): string {
+  if (skills.length === 0) return '';
+
+  const skillsList = skills
+    .map((skill) => formatSkillMetadataSingle(skill))
+    .join('\n\n');
 
   return `## 可用技能
 
-以下技能已激活，可根据需要自动调用：
+当前已加载 ${skills.length} 个技能，使用时会自动加载完整指令：
+
+${skillsList}`;
+}
+
+function formatSkillMetadataSingle(skill: SkillMetadata): string {
+  const toolsText = skill.allowedTools.length > 0 ? ` | 可用工具: ${skill.allowedTools.join(', ')}` : '';
+  const modelText = skill.model ? ` | 推荐模型: ${skill.model}` : '';
+  const pathsText = skill.paths.length > 0 ? ` | 适用路径: ${skill.paths.join(', ')}` : '';
+  const whenToUseText = skill.whenToUse ? `\n  触发条件: ${skill.whenToUse}` : '';
+
+  return `- **${skill.name}**: ${skill.description}${whenToUseText}${toolsText}${modelText}${pathsText}`;
+}
+
+function formatSkillsSection(skills: Skill[]): string {
+  const skillsList = skills.map((skill) => formatSingleSkill(skill)).join('\n\n');
+
+  return `## 已激活技能
+
+以下技能已激活，完整指令如下：
 
 ${skillsList}`;
 }
@@ -36,19 +64,22 @@ function formatSingleSkill(skill: Skill): string {
 
   const pathsText = skill.paths.length > 0 ? `\n  适用路径: ${skill.paths.join(', ')}` : '';
 
-  return `- **${skill.name}**: ${skill.description}
-  触发条件: ${skill.whenToUse}${toolsText}${modelText}${effortText}${pathsText}
+  const whenToUseText = skill.whenToUse ? `\n  触发条件: ${skill.whenToUse}` : '';
+
+  return `- **${skill.name}**: ${skill.description}${whenToUseText}${toolsText}${modelText}${effortText}${pathsText}
 
 <技能指令>
 ${skill.body}
 </技能指令>`;
 }
 
-export function determineActiveSkills(skills: Skill[], userMessage: string): Set<string> {
+export function determineActiveSkills(skills: HasWhenToUse[], userMessage: string): Set<string> {
   const active = new Set<string>();
   const message = userMessage.toLowerCase();
 
   for (const skill of skills) {
+    if (!skill.whenToUse) continue;
+
     const triggers = skill.whenToUse.toLowerCase();
 
     const keywords = extractKeywords(triggers);

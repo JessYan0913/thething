@@ -26,6 +26,12 @@ import {
   UIMessage,
   wrapLanguageModel,
 } from 'ai';
+import {
+  determineActiveSkills,
+  getAvailableSkillsMetadata,
+  loadFullSkill,
+  recordSkillUsage,
+} from '@/lib/skills';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -36,6 +42,67 @@ const dashscope = createOpenAICompatible({
 
 export const maxDuration = 30;
 
+async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
+  const skillsMetadata = await getAvailableSkillsMetadata();
+
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
+  if (!lastUserMessage) return { activeSkillNames: new Set<string>(), activeSkills: [], activeToolsWhitelist: null, activeModelOverride: null };
+
+  const userMessageText = lastUserMessage.parts
+    .filter((p) => p.type === 'text')
+    .map((p) => p.text)
+    .join(' ');
+
+  const activeSkillNames = determineActiveSkills(skillsMetadata, userMessageText);
+  if (activeSkillNames.size === 0) return { activeSkillNames, activeSkills: [], activeToolsWhitelist: null, activeModelOverride: null };
+
+  const activeSkills = await Promise.all(
+    Array.from(activeSkillNames).map(async (name) => {
+      const metadata = skillsMetadata.find((s) => s.name === name);
+      if (!metadata) return null;
+      return loadFullSkill(metadata);
+    })
+  );
+
+  const filteredActiveSkills = activeSkills.filter((s): s is NonNullable<typeof s> => s !== null);
+
+  for (const skill of filteredActiveSkills) {
+    recordSkillUsage(skill.name);
+  }
+
+  const allAllowedTools = new Set<string>();
+  let modelOverride: string | null = null;
+  for (const skill of filteredActiveSkills) {
+    for (const tool of skill.allowedTools) {
+      allAllowedTools.add(tool);
+    }
+    if (skill.model && !modelOverride) {
+      modelOverride = skill.model;
+    }
+  }
+
+  return {
+    activeSkillNames,
+    activeSkills: filteredActiveSkills,
+    activeToolsWhitelist: allAllowedTools.size > 0 ? allAllowedTools : null,
+    activeModelOverride: modelOverride,
+  };
+}
+
+function formatActiveSkillBodies(skillBodies: { name: string; body: string }[]): string {
+  if (skillBodies.length === 0) return '';
+
+  const sections = skillBodies
+    .map((s) => `<技能指令 name="${s.name}">\n${s.body}\n</技能指令>`)
+    .join('\n\n');
+
+  return `## 已激活技能完整指令
+
+以下技能已根据你的需求自动激活，请严格按照指令执行：
+
+${sections}`;
+}
+
 async function createChatAgent(
   conversationId: string,
   conversationMeta?: {
@@ -44,11 +111,9 @@ async function createChatAgent(
     conversationStartTime: number;
   },
   writerRef?: { current: SubAgentStreamWriter | null },
+  messages?: UIMessage[],
 ) {
-  const { prompt } = await buildSystemPrompt({
-    includeProjectContext: true,
-    conversationMeta: conversationMeta ?? undefined,
-  });
+  const skillResolution = messages ? await resolveActiveSkillsAndBodies(messages) : null;
 
   const sessionState = createSessionState(conversationId, {
     maxContextTokens: 128_000,
@@ -57,12 +122,34 @@ async function createChatAgent(
     model: process.env.DASHSCOPE_MODEL,
   });
 
+  if (skillResolution?.activeModelOverride) {
+    sessionState.model = skillResolution.activeModelOverride;
+  }
+
+  if (skillResolution?.activeSkillNames) {
+    for (const name of skillResolution.activeSkillNames) {
+      sessionState.activeSkills.add(name);
+    }
+    for (const skill of skillResolution.activeSkills) {
+      sessionState.loadedSkills.set(skill.name, skill);
+    }
+  }
+
+  const { prompt } = await buildSystemPrompt({
+    includeProjectContext: true,
+    conversationMeta: conversationMeta ?? undefined,
+  });
+
+  const finalInstructions = skillResolution?.activeSkills && skillResolution.activeSkills.length > 0
+    ? `${prompt}\n\n${formatActiveSkillBodies(skillResolution.activeSkills.map((s) => ({ name: s.name, body: s.body })))}`
+    : prompt;
+
   const wrappedModel = wrapLanguageModel({
-    model: dashscope(process.env.DASHSCOPE_MODEL!),
+    model: dashscope(sessionState.model),
     middleware: [telemetryMiddleware(), costTrackingMiddleware(sessionState.costTracker)],
   });
 
-  const tools = {
+  const allTools: Record<string, any> = {
     web_search: exaSearchTool,
     read_file: readFileTool,
     write_file: writeFileTool,
@@ -82,17 +169,18 @@ async function createChatAgent(
       maxContextMessages: 10,
       writerRef,
     }),
-    // Task management tools
     ...createTaskToolsForConversation(getGlobalTaskStore(), conversationId),
   };
 
-  const prepareStep = createAgentPipeline<typeof tools>({
+  const tools = allTools;
+
+  const prepareStep = createAgentPipeline<ChatToolsType>({
     sessionState,
     maxSteps: 50,
     maxBudgetUsd: 5.0,
   });
 
-  const stopWhen = createDefaultStopConditions<typeof tools>(sessionState.costTracker, {
+  const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {
     maxSteps: 50,
     denialTracker: sessionState.denialTracker,
     sessionState,
@@ -101,7 +189,7 @@ async function createChatAgent(
   return {
     agent: new ToolLoopAgent({
       model: wrappedModel,
-      instructions: prompt,
+      instructions: finalInstructions,
       tools,
       prepareStep,
       stopWhen,
@@ -110,6 +198,8 @@ async function createChatAgent(
     sessionState,
   };
 }
+
+type ChatToolsType = Record<string, any>;
 
 export async function GET(req: Request) {
   try {
@@ -183,6 +273,7 @@ export async function POST(req: Request) {
         conversationStartTime: Date.now(),
       },
       writerRef,
+      compactedMessages,
     );
 
     const abortController = new AbortController();

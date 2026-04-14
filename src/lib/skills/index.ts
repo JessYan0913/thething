@@ -1,10 +1,16 @@
-export type { Skill, SkillFrontmatter, SkillLoaderConfig, SkillUsageRecord } from './types';
+export type { Skill, SkillFrontmatter, SkillLoaderConfig, SkillUsageRecord, SkillMetadata } from './types';
 
 export { DEFAULT_SKILL_LOADER_CONFIG, DEFAULT_SKILL_SCAN_DIRS, SkillFrontmatterSchema } from './types';
 
 export { clearSkillsCache, getAvailableSkills, loadSkill, scanSkillsDirs } from './loader';
 
-export { determineActiveSkills, injectSkillsIntoPrompt } from './prompt-injection';
+export { getAvailableSkillsMetadata, clearMetadataCache } from './metadata-loader';
+
+export { loadFullSkill, loadSkillBody, preloadSkillBodies, clearAllBodyCache, evictSkillBody, getBodyCacheStats } from './body-loader';
+
+export { determineActiveSkills, injectSkillsIntoPrompt, formatSkillMetadataOnly } from './prompt-injection';
+
+export { activateConditionalSkills, matchesAnyPath, formatConditionalSkillActivation, resetConditionalActivationCache, getActiveConditionalSkills } from './conditional-activation';
 
 export { getHalfLifeHours, getRankedSkills, getSkillUsage, recordSkillUsage, resetSkillUsage } from './usage-tracking';
 

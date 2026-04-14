@@ -138,7 +138,7 @@ function maybeTimeBasedMicrocompact(
       ) {
         tokensSaved += estimateMessageTokens({ ...message, parts: [part] } as unknown as UIMessage);
         touched = true;
-        return { ...part, content: CLEARED_MARKER } as UIMessage["parts"][number];
+        return { ...part, content: CLEARED_MARKER } as unknown as UIMessage["parts"][number];
       }
       return part;
     });

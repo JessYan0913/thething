@@ -21,6 +21,7 @@ import {
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
 import { createProjectContextSection } from "./sections/project-context";
+import { createSkillsSection } from "./sections/skills";
 
 // ============================================================================
 // Default Options
@@ -108,6 +109,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   {
     name: "project-context",
     create: () => createProjectContextSection(),
+    cacheStrategy: "session",
+  },
+  {
+    name: "skills",
+    create: () => createSkillsSection(),
     cacheStrategy: "session",
   },
 ];

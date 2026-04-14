@@ -64,7 +64,6 @@ export async function scanSkillsDirs(config?: Partial<SkillLoaderConfig>): Promi
 
           const duplicate = skills.find((s) => s.name === skill.name);
           if (duplicate) {
-            console.warn(`[SkillLoader] Duplicate skill name "${skill.name}" in ${skillFile}, skipping.`);
             continue;
           }
 
