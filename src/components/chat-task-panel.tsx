@@ -9,11 +9,9 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import type { Task, TaskStatus } from "@/lib/tasks/types";
-import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
   Clock,
@@ -22,7 +20,6 @@ import {
   Loader2,
   AlertCircle,
   ChevronDownIcon,
-  ListTodo,
 } from "lucide-react";
 
 interface TaskStats {
@@ -57,7 +54,6 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 export function TaskPanel({ conversationId }: { conversationId: string }) {
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [stats, setStats] = React.useState<TaskStats | null>(null);
-  const [isLoading, setIsLoading] = React.useState(false);
   const [isOpen, setIsOpen] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -114,21 +110,8 @@ export function TaskPanel({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <div className="shrink-0 border-b bg-background/95 backdrop-blur">
+    <div className="shrink-0 bg-background/95 backdrop-blur">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 p-3 hover:bg-muted/50 transition-colors">
-          <ListTodo className="h-4 w-4" />
-          <span className="font-medium text-sm">Tasks ({totalTasks})</span>
-          {stats && (
-            <span className="text-xs text-muted-foreground">
-              {stats.in_progress > 0 && `${stats.in_progress} in progress • `}
-              {stats.pending > 0 && `${stats.pending} pending`}
-              {stats.completed > 0 && ` • ${stats.completed} done`}
-            </span>
-          )}
-          <ChevronDownIcon className="h-4 w-4 ml-auto transition-transform data-[state=open]:rotate-180" />
-        </CollapsibleTrigger>
-
         <CollapsibleContent>
           <div className="px-3 pb-3 space-y-2 max-h-64 overflow-y-auto">
             {/* In Progress */}

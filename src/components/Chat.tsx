@@ -26,6 +26,7 @@ import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
 import { TaskPanel } from '@/components/chat-task-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { ToolOutput } from '@/components/ai-elements/tool';
+import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
@@ -320,7 +321,11 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                               <TaskTrigger title={toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')} >
                                 <div className="flex w-full cursor-pointer items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground">
                                   <ToolIcon className="size-4" />
-                                  <p className="text-sm">{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</p>
+                                  {toolPart.state !== 'output-available' && toolPart.state !== 'output-error' ? (
+                                    <Shimmer className="text-sm" duration={1.5} spread={1}>{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</Shimmer>
+                                  ) : (
+                                    <p className="text-sm">{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</p>
+                                  )}
                                   <ChevronDownIcon className="size-4 transition-transform group-data-[state=open]:rotate-180" />
                                 </div>
                               </TaskTrigger>
