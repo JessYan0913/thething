@@ -1,6 +1,5 @@
 'use client';
 
-import { MessageResponse } from '@/components/ai-elements/message';
 import { WrenchIcon } from 'lucide-react';
 
 export interface SubDataPart {
@@ -15,39 +14,14 @@ export interface SubAgentStreamProps {
 
 function TokenBar({ input, output, total }: { input: number; output: number; total: number }) {
   if (!total) return null;
-  const inputPercent = ((input / total) * 100).toFixed(1);
-  const outputPercent = ((output / total) * 100).toFixed(1);
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-muted-foreground">Token Usage</span>
-        <span className="font-semibold">{total.toLocaleString()}</span>
-      </div>
-      <div className="flex h-3 overflow-hidden rounded-full bg-muted">
-        <div
-          className="bg-blue-500 transition-all duration-300"
-          style={{ width: `${inputPercent}%` }}
-        />
-        <div
-          className="bg-emerald-500 transition-all duration-300"
-          style={{ width: `${outputPercent}%` }}
-        />
-      </div>
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-blue-500" />
-          <span className="text-muted-foreground">Input</span>
-          <span className="font-medium">{inputPercent}%</span>
-          <span className="text-muted-foreground">({input.toLocaleString()})</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-emerald-500" />
-          <span className="text-muted-foreground">Output</span>
-          <span className="font-medium">{outputPercent}%</span>
-          <span className="text-muted-foreground">({output.toLocaleString()})</span>
-        </div>
-      </div>
+    <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
+      <span>Tokens: {total.toLocaleString()}</span>
+      <span className="text-muted-foreground/50">|</span>
+      <span>In: {input.toLocaleString()}</span>
+      <span className="text-muted-foreground/50">|</span>
+      <span>Out: {output.toLocaleString()}</span>
     </div>
   );
 }
@@ -66,7 +40,7 @@ export function SubAgentStream({ parts }: SubAgentStreamProps) {
   if (toolCalls.length === 0 && !displayText && !isRunning) return null;
 
   return (
-    <div className="mt-2 space-y-3 border-t pt-3 text-sm">
+    <div className="mt-2 space-y-3 pt-3 text-sm">
       {toolCalls.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Steps</p>
@@ -81,8 +55,10 @@ export function SubAgentStream({ parts }: SubAgentStreamProps) {
       {displayText && (
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Output</p>
-          <div className="max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2">
-            <MessageResponse>{displayText}</MessageResponse>
+          <div className="max-h-48 overflow-y-auto rounded-md bg-muted/30 border border-muted/50 p-2">
+            <div className="text-muted-foreground/80 text-sm leading-relaxed">
+              {displayText}
+            </div>
           </div>
         </div>
       )}

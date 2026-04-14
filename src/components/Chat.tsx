@@ -25,14 +25,67 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
 import { TaskPanel } from '@/components/chat-task-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
+import { ToolOutput } from '@/components/ai-elements/tool';
+import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage } from 'ai';
-import { CopyIcon, RefreshCcwIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
+
+const TASK_TOOL_TYPES = new Set([
+  'tool-task_create',
+  'tool-task_update',
+  'tool-task_list',
+  'tool-task_get',
+  'tool-task_stop',
+  'tool-task_delete',
+]);
+
+function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null): { title: string; icon: React.ComponentType<{ className?: string }> } | undefined {
+  const toolType = type.replace('tool-', '');
+  const i = input ?? {};
+
+  switch (toolType) {
+    case 'write_file':
+      return { title: `Write: ${i.filePath ?? 'file'}`, icon: FileIcon };
+    case 'read':
+    case 'read_file':
+      return { title: `Read: ${i.filePath ?? 'file'}`, icon: FileIcon };
+    case 'edit':
+    case 'edit_file':
+      return { title: `Edit: ${i.filePath ?? 'file'}`, icon: EditIcon };
+    case 'glob':
+      return { title: `Glob: ${i.pattern ?? ''}`, icon: SearchIcon };
+    case 'grep':
+      return { title: `Grep: ${i.pattern ?? ''}`, icon: SearchIcon };
+    case 'bash':
+      return { title: `Bash: ${String(i.command ?? '').slice(0, 40)}...`, icon: TerminalIcon };
+    case 'search':
+    case 'exa_search':
+      return { title: `Search: ${i.query ?? ''}`, icon: SearchIcon };
+    case 'agent':
+      return { title: `${i.agentType ?? 'Agent'}: ${String(i.task ?? '').slice(0, 30)}...`, icon: UserIcon };
+    case 'task_create':
+      return { title: `Create: ${i.subject ?? ''}`, icon: PlusIcon };
+    case 'task_update':
+      return { title: `Update: ${i.subject ?? i.id ?? ''}`, icon: RefreshCwIcon };
+    case 'task_list':
+      return { title: i.status ? `Tasks (${i.status})` : 'Tasks', icon: ListIcon };
+    case 'task_get':
+      return { title: `Get: ${i.id ?? ''}`, icon: SearchIcon };
+    case 'task_stop':
+      return { title: `Stop: ${i.id ?? ''}`, icon: SquareIcon };
+    case 'task_delete':
+      return { title: `Delete: ${i.id ?? ''}`, icon: TrashIcon };
+    case 'research': 
+      return { title: `Research: ${i.task ?? ''}`, icon: BookIcon };
+    default:
+      return undefined;
+  }
+}
 
 export function getStoredConversationId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -67,7 +120,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   const transport = useMemo(() => createChatTransport(conversationId), [conversationId]);
 
-  const { messages, setMessages, sendMessage, status, stop, regenerate, error } = useChat({
+  const { messages, setMessages, sendMessage, status, stop, error } = useChat({
     id: conversationId,
     transport,
     onFinish: async ({ messages: finishedMessages }) => {
@@ -241,6 +294,11 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
                         if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
                           const toolPart = part as ToolUIPart;
+
+                          if (TASK_TOOL_TYPES.has(toolPart.type)) {
+                            return null;
+                          }
+
                           const toolCallId = (toolPart as unknown as { toolCallId?: string }).toolCallId;
 
                           const subParts = toolCallId
@@ -250,23 +308,30 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                             : [];
 
                           const isSubAgent = subParts.length > 0;
-                          const isStreaming = toolPart.state === 'input-available' || toolPart.state === 'input-streaming';
+                          const toolInfo = getToolTitleAndIcon(toolPart.type, toolPart.input as Record<string, unknown>);
+                          const toolTitle = toolInfo?.title;
+                          const ToolIcon = toolInfo?.icon || SearchIcon;
 
                           return (
-                            <Tool
+                            <Task
                               key={`${message.id}-${index}`}
                               defaultOpen={toolPart.state === 'output-error'}
                             >
-                              <ToolHeader type={toolPart.type} state={toolPart.state} isStreaming={isStreaming} />
-                              <ToolContent>
-                                <ToolInput input={toolPart.input} />
+                              <TaskTrigger title={toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')} >
+                                <div className="flex w-full cursor-pointer items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground">
+                                  <ToolIcon className="size-4" />
+                                  <p className="text-sm">{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</p>
+                                  <ChevronDownIcon className="size-4 transition-transform group-data-[state=open]:rotate-180" />
+                                </div>
+                              </TaskTrigger>
+                              <TaskContent>
                                 {isSubAgent ? (
                                   <SubAgentStream parts={subParts} />
                                 ) : (
                                   <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
                                 )}
-                              </ToolContent>
-                            </Tool>
+                              </TaskContent>
+                            </Task>
                           );
                         }
 
