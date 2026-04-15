@@ -21,7 +21,9 @@ import {
   PlusIcon,
   TrashIcon,
   XIcon,
+  PlugIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { nanoid } from "nanoid";
 import {
   useCallback,
@@ -115,7 +117,18 @@ export const ConversationSidebar = ({
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter />
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="MCP 服务器">
+              <Link href="/chat/settings/mcp">
+                <PlugIcon />
+                <span>MCP 服务器</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
 
       {/* Rail for hover-to-toggle */}
       <SidebarRail />

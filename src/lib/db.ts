@@ -105,5 +105,22 @@ function initializeSchema(database: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_memory_usage_memory
       ON memory_usage(memory_id, recalled_at DESC);
+
+    -- MCP server configurations
+    CREATE TABLE IF NOT EXISTS mcp_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      transport_type TEXT NOT NULL CHECK(transport_type IN ('sse', 'http', 'stdio')),
+      url TEXT,
+      headers TEXT,
+      command TEXT,
+      args TEXT,
+      env TEXT,
+      tools_include TEXT,
+      tools_exclude TEXT,
+      enabled INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 }

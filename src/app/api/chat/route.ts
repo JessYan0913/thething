@@ -35,6 +35,8 @@ import {
 } from '@/lib/skills';
 import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '@/lib/memory';
 import { extractMemoriesInBackground } from '@/lib/memory/extractor';
+import { getMcpServerConfigs } from '@/lib/mcp/mcp-config-store';
+import { createMcpRegistry, type McpRegistry } from '@/lib/mcp/registry';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -120,6 +122,7 @@ async function createChatAgent(
     teamId?: string;
     recalledMemoriesContent?: string;
   },
+  mcpRegistry?: McpRegistry,
 ) {
   const skillResolution = messages ? await resolveActiveSkillsAndBodies(messages) : null;
 
@@ -181,6 +184,18 @@ async function createChatAgent(
     ...createTaskToolsForConversation(getGlobalTaskStore(), conversationId),
   };
 
+  if (mcpRegistry) {
+    const mcpTools = mcpRegistry.getAllTools()
+    for (const [toolName, toolDef] of Object.entries(mcpTools)) {
+      const prefixedName = `mcp_${toolName}`
+      if (!(prefixedName in allTools)) {
+        allTools[prefixedName] = toolDef as Tool
+      }
+    }
+    const mcpSnapshot = mcpRegistry.snapshot()
+    console.log(`[MCP] ${mcpSnapshot.totalTools} MCP tools available: ${Object.keys(mcpTools).join(', ')}`)
+  }
+
   const tools = allTools;
 
   const prepareStep = createAgentPipeline<ChatToolsType>({
@@ -228,6 +243,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let mcpRegistry: McpRegistry | undefined
   try {
     const { message, conversationId }: {
       message: UIMessage;
@@ -296,6 +312,16 @@ export async function POST(req: Request) {
       }
     }
 
+    const mcpConfigs = getMcpServerConfigs()
+    if (mcpConfigs.length > 0) {
+      mcpRegistry = createMcpRegistry(mcpConfigs)
+      try {
+        await mcpRegistry.connectAll()
+      } catch (mcpError) {
+        console.error('[MCP] Connection error:', mcpError)
+      }
+    }
+
     const { agent, sessionState } = await createChatAgent(
       conversationId,
       {
@@ -309,6 +335,7 @@ export async function POST(req: Request) {
         userId,
         recalledMemoriesContent,
       },
+      mcpRegistry,
     );
 
     const abortController = new AbortController();
@@ -360,6 +387,10 @@ export async function POST(req: Request) {
               }
 
               runCompactInBackground(messagesToSave, conversationId);
+
+              if (mcpRegistry) {
+                await mcpRegistry.disconnectAll()
+              }
             } catch (err) {
               console.error('[Chat API] onFinish error:', err);
             }
@@ -376,6 +407,9 @@ export async function POST(req: Request) {
       headers: { 'X-Conversation-Id': conversationId },
     });
   } catch (error) {
+    if (mcpRegistry) {
+      try { await mcpRegistry.disconnectAll() } catch {}
+    }
     console.error('[Chat API] POST error:', error);
     return Response.json({ error: 'Failed to process chat request' }, { status: 500 });
   }
