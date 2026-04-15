@@ -33,6 +33,8 @@ import {
   loadFullSkill,
   recordSkillUsage,
 } from '@/lib/skills';
+import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '@/lib/memory';
+import { extractMemoriesInBackground } from '@/lib/memory/extractor';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -113,6 +115,11 @@ async function createChatAgent(
   },
   writerRef?: { current: SubAgentStreamWriter | null },
   messages?: UIMessage[],
+  memoryContext?: {
+    userId: string;
+    teamId?: string;
+    recalledMemoriesContent?: string;
+  },
 ) {
   const skillResolution = messages ? await resolveActiveSkillsAndBodies(messages) : null;
 
@@ -139,6 +146,7 @@ async function createChatAgent(
   const { prompt } = await buildSystemPrompt({
     includeProjectContext: true,
     conversationMeta: conversationMeta ?? undefined,
+    memoryContext: memoryContext ?? undefined,
   });
 
   const finalInstructions = skillResolution?.activeSkills && skillResolution.activeSkills.length > 0
@@ -266,6 +274,28 @@ export async function POST(req: Request) {
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
 
+    // ========== Memory Recall ==========
+    const userId = message.userId || 'default';
+    const userMemDir = getUserMemoryDir(userId);
+    await ensureMemoryDirExists(userMemDir);
+
+    const lastUserMessage = [...compactedMessages].reverse().find((m) => m.role === 'user');
+    const lastUserMessageText = lastUserMessage?.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join(' ') || '';
+
+    let recalledMemoriesContent = '';
+    if (lastUserMessageText) {
+      const relevantMemories = await findRelevantMemories(lastUserMessageText, userMemDir, {
+        maxResults: 5,
+      });
+
+      if (relevantMemories.length > 0) {
+        recalledMemoriesContent = await buildMemorySection(relevantMemories, userMemDir);
+      }
+    }
+
     const { agent, sessionState } = await createChatAgent(
       conversationId,
       {
@@ -275,6 +305,10 @@ export async function POST(req: Request) {
       },
       writerRef,
       compactedMessages,
+      {
+        userId,
+        recalledMemoriesContent,
+      },
     );
 
     const abortController = new AbortController();
@@ -311,6 +345,13 @@ export async function POST(req: Request) {
                 `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
               );
               await sessionState.costTracker.persistToDB();
+
+              // ========== Background Memory Extraction ==========
+              extractMemoriesInBackground(
+                completedMessages,
+                userId,
+                conversationId,
+              ).catch((err) => console.error('[Memory Extraction] Error:', err));
 
               if (isFirstMessage) {
                 const title = await generateConversationTitle(completedMessages);

@@ -29,20 +29,16 @@ export interface SystemPromptSection {
  * Options for building the complete system prompt.
  */
 export interface BuildSystemPromptOptions {
-  /** Override the entire system prompt (bypasses all other sections) */
   override?: string | null;
-
-  /** Custom instructions to append or replace */
   customInstructions?: string | null;
-
-  /** User preferences loaded from storage */
   userPreferences?: UserPreferences | null;
-
-  /** Whether to include project context (CLAUDE.md files) */
   includeProjectContext?: boolean;
-
-  /** Current conversation metadata for session guidance */
   conversationMeta?: ConversationMeta | null;
+  memoryContext?: {
+    userId: string;
+    teamId?: string;
+    recalledMemoriesContent?: string;
+  };
 }
 
 /**

@@ -22,6 +22,7 @@ import {
 } from "./sections/session";
 import { createProjectContextSection } from "./sections/project-context";
 import { createSkillsSection } from "./sections/skills";
+import { createMemorySection, createRecalledMemorySection } from "./sections/memory";
 
 // ============================================================================
 // Default Options
@@ -116,6 +117,22 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     create: () => createSkillsSection(),
     cacheStrategy: "session",
   },
+  {
+    name: "memory-guidelines",
+    create: (options) =>
+      options.memoryContext?.userId
+        ? createMemorySection(options.memoryContext.userId, options.memoryContext.teamId)
+        : { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 },
+    cacheStrategy: "session",
+  },
+  {
+    name: "recalled-memories",
+    create: (options) =>
+      options.memoryContext?.recalledMemoriesContent
+        ? createRecalledMemorySection(options.memoryContext.recalledMemoriesContent)
+        : { name: "recalled-memories", content: null, cacheStrategy: "dynamic" as const, priority: 46 },
+    cacheStrategy: "dynamic",
+  },
 ];
 
 /**
@@ -167,6 +184,8 @@ const PRIORITY = {
   RESPONSE_STYLE: 15,
   USER_PREFERENCES: 20,
   TOOLS: 30,
+  MEMORY_GUIDELINES: 45,
+  RECALLED_MEMORIES: 46,
   DYNAMIC_BOUNDARY: 50,
   PROJECT_CONTEXT: 60,
   SESSION_GUIDANCE: 100,

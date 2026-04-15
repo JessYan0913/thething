@@ -70,5 +70,40 @@ function initializeSchema(database: Database.Database): void {
     -- Index for efficient summary lookup
     CREATE INDEX IF NOT EXISTS idx_summaries_conversation 
       ON summaries(conversation_id, compacted_at DESC);
+
+    -- Memory metadata index table
+    CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY,
+      owner_type TEXT NOT NULL CHECK(owner_type IN ('user', 'team', 'project')),
+      owner_id TEXT NOT NULL,
+      memory_type TEXT NOT NULL CHECK(memory_type IN ('user', 'feedback', 'project', 'reference')),
+      name TEXT NOT NULL,
+      description TEXT,
+      file_path TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      recall_count INTEGER DEFAULT 0,
+      last_recalled_at TEXT
+    );
+
+    -- Memory usage tracking table
+    CREATE TABLE IF NOT EXISTS memory_usage (
+      id TEXT PRIMARY KEY,
+      memory_id TEXT NOT NULL,
+      conversation_id TEXT,
+      recalled_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    -- Indexes for memory queries
+    CREATE INDEX IF NOT EXISTS idx_memories_owner
+      ON memories(owner_type, owner_id);
+
+    CREATE INDEX IF NOT EXISTS idx_memories_type
+      ON memories(memory_type, updated_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_memory_usage_memory
+      ON memory_usage(memory_id, recalled_at DESC);
   `);
 }
