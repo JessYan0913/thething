@@ -65,7 +65,7 @@ async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
     Array.from(activeSkillNames).map(async (name) => {
       const metadata = skillsMetadata.find((s) => s.name === name);
       if (!metadata) return null;
-      return loadFullSkill(metadata);
+      return loadFullSkill(metadata.sourcePath);
     })
   );
 
@@ -245,9 +245,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let mcpRegistry: McpRegistry | undefined
   try {
-    const { message, conversationId }: {
+    const { message, conversationId, userId: messageUserId }: {
       message: UIMessage;
       conversationId: string;
+      userId?: string;
     } = await req.json();
 
     if (!conversationId) {
@@ -291,7 +292,7 @@ export async function POST(req: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
 
     // ========== Memory Recall ==========
-    const userId = message.userId || 'default';
+    const userId = messageUserId || 'default';
     const userMemDir = getUserMemoryDir(userId);
     await ensureMemoryDirExists(userMemDir);
 

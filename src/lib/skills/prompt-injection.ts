@@ -1,10 +1,5 @@
 import type { Skill, SkillMetadata } from './types';
 
-interface HasWhenToUse {
-  name: string;
-  whenToUse?: string;
-}
-
 export function injectSkillsIntoPrompt(systemPrompt: string, skills: Skill[], activeSkillNames: Set<string>): string {
   if (skills.length === 0 || activeSkillNames.size === 0) {
     return systemPrompt;
@@ -73,7 +68,7 @@ ${skill.body}
 </技能指令>`;
 }
 
-export function determineActiveSkills(skills: HasWhenToUse[], userMessage: string): Set<string> {
+export function determineActiveSkills(skills: SkillMetadata[], userMessage: string): Set<string> {
   const active = new Set<string>();
   const message = userMessage.toLowerCase();
 
