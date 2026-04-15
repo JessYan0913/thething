@@ -1,5 +1,11 @@
 import { createMCPClient, type MCPClient } from '@ai-sdk/mcp';
+import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { ToolSet } from 'ai';
+
+type McpTransport =
+  | { type: 'sse'; url: string; headers?: Record<string, string> }
+  | { type: 'http'; url: string; headers?: Record<string, string> }
+  | StdioClientTransport;
 
 export type McpTransportType = 'sse' | 'http' | 'stdio';
 
@@ -77,7 +83,7 @@ export class McpRegistry {
           : (config.transport as { type: 'sse' | 'http'; url: string; headers?: Record<string, string> });
 
       const client = await createMCPClient({
-        transport: transport as any,
+        transport: transport as McpTransport,
         capabilities: config.elicitation?.enabled ? { elicitation: {} } : undefined,
       });
 
@@ -174,7 +180,7 @@ export class McpRegistry {
     command: string;
     args?: string[];
     env?: Record<string, string>;
-  }): Promise<unknown> {
+  }): Promise<StdioClientTransport> {
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
     return new StdioClientTransport({
       command: transport.command,

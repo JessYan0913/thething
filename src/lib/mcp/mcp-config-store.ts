@@ -19,37 +19,39 @@ interface McpServerRow {
 }
 
 function rowToConfig(row: McpServerRow): McpServerConfig {
+  let transport: McpServerConfig['transport']
+
+  if (row.transport_type === 'sse') {
+    transport = {
+      type: 'sse',
+      url: row.url ?? '',
+      ...(row.headers ? { headers: JSON.parse(row.headers) as Record<string, string> } : {}),
+    }
+  } else if (row.transport_type === 'http') {
+    transport = {
+      type: 'http',
+      url: row.url ?? '',
+      ...(row.headers ? { headers: JSON.parse(row.headers) as Record<string, string> } : {}),
+    }
+  } else {
+    transport = {
+      type: 'stdio',
+      command: row.command ?? '',
+      ...(row.args ? { args: JSON.parse(row.args) as string[] } : {}),
+      ...(row.env ? { env: JSON.parse(row.env) as Record<string, string> } : {}),
+    }
+  }
+
   const config: McpServerConfig = {
     name: row.name,
     enabled: row.enabled === 1,
-    transport: undefined as any,
-  }
-
-  if (row.transport_type === 'sse') {
-    config.transport = {
-      type: 'sse',
-      url: row.url ?? '',
-      ...(row.headers ? { headers: JSON.parse(row.headers) } : {}),
-    }
-  } else if (row.transport_type === 'http') {
-    config.transport = {
-      type: 'http',
-      url: row.url ?? '',
-      ...(row.headers ? { headers: JSON.parse(row.headers) } : {}),
-    }
-  } else if (row.transport_type === 'stdio') {
-    config.transport = {
-      type: 'stdio',
-      command: row.command ?? '',
-      ...(row.args ? { args: JSON.parse(row.args) } : {}),
-      ...(row.env ? { env: JSON.parse(row.env) } : {}),
-    }
+    transport,
   }
 
   if (row.tools_include || row.tools_exclude) {
     config.tools = {
-      ...(row.tools_include ? { include: JSON.parse(row.tools_include) } : {}),
-      ...(row.tools_exclude ? { exclude: JSON.parse(row.tools_exclude) } : {}),
+      ...(row.tools_include ? { include: JSON.parse(row.tools_include) as string[] } : {}),
+      ...(row.tools_exclude ? { exclude: JSON.parse(row.tools_exclude) as string[] } : {}),
     }
   }
 
