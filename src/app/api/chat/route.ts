@@ -120,7 +120,7 @@ function convertConnectorToolToAItool(
     }
 
     if (prop.default !== undefined) {
-      zodType = zodType.default(prop.default as any)
+      zodType = zodType.default(prop.default as Parameters<typeof zodType.default>[0])
     }
 
     if (prop.enum) {
@@ -132,7 +132,7 @@ function convertConnectorToolToAItool(
 
   const required = toolDef.input_schema.required || []
   const inputSchema = required.length > 0
-    ? z.object(properties).required({ [required[0]]: true } as any)
+    ? z.object(properties).required(Object.fromEntries(required.map((k) => [k, true])) as Parameters<ReturnType<typeof z.object>['required']>[0])
     : z.object(properties)
 
   return aiTool({

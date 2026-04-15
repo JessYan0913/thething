@@ -39,7 +39,7 @@ export class HttpExecutor {
       const auth = await authManager.getAuth(manifest.auth, config.credentials)
 
       // 2. 如果是自定义认证（微信/飞书），需要获取 token
-      let headers: Record<string, string> = {
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(auth.headers || {}),
       }

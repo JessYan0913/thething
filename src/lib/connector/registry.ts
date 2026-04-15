@@ -10,6 +10,8 @@ import type {
   ToolCallRequest,
   ToolCallResponse,
   ToolDefinition,
+  HttpExecutorConfig,
+  MockExecutorConfig,
 } from './types'
 import { TokenManager } from './token-manager'
 
@@ -183,7 +185,7 @@ export class ConnectorRegistry {
             connector_id,
             manifest,
             config,
-            toolDef.executor_config as any,
+            toolDef.executor_config as HttpExecutorConfig,
             tool_input
           )
           if (!execResult.success) {
@@ -205,7 +207,7 @@ export class ConnectorRegistry {
           const { MockExecutor } = await import('./executors/mock')
           const executor = new MockExecutor()
           const execResult = await executor.execute(
-            toolDef.executor_config as any,
+            toolDef.executor_config as MockExecutorConfig,
             tool_input
           )
           if (!execResult.success) {

@@ -4,7 +4,7 @@
 
 import { tool as aiTool } from 'ai'
 import { z } from 'zod'
-import type { ConnectorManifest, ToolDefinition } from './types'
+import type { ToolDefinition } from './types'
 import { ConnectorRegistry } from './registry'
 
 export interface ConnectorToolOptions {
@@ -56,7 +56,8 @@ export function convertConnectorToolToAItool(
 
     // 处理默认值
     if (prop.default !== undefined) {
-      zodType = zodType.default(prop.default as any)
+      // Dynamic schema building from JSON Schema — runtime type is guaranteed by the schema definition
+      zodType = zodType.default(prop.default as Parameters<typeof zodType.default>[0])
     }
 
     // 处理枚举
@@ -72,10 +73,11 @@ export function convertConnectorToolToAItool(
   // 创建 AI SDK tool
   return aiTool({
     description: `[Connector: ${connectorId}] ${toolDef.description}`,
-    inputSchema: required.length > 0 
-      ? inputSchema.required({ [required[0]]: true } as any)
+    inputSchema: required.length > 0
+      ? inputSchema.required(Object.fromEntries(required.map((k) => [k, true])) as Parameters<typeof inputSchema.required>[0])
       : inputSchema,
     execute: async (input, options) => {
+      void options
       const result = await deps.registry.callTool({
         connector_id: connectorId,
         tool_name: toolDef.name,

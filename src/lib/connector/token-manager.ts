@@ -2,7 +2,7 @@
 // Token 管理器 - 处理需要刷新的 Token（如微信/飞书的 2h token）
 // ============================================================
 
-import type { AuthConfig, ConnectorConfig, ConnectorManifest } from './types';
+import type { ConnectorManifest } from './types';
 
 interface CachedToken {
   token: string
