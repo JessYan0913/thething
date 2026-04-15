@@ -1,0 +1,180 @@
+{
+  "id": "test-service",
+  "name": "测试服务",
+  "version": "1.0.0",
+  "description": "用于测试 Connector Gateway 互通的模拟服务，支持 Echo、延迟响应、错误模拟等功能",
+
+  "inbound": {
+    "enabled": true,
+    "webhook_path": "/api/connector/webhooks/test-service",
+    "handler": "test-service"
+  },
+
+  "auth": {
+    "type": "api_key",
+    "config": {
+      "header": "X-Test-API-Key"
+    }
+  },
+
+  "base_url": "https://httpbin.org",
+
+  "tools": [
+    {
+      "name": "test_echo",
+      "description": "Echo 服务 - 将发送的内容原样返回，并附加时间戳。用于测试 Connector 链路是否通畅。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "要回显的消息内容"
+          },
+          "include_metadata": {
+            "type": "boolean",
+            "description": "是否返回元数据（时间戳、请求ID等）",
+            "default": true
+          }
+        },
+        "required": ["message"]
+      },
+      "retryable": true,
+      "timeout_ms": 5000,
+      "executor": "http",
+      "executor_config": {
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "headers": {
+          "X-Echo-Message": "{{input.message}}",
+          "X-Request-Time": "{{timestamp}}"
+        },
+        "body": {
+          "echo": "{{input.message}}",
+          "metadata": {
+            "include": "{{input.include_metadata}}",
+            "request_id": "{{uuid}}",
+            "timestamp": "{{iso_timestamp}}"
+          }
+        }
+      }
+    },
+    {
+      "name": "test_delay",
+      "description": "延迟响应服务 - 模拟慢速接口，测试超时处理和重试机制。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "delay_seconds": {
+            "type": "integer",
+            "description": "延迟秒数（1-10秒）",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 2
+          },
+          "message": {
+            "type": "string",
+            "description": "延迟后返回的消息",
+            "default": "Delayed response"
+          }
+        },
+        "required": ["delay_seconds"]
+      },
+      "retryable": true,
+      "timeout_ms": 15000,
+      "executor": "http",
+      "executor_config": {
+        "method": "GET",
+        "url": "https://httpbin.org/delay/{{input.delay_seconds}}"
+      }
+    },
+    {
+      "name": "test_status",
+      "description": "状态码测试 - 返回指定的 HTTP 状态码，用于测试错误处理和重试逻辑。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "status_code": {
+            "type": "integer",
+            "description": "HTTP 状态码（200, 400, 401, 403, 404, 500, 502, 503）",
+            "enum": [200, 400, 401, 403, 404, 500, 502, 503],
+            "default": 200
+          }
+        },
+        "required": ["status_code"]
+      },
+      "retryable": true,
+      "timeout_ms": 5000,
+      "executor": "http",
+      "executor_config": {
+        "method": "GET",
+        "url": "https://httpbin.org/status/{{input.status_code}}"
+      }
+    },
+    {
+      "name": "test_headers",
+      "description": "Headers 回显 - 返回所有接收到的请求头，用于调试认证和请求格式。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "custom_header": {
+            "type": "string",
+            "description": "自定义 Header 值，会在响应中回显",
+            "default": "test-value"
+          }
+        },
+        "required": []
+      },
+      "retryable": true,
+      "timeout_ms": 5000,
+      "executor": "http",
+      "executor_config": {
+        "method": "GET",
+        "url": "https://httpbin.org/headers",
+        "headers": {
+          "X-Custom-Header": "{{input.custom_header}}"
+        }
+      }
+    },
+    {
+      "name": "test_ip_info",
+      "description": "IP 信息查询 - 返回请求来源的 IP 地址信息。",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "retryable": true,
+      "timeout_ms": 5000,
+      "executor": "http",
+      "executor_config": {
+        "method": "GET",
+        "url": "https://httpbin.org/ip"
+      }
+    },
+    {
+      "name": "test_user_agent",
+      "description": "User-Agent 测试 - 返回请求的 User-Agent 字符串。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ua_string": {
+            "type": "string",
+            "description": "自定义 User-Agent",
+            "default": "Connector-Gateway-Test/1.0"
+          }
+        },
+        "required": []
+      },
+      "retryable": true,
+      "timeout_ms": 5000,
+      "executor": "http",
+      "executor_config": {
+        "method": "GET",
+        "url": "https://httpbin.org/user-agent",
+        "headers": {
+          "User-Agent": "{{input.ua_string}}"
+        }
+      }
+    }
+  ]
+}

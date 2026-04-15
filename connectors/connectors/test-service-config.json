@@ -1,0 +1,11 @@
+{
+  "connector_id": "test-service",
+  "enabled": true,
+  "credentials": {
+    "api_key": "test-key-12345"
+  },
+  "custom_settings": {
+    "external_url": "https://httpbin.org",
+    "default_timeout_ms": 5000
+  }
+}

@@ -37,6 +37,12 @@ import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemor
 import { extractMemoriesInBackground } from '@/lib/memory/extractor';
 import { getMcpServerConfigs } from '@/lib/mcp/mcp-config-store';
 import { createMcpRegistry, type McpRegistry } from '@/lib/mcp/registry';
+import { tool as aiTool } from 'ai';
+import { z } from 'zod';
+import path from 'path';
+import fs from 'fs';
+import { ConnectorRegistry } from '@/lib/connector/registry';
+import type { ToolDefinition } from '@/lib/connector/types';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -44,6 +50,144 @@ const dashscope = createOpenAICompatible({
   baseURL: process.env.DASHSCOPE_BASE_URL!,
   includeUsage: true,
 });
+
+// ============================================================
+// Connector 工具加载
+// ============================================================
+
+const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
+
+async function getConnectorCredentials(connectorId: string): Promise<Record<string, string>> {
+  const configPath = path.join(
+    CONNECTOR_CONFIG_DIR,
+    'connectors',
+    `${connectorId}-config.json`
+  )
+  if (!fs.existsSync(configPath)) return {}
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+  return config.credentials || {}
+}
+
+// 单例 Registry
+let connectorRegistry: ConnectorRegistry | null = null
+
+async function getConnectorRegistry(): Promise<ConnectorRegistry> {
+  if (!connectorRegistry) {
+    connectorRegistry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR, getConnectorCredentials)
+    await connectorRegistry.initialize()
+  }
+  return connectorRegistry
+}
+
+/**
+ * 将 Connector ToolDefinition 转换为 AI SDK 的 Tool 格式
+ */
+function convertConnectorToolToAItool(
+  connectorId: string,
+  toolDef: ToolDefinition
+): Tool {
+  // 构建 Zod schema
+  const properties: Record<string, z.ZodTypeAny> = {}
+
+  for (const [key, prop] of Object.entries(toolDef.input_schema.properties)) {
+    let zodType: z.ZodTypeAny
+
+    switch (prop.type) {
+      case 'string':
+        zodType = z.string()
+        break
+      case 'integer':
+      case 'number':
+        zodType = z.number()
+        break
+      case 'boolean':
+        zodType = z.boolean()
+        break
+      case 'array':
+        if (prop.items?.type === 'string') {
+          zodType = z.array(z.string())
+        } else if (prop.items?.type === 'integer' || prop.items?.type === 'number') {
+          zodType = z.array(z.number())
+        } else {
+          zodType = z.array(z.unknown())
+        }
+        break
+      case 'object':
+        zodType = z.record(z.string(), z.unknown())
+        break
+      default:
+        zodType = z.unknown()
+    }
+
+    if (prop.default !== undefined) {
+      zodType = zodType.default(prop.default as any)
+    }
+
+    if (prop.enum) {
+      zodType = z.enum(prop.enum as [string, ...string[]])
+    }
+
+    properties[key] = zodType
+  }
+
+  const required = toolDef.input_schema.required || []
+  const inputSchema = required.length > 0
+    ? z.object(properties).required({ [required[0]]: true } as any)
+    : z.object(properties)
+
+  return aiTool({
+    description: `[${connectorId}] ${toolDef.description}`,
+    inputSchema,
+    execute: async (input) => {
+      const reg = await getConnectorRegistry()
+      const result = await reg.callTool({
+        connector_id: connectorId,
+        tool_name: toolDef.name,
+        tool_input: input as Record<string, unknown>,
+      })
+
+      if (!result.success) {
+        throw new Error(`Connector tool error: ${result.error}`)
+      }
+
+      return result.result
+    },
+  })
+}
+
+/**
+ * 加载所有已启用的 Connector 工具
+ */
+async function loadAllConnectorTools(): Promise<Record<string, Tool>> {
+  const tools: Record<string, Tool> = {}
+
+  try {
+    const reg = await getConnectorRegistry()
+    const connectorIds = reg.getConnectorIds()
+
+    for (const connectorId of connectorIds) {
+      const manifest = reg.getManifest(connectorId)
+      const config = reg.getConfig(connectorId)
+
+      if (!manifest || !config || !config.enabled) {
+        continue
+      }
+
+      for (const toolDef of manifest.tools) {
+        const toolName = `${connectorId}_${toolDef.name}`
+        tools[toolName] = convertConnectorToolToAItool(connectorId, toolDef)
+      }
+    }
+
+    if (Object.keys(tools).length > 0) {
+      console.log(`[Connector Tools] Loaded ${Object.keys(tools).length} tools from ${connectorIds.length} connectors`)
+    }
+  } catch (error) {
+    console.error('[Connector Tools] Failed to load connector tools:', error)
+  }
+
+  return tools
+}
 
 export const maxDuration = 30;
 
@@ -194,6 +338,14 @@ async function createChatAgent(
     }
     const mcpSnapshot = mcpRegistry.snapshot()
     console.log(`[MCP] ${mcpSnapshot.totalTools} MCP tools available: ${Object.keys(mcpTools).join(', ')}`)
+  }
+
+  // 加载 Connector 工具
+  const connectorTools = await loadAllConnectorTools()
+  for (const [toolName, toolDef] of Object.entries(connectorTools)) {
+    if (!(toolName in allTools)) {
+      allTools[toolName] = toolDef
+    }
   }
 
   const tools = allTools;
