@@ -61,7 +61,7 @@ async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
     Array.from(activeSkillNames).map(async (name) => {
       const metadata = skillsMetadata.find((s) => s.name === name);
       if (!metadata) return null;
-      return loadFullSkill(metadata.sourcePath);
+      return loadFullSkill(metadata);
     })
   );
 
