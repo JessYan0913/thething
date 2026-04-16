@@ -12,8 +12,13 @@ import type {
   ToolDefinition,
   HttpExecutorConfig,
   MockExecutorConfig,
+  SqlExecutorConfig,
+  ScriptExecutorConfig,
 } from './types'
 import { TokenManager } from './token-manager'
+import { CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
+import { AuditLogger } from './audit-logger'
+import { withRetry } from './retry'
 
 // Connector 注册表清单
 interface ConnectorRegistryData {
@@ -26,16 +31,35 @@ interface ConnectorRegistryData {
   }[]
 }
 
+export interface ConnectorRegistryOptions {
+  getDbPath?: (connectionId: string) => Promise<string>
+  enableRetry?: boolean
+  enableCircuitBreaker?: boolean
+}
+
 export class ConnectorRegistry {
   private manifests = new Map<string, ConnectorManifest>()
   private configs = new Map<string, ConnectorConfig>()
   private tokenManager: TokenManager
+  private circuitBreakers: CircuitBreakerRegistry
+  private auditLogger: AuditLogger
+  private options: Required<ConnectorRegistryOptions>
+
+  private sqlExecutorCache: Map<string, import('./executors/sql').SqlExecutor> = new Map()
 
   constructor(
     private configDir: string,
-    private getCredentials: (connectorId: string) => Promise<Record<string, string>>
+    private getCredentials: (connectorId: string) => Promise<Record<string, string>>,
+    options?: ConnectorRegistryOptions
   ) {
     this.tokenManager = new TokenManager(getCredentials)
+    this.circuitBreakers = new CircuitBreakerRegistry()
+    this.auditLogger = new AuditLogger()
+    this.options = {
+      getDbPath: options?.getDbPath ?? (async () => { throw new Error('getDbPath not configured') }),
+      enableRetry: options?.enableRetry ?? true,
+      enableCircuitBreaker: options?.enableCircuitBreaker ?? true,
+    }
   }
 
   /**
@@ -170,8 +194,78 @@ export class ConnectorRegistry {
       }
     }
 
+    // 3. 检查熔断器
+    if (this.options.enableCircuitBreaker) {
+      const breaker = this.circuitBreakers.get(connector_id)
+      try {
+        return await breaker.execute(async () => {
+          return this.executeWithRetry(toolDef, connector_id, manifest, config, tool_input, startTime)
+        })
+      } catch (error) {
+        if (error instanceof CircuitBreakerError) {
+          this.auditLogger.logCircuitBreakerTrip(connector_id, error.message)
+          return {
+            success: false,
+            error: `Circuit breaker open for connector ${connector_id}`,
+            metadata: {
+              duration_ms: Date.now() - startTime,
+              connector_id,
+              tool_name,
+            },
+          }
+        }
+        throw error
+      }
+    }
+
+    return this.executeWithRetry(toolDef, connector_id, manifest, config, tool_input, startTime)
+  }
+
+  private async executeWithRetry(
+    toolDef: ToolDefinition,
+    connectorId: string,
+    manifest: ConnectorManifest,
+    config: ConnectorConfig,
+    toolInput: Record<string, unknown>,
+    startTime: number
+  ): Promise<ToolCallResponse> {
+    const execute = async () => {
+      return this.executeTool(toolDef, connectorId, manifest, config, toolInput, startTime)
+    }
+
+    if (this.options.enableRetry && toolDef.retryable) {
+      try {
+        return await withRetry(execute, {
+          maxRetries: 3,
+          baseDelayMs: 1000,
+          maxDelayMs: 10000,
+          retryableErrors: ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'HTTP 5', 'timeout'],
+        }) as ToolCallResponse
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          metadata: {
+            duration_ms: Date.now() - startTime,
+            connector_id: connectorId,
+            tool_name: toolDef.name,
+          },
+        }
+      }
+    }
+
+    return execute()
+  }
+
+  private async executeTool(
+    toolDef: ToolDefinition,
+    connectorId: string,
+    manifest: ConnectorManifest,
+    config: ConnectorConfig,
+    toolInput: Record<string, unknown>,
+    startTime: number
+  ): Promise<ToolCallResponse> {
     try {
-      // 3. 根据 executor 类型执行
       let result: unknown
 
       switch (toolDef.executor) {
@@ -182,22 +276,14 @@ export class ConnectorRegistry {
             getCredentials: this.getCredentials,
           })
           const execResult = await executor.execute(
-            connector_id,
+            connectorId,
             manifest,
             config,
             toolDef.executor_config as HttpExecutorConfig,
-            tool_input
+            toolInput
           )
           if (!execResult.success) {
-            return {
-              success: false,
-              error: execResult.error,
-              metadata: {
-                duration_ms: Date.now() - startTime,
-                connector_id,
-                tool_name,
-              },
-            }
+            throw new Error(execResult.error ?? 'HTTP execution failed')
           }
           result = execResult.data
           break
@@ -208,56 +294,131 @@ export class ConnectorRegistry {
           const executor = new MockExecutor()
           const execResult = await executor.execute(
             toolDef.executor_config as MockExecutorConfig,
-            tool_input
+            toolInput
           )
           if (!execResult.success) {
-            return {
-              success: false,
-              error: execResult.error,
-              metadata: {
-                duration_ms: Date.now() - startTime,
-                connector_id,
-                tool_name,
-              },
-            }
+            throw new Error(execResult.error ?? 'Mock execution failed')
           }
           result = execResult.data
           break
         }
 
-        default:
-          return {
-            success: false,
-            error: `Unsupported executor type: ${toolDef.executor}`,
+        case 'sql': {
+          const { SqlExecutor } = await import('./executors/sql')
+          let executor = this.sqlExecutorCache.get(connectorId)
+          if (!executor) {
+            executor = new SqlExecutor({
+              getDbPath: this.options.getDbPath,
+            })
+            this.sqlExecutorCache.set(connectorId, executor)
           }
+          const execResult = await executor.execute(
+            toolDef.executor_config as SqlExecutorConfig,
+            toolInput
+          )
+          if (!execResult.success) {
+            throw new Error(execResult.error ?? 'SQL execution failed')
+          }
+          result = execResult.data
+          break
+        }
+
+        case 'script': {
+          result = await this.executeScript(
+            toolDef.executor_config as ScriptExecutorConfig,
+            toolInput,
+            connectorId
+          )
+          break
+        }
+
+        default:
+          throw new Error(`Unsupported executor type: ${toolDef.executor}`)
       }
+
+      const durationMs = Date.now() - startTime
+      this.auditLogger.logToolCall(connectorId, toolDef.name, 'success', 'Execution completed', durationMs)
 
       return {
         success: true,
         result,
         metadata: {
-          duration_ms: Date.now() - startTime,
-          connector_id,
-          tool_name,
+          duration_ms: durationMs,
+          connector_id: connectorId,
+          tool_name: toolDef.name,
         },
       }
     } catch (error) {
+      const durationMs = Date.now() - startTime
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.auditLogger.logToolCall(connectorId, toolDef.name, 'failure', errorMsg, durationMs)
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMsg,
         metadata: {
-          duration_ms: Date.now() - startTime,
-          connector_id,
-          tool_name,
+          duration_ms: durationMs,
+          connector_id: connectorId,
+          tool_name: toolDef.name,
         },
       }
     }
   }
 
+  private async executeScript(
+    config: ScriptExecutorConfig,
+    input: Record<string, unknown>,
+    connectorId: string
+  ): Promise<unknown> {
+    // 在沙箱环境中执行脚本（简化版，生产环境应使用更安全的沙箱）
+    const sandbox = {
+      input,
+      connectorId,
+      console: { log: () => {} },
+      result: undefined as unknown,
+    }
+
+    // 使用 Function 构造器执行（注意：生产环境应使用 vm2 或类似沙箱）
+    const wrappedScript = `
+      "use strict";
+      const { input, connectorId } = this;
+      ${config.script}
+    `
+
+    const fn = new Function(wrappedScript)
+    const result = fn.call(sandbox)
+
+    return sandbox.result ?? result
+  }
+
   /**
-   * 获取 Token Manager（用于 Webhook 入站处理）
+   * 获取 Token Manager
    */
   getTokenManager(): TokenManager {
     return this.tokenManager
+  }
+
+  /**
+   * 获取熔断器注册表
+   */
+  getCircuitBreakers(): CircuitBreakerRegistry {
+    return this.circuitBreakers
+  }
+
+  /**
+   * 获取审计日志
+   */
+  getAuditLogger(): AuditLogger {
+    return this.auditLogger
+  }
+
+  /**
+   * 清理资源
+   */
+  dispose(): void {
+    for (const executor of this.sqlExecutorCache.values()) {
+      executor.closeAll()
+    }
+    this.sqlExecutorCache.clear()
   }
 }
