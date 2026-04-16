@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const connect = searchParams.get('connect') === 'true'
 
     if (name) {
-      const config = getMcpServerConfig(name)
+      const config = await getMcpServerConfig(name)
       if (!config) {
         return NextResponse.json({ error: 'Server not found' }, { status: 404 })
       }
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ config })
     }
 
-    const configs = getMcpServerConfigs()
+    const configs = await getMcpServerConfigs()
     return NextResponse.json({ servers: configs })
   } catch (error) {
     console.error('[MCP API] GET error:', error)
@@ -59,12 +59,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'name and transport.type are required' }, { status: 400 })
     }
 
-    const existing = getMcpServerConfig(body.name)
+    const existing = await getMcpServerConfig(body.name)
     if (existing) {
       return NextResponse.json({ error: 'Server already exists' }, { status: 409 })
     }
 
-    const config = addMcpServerConfig(body)
+    const config = await addMcpServerConfig(body)
     return NextResponse.json({ config }, { status: 201 })
   } catch (error) {
     console.error('[MCP API] POST error:', error)
@@ -82,7 +82,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json() as Partial<McpServerConfig>
-    const config = updateMcpServerConfig(name, body)
+    const config = await updateMcpServerConfig(name, body)
 
     if (!config) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 })
@@ -104,7 +104,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'name query parameter is required' }, { status: 400 })
     }
 
-    const deleted = deleteMcpServerConfig(name)
+    const deleted = await deleteMcpServerConfig(name)
     if (!deleted) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 })
     }
