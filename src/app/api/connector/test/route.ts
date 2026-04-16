@@ -5,28 +5,15 @@
 
 import { NextResponse } from 'next/server'
 import path from 'path'
-import fs from 'fs'
 import { ConnectorRegistry } from '@/lib/connector/registry'
-import type { ToolCallRequest } from '@/lib/connector/types'
 
 const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
-
-async function getCredentials(connectorId: string): Promise<Record<string, string>> {
-  const configPath = path.join(
-    CONNECTOR_CONFIG_DIR,
-    'connectors',
-    `${connectorId}-config.json`
-  )
-  if (!fs.existsSync(configPath)) return {}
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-  return config.credentials || {}
-}
 
 let registry: ConnectorRegistry | null = null
 
 async function getRegistry(): Promise<ConnectorRegistry> {
   if (!registry) {
-    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR, getCredentials)
+    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
     await registry.initialize()
   }
   return registry
@@ -44,40 +31,28 @@ export async function GET() {
     data: { connectors: connectorIds },
   })
 
-  // 2. 测试 test_service_echo（Mock Executor）
+  // 2. 测试 test_echo（HTTP Executor 到 httpbin.org）
   const echoResult = await reg.callTool({
     connector_id: 'test-service',
-    tool_name: 'test_service_echo',
-    tool_input: { content: 'Hello Connector Gateway!', delay_ms: 100 },
+    tool_name: 'test_echo',
+    tool_input: { message: 'Hello Connector Gateway!' },
   })
   results.push({
-    step: '2-test-echo-mock',
+    step: '2-test-echo-http',
     success: echoResult.success,
     data: echoResult,
   })
 
-  // 3. 测试 test_service_ping（HTTP Executor 到 httpbin.org）
-  const pingResult = await reg.callTool({
+  // 3. 测试 test_ip_info
+  const ipResult = await reg.callTool({
     connector_id: 'test-service',
-    tool_name: 'test_service_ping',
-    tool_input: { message: 'test ping' },
+    tool_name: 'test_ip_info',
+    tool_input: {},
   })
   results.push({
-    step: '3-test-ping-http',
-    success: pingResult.success,
-    data: pingResult,
-  })
-
-  // 4. 测试 test_service_httpbin_get
-  const getResult = await reg.callTool({
-    connector_id: 'test-service',
-    tool_name: 'test_service_httpbin_get',
-    tool_input: { status_code: 200 },
-  })
-  results.push({
-    step: '4-test-httpbin-get',
-    success: getResult.success,
-    data: getResult,
+    step: '3-test-ip-info',
+    success: ipResult.success,
+    data: ipResult,
   })
 
   // 汇总

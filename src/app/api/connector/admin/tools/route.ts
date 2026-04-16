@@ -5,27 +5,15 @@
 
 import { NextResponse } from 'next/server'
 import path from 'path'
-import fs from 'fs'
 import { ConnectorRegistry } from '@/lib/connector/registry'
 
 const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
-
-async function getCredentials(connectorId: string): Promise<Record<string, string>> {
-  const configPath = path.join(
-    CONNECTOR_CONFIG_DIR,
-    'connectors',
-    `${connectorId}-config.json`
-  )
-  if (!fs.existsSync(configPath)) return {}
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-  return config.credentials || {}
-}
 
 let registry: ConnectorRegistry | null = null
 
 async function getRegistry(): Promise<ConnectorRegistry> {
   if (!registry) {
-    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR, getCredentials)
+    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
     await registry.initialize()
   }
   return registry
@@ -48,17 +36,16 @@ export async function GET() {
     }> = []
 
     for (const connectorId of connectorIds) {
-      const manifest = reg.getManifest(connectorId)
-      const config = reg.getConfig(connectorId)
+      const connector = reg.getDefinition(connectorId)
 
-      if (!manifest || !config || !config.enabled) {
+      if (!connector || !connector.enabled) {
         continue
       }
 
-      for (const tool of manifest.tools) {
+      for (const tool of connector.tools) {
         tools.push({
           connector_id: connectorId,
-          connector_name: manifest.name,
+          connector_name: connector.name,
           tool_name: tool.name,
           tool_description: tool.description,
           input_schema: tool.input_schema,
@@ -75,13 +62,12 @@ export async function GET() {
         tools,
         total: tools.length,
         connectors: connectorIds.map(id => {
-          const manifest = reg.getManifest(id)!
-          const config = reg.getConfig(id)!
+          const connector = reg.getDefinition(id)!
           return {
             id,
-            name: manifest.name,
-            enabled: config.enabled,
-            tool_count: manifest.tools.length,
+            name: connector.name,
+            enabled: connector.enabled,
+            tool_count: connector.tools.length,
           }
         }),
       },

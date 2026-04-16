@@ -5,8 +5,7 @@
 import type {
   HttpExecutorConfig,
   ExecutorResult,
-  ConnectorManifest,
-  ConnectorConfig,
+  ConnectorDefinition,
 } from '../types';
 import { TokenManager } from '../token-manager';
 import { authManager } from '../auth/manager';
@@ -26,17 +25,18 @@ export class HttpExecutor {
    */
   async execute(
     connectorId: string,
-    manifest: ConnectorManifest,
-    config: ConnectorConfig,
+    connector: ConnectorDefinition,
+    config: ConnectorDefinition,
     toolConfig: HttpExecutorConfig,
     input: Record<string, unknown>
   ): Promise<ExecutorResult> {
     const startTime = Date.now()
-    const timeoutMs = manifest.tools.find(t => t.executor === 'http')?.timeout_ms || 10000
+    const timeoutMs = connector.tools.find(t => t.executor === 'http')?.timeout_ms || 10000
+    const credentials = config.credentials || {}
 
     try {
       // 1. 获取认证信息
-      const auth = await authManager.getAuth(manifest.auth, config.credentials)
+      const auth = await authManager.getAuth(connector.auth, credentials)
 
       // 2. 如果是自定义认证（微信/飞书），需要获取 token
       const headers: Record<string, string> = {
@@ -44,8 +44,8 @@ export class HttpExecutor {
         ...(auth.headers || {}),
       }
 
-      if (manifest.auth.type === 'custom' && manifest.auth.config.token_url) {
-        const token = await this.deps.tokenManager.getToken(connectorId, manifest)
+      if (connector.auth.type === 'custom' && connector.auth.config.token_url) {
+        const token = await this.deps.tokenManager.getToken(connectorId, connector)
         // 微信/飞书使用 Bearer Token
         if (!headers['Authorization']) {
           headers['Authorization'] = `Bearer ${token}`
@@ -53,14 +53,14 @@ export class HttpExecutor {
       }
 
       // 3. 渲染 URL 和请求体
-      const url = this.renderTemplate(toolConfig.url, input, config.credentials, tokenCache.get(connectorId))
+      const url = this.renderTemplate(toolConfig.url, input, credentials, tokenCache.get(connectorId))
       const body = toolConfig.body
-        ? this.renderObject(toolConfig.body, input, config.credentials)
+        ? this.renderObject(toolConfig.body, input, credentials)
         : undefined
 
       // 4. 构建查询参数
       const queryParams = { ...(auth.query_params || {}), ...toolConfig.query_params }
-      const renderedQueryParams = this.renderObject(queryParams, input, config.credentials)
+      const renderedQueryParams = this.renderObject(queryParams, input, credentials)
 
       // 5. 构建完整 URL
       let fullUrl = url

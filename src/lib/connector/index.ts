@@ -13,3 +13,5 @@ export { convertConnectorToolToAItool, getAllConnectorTools } from './tool-adapt
 export { withRetry } from './retry'
 export { CircuitBreaker, CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
 export { AuditLogger, auditLogger } from './audit-logger'
+export { IdempotencyGuard, idempotencyGuard } from './idempotency'
+export { WechatMessageCrypto, parseWechatXml, xmlToInboundEvent } from './inbound/wechat-crypto'

@@ -4,9 +4,9 @@
 
 import fs from 'fs'
 import path from 'path'
+import yaml from 'js-yaml'
 import type {
-  ConnectorManifest,
-  ConnectorConfig,
+  ConnectorDefinition,
   ToolCallRequest,
   ToolCallResponse,
   ToolDefinition,
@@ -20,17 +20,6 @@ import { CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
 import { AuditLogger } from './audit-logger'
 import { withRetry } from './retry'
 
-// Connector 注册表清单
-interface ConnectorRegistryData {
-  version: string
-  connectors: {
-    id: string
-    manifest_path: string
-    config_path: string
-    enabled: boolean
-  }[]
-}
-
 export interface ConnectorRegistryOptions {
   getDbPath?: (connectionId: string) => Promise<string>
   enableRetry?: boolean
@@ -38,8 +27,7 @@ export interface ConnectorRegistryOptions {
 }
 
 export class ConnectorRegistry {
-  private manifests = new Map<string, ConnectorManifest>()
-  private configs = new Map<string, ConnectorConfig>()
+  private connectors = new Map<string, ConnectorDefinition>()
   private tokenManager: TokenManager
   private circuitBreakers: CircuitBreakerRegistry
   private auditLogger: AuditLogger
@@ -49,10 +37,9 @@ export class ConnectorRegistry {
 
   constructor(
     private configDir: string,
-    private getCredentials: (connectorId: string) => Promise<Record<string, string>>,
     options?: ConnectorRegistryOptions
   ) {
-    this.tokenManager = new TokenManager(getCredentials)
+    this.tokenManager = new TokenManager(this.getCredentials.bind(this))
     this.circuitBreakers = new CircuitBreakerRegistry()
     this.auditLogger = new AuditLogger()
     this.options = {
@@ -63,101 +50,144 @@ export class ConnectorRegistry {
   }
 
   /**
-   * 初始化：加载所有 Connector 配置
+   * 初始化：扫描并加载所有 YAML 配置文件
    */
   async initialize(): Promise<void> {
-    const registryPath = path.join(this.configDir, 'registry.json')
-
-    if (!fs.existsSync(registryPath)) {
-      console.log('[ConnectorRegistry] No registry.json found, starting empty')
+    if (!fs.existsSync(this.configDir)) {
+      console.log('[ConnectorRegistry] Config directory not found:', this.configDir)
       return
     }
 
-    const registryData: ConnectorRegistryData = JSON.parse(
-      fs.readFileSync(registryPath, 'utf-8')
-    )
+    // 扫描所有 .yaml 和 .yml 文件
+    const yamlFiles = fs.readdirSync(this.configDir)
+      .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))
+      .map(f => path.join(this.configDir, f))
 
-    console.log(`[ConnectorRegistry] Loading ${registryData.connectors.length} connectors...`)
+    console.log(`[ConnectorRegistry] Found ${yamlFiles.length} YAML files`)
 
-    for (const entry of registryData.connectors) {
-      if (!entry.enabled) {
-        continue
-      }
-
+    for (const yamlPath of yamlFiles) {
       try {
-        await this.loadConnector(entry.id, entry.manifest_path, entry.config_path)
+        await this.loadConnector(yamlPath)
       } catch (error) {
-        console.error(`[ConnectorRegistry] Failed to load connector ${entry.id}:`, error)
+        console.error(`[ConnectorRegistry] Failed to load ${yamlPath}:`, error)
       }
     }
 
-    console.log(`[ConnectorRegistry] Initialized ${this.manifests.size} connectors`)
+    console.log(`[ConnectorRegistry] Initialized ${this.connectors.size} connectors`)
   }
 
   /**
-   * 加载单个 Connector
+   * 加载单个 YAML 配置文件
    */
-  async loadConnector(
-    id: string,
-    manifestPath: string,
-    configPath: string
-  ): Promise<void> {
-    // 加载 Manifest
-    const fullManifestPath = path.join(this.configDir, manifestPath)
-    if (!fs.existsSync(fullManifestPath)) {
-      throw new Error(`Manifest not found: ${fullManifestPath}`)
-    }
-    const manifest: ConnectorManifest = JSON.parse(
-      fs.readFileSync(fullManifestPath, 'utf-8')
-    )
+  async loadConnector(yamlPath: string): Promise<void> {
+    const content = fs.readFileSync(yamlPath, 'utf-8')
 
-    // 加载 Config
-    const fullConfigPath = path.join(this.configDir, configPath)
-    if (!fs.existsSync(fullConfigPath)) {
-      throw new Error(`Config not found: ${fullConfigPath}`)
-    }
-    const config: ConnectorConfig = JSON.parse(
-      fs.readFileSync(fullConfigPath, 'utf-8')
-    )
+    // 解析 YAML
+    const raw = yaml.load(content) as Record<string, unknown>
 
-    // 验证
-    if (manifest.id !== id || config.connector_id !== id) {
-      throw new Error(`Connector ID mismatch: manifest=${manifest.id}, config=${config.connector_id}, expected=${id}`)
+    // 替换环境变量
+    const processed = this.replaceEnvVars(raw)
+
+    // 构建 ConnectorDefinition
+    const connector: ConnectorDefinition = {
+      id: processed.id as string,
+      name: processed.name as string,
+      version: processed.version as string,
+      description: processed.description as string,
+      enabled: processed.enabled as boolean ?? true,
+      inbound: processed.inbound as ConnectorDefinition['inbound'],
+      auth: processed.auth as ConnectorDefinition['auth'],
+      credentials: processed.credentials as Record<string, string>,
+      custom_settings: processed.custom_settings as Record<string, unknown>,
+      base_url: processed.base_url as string,
+      tools: (processed.tools as ToolDefinition[]) || [],
     }
 
-    this.manifests.set(id, manifest)
-    this.configs.set(id, config)
+    // 验证必要字段
+    if (!connector.id) {
+      throw new Error(`Connector missing 'id' field in ${yamlPath}`)
+    }
 
-    console.log(`[ConnectorRegistry] Loaded connector: ${id} (${manifest.name} v${manifest.version})`)
+    this.connectors.set(connector.id, connector)
+    console.log(`[ConnectorRegistry] Loaded connector: ${connector.id} (${connector.name} v${connector.version})`)
   }
 
   /**
-   * 获取 Connector Manifest
+   * 替换环境变量 ${VAR_NAME} 或 $VAR_NAME
    */
-  getManifest(connectorId: string): ConnectorManifest | undefined {
-    return this.manifests.get(connectorId)
+  private replaceEnvVars(obj: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string') {
+        result[key] = this.replaceEnvVarInString(value)
+      } else if (Array.isArray(value)) {
+        // 保留数组结构，递归处理数组元素
+        result[key] = value.map(item => {
+          if (typeof item === 'string') {
+            return this.replaceEnvVarInString(item)
+          } else if (typeof item === 'object' && item !== null) {
+            return this.replaceEnvVars(item as Record<string, unknown>)
+          }
+          return item
+        })
+      } else if (typeof value === 'object' && value !== null) {
+        result[key] = this.replaceEnvVars(value as Record<string, unknown>)
+      } else {
+        result[key] = value
+      }
+    }
+
+    return result
+  }
+
+  private replaceEnvVarInString(str: string): string {
+    // 替换 ${VAR_NAME} 格式
+    return str.replace(/\$\{(\w+)\}/g, (_, varName) => {
+      const envValue = process.env[varName]
+      if (envValue === undefined) {
+        console.warn(`[ConnectorRegistry] Environment variable ${varName} not found, keeping original`)
+        return str
+      }
+      return envValue
+    })
   }
 
   /**
-   * 获取 Connector Config
+   * 获取 Connector 凭证
    */
-  getConfig(connectorId: string): ConnectorConfig | undefined {
-    return this.configs.get(connectorId)
+  private async getCredentials(connectorId: string): Promise<Record<string, string>> {
+    const connector = this.connectors.get(connectorId)
+    return connector?.credentials || {}
+  }
+
+  /**
+   * 获取 Connector 定义
+   */
+  getDefinition(connectorId: string): ConnectorDefinition | undefined {
+    return this.connectors.get(connectorId)
   }
 
   /**
    * 获取所有已加载的 Connector ID
    */
   getConnectorIds(): string[] {
-    return Array.from(this.manifests.keys())
+    return Array.from(this.connectors.keys())
+  }
+
+  /**
+   * 获取所有已启用的 Connector
+   */
+  getEnabledConnectors(): ConnectorDefinition[] {
+    return Array.from(this.connectors.values()).filter(c => c.enabled)
   }
 
   /**
    * 获取某个 Connector 的工具列表
    */
   getTools(connectorId: string): ToolDefinition[] {
-    const manifest = this.manifests.get(connectorId)
-    return manifest?.tools || []
+    const connector = this.connectors.get(connectorId)
+    return connector?.tools || []
   }
 
   /**
@@ -167,18 +197,17 @@ export class ConnectorRegistry {
     const startTime = Date.now()
     const { connector_id, tool_name, tool_input } = request
 
-    // 1. 获取 manifest 和 config
-    const manifest = this.manifests.get(connector_id)
-    const config = this.configs.get(connector_id)
+    // 1. 获取 connector 定义
+    const connector = this.connectors.get(connector_id)
 
-    if (!manifest) {
+    if (!connector) {
       return {
         success: false,
         error: `Connector not found: ${connector_id}`,
       }
     }
 
-    if (!config || !config.enabled) {
+    if (!connector.enabled) {
       return {
         success: false,
         error: `Connector disabled: ${connector_id}`,
@@ -186,7 +215,7 @@ export class ConnectorRegistry {
     }
 
     // 2. 查找工具定义
-    const toolDef = manifest.tools.find(t => t.name === tool_name)
+    const toolDef = connector.tools.find(t => t.name === tool_name)
     if (!toolDef) {
       return {
         success: false,
@@ -199,7 +228,7 @@ export class ConnectorRegistry {
       const breaker = this.circuitBreakers.get(connector_id)
       try {
         return await breaker.execute(async () => {
-          return this.executeWithRetry(toolDef, connector_id, manifest, config, tool_input, startTime)
+          return this.executeWithRetry(toolDef, connector, tool_input, startTime)
         })
       } catch (error) {
         if (error instanceof CircuitBreakerError) {
@@ -218,19 +247,17 @@ export class ConnectorRegistry {
       }
     }
 
-    return this.executeWithRetry(toolDef, connector_id, manifest, config, tool_input, startTime)
+    return this.executeWithRetry(toolDef, connector, tool_input, startTime)
   }
 
   private async executeWithRetry(
     toolDef: ToolDefinition,
-    connectorId: string,
-    manifest: ConnectorManifest,
-    config: ConnectorConfig,
+    connector: ConnectorDefinition,
     toolInput: Record<string, unknown>,
     startTime: number
   ): Promise<ToolCallResponse> {
     const execute = async () => {
-      return this.executeTool(toolDef, connectorId, manifest, config, toolInput, startTime)
+      return this.executeTool(toolDef, connector, toolInput, startTime)
     }
 
     if (this.options.enableRetry && toolDef.retryable) {
@@ -247,7 +274,7 @@ export class ConnectorRegistry {
           error: error instanceof Error ? error.message : String(error),
           metadata: {
             duration_ms: Date.now() - startTime,
-            connector_id: connectorId,
+            connector_id: connector.id,
             tool_name: toolDef.name,
           },
         }
@@ -259,26 +286,25 @@ export class ConnectorRegistry {
 
   private async executeTool(
     toolDef: ToolDefinition,
-    connectorId: string,
-    manifest: ConnectorManifest,
-    config: ConnectorConfig,
+    connector: ConnectorDefinition,
     toolInput: Record<string, unknown>,
     startTime: number
   ): Promise<ToolCallResponse> {
     try {
       let result: unknown
+      const credentials = connector.credentials || {}
 
       switch (toolDef.executor) {
         case 'http': {
           const { HttpExecutor } = await import('./executors/http')
           const executor = new HttpExecutor({
             tokenManager: this.tokenManager,
-            getCredentials: this.getCredentials,
+            getCredentials: async () => credentials,
           })
           const execResult = await executor.execute(
-            connectorId,
-            manifest,
-            config,
+            connector.id,
+            connector,
+            connector,
             toolDef.executor_config as HttpExecutorConfig,
             toolInput
           )
@@ -305,12 +331,12 @@ export class ConnectorRegistry {
 
         case 'sql': {
           const { SqlExecutor } = await import('./executors/sql')
-          let executor = this.sqlExecutorCache.get(connectorId)
+          let executor = this.sqlExecutorCache.get(connector.id)
           if (!executor) {
             executor = new SqlExecutor({
               getDbPath: this.options.getDbPath,
             })
-            this.sqlExecutorCache.set(connectorId, executor)
+            this.sqlExecutorCache.set(connector.id, executor)
           }
           const execResult = await executor.execute(
             toolDef.executor_config as SqlExecutorConfig,
@@ -327,7 +353,7 @@ export class ConnectorRegistry {
           result = await this.executeScript(
             toolDef.executor_config as ScriptExecutorConfig,
             toolInput,
-            connectorId
+            connector.id
           )
           break
         }
@@ -337,28 +363,28 @@ export class ConnectorRegistry {
       }
 
       const durationMs = Date.now() - startTime
-      this.auditLogger.logToolCall(connectorId, toolDef.name, 'success', 'Execution completed', durationMs)
+      this.auditLogger.logToolCall(connector.id, toolDef.name, 'success', 'Execution completed', durationMs)
 
       return {
         success: true,
         result,
         metadata: {
           duration_ms: durationMs,
-          connector_id: connectorId,
+          connector_id: connector.id,
           tool_name: toolDef.name,
         },
       }
     } catch (error) {
       const durationMs = Date.now() - startTime
       const errorMsg = error instanceof Error ? error.message : String(error)
-      this.auditLogger.logToolCall(connectorId, toolDef.name, 'failure', errorMsg, durationMs)
+      this.auditLogger.logToolCall(connector.id, toolDef.name, 'failure', errorMsg, durationMs)
 
       return {
         success: false,
         error: errorMsg,
         metadata: {
           duration_ms: durationMs,
-          connector_id: connectorId,
+          connector_id: connector.id,
           tool_name: toolDef.name,
         },
       }

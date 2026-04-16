@@ -57,23 +57,12 @@ const dashscope = createOpenAICompatible({
 
 const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
 
-async function getConnectorCredentials(connectorId: string): Promise<Record<string, string>> {
-  const configPath = path.join(
-    CONNECTOR_CONFIG_DIR,
-    'connectors',
-    `${connectorId}-config.json`
-  )
-  if (!fs.existsSync(configPath)) return {}
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-  return config.credentials || {}
-}
-
-// 单例 Registry
+// 单例 Registry（凭证直接从 YAML 文件读取）
 let connectorRegistry: ConnectorRegistry | null = null
 
 async function getConnectorRegistry(): Promise<ConnectorRegistry> {
   if (!connectorRegistry) {
-    connectorRegistry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR, getConnectorCredentials)
+    connectorRegistry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
     await connectorRegistry.initialize()
   }
   return connectorRegistry
@@ -166,14 +155,13 @@ async function loadAllConnectorTools(): Promise<Record<string, Tool>> {
     const connectorIds = reg.getConnectorIds()
 
     for (const connectorId of connectorIds) {
-      const manifest = reg.getManifest(connectorId)
-      const config = reg.getConfig(connectorId)
+      const connector = reg.getDefinition(connectorId)
 
-      if (!manifest || !config || !config.enabled) {
+      if (!connector || !connector.enabled) {
         continue
       }
 
-      for (const toolDef of manifest.tools) {
+      for (const toolDef of connector.tools) {
         const toolName = `${connectorId}_${toolDef.name}`
         tools[toolName] = convertConnectorToolToAItool(connectorId, toolDef)
       }

@@ -103,14 +103,13 @@ export async function getAllConnectorTools(
   const connectorIds = deps.registry.getConnectorIds()
 
   for (const connectorId of connectorIds) {
-    const manifest = deps.registry.getManifest(connectorId)
-    const config = deps.registry.getConfig(connectorId)
+    const connector = deps.registry.getDefinition(connectorId)
 
-    if (!manifest || !config || !config.enabled) {
+    if (!connector || !connector.enabled) {
       continue
     }
 
-    for (const toolDef of manifest.tools) {
+    for (const toolDef of connector.tools) {
       const toolName = `${connectorId}_${toolDef.name}`
       tools[toolName] = convertConnectorToolToAItool(connectorId, toolDef, deps)
     }

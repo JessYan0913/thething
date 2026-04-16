@@ -5,28 +5,16 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
-import fs from 'fs'
 import { ConnectorRegistry } from '@/lib/connector/registry'
 import type { ToolCallRequest } from '@/lib/connector/types'
 
 const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
 
-async function getCredentials(connectorId: string): Promise<Record<string, string>> {
-  const configPath = path.join(
-    CONNECTOR_CONFIG_DIR,
-    'connectors',
-    `${connectorId}-config.json`
-  )
-  if (!fs.existsSync(configPath)) return {}
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-  return config.credentials || {}
-}
-
 let registry: ConnectorRegistry | null = null
 
 async function getRegistry(): Promise<ConnectorRegistry> {
   if (!registry) {
-    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR, getCredentials)
+    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
     await registry.initialize()
   }
   return registry

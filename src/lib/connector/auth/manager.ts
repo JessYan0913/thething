@@ -2,7 +2,7 @@
 // Auth 管理器 - 处理各种认证方式
 // ============================================================
 
-import type { AuthConfig, ConnectorConfig } from '../types';
+import type { AuthConfig } from '../types';
 
 export interface AuthResult {
   headers?: Record<string, string>

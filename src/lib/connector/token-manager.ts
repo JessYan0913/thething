@@ -2,7 +2,7 @@
 // Token 管理器 - 处理需要刷新的 Token（如微信/飞书的 2h token）
 // ============================================================
 
-import type { ConnectorManifest } from './types';
+import type { ConnectorDefinition } from './types';
 
 interface CachedToken {
   token: string
@@ -29,7 +29,7 @@ export class TokenManager {
    */
   async getToken(
     connectorId: string,
-    manifest: ConnectorManifest
+    manifest: ConnectorDefinition
   ): Promise<string> {
     const cacheKey = connectorId
     const cached = this.tokenCache.get(cacheKey)
@@ -51,7 +51,7 @@ export class TokenManager {
   /**
    * 强制刷新 Token
    */
-  async forceRefresh(connectorId: string, manifest: ConnectorManifest): Promise<string> {
+  async forceRefresh(connectorId: string, manifest: ConnectorDefinition): Promise<string> {
     const cacheKey = connectorId
     this.tokenCache.delete(cacheKey)
     return this.refreshToken(connectorId, manifest, cacheKey)
@@ -62,7 +62,7 @@ export class TokenManager {
    */
   private async refreshToken(
     connectorId: string,
-    manifest: ConnectorManifest,
+    manifest: ConnectorDefinition,
     cacheKey: string
   ): Promise<string> {
     // 防止并发刷新
@@ -88,7 +88,7 @@ export class TokenManager {
    */
   private async doRefresh(
     connectorId: string,
-    manifest: ConnectorManifest
+    manifest: ConnectorDefinition
   ): Promise<CachedToken> {
     const authConfig = manifest.auth.config
 

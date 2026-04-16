@@ -3,42 +3,37 @@
 // ============================================================
 
 /**
- * Connector 配置
- * 运行时使用的配置，包含解密后的 credentials
+ * Connector 定义（单一 YAML 配置文件）
+ * 包含 Manifest 信息和运行时配置
  */
-export interface ConnectorConfig {
-  connector_id: string
-  enabled: boolean
-  subtype?: string  // 区分同一类型下的不同形态（如 wecom/wechat-mp/wechat-kf）
-  credentials: Record<string, string>
-  custom_settings?: Record<string, unknown>
-}
-
-/**
- * Connector Manifest
- * 声明式的 Connector 定义，包含工具描述和执行器配置
- */
-export interface ConnectorManifest {
+export interface ConnectorDefinition {
   id: string
   name: string
   version: string
   description: string
+  enabled: boolean
 
   // 入站配置（Webhook）
   inbound?: {
     enabled: boolean
     webhook_path: string
-    handler: string  // wecom | feishu | httpbin | custom
+    handler: string  // wecom | feishu | test-service | custom
   }
 
   // 认证配置
   auth: AuthConfig
 
-  // 工具定义
-  tools: ToolDefinition[]
+  // 凭证（可选，支持环境变量替换 ${VAR_NAME}）
+  credentials?: Record<string, string>
+
+  // 自定义设置
+  custom_settings?: Record<string, unknown>
 
   // 基础 URL（用于模板渲染）
   base_url?: string
+
+  // 工具定义
+  tools: ToolDefinition[]
 }
 
 /**
