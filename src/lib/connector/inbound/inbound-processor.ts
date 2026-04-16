@@ -1,0 +1,240 @@
+// ============================================================
+// 入站事件处理器 - 与 Agent Core 集成
+// ============================================================
+
+import type { InboundMessageEvent } from '../types'
+import { inboundEventQueue } from './event-queue'
+import { ConnectorRegistry } from '../registry'
+import { auditLogger } from '../audit-logger'
+
+/**
+ * 入站事件处理结果
+ */
+export interface InboundEventResult {
+  success: boolean
+  response?: string
+  conversationId?: string
+  error?: string
+}
+
+/**
+ * 入站事件处理器接口
+ * 实现此接口来连接 Agent Core
+ */
+export interface InboundEventHandler {
+  /**
+   * 处理入站消息事件
+   * @param event 入站消息事件
+   * @returns 处理结果
+   */
+  handle(event: InboundMessageEvent): Promise<InboundEventResult>
+}
+
+/**
+ * 默认处理器（日志记录，不连接 Agent）
+ * 实际部署时应替换为真实的 Agent 集成
+ */
+class DefaultInboundHandler implements InboundEventHandler {
+  async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
+    console.log('[DefaultInboundHandler] Received event:', {
+      eventId: event.event_id,
+      connectorType: event.connector_type,
+      channelId: event.channel_id,
+      senderId: event.sender.id,
+      messageText: event.message.text?.substring(0, 50),
+    })
+
+    // 记录审计日志
+    auditLogger.logInboundMessage(event.connector_type, event.event_id, 'success', 'Event received')
+
+    return {
+      success: true,
+      response: 'Event received and logged (no Agent connected)',
+    }
+  }
+}
+
+/**
+ * 入站事件处理管理器
+ * 管理事件处理器的注册和事件分发
+ */
+class InboundEventProcessor {
+  private handler: InboundEventHandler = new DefaultInboundHandler()
+  private registry?: ConnectorRegistry
+
+  /**
+   * 设置事件处理器
+   */
+  setHandler(handler: InboundEventHandler): void {
+    this.handler = handler
+    console.log('[InboundEventProcessor] Handler registered')
+  }
+
+  /**
+   * 设置 Connector Registry（用于发送回复）
+   */
+  setRegistry(registry: ConnectorRegistry): void {
+    this.registry = registry
+    console.log('[InboundEventProcessor] Registry registered')
+  }
+
+  /**
+   * 启动处理（注册到事件队列）
+   */
+  start(): void {
+    inboundEventQueue.onEvent(async (event) => {
+      console.log('[InboundEventProcessor] Processing event:', event.event_id)
+
+      try {
+        const result = await this.handler.handle(event)
+
+        // 如果有回复，通过 Connector 发送
+        if (result.success && result.response && this.registry) {
+          await this.sendReply(event, result.response)
+        }
+
+        // 记录处理结果
+        auditLogger.logInboundMessage(
+          event.connector_type,
+          event.event_id,
+          result.success ? 'success' : 'failure',
+          result.response || result.error || ''
+        )
+
+      } catch (error) {
+        console.error('[InboundEventProcessor] Processing error:', event.event_id, error)
+        auditLogger.logInboundMessage(
+          event.connector_type,
+          event.event_id,
+          'failure',
+          error instanceof Error ? error.message : String(error)
+        )
+      }
+    })
+
+    console.log('[InboundEventProcessor] Started')
+  }
+
+  /**
+   * 发送回复到外部系统
+   */
+  private async sendReply(event: InboundMessageEvent, response: string): Promise<void> {
+    if (!this.registry) {
+      console.warn('[InboundEventProcessor] No registry, cannot send reply')
+      return
+    }
+
+    // 根据 connector_type 选择发送工具
+    const toolName = this.getReplyToolName(event.connector_type)
+    const connectorId = this.getReplyConnectorId(event.connector_type)
+
+    if (!toolName || !connectorId) {
+      console.warn('[InboundEventProcessor] No reply tool for connector type:', event.connector_type)
+      return
+    }
+
+    // 调用 Connector 发送回复
+    const result = await this.registry.callTool({
+      connector_id: connectorId,
+      tool_name: toolName,
+      tool_input: {
+        reply_context: event.reply_context,
+        text: response,
+      },
+    })
+
+    if (!result.success) {
+      console.error('[InboundEventProcessor] Reply failed:', result.error)
+    } else {
+      console.log('[InboundEventProcessor] Reply sent:', event.connector_type, event.channel_id)
+    }
+  }
+
+  /**
+   * 获取回复工具名称
+   */
+  private getReplyToolName(connectorType: string): string | null {
+    switch (connectorType) {
+      case 'wecom':
+      case 'wechat-mp':
+      case 'wechat-kf':
+        return 'wecom_send_message'  // 或根据具体配置调整
+
+      case 'feishu':
+        return 'feishu_reply_message'
+
+      default:
+        return null
+    }
+  }
+
+  /**
+   * 获取回复 Connector ID
+   */
+  private getReplyConnectorId(connectorType: string): string | null {
+    // 通常 connector_type 与 connector_id 相同
+    // 但有些场景可能需要映射（如多个微信应用）
+    return connectorType
+  }
+
+  /**
+   * 获取队列统计
+   */
+  getStats() {
+    return inboundEventQueue.getStats()
+  }
+
+  /**
+   * 获取待处理事件
+   */
+  getPendingEvents(limit = 10) {
+    return inboundEventQueue.getQueue({ status: 'pending', limit })
+  }
+}
+
+// 单例导出
+export const inboundEventProcessor = new InboundEventProcessor()
+
+/**
+ * Agent Core 集成示例
+ *
+ * 在 Agent Core 中实现 InboundEventHandler 并注册：
+ *
+ * ```typescript
+ * import { inboundEventProcessor, InboundEventHandler, InboundEventResult } from '@/lib/connector'
+ *
+ * class AgentInboundHandler implements InboundEventHandler {
+ *   async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
+ *     // 1. 查找或创建对话
+ *     const conversation = await this.findOrCreateConversation(event)
+ *
+ *     // 2. 将消息添加到对话历史
+ *     await this.addMessageToConversation(conversation.id, {
+ *       role: 'user',
+ *       content: event.message.text || '',
+ *       metadata: {
+ *         sender: event.sender,
+ *         channel: event.channel_id,
+ *         connector: event.connector_type,
+ *       }
+ *     })
+ *
+ *     // 3. 调用 LLM 生成回复
+ *     const response = await this.generateResponse(conversation, event)
+ *
+ *     return {
+ *       success: true,
+ *       response,
+ *       conversationId: conversation.id,
+ *     }
+ *   }
+ * }
+ *
+ * // 注册处理器
+ * inboundEventProcessor.setHandler(new AgentInboundHandler())
+ * inboundEventProcessor.start()
+ * ```
+ */
+
+// 导出类型
+export type { InboundEventProcessor }

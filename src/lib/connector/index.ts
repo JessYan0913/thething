@@ -9,9 +9,16 @@ export { AuthManager, authManager } from './auth/manager'
 export { HttpExecutor } from './executors/http'
 export { MockExecutor } from './executors/mock'
 export { SqlExecutor } from './executors/sql'
+export { MultiSqlExecutor } from './executors/multi-sql'
+export { DatabasePoolManager, databasePoolManager } from './executors/database-pool'
 export { convertConnectorToolToAItool, getAllConnectorTools } from './tool-adapter'
 export { withRetry } from './retry'
 export { CircuitBreaker, CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
 export { AuditLogger, auditLogger } from './audit-logger'
 export { IdempotencyGuard, idempotencyGuard } from './idempotency'
-export { WechatMessageCrypto, parseWechatXml, xmlToInboundEvent } from './inbound/wechat-crypto'
+
+// 凭证加密存储
+export * from './credentials/index'
+
+// Inbound Layer - 入站消息处理
+export * from './inbound/index'
