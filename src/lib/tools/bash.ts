@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { exec as execCallback, ChildProcess } from 'child_process';
 import { z } from 'zod';
 
+// 危险命令黑名单 - 直接拒绝执行
 const DANGEROUS_PATTERNS = [
   /^\s*rm\s+(-rf?|--recursive)\s+\/?/i,
   /^\s*rmdir\s+\/?/i,
@@ -22,9 +23,53 @@ const DANGEROUS_PATTERNS = [
   /\|\s*(nc|ncat|bash\s*-i|python.*-c.*socket|perl.*Socket)/i,
 ];
 
+// 安全命令白名单 - 不需要审批
+const SAFE_COMMANDS = [
+  'git status',
+  'git log',
+  'git diff',
+  'git branch',
+  'git show',
+  'ls',
+  'ls -la',
+  'ls -l',
+  'dir',
+  'pwd',
+  'cat',
+  'head',
+  'tail',
+  'wc',
+  'echo',
+  'which',
+  'node --version',
+  'npm --version',
+  'pnpm --version',
+  'npm run build',
+  'npm run lint',
+  'npm run test',
+  'npm test',
+  'pnpm run',
+  'pnpm build',
+  'pnpm lint',
+  'pnpm test',
+  'yarn run',
+  'yarn build',
+  'yarn lint',
+  'yarn test',
+  'npx tsc --noEmit',
+  'tsc --noEmit',
+  'eslint',
+  'prettier --check',
+  'prettier --write',
+  'tsx',
+];
+
 const MAX_OUTPUT_CHARS = 50_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * 检查命令是否匹配危险模式
+ */
 function isCommandDangerous(command: string): { dangerous: boolean; reason?: string } {
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(command)) {
@@ -35,6 +80,45 @@ function isCommandDangerous(command: string): { dangerous: boolean; reason?: str
     }
   }
   return { dangerous: false };
+}
+
+/**
+ * 检查命令是否在白名单中
+ */
+function isCommandSafe(command: string): boolean {
+  const trimmed = command.trim();
+
+  // 精确匹配白名单命令
+  for (const safeCmd of SAFE_COMMANDS) {
+    if (trimmed === safeCmd || trimmed.startsWith(safeCmd + ' ') || trimmed.startsWith(safeCmd + ' --')) {
+      return true;
+    }
+  }
+
+  // 模式匹配：git log/diff/show 后面带参数
+  if (/^git (log|diff|show|status|branch)(\s+|$)/.test(trimmed)) {
+    return true;
+  }
+
+  // 模式匹配：简单的文件查看命令
+  if (/^(cat|head|tail|wc)(\s+-\w+\s+|\s+)\S+/.test(trimmed)) {
+    // 但不允许查看敏感文件
+    if (!/\.(env|secret|key|pem|password)/i.test(trimmed)) {
+      return true;
+    }
+  }
+
+  // 模式匹配：grep 搜索
+  if (/^grep(\s+-\w+)*\s+\S/.test(trimmed)) {
+    return true;
+  }
+
+  // 模式匹配：find 搜索（仅查找，不执行）
+  if (/^find\s/.test(trimmed) && !/-exec/.test(trimmed) && !/-delete/.test(trimmed)) {
+    return true;
+  }
+
+  return false;
 }
 
 function execWithAbort(
@@ -75,12 +159,28 @@ function execWithAbort(
 
 export const bashTool = tool({
   description:
-    '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。',
+    '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。部分命令需要用户审批后才能执行。',
   inputSchema: z.object({
     command: z.string().describe('要执行的 shell 命令'),
     timeoutMs: z.number().min(1000).max(120000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒'),
   }),
+  needsApproval: async ({ command }) => {
+    // Step 1: 检查危险命令黑名单 - 直接拒绝，不需要审批
+    const dangerCheck = isCommandDangerous(command);
+    if (dangerCheck.dangerous) {
+      throw new Error(`安全阻止: ${dangerCheck.reason}`);
+    }
+
+    // Step 2: 检查安全命令白名单 - 自动放行，不需要审批
+    if (isCommandSafe(command)) {
+      return false;
+    }
+
+    // Step 3: 其他命令需要用户审批
+    return true;
+  },
   execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, options) => {
+    // 工具执行层的二次安全检查（defense-in-depth）
     const safety = isCommandDangerous(command);
     if (safety.dangerous) {
       throw new Error(`安全阻止: ${safety.reason}\n\n该命令包含危险操作，已被安全策略拒绝。`);
@@ -111,22 +211,23 @@ export const bashTool = tool({
         command,
         timedOut: false,
       };
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
+    } catch (error: unknown) {
+      const execError = error as Error & { killed?: boolean; code?: string | number; status?: number; stdout?: string; stderr?: string };
+      if (execError?.name === 'AbortError') {
         throw new Error('命令执行被用户中止。');
       }
 
-      if (error.killed || error.code === 'ETIMEDOUT') {
+      if (execError.killed || execError.code === 'ETIMEDOUT') {
         throw new Error(`命令执行超时 (${timeoutMs}ms)。请增加 timeoutMs 或优化命令。`);
       }
 
-      if (error.code === 'E2BIG' || error.stdout?.length + error.stderr?.length > MAX_OUTPUT_CHARS * 10) {
+      if (execError.code === 'E2BIG' || execError.stdout?.length + execError.stderr?.length > MAX_OUTPUT_CHARS * 10) {
         throw new Error(`命令输出过大。请重定向到文件或缩小输出范围。`);
       }
 
-      const stdout = (error.stdout || '').toString();
-      const stderr = (error.stderr || '').toString();
-      const exitCode = error.code || error.status || 1;
+      const stdout = (execError.stdout || '').toString();
+      const stderr = (execError.stderr || '').toString();
+      const exitCode = execError.code || execError.status || 1;
 
       return {
         stdout: stdout.slice(0, MAX_OUTPUT_CHARS),

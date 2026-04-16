@@ -28,11 +28,12 @@ import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { ToolOutput } from '@/components/ai-elements/tool';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
+import { ApprovalDialog } from '@/components/ai-elements/approval-dialog';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
 
@@ -119,11 +120,43 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
 
+  // 审批对话框状态
+  const [approvalDialog, setApprovalDialog] = useState<{
+    isOpen: boolean;
+    approvalId: string;
+    toolName: string;
+    toolInput: Record<string, unknown>;
+  } | null>(null);
+
+  // 审批请求 part 的类型定义
+  type ToolApprovalRequestPart = {
+    type: 'tool-approval-request';
+    state: 'approval-requested';
+    approvalId: string;
+    toolCall: {
+      toolName: string;
+      input: Record<string, unknown>;
+    };
+  };
+
   const transport = useMemo(() => createChatTransport(conversationId), [conversationId]);
 
-  const { messages, setMessages, sendMessage, status, stop, error } = useChat({
+  const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId,
     transport,
+    sendAutomaticallyWhen: ({ messages }) => {
+      // 检查是否有未响应的审批请求
+      const lastMessage = messages[messages.length - 1];
+      if (!lastMessage || lastMessage.role !== 'assistant') return false;
+
+      // 检查是否有 pending 的审批请求
+      const hasPendingApproval = lastMessage.parts.some(
+        (part) => part.type === 'tool-approval-request' && part.state === 'approval-requested'
+      );
+
+      // 如果没有审批请求，或者用户已响应，则自动继续
+      return !hasPendingApproval;
+    },
     onFinish: async ({ messages: finishedMessages }) => {
       try {
         const res = await fetch('/api/chat', {
@@ -180,7 +213,51 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages]);
+
+    // 检测 approval-requested 状态并显示审批对话框
+    if (status === 'streaming' || status === 'submitted') {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.role === 'assistant') {
+        for (const part of lastMessage.parts) {
+          if (
+            part.type === 'tool-approval-request' &&
+            part.state === 'approval-requested'
+          ) {
+            // 从 part 中提取 toolCall 信息
+            const approvalPart = part as ToolApprovalRequestPart;
+            const toolCall = approvalPart.toolCall;
+            if (toolCall && !approvalDialog?.isOpen) {
+              setApprovalDialog({
+                isOpen: true,
+                approvalId: approvalPart.approvalId,
+                toolName: toolCall.toolName,
+                toolInput: toolCall.input as Record<string, unknown>,
+              });
+            }
+          }
+        }
+      }
+    }
+  }, [messages, status, approvalDialog?.isOpen]);
+
+  // 处理审批批准
+  const handleApprove = useCallback((approvalId: string) => {
+    addToolApprovalResponse({
+      id: approvalId,
+      approved: true,
+    });
+    setApprovalDialog(null);
+  }, [addToolApprovalResponse]);
+
+  // 处理审批拒绝
+  const handleDeny = useCallback((approvalId: string, reason?: string) => {
+    addToolApprovalResponse({
+      id: approvalId,
+      approved: false,
+      reason: reason,
+    });
+    setApprovalDialog(null);
+  }, [addToolApprovalResponse]);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +328,18 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      {/* 审批对话框 */}
+      {approvalDialog && (
+        <ApprovalDialog
+          isOpen={approvalDialog.isOpen}
+          approvalId={approvalDialog.approvalId}
+          toolName={approvalDialog.toolName}
+          toolInput={approvalDialog.toolInput}
+          onApprove={handleApprove}
+          onDeny={handleDeny}
+        />
+      )}
+
       {error && (
         <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</div>
       )}
@@ -300,6 +389,25 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                             return null;
                           }
 
+                          // 处理 approval-requested 状态 - 显示等待审批的 UI
+                          if (toolPart.state === 'approval-requested') {
+                            const toolInfo = getToolTitleAndIcon(toolPart.type, toolPart.input as Record<string, unknown>);
+                            const toolTitle = toolInfo?.title;
+                            const ToolIcon = toolInfo?.icon || SearchIcon;
+
+                            return (
+                              <div
+                                key={`${message.id}-${index}`}
+                                className="flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm"
+                              >
+                                <ToolIcon className="size-4 text-yellow-600" />
+                                <span className="text-yellow-700">等待审批:</span>
+                                <span className="font-medium">{toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}</span>
+                                <CheckCircleIcon className="size-4 ml-auto text-yellow-500 animate-pulse" />
+                              </div>
+                            );
+                          }
+
                           const toolCallId = (toolPart as unknown as { toolCallId?: string }).toolCallId;
 
                           const subParts = toolCallId
@@ -316,21 +424,28 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                           return (
                             <Task
                               key={`${message.id}-${index}`}
-                              defaultOpen={toolPart.state === 'output-error'}
+                              defaultOpen={toolPart.state === 'output-error' || toolPart.state === 'output-denied'}
                             >
-                              <TaskTrigger title={toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')} >
+                              <TaskTrigger title={toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')} >
                                 <div className="flex w-full cursor-pointer items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground">
                                   <ToolIcon className="size-4 shrink-0" />
-                                  {toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && status === 'streaming' ? (
-                                    <Shimmer className="text-sm" duration={1.5} spread={1}>{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</Shimmer>
+                                  {toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && toolPart.state !== 'output-denied' && toolPart.state !== 'approval-responded' && status === 'streaming' ? (
+                                    <Shimmer className="text-sm" duration={1.5} spread={1}>{toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}</Shimmer>
                                   ) : (
-                                    <p className="text-sm">{toolTitle ?? toolPart.type.replace('tool-call-', '').replace(/_/g, ' ')}</p>
+                                    <p className="text-sm">
+                                      {toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}
+                                      {toolPart.state === 'output-denied' && ' (已拒绝)'}
+                                    </p>
                                   )}
                                   <ChevronDownIcon className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
                                 </div>
                               </TaskTrigger>
                               <TaskContent>
-                                {isSubAgent ? (
+                                {toolPart.state === 'output-denied' ? (
+                                  <div className="text-sm text-orange-600">
+                                    操作已被用户拒绝
+                                  </div>
+                                ) : isSubAgent ? (
                                   <SubAgentStream parts={subParts} />
                                 ) : (
                                   <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
