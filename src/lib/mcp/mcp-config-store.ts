@@ -1,141 +1,117 @@
-import { getDb } from '../db'
-import { nanoid } from 'nanoid'
-import type { McpServerConfig } from './registry'
+import fs from 'fs/promises';
+import path from 'path';
+import type { McpServerConfig } from './registry';
 
-interface McpServerRow {
-  id: string
-  name: string
-  transport_type: string
-  url: string | null
-  headers: string | null
-  command: string | null
-  args: string | null
-  env: string | null
-  tools_include: string | null
-  tools_exclude: string | null
-  enabled: number
-  created_at: string
-  updated_at: string
+const MCP_CONFIG_DIR = process.env.MCP_CONFIG_DIR || path.join(process.cwd(), '.thething', 'mcp');
+
+async function ensureDir(): Promise<void> {
+  try {
+    await fs.mkdir(MCP_CONFIG_DIR, { recursive: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw err;
+    }
+  }
 }
 
-function rowToConfig(row: McpServerRow): McpServerConfig {
-  let transport: McpServerConfig['transport']
+function configFilePath(name: string): string {
+  return path.join(MCP_CONFIG_DIR, `${encodeURIComponent(name)}.json`);
+}
 
-  if (row.transport_type === 'sse') {
-    transport = {
-      type: 'sse',
-      url: row.url ?? '',
-      ...(row.headers ? { headers: JSON.parse(row.headers) as Record<string, string> } : {}),
-    }
-  } else if (row.transport_type === 'http') {
-    transport = {
-      type: 'http',
-      url: row.url ?? '',
-      ...(row.headers ? { headers: JSON.parse(row.headers) as Record<string, string> } : {}),
-    }
-  } else {
-    transport = {
-      type: 'stdio',
-      command: row.command ?? '',
-      ...(row.args ? { args: JSON.parse(row.args) as string[] } : {}),
-      ...(row.env ? { env: JSON.parse(row.env) as Record<string, string> } : {}),
+function toSerializable(config: McpServerConfig): Record<string, unknown> {
+  return {
+    name: config.name,
+    transport: config.transport,
+    enabled: config.enabled ?? true,
+    tools: config.tools,
+    elicitation: config.elicitation,
+  };
+}
+
+function fromSerializable(data: Record<string, unknown>): McpServerConfig {
+  return {
+    name: data.name as string,
+    transport: data.transport as McpServerConfig['transport'],
+    enabled: data.enabled as boolean,
+    tools: data.tools as McpServerConfig['tools'],
+    elicitation: data.elicitation as McpServerConfig['elicitation'],
+  };
+}
+
+export async function getMcpServerConfigs(): Promise<McpServerConfig[]> {
+  await ensureDir();
+
+  let entries: string[];
+  try {
+    entries = await fs.readdir(MCP_CONFIG_DIR);
+  } catch {
+    return [];
+  }
+
+  const configs: McpServerConfig[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith('.json')) continue;
+    try {
+      const content = await fs.readFile(path.join(MCP_CONFIG_DIR, entry), 'utf-8');
+      const data = JSON.parse(content) as Record<string, unknown>;
+      configs.push(fromSerializable(data));
+    } catch {
+      // skip corrupted files
     }
   }
 
-  const config: McpServerConfig = {
-    name: row.name,
-    enabled: row.enabled === 1,
-    transport,
+  return configs;
+}
+
+export async function getMcpServerConfig(name: string): Promise<McpServerConfig | null> {
+  const filePath = configFilePath(name);
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return fromSerializable(JSON.parse(content) as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+export async function addMcpServerConfig(config: McpServerConfig): Promise<McpServerConfig> {
+  await ensureDir();
+
+  const existing = await getMcpServerConfig(config.name);
+  if (existing) {
+    throw new Error(`MCP server "${config.name}" already exists`);
   }
 
-  if (row.tools_include || row.tools_exclude) {
-    config.tools = {
-      ...(row.tools_include ? { include: JSON.parse(row.tools_include) as string[] } : {}),
-      ...(row.tools_exclude ? { exclude: JSON.parse(row.tools_exclude) as string[] } : {}),
-    }
-  }
-
-  return config
+  const filePath = configFilePath(config.name);
+  await fs.writeFile(filePath, JSON.stringify(toSerializable(config), null, 2), 'utf-8');
+  return config;
 }
 
-export function getMcpServerConfigs(): McpServerConfig[] {
-  const db = getDb()
-  const rows = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at ASC').all() as McpServerRow[]
-  return rows.map(rowToConfig)
-}
-
-export function getMcpServerConfig(name: string): McpServerConfig | null {
-  const db = getDb()
-  const row = db.prepare('SELECT * FROM mcp_servers WHERE name = ?').get(name) as McpServerRow | undefined
-  return row ? rowToConfig(row) : null
-}
-
-export function addMcpServerConfig(config: McpServerConfig): McpServerConfig {
-  const db = getDb()
-  const id = nanoid()
-
-  const transportType = config.transport.type
-  const url = config.transport.type === 'sse' || config.transport.type === 'http'
-    ? config.transport.url : null
-  const headers = config.transport.type === 'sse' || config.transport.type === 'http'
-    ? (config.transport as { headers?: Record<string, string> }).headers
-      ? JSON.stringify((config.transport as { headers?: Record<string, string> }).headers) : null
-    : null
-  const command = config.transport.type === 'stdio' ? config.transport.command : null
-  const args = config.transport.type === 'stdio' && config.transport.args
-    ? JSON.stringify(config.transport.args) : null
-  const env = config.transport.type === 'stdio' && config.transport.env
-    ? JSON.stringify(config.transport.env) : null
-  const enabled = config.enabled ? 1 : 0
-  const toolsInclude = config.tools?.include ? JSON.stringify(config.tools.include) : null
-  const toolsExclude = config.tools?.exclude ? JSON.stringify(config.tools.exclude) : null
-
-  db.prepare(`
-    INSERT INTO mcp_servers (id, name, transport_type, url, headers, command, args, env, tools_include, tools_exclude, enabled)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, config.name, transportType, url, headers, command, args, env, toolsInclude, toolsExclude, enabled)
-
-  return getMcpServerConfig(config.name)!
-}
-
-export function updateMcpServerConfig(name: string, updates: Partial<McpServerConfig>): McpServerConfig | null {
-  const existing = getMcpServerConfig(name)
-  if (!existing) return null
+export async function updateMcpServerConfig(name: string, updates: Partial<McpServerConfig>): Promise<McpServerConfig | null> {
+  const existing = await getMcpServerConfig(name);
+  if (!existing) return null;
 
   const merged: McpServerConfig = {
     ...existing,
     ...updates,
     transport: updates.transport ?? existing.transport,
+  };
+
+  const filePath = configFilePath(name);
+  if (merged.name !== name) {
+    // Name changed — remove old file
+    await fs.unlink(configFilePath(name));
   }
 
-  const transportType = merged.transport.type
-  const url = merged.transport.type === 'sse' || merged.transport.type === 'http'
-    ? merged.transport.url : null
-  const headers = merged.transport.type === 'sse' || merged.transport.type === 'http'
-    ? (merged.transport as { headers?: Record<string, string> }).headers
-      ? JSON.stringify((merged.transport as { headers?: Record<string, string> }).headers) : null
-    : null
-  const command = merged.transport.type === 'stdio' ? merged.transport.command : null
-  const args = merged.transport.type === 'stdio' && merged.transport.args
-    ? JSON.stringify(merged.transport.args) : null
-  const env = merged.transport.type === 'stdio' && merged.transport.env
-    ? JSON.stringify(merged.transport.env) : null
-  const enabled = merged.enabled ? 1 : 0
-  const toolsInclude = merged.tools?.include ? JSON.stringify(merged.tools.include) : null
-  const toolsExclude = merged.tools?.exclude ? JSON.stringify(merged.tools.exclude) : null
-
-  const db = getDb()
-  db.prepare(`
-    UPDATE mcp_servers
-    SET transport_type = ?, url = ?, headers = ?, command = ?, args = ?, env = ?, tools_include = ?, tools_exclude = ?, enabled = ?, updated_at = datetime('now')
-    WHERE name = ?
-  `).run(transportType, url, headers, command, args, env, toolsInclude, toolsExclude, enabled, name)
-
-  return getMcpServerConfig(name)
+  await fs.writeFile(filePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
+  return merged;
 }
 
-export function deleteMcpServerConfig(name: string): boolean {
-  const db = getDb()
-  const result = db.prepare('DELETE FROM mcp_servers WHERE name = ?').run(name)
-  return result.changes > 0
+export async function deleteMcpServerConfig(name: string): Promise<boolean> {
+  const filePath = configFilePath(name);
+  try {
+    await fs.unlink(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }

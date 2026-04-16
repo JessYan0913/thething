@@ -313,7 +313,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const mcpConfigs = getMcpServerConfigs()
+    const mcpConfigs = await getMcpServerConfigs()
     if (mcpConfigs.length > 0) {
       mcpRegistry = createMcpRegistry(mcpConfigs)
       try {

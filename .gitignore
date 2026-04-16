@@ -43,5 +43,6 @@ next-env.d.ts
 
 # sqlite database
 .data/
-skills/
-connectors/
+
+# thething runtime config
+.thething/

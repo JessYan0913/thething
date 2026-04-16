@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, PlugIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon } from 'lucide-react'
+import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, PlugIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,7 @@ interface McpServerView {
   args: string
   env: string
   url: string
+  headers: string
   enabled: boolean
   status: 'connected' | 'disconnected' | 'error'
   toolCount: number
@@ -40,6 +41,7 @@ function configToView(config: Record<string, unknown>): McpServerView {
     args: (type === 'stdio' && transport?.args ? (transport.args as string[]).join(' ') : '') as string,
     env: (type === 'stdio' && transport?.env ? JSON.stringify(transport.env, null, 2) : '') as string,
     url: (type === 'sse' || type === 'http' ? ((transport?.url ?? '') as string) : '') as string,
+    headers: (type === 'sse' || type === 'http' && transport?.headers ? JSON.stringify(transport.headers, null, 2) : '') as string,
     enabled: (config.enabled ?? true) as boolean,
     status: 'disconnected',
     toolCount: 0,
@@ -53,6 +55,9 @@ export default function McpSettingsPage() {
   const [isTesting, setIsTesting] = useState<string | null>(null)
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState('')
+  const [editServer, setEditServer] = useState<McpServerView | null>(null)
+  const [editForm, setEditForm] = useState<McpServerView | null>(null)
+  const [editError, setEditError] = useState('')
 
   const loadServers = useCallback(async () => {
     setIsLoading(true)
@@ -152,6 +157,70 @@ export default function McpSettingsPage() {
     }
   }, [])
 
+  const handleEdit = useCallback((server: McpServerView) => {
+    setEditServer(server)
+    setEditForm({ ...server })
+    setEditError('')
+  }, [])
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editForm || !editServer) return
+    setEditError('')
+
+    const nameChanged = editForm.name !== editServer.name
+
+    // Build transport
+    let transport: Record<string, unknown>
+    if (editForm.transportType === 'stdio') {
+      transport = {
+        type: 'stdio',
+        command: editForm.command,
+        args: editForm.args ? editForm.args.split(/\s+/).filter(Boolean) : [],
+        ...(editForm.env ? { env: JSON.parse(editForm.env) } : {}),
+      }
+    } else {
+      transport = {
+        type: editForm.transportType,
+        url: editForm.url,
+        ...(editForm.headers ? { headers: JSON.parse(editForm.headers) } : {}),
+      }
+    }
+
+    try {
+      if (nameChanged) {
+        // Delete old, create new
+        await fetch(`/api/mcp?name=${encodeURIComponent(editServer.name)}`, { method: 'DELETE' })
+        const res = await fetch('/api/mcp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: editForm.name, transport, enabled: editForm.enabled }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          setEditError(err.error ?? '保存失败')
+          return
+        }
+      } else {
+        const res = await fetch(`/api/mcp?name=${encodeURIComponent(editForm.name)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transport, enabled: editForm.enabled }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          setEditError(err.error ?? '保存失败')
+          return
+        }
+      }
+
+      setEditServer(null)
+      setEditForm(null)
+      await loadServers()
+    } catch {
+      setEditError('网络错误，请重试')
+    }
+  }, [editForm, editServer, loadServers])
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -234,12 +303,86 @@ export default function McpSettingsPage() {
                 server={server}
                 onDelete={() => handleDelete(server.name)}
                 onTest={() => handleTest(server.name)}
+                onEdit={() => handleEdit(server)}
                 isTesting={isTesting === server.name}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editForm} onOpenChange={(open) => { if (!open) { setEditServer(null); setEditForm(null); setEditError('') } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>编辑 MCP 服务器</DialogTitle>
+            <DialogDescription>
+              直接编辑 JSON 配置，保存后将以新配置重新写入文件。
+            </DialogDescription>
+          </DialogHeader>
+
+          <Textarea
+            className="font-mono text-xs min-h-[320px]"
+            value={editForm ? JSON.stringify({
+              mcpServers: {
+                [editForm.name]: editForm.transportType === 'stdio'
+                  ? {
+                      command: editForm.command,
+                      args: editForm.args ? editForm.args.split(/\s+/).filter(Boolean) : [],
+                      ...(editForm.env ? JSON.parse(editForm.env) : {}),
+                    }
+                  : {
+                      url: editForm.url,
+                      ...(editForm.headers ? JSON.parse(editForm.headers) : {}),
+                    },
+              },
+            }, null, 2) : ''}
+            onChange={(e) => {
+              // Parse back to update editForm
+              try {
+                const parsed = JSON.parse(e.target.value)
+                const blocks = parsed.mcpServers ?? parsed
+                const entries = Object.entries(blocks)
+                if (entries.length > 0) {
+                  const [name, block] = entries[0]
+                  const b = block as Record<string, unknown>
+                  const hasCommand = 'command' in b
+                  setEditForm({
+                    ...editForm!,
+                    name,
+                    transportType: hasCommand ? 'stdio' : 'sse',
+                    command: hasCommand ? String(b.command) : '',
+                    args: hasCommand && Array.isArray(b.args) ? b.args.join(' ') : '',
+                    env: hasCommand && b.env ? JSON.stringify(b.env, null, 2) : '',
+                    url: !hasCommand ? String(b.url ?? '') : '',
+                    headers: !hasCommand && b.headers ? JSON.stringify(b.headers, null, 2) : '',
+                  })
+                  setEditError('')
+                }
+              } catch {
+                setEditError('JSON 格式错误')
+              }
+            }}
+          />
+
+          {editError && (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <AlertCircleIcon className="size-4" />
+              {editError}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditServer(null); setEditForm(null); setEditError('') }}>
+              取消
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!!editError}>
+              <CheckIcon className="size-4" />
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -248,15 +391,16 @@ function ServerCard({
   server,
   onDelete,
   onTest,
+  onEdit,
   isTesting,
 }: {
   server: McpServerView
   onDelete: () => void
   onTest: () => void
+  onEdit: () => void
   isTesting: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [showConfig, setShowConfig] = useState(false)
 
   const configJson = JSON.stringify(
     {
@@ -279,8 +423,8 @@ function ServerCard({
           <StatusBadge status={server.status} />
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setShowConfig(!showConfig)} title="查看配置">
-            <CopyIcon className="size-3" />
+          <Button variant="ghost" size="sm" onClick={onEdit} title="编辑">
+            <PencilIcon className="size-3" />
           </Button>
           <Button variant="ghost" size="sm" onClick={onTest} disabled={isTesting}>
             {isTesting ? <RefreshCwIcon className="size-3 animate-spin" /> : <RefreshCwIcon className="size-3" />}
@@ -314,20 +458,6 @@ function ServerCard({
           <span className="truncate max-w-[300px]">{server.url}</span>
         )}
       </div>
-
-      {showConfig && (
-        <div className="relative">
-          <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto">{configJson}</pre>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-2 right-2"
-            onClick={() => navigator.clipboard.writeText(configJson)}
-          >
-            <CopyIcon className="size-3" />
-          </Button>
-        </div>
-      )}
 
       {server.error && (
         <div className="flex items-center gap-2 text-xs text-destructive">

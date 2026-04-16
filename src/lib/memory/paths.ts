@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-const MEMORY_BASE_DIR = process.env.MEMORY_BASE_DIR || path.join(process.cwd(), '.data', 'memory');
+const MEMORY_BASE_DIR = process.env.MEMORY_BASE_DIR || path.join(process.cwd(), '.thething', 'memory');
 
 export function getMemoryBaseDir(): string {
   return MEMORY_BASE_DIR;
