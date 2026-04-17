@@ -3,7 +3,7 @@
 // PostgreSQL 和 MySQL 为可选依赖，需要时安装: npm install pg 或 npm install mysql2
 // ============================================================
 
-import * as Database from 'better-sqlite3'
+import Database from 'better-sqlite3'
 
 export type DatabaseType = 'sqlite' | 'postgresql' | 'mysql'
 
@@ -58,9 +58,8 @@ class SQLitePool implements DatabasePool {
   constructor(config: DatabaseConnectionConfig) {
     this.connectionId = config.connection_id
     if (config.path) {
-      const dbInstance = new (Database as any).Database(config.path, { readonly: true })
-      this.db = dbInstance
-      dbInstance.pragma('journal_mode = WAL')
+      this.db = new Database(config.path, { readonly: true })
+      this.db.pragma('journal_mode = WAL')
       this.isConnected = true
     }
   }

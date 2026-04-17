@@ -16,24 +16,22 @@ export interface ConnectorToolOptions {
  * 将 JSON Schema 属性转换为 Zod 类型
  * 公共函数，供多处复用
  */
-export function buildZodSchemaFromToolDefinition(toolDef: ToolDefinition): z.ZodObject<any, any> {
+export function buildZodSchemaFromToolDefinition(toolDef: ToolDefinition): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const properties: Record<string, z.ZodTypeAny> = {}
   const required: string[] = toolDef.input_schema.required || []
 
   for (const [key, prop] of Object.entries(toolDef.input_schema.properties)) {
-    properties[key] = schemaPropertyToZod(prop)
+    const zodType = schemaPropertyToZod(prop)
+    // 如果字段是 required，不使用 optional
+    // 如果字段不是 required，使用 optional
+    if (!required.includes(key)) {
+      properties[key] = zodType.optional()
+    } else {
+      properties[key] = zodType
+    }
   }
 
-  const inputSchema = z.object(properties)
-
-  // 处理 required 字段
-  if (required.length > 0) {
-    return inputSchema.required(
-      Object.fromEntries(required.map((k) => [k, true])) as Parameters<typeof inputSchema.required>[0]
-    )
-  }
-
-  return inputSchema
+  return z.object(properties)
 }
 
 /**
@@ -71,12 +69,22 @@ export function schemaPropertyToZod(prop: SchemaProperty): z.ZodTypeAny {
 
   // 处理默认值
   if (prop.default !== undefined) {
-    zodType = zodType.default(prop.default as Parameters<typeof zodType.default>[0])
+    // 根据类型设置默认值
+    if (prop.type === 'string' && typeof prop.default === 'string') {
+      zodType = zodType.default(prop.default)
+    } else if ((prop.type === 'number' || prop.type === 'integer') && typeof prop.default === 'number') {
+      zodType = zodType.default(prop.default)
+    } else if (prop.type === 'boolean' && typeof prop.default === 'boolean') {
+      zodType = zodType.default(prop.default)
+    } else {
+      zodType = zodType.default(prop.default)
+    }
   }
 
   // 处理枚举
   if (prop.enum && prop.enum.length > 0) {
-    zodType = z.enum(prop.enum as [string, ...string[]])
+    const enumValues = prop.enum as [string, ...string[]]
+    zodType = z.enum(enumValues)
   }
 
   return zodType
@@ -95,11 +103,11 @@ export function convertConnectorToolToAItool(
   return aiTool({
     description: `[Connector: ${connectorId}] ${toolDef.description}`,
     inputSchema,
-    execute: async (input) => {
+    execute: async (input: Record<string, unknown>) => {
       const result = await registry.callTool({
         connector_id: connectorId,
         tool_name: toolDef.name,
-        tool_input: input as Record<string, unknown>,
+        tool_input: input,
       })
 
       if (!result.success) {

@@ -11,6 +11,7 @@ import { getMessagesByConversation, saveMessages, createConversation, getConvers
 import { buildSystemPrompt } from '@/lib/system-prompt'
 import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '@/lib/memory'
 import { ConnectorRegistry } from '../registry'
+import type { UIMessage } from 'ai'
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -83,8 +84,8 @@ export class AgentInboundHandler implements InboundEventHandler {
         messages: messages.map(m => ({
           role: m.role,
           content: m.parts
-            .filter((p: any) => p.type === 'text')
-            .map((p: any) => p.type === 'text' ? p.text : '')
+            .filter((p) => p.type === 'text')
+            .map((p) => p.type === 'text' ? p.text : '')
             .join('\n'),
         })),
         maxOutputTokens: 1000,
@@ -135,7 +136,7 @@ export class AgentInboundHandler implements InboundEventHandler {
   /**
    * 构建用户消息
    */
-  private buildUserMessage(event: InboundMessageEvent): any {
+  private buildUserMessage(event: InboundMessageEvent): UIMessage {
     return {
       id: nanoid(),
       role: 'user',
@@ -145,20 +146,13 @@ export class AgentInboundHandler implements InboundEventHandler {
           text: event.message.text || '',
         },
       ],
-      createdAt: new Date().toISOString(),
-      metadata: {
-        sender: event.sender,
-        channel: event.channel_id,
-        connector: event.connector_type,
-        messageId: event.message.id,
-      },
     }
   }
 
   /**
    * 构建助手消息
    */
-  private buildAssistantMessage(response: string): any {
+  private buildAssistantMessage(response: string): UIMessage {
     return {
       id: nanoid(),
       role: 'assistant',
@@ -168,7 +162,6 @@ export class AgentInboundHandler implements InboundEventHandler {
           text: response,
         },
       ],
-      createdAt: new Date().toISOString(),
     }
   }
 
