@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import {
-  AlertTriangleIcon,
   CheckCircleIcon,
   TerminalIcon,
   FileIcon,
@@ -12,14 +11,7 @@ import {
   WrenchIcon,
   XIcon,
 } from 'lucide-react';
-import {
-  Confirmation,
-  ConfirmationRequest,
-  ConfirmationActions,
-  ConfirmationAction,
-  type ApprovalState,
-  type ApprovalInfo,
-} from '@/components/ai-elements/confirmation';
+import { Button } from '@/components/ui/button';
 
 interface ApprovalPanelProps {
   isOpen: boolean;
@@ -48,38 +40,6 @@ function getToolConfig(toolName: string) {
   const name = toolName.replace('tool-', '').replace(/_/g, ' ');
   return TOOL_CONFIGS[name] || { icon: WrenchIcon, label: name || '工具调用' };
 }
-
-function getRiskLevel(
-  toolName: string,
-  input: Record<string, unknown>
-): 'low' | 'medium' | 'high' {
-  const name = toolName.replace('tool-', '').replace(/_/g, ' ');
-
-  if (name === 'bash') {
-    const command = String(input.command || '');
-    if (/rm|delete|drop|truncate|format/i.test(command)) return 'high';
-    if (/install|npm|pnpm|yarn add|pip/i.test(command)) return 'medium';
-    return 'low';
-  }
-
-  if (name === 'write file' || name === 'edit file') {
-    const filePath = String(input.filePath || '');
-    if (/\.env|\.secret|\.key|\.pem|config/i.test(filePath)) return 'high';
-    if (/src\//i.test(filePath)) return 'medium';
-    return 'low';
-  }
-
-  return 'low';
-}
-
-const RISK_CONFIG: Record<
-  'low' | 'medium' | 'high',
-  { color: string; text: string }
-> = {
-  low: { color: 'text-green-600', text: '低风险' },
-  medium: { color: 'text-yellow-600', text: '中风险' },
-  high: { color: 'text-red-600', text: '高风险' },
-};
 
 function getSummary(name: string, toolInput: Record<string, unknown>, label: string): string {
   if (name === 'bash') {
@@ -110,15 +70,9 @@ export function ApprovalPanel({
   if (!isOpen) return null;
 
   const config = getToolConfig(toolName);
-  const riskLevel = getRiskLevel(toolName, toolInput);
-  const riskConfig = RISK_CONFIG[riskLevel];
   const Icon = config.icon;
   const name = toolName.replace('tool-', '').replace(/_/g, ' ');
-
   const summary = getSummary(name, toolInput, config.label);
-
-  const approval: ApprovalInfo = { id: approvalId };
-  const state: ApprovalState = 'approval-requested';
 
   const handleApprove = () => {
     onApprove(approvalId);
@@ -129,25 +83,16 @@ export function ApprovalPanel({
   };
 
   return (
-    <div className='shrink-0 border-b bg-background/95 backdrop-blur'>
-      <div className='px-3 py-3'>
+    <div className='shrink-0 bg-background/95 backdrop-blur'>
+      <div className='px-4 py-3'>
         {/* 标题行 */}
-        <div className='flex items-center gap-2 mb-2'>
-          <Icon
-            className={cn(
-              'size-4',
-              riskLevel === 'high' ? 'text-red-500' : 'text-blue-500'
-            )}
-          />
-          <span className='text-sm font-medium'>{config.label}</span>
-          <span className={cn('text-xs', riskConfig.color)}>
-            {riskLevel !== 'low' && (
-              <AlertTriangleIcon className='size-3 inline mr-1' />
-            )}
-            {riskConfig.text}
-          </span>
+        <div className='flex items-center justify-between gap-2 mb-3'>
+          <div className='flex items-center gap-2'>
+            <Icon className='size-4 text-blue-500' />
+            <span className='text-sm font-medium'>{config.label}</span>
+          </div>
           <button
-            className='ml-auto h-6 px-2 text-muted-foreground hover:text-foreground transition-colors'
+            className='shrink-0 h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors'
             onClick={handleDeny}
           >
             <XIcon className='size-3' />
@@ -155,34 +100,31 @@ export function ApprovalPanel({
         </div>
 
         {/* 操作摘要 */}
-        <div className='rounded-md bg-muted/50 px-2 py-1.5 mb-3'>
+        <div className='rounded-md bg-muted/50 px-3 py-1.5 mb-3'>
           <code className='text-xs font-mono break-all'>{summary}</code>
         </div>
 
         {/* 操作按钮 */}
-        <Confirmation
-          approval={approval}
-          state={state}
-          toolName={toolName}
-          toolInput={toolInput}
-          className='bg-transparent border-0 p-0'
-        >
-          <ConfirmationRequest>
-            <ConfirmationActions className='w-full justify-between'>
-              <ConfirmationAction
-                variant='outline'
-                onClick={handleDeny}
-              >
-                <XIcon className='size-3 mr-1' />
-                拒绝
-              </ConfirmationAction>
-              <ConfirmationAction onClick={handleApprove}>
-                <CheckCircleIcon className='size-3 mr-1' />
-                执行
-              </ConfirmationAction>
-            </ConfirmationActions>
-          </ConfirmationRequest>
-        </Confirmation>
+        <div className='flex items-center justify-between gap-2'>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-7'
+            onClick={handleDeny}
+          >
+            <XIcon className='size-3 mr-1' />
+            拒绝
+          </Button>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-7'
+            onClick={handleApprove}
+          >
+            <CheckCircleIcon className='size-3 mr-1' />
+            执行
+          </Button>
+        </div>
       </div>
     </div>
   );
