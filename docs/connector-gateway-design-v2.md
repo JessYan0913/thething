@@ -846,10 +846,11 @@ class IdempotencyGuard {
 - [ ] 能管平台 Manifest 模板库
 
 **第三阶段（扩展性）：**
-- [ ] Script Executor
-- [ ] MCP Executor
+- [ ] Script Executor（完善沙箱安全机制）
 - [ ] 飞书卡片消息（交互式回复）
 - [ ] 管理面 UI（Connector 注册、配置、连接测试）
+
+> 注：MCP Executor 已在 `src/lib/mcp` 中实现，具备 SSE/HTTP/Stdio 三种传输方式的支持，无需在此重复设计。
 
 ---
 

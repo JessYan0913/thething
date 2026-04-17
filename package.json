@@ -28,6 +28,7 @@
     "exa-js": "^2.11.0",
     "fast-glob": "^3.3.3",
     "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.1",
     "lucide-react": "^1.8.0",
     "minimatch": "^10.2.5",
     "motion": "^12.38.0",
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20",
     "@types/react": "^19",

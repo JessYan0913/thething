@@ -43,6 +43,11 @@ next-env.d.ts
 
 # sqlite database
 .data/
+<<<<<<< HEAD
+skills/
+connectors/
+=======
 
 # thething runtime config
+>>>>>>> main
 .thething/

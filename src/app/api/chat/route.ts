@@ -18,6 +18,7 @@ import { bashTool, editFileTool, exaSearchTool, globTool, grepTool, readFileTool
 import { getGlobalTaskStore } from '@/lib/tasks';
 import { createTaskToolsForConversation } from '@/lib/tasks/tools';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import path from 'path';
 import {
   createAgentUIStream,
   createUIMessageStream,
@@ -38,6 +39,7 @@ import { extractMemoriesInBackground } from '@/lib/memory/extractor';
 import { getMcpServerConfigs } from '@/lib/mcp/mcp-config-store';
 import { createMcpRegistry, type McpRegistry } from '@/lib/mcp/registry';
 import { initPermissions } from '@/lib/permissions';
+import { ConnectorRegistry, getAllConnectorTools } from '@/lib/connector';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -45,6 +47,36 @@ const dashscope = createOpenAICompatible({
   baseURL: process.env.DASHSCOPE_BASE_URL!,
   includeUsage: true,
 });
+
+// ============================================================
+// Connector 工具加载
+// ============================================================
+
+const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
+
+// 单例 Registry
+let connectorRegistry: ConnectorRegistry | null = null
+
+async function getConnectorRegistry(): Promise<ConnectorRegistry> {
+  if (!connectorRegistry) {
+    connectorRegistry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
+    await connectorRegistry.initialize()
+  }
+  return connectorRegistry
+}
+
+/**
+ * 加载所有已启用的 Connector 工具
+ */
+async function loadAllConnectorTools(): Promise<Record<string, Tool>> {
+  try {
+    const registry = await getConnectorRegistry()
+    return await getAllConnectorTools(registry)
+  } catch (error) {
+    console.error('[Connector Tools] Failed to load:', error)
+    return {}
+  }
+}
 
 export const maxDuration = 30;
 
@@ -199,6 +231,14 @@ async function createChatAgent(
     }
     const mcpSnapshot = mcpRegistry.snapshot()
     console.log(`[MCP] ${mcpSnapshot.totalTools} MCP tools available: ${Object.keys(mcpTools).join(', ')}`)
+  }
+
+  // 加载 Connector 工具
+  const connectorTools = await loadAllConnectorTools()
+  for (const [toolName, toolDef] of Object.entries(connectorTools)) {
+    if (!(toolName in allTools)) {
+      allTools[toolName] = toolDef
+    }
   }
 
   const tools = allTools;
