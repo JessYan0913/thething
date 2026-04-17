@@ -6,7 +6,6 @@ import {
   CheckCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  MessageCircleQuestionIcon,
   XIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 interface QuestionItem {
   question: string;
   header: string;
-  options: Array<{ label: string; description?: string }>;
+  options: string[];
   multiSelect?: boolean;
 }
 
@@ -115,60 +114,37 @@ export function UserQuestionPanel({
   };
 
   return (
-    <div className='shrink-0 border-b bg-background/95 backdrop-blur'>
+    <div className='shrink-0 bg-background/95 backdrop-blur'>
       <div className='px-4 py-3'>
-        {/* 标题行 */}
-        <div className='flex items-center gap-2 mb-3'>
-          <MessageCircleQuestionIcon className='size-4 text-blue-500' />
-          <span className='text-sm font-medium'>信息收集</span>
-          <div className='flex items-center gap-1 ml-2'>
-            {questions.map((_, idx) => (
-              <div
-                key={idx}
-                className={cn(
-                  'size-1.5 rounded-full transition-colors',
-                  idx === currentQuestionIndex
-                    ? 'bg-blue-500'
-                    : answers[idx] !== undefined
-                      ? 'bg-green-500'
-                      : 'bg-muted-foreground/30'
-                )}
-              />
-            ))}
-          </div>
-          <span className='text-xs text-muted-foreground ml-1'>
-            {currentQuestionIndex + 1}/{totalQuestions}
-          </span>
+        {/* 问题标题行 */}
+        <div className='flex items-center justify-between gap-2 mb-3'>
+          <p className='text-sm font-medium'>{currentQuestion.question}</p>
           <button
-            className='ml-auto h-6 px-2 text-muted-foreground hover:text-foreground transition-colors'
+            className='shrink-0 h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors'
             onClick={onCancel}
           >
             <XIcon className='size-3' />
           </button>
         </div>
 
-        {/* 当前问题 */}
-        <div className='mb-3'>
-          <p className='text-sm font-medium mb-3'>{currentQuestion.question}</p>
-
-          {/* 选项列表 */}
-          <div className='space-y-1.5'>
+        {/* 选项列表 */}
+        <div className='space-y-1.5 mb-3'>
             {currentQuestion.options.map((opt, optIdx) => (
               <label
                 key={optIdx}
                 className={cn(
                   'flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors',
-                  isSelected(opt.label)
+                  isSelected(opt)
                     ? 'bg-accent/60'
                     : 'hover:bg-accent/30'
                 )}
               >
                 <Checkbox
                   className='shrink-0'
-                  checked={isSelected(opt.label)}
-                  onCheckedChange={() => handleOptionSelect(opt.label)}
+                  checked={isSelected(opt)}
+                  onCheckedChange={() => handleOptionSelect(opt)}
                 />
-                <span className='text-sm font-medium'>{opt.label}</span>
+                <span className='text-sm font-medium'>{opt}</span>
               </label>
             ))}
 
@@ -237,7 +213,6 @@ export function UserQuestionPanel({
               )}
             </label>
           </div>
-        </div>
 
         {/* 导航按钮 */}
         <div className='flex items-center justify-between gap-2'>
@@ -252,29 +227,51 @@ export function UserQuestionPanel({
             上一题
           </Button>
 
-          <div className='flex items-center gap-2'>
-            {!isLastQuestion ? (
-              <Button
-                size='sm'
-                className='h-7'
-                onClick={handleNext}
-                disabled={!currentAnswered}
-              >
-                下一题
-                <ChevronRightIcon className='size-4' />
-              </Button>
-            ) : (
-              <Button
-                size='sm'
-                className='h-7'
-                onClick={handleComplete}
-                disabled={!allAnswered}
-              >
-                <CheckCircleIcon className='size-3 mr-1' />
-                完成提交
-              </Button>
-            )}
+          {/* 步骤进度 */}
+          <div className='flex items-center gap-1.5'>
+            <div className='flex items-center gap-1'>
+              {questions.map((_, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    'size-1.5 rounded-full transition-colors',
+                    idx === currentQuestionIndex
+                      ? 'bg-blue-500'
+                      : answers[idx] !== undefined
+                        ? 'bg-green-500'
+                        : 'bg-muted-foreground/30'
+                  )}
+                />
+              ))}
+            </div>
+            <span className='text-xs text-muted-foreground ml-1'>
+              {currentQuestionIndex + 1}/{totalQuestions}
+            </span>
           </div>
+
+          {!isLastQuestion ? (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7'
+              onClick={handleNext}
+              disabled={!currentAnswered}
+            >
+              下一题
+              <ChevronRightIcon className='size-4' />
+            </Button>
+          ) : (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7'
+              onClick={handleComplete}
+              disabled={!allAnswered}
+            >
+              <CheckCircleIcon className='size-3 mr-1' />
+              完成提交
+            </Button>
+          )}
         </div>
       </div>
     </div>

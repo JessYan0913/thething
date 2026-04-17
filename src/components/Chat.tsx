@@ -131,14 +131,14 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
   } | null>(null);
 
   // 问题收集面板状态（用于 ask_user_question）
-  const [questionDialog, setQuestionDialog] = useState<{
+  const [questionPanel, setQuestionPanel] = useState<{
     isOpen: boolean;
     approvalId: string;
     toolCallId: string;
     questions: Array<{
       question: string;
       header: string;
-      options: Array<{ label: string; description?: string }>;
+      options: string[];
       multiSelect?: boolean;
     }>;
   } | null>(null);
@@ -247,15 +247,15 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
             const isQuestionTool = toolName === 'ask user question';
 
             if (approvalId) {
-              if (isQuestionTool && !questionDialog?.isOpen) {
+              if (isQuestionTool && !questionPanel?.isOpen) {
                 // 显示问题收集面板
                 const questions = (toolInput.questions as Array<{
                   question: string;
                   header: string;
-                  options: Array<{ label: string; description?: string }>;
+                  options: string[];
                   multiSelect?: boolean;
                 }>) || [];
-                setQuestionDialog({
+                setQuestionPanel({
                   isOpen: true,
                   approvalId: approvalId,
                   toolCallId: toolPart.toolCallId,
@@ -276,34 +276,34 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
         }
       }
     }
-  }, [messages, status, approvalDialog?.isOpen, questionDialog?.isOpen]);
+  }, [messages, status, approvalDialog?.isOpen, questionPanel?.isOpen]);
 
   // 处理问题收集完成
   const handleQuestionsComplete = useCallback((answers: Record<string, string | string[]>) => {
-    if (questionDialog) {
+    if (questionPanel) {
       // 发送审批响应，包含用户选择作为 reason
       const responseReason = JSON.stringify({ answers });
       addToolApprovalResponse({
-        id: questionDialog.approvalId,
+        id: questionPanel.approvalId,
         approved: true,
         reason: responseReason,
       });
 
-      setQuestionDialog(null);
+      setQuestionPanel(null);
     }
-  }, [addToolApprovalResponse, questionDialog]);
+  }, [addToolApprovalResponse, questionPanel]);
 
   // 处理问题收集取消
   const handleQuestionsCancel = useCallback(() => {
-    if (questionDialog) {
+    if (questionPanel) {
       addToolApprovalResponse({
-        id: questionDialog.approvalId,
+        id: questionPanel.approvalId,
         approved: false,
         reason: '用户取消问题收集',
       });
-      setQuestionDialog(null);
+      setQuestionPanel(null);
     }
-  }, [addToolApprovalResponse, questionDialog]);
+  }, [addToolApprovalResponse, questionPanel]);
 
   // 处理审批批准（普通工具）
   const handleApprove = useCallback((approvalId: string) => {
@@ -554,10 +554,10 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
           <TaskPanel conversationId={conversationId} />
 
           {/* User Question Panel - 问题收集 */}
-          {questionDialog && (
+          {questionPanel && (
             <UserQuestionPanel
-              isOpen={questionDialog.isOpen}
-              questions={questionDialog.questions}
+              isOpen={questionPanel.isOpen}
+              questions={questionPanel.questions}
               onComplete={handleQuestionsComplete}
               onCancel={handleQuestionsCancel}
             />

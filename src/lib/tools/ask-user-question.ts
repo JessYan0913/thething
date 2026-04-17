@@ -8,12 +8,7 @@ const questionSchema = z.object({
     .max(12)
     .describe('问题的简短标签，显示为标签/芯片（如 "Auth method", "Library"）'),
   options: z
-    .array(
-      z.object({
-        label: z.string().describe("选项的显示文本"),
-        description: z.string().optional().describe("选项的解释说明"),
-      }),
-    )
+    .array(z.string())
     .min(2)
     .max(4)
     .describe("可选的答案列表，至少2个，最多4个"),

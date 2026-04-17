@@ -8,7 +8,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus } from "@/lib/tasks/types";
+import type { Task } from "@/lib/tasks/types";
 import { STATUS_CONFIG } from "@/lib/tasks/types";
 
 /**
@@ -157,14 +157,6 @@ export function TaskDependencyGraph({
   onTaskClick,
   className,
 }: TaskDependencyGraphProps) {
-  const taskMap = React.useMemo(() => {
-    const map = new Map<string, Task>();
-    for (const task of tasks) {
-      map.set(task.id, task);
-    }
-    return map;
-  }, [tasks]);
-
   // Find root tasks (tasks with no blockedBy)
   const rootTasks = React.useMemo(() => {
     return tasks.filter((t) => t.blockedBy.length === 0);
