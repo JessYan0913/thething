@@ -1,0 +1,113 @@
+# ============================================================
+# 飞书 Connector 配置
+# ============================================================
+
+id: feishu
+name: 飞书
+version: "1.0.0"
+description: 飞书，支持消息接收和发送
+enabled: true
+
+# 入站配置（Webhook 接收消息）
+inbound:
+  enabled: true
+  webhook_path: /api/connector/webhooks/feishu
+  handler: feishu
+
+# 认证配置
+auth:
+  type: custom
+  config:
+    token_url: "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    token_method: POST
+    token_body:
+      app_id: "${FEISHU_APP_ID}"
+      app_secret: "${FEISHU_APP_SECRET}"
+    token_field: "tenant_access_token"
+    expires_in_field: "expire"
+
+# 凭证（通过环境变量注入）
+credentials:
+  app_id: "${FEISHU_APP_ID}"
+  app_secret: "${FEISHU_APP_SECRET}"
+  encrypt_key: "${FEISHU_ENCRYPT_KEY}"
+  verification_token: "${FEISHU_VERIFICATION_TOKEN}"
+
+# 工具定义
+tools:
+  - name: reply_message
+    description: 回复飞书消息，支持引用原消息
+    input_schema:
+      type: object
+      properties:
+        reply_context:
+          type: object
+          description: 从入站事件中透传的回复上下文
+        text:
+          type: string
+          description: 要发送的文本内容
+        msg_type:
+          type: string
+          enum: ["text", "interactive"]
+          default: "text"
+      required: [reply_context, text]
+    retryable: true
+    timeout_ms: 5000
+    executor: http
+    executor_config:
+      method: POST
+      url: "https://open.feishu.cn/open-apis/im/v1/messages/${input.reply_context.reply_to_message_id}/reply"
+      headers:
+        Authorization: "Bearer ${token}"
+      body:
+        msg_type: "${input.msg_type}"
+        content:
+          text: "${input.text}"
+
+  - name: send_message
+    description: 主动向飞书用户或群发送消息（非回复场景）
+    input_schema:
+      type: object
+      properties:
+        receive_id:
+          type: string
+          description: 接收者 open_id 或 chat_id
+        receive_id_type:
+          type: string
+          enum: ["open_id", "chat_id"]
+          default: "open_id"
+        text:
+          type: string
+          description: 要发送的文本内容
+      required: [receive_id, text]
+    retryable: true
+    timeout_ms: 5000
+    executor: http
+    executor_config:
+      method: POST
+      url: "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${input.receive_id_type}"
+      headers:
+        Authorization: "Bearer ${token}"
+      body:
+        receive_id: "${input.receive_id}"
+        msg_type: "text"
+        content:
+          text: "${input.text}"
+
+  - name: get_user_info
+    description: 查询飞书用户信息
+    input_schema:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: 飞书用户 open_id
+      required: [user_id]
+    retryable: true
+    timeout_ms: 5000
+    executor: http
+    executor_config:
+      method: GET
+      url: "https://open.feishu.cn/open-apis/contact/v3/users/${input.user_id}?user_id_type=open_id"
+      headers:
+        Authorization: "Bearer ${token}"

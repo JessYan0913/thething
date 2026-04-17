@@ -27,3 +27,11 @@ export * from './credentials/index'
 
 // Inbound Layer - 入站消息处理
 export * from './inbound/index'
+
+// 初始化函数
+export {
+  getConnectorRegistry,
+  initConnectorGateway,
+  isInboundInitialized,
+  shutdownConnectorGateway,
+} from './init'

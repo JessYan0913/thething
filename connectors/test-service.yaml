@@ -1,0 +1,80 @@
+# ============================================================
+# 测试服务 Connector 配置
+# ============================================================
+# 用于开发和测试环境，不需要真实凭证
+
+id: test-service
+name: 测试服务
+version: "1.0.0"
+description: 用于测试 Connector 功能的模拟服务
+enabled: true
+
+# 入站配置（Webhook 接收消息）
+inbound:
+  enabled: true
+  webhook_path: /api/connector/webhooks/test-service
+  handler: test-service
+
+# 认证配置（测试环境无需认证）
+auth:
+  type: none
+  config: {}
+
+# 凭证（测试环境无需真实凭证）
+credentials: {}
+
+# 工具定义（Mock 执行器，返回模拟数据）
+tools:
+  - name: send_message
+    description: 发送消息（测试用，返回模拟响应）
+    input_schema:
+      type: object
+      properties:
+        reply_context:
+          type: object
+        text:
+          type: string
+      required: [text]
+    retryable: false
+    timeout_ms: 1000
+    executor: mock
+    executor_config:
+      response:
+        success: true
+        message_id: "test-msg-${timestamp}"
+        delivered: true
+      delay_ms: 100
+
+  - name: get_user_info
+    description: 获取用户信息（测试用，返回模拟数据）
+    input_schema:
+      type: object
+      properties:
+        userid:
+          type: string
+      required: [userid]
+    retryable: false
+    timeout_ms: 1000
+    executor: mock
+    executor_config:
+      response:
+        userid: "${input.userid}"
+        name: "测试用户"
+        avatar: "https://example.com/avatar.png"
+        department: "测试部门"
+
+  - name: echo
+    description: 回显输入内容（测试用）
+    input_schema:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+    retryable: false
+    timeout_ms: 100
+    executor: mock
+    executor_config:
+      response:
+        echoed: "${input.message}"
+        timestamp: "${timestamp}"

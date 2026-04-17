@@ -39,7 +39,7 @@ import { extractMemoriesInBackground } from '@/lib/memory/extractor';
 import { getMcpServerConfigs } from '@/lib/mcp/mcp-config-store';
 import { createMcpRegistry, type McpRegistry } from '@/lib/mcp/registry';
 import { initPermissions } from '@/lib/permissions';
-import { ConnectorRegistry, getAllConnectorTools } from '@/lib/connector';
+import { getConnectorRegistry, getAllConnectorTools, initConnectorGateway } from '@/lib/connector';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -48,22 +48,13 @@ const dashscope = createOpenAICompatible({
   includeUsage: true,
 });
 
-// ============================================================
-// Connector 工具加载
-// ============================================================
+export const maxDuration = 30;
 
-const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
+// 初始化权限系统（加载规则到内存缓存）
+initPermissions().catch((err) => console.error('[Permissions] Init failed:', err));
 
-// 单例 Registry
-let connectorRegistry: ConnectorRegistry | null = null
-
-async function getConnectorRegistry(): Promise<ConnectorRegistry> {
-  if (!connectorRegistry) {
-    connectorRegistry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
-    await connectorRegistry.initialize()
-  }
-  return connectorRegistry
-}
+// 初始化 Connector Gateway（包括 Inbound Processor）
+initConnectorGateway({ enableInbound: true }).catch((err) => console.error('[ConnectorGateway] Init failed:', err));
 
 /**
  * 加载所有已启用的 Connector 工具
@@ -77,11 +68,6 @@ async function loadAllConnectorTools(): Promise<Record<string, Tool>> {
     return {}
   }
 }
-
-export const maxDuration = 30;
-
-// 初始化权限系统（加载规则到内存缓存）
-initPermissions().catch((err) => console.error('[Permissions] Init failed:', err));
 
 async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
   const skillsMetadata = await getAvailableSkillsMetadata();

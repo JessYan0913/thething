@@ -18,3 +18,7 @@ export {
   type InboundEventResult,
   type InboundEventProcessor,
 } from './inbound-processor'
+
+// Agent 入站处理器
+export { AgentInboundHandler, createAgentInboundHandler } from './agent-handler'
+export type { AgentHandlerConfig } from './agent-handler'
