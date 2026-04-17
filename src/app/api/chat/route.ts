@@ -14,7 +14,7 @@ import { createSessionState } from '@/lib/session-state/state';
 import { createResearchAgent } from '@/lib/subagents';
 import type { SubAgentStreamWriter } from '@/lib/subagents/agent-tool';
 import { buildSystemPrompt } from '@/lib/system-prompt';
-import { bashTool, editFileTool, exaSearchTool, globTool, grepTool, readFileTool, writeFileTool } from '@/lib/tools';
+import { bashTool, editFileTool, exaSearchTool, globTool, grepTool, readFileTool, writeFileTool, askUserQuestionTool } from '@/lib/tools';
 import { getGlobalTaskStore } from '@/lib/tasks';
 import { createTaskToolsForConversation } from '@/lib/tasks/tools';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -169,6 +169,7 @@ async function createChatAgent(
     bash: bashTool,
     grep: grepTool,
     glob: globTool,
+    ask_user_question: askUserQuestionTool,
     research: createResearchAgent({
       model: wrappedModel,
       tools: {

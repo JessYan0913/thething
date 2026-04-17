@@ -148,12 +148,28 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
       let generatedText = '';
       let finalUsage: LanguageModelV3Usage | undefined;
       let finalFinishReason: LanguageModelV3FinishReason | undefined;
+      const toolCalls: Array<{ id?: string; name?: string }> = [];
 
       const transformStream = new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
         transform(chunk, controller) {
           switch (chunk.type) {
             case 'text-delta':
               generatedText += chunk.delta;
+              break;
+            case 'tool-call':
+              // 调试：记录tool call信息
+              const tc = chunk as unknown as { toolCallId?: string; toolName?: string };
+              toolCalls.push({ id: tc.toolCallId, name: tc.toolName });
+              log('debug', 'tool-call chunk received', {
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                inputPreview: JSON.stringify(chunk).slice(0, 200)
+              });
+              break;
+            case 'tool-input-start':
+              // 调试：记录tool input开始
+              const tis = chunk as unknown as { id?: string; toolName?: string };
+              log('debug', 'tool-input-start', { id: tis.id, toolName: tis.toolName });
               break;
             case 'finish':
               finalUsage = chunk.usage;
@@ -181,6 +197,8 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
             outputTokens: state.lastOutputTokens,
             cachedTokens: state.lastCachedTokens,
             finishReason: finalFinishReason,
+            toolCallsCount: toolCalls.length,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           });
         },
       });

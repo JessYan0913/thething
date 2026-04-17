@@ -28,10 +28,11 @@ import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { ToolOutput } from '@/components/ai-elements/tool';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
-import { ApprovalDialog } from '@/components/ai-elements/approval-dialog';
+import { ApprovalPanel } from '@/components/ai-elements/approval-panel';
+import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type ToolUIPart, UIMessage } from 'ai';
+import { DefaultChatTransport, type ToolUIPart, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -120,24 +121,27 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
 
-  // 审批对话框状态
+  // 审批对话框状态（用于工具审批）
   const [approvalDialog, setApprovalDialog] = useState<{
     isOpen: boolean;
     approvalId: string;
+    toolCallId: string;
     toolName: string;
     toolInput: Record<string, unknown>;
   } | null>(null);
 
-  // 审批请求 part 的类型定义
-  type ToolApprovalRequestPart = {
-    type: 'tool-approval-request';
-    state: 'approval-requested';
+  // 问题收集面板状态（用于 ask_user_question）
+  const [questionDialog, setQuestionDialog] = useState<{
+    isOpen: boolean;
     approvalId: string;
-    toolCall: {
-      toolName: string;
-      input: Record<string, unknown>;
-    };
-  };
+    toolCallId: string;
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description?: string }>;
+      multiSelect?: boolean;
+    }>;
+  } | null>(null);
 
   const transport = useMemo(() => createChatTransport(conversationId), [conversationId]);
 
@@ -145,17 +149,14 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
     id: conversationId,
     transport,
     sendAutomaticallyWhen: ({ messages }) => {
-      // 检查是否有未响应的审批请求
-      const lastMessage = messages[messages.length - 1];
-      if (!lastMessage || lastMessage.role !== 'assistant') return false;
-
-      // 检查是否有 pending 的审批请求
-      const hasPendingApproval = lastMessage.parts.some(
-        (part) => part.type === 'tool-approval-request' && part.state === 'approval-requested'
+      const lastMsg = messages.at(-1);
+      if (lastMsg?.role === 'assistant' && lastMsg.parts.some((p) => p.type === 'data-plan')) {
+        return false;
+      }
+      return (
+        lastAssistantMessageIsCompleteWithApprovalResponses({ messages }) ||
+        lastAssistantMessageIsCompleteWithToolCalls({ messages })
       );
-
-      // 如果没有审批请求，或者用户已响应，则自动继续
-      return !hasPendingApproval;
     },
     onFinish: async ({ messages: finishedMessages }) => {
       try {
@@ -215,32 +216,96 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
     messagesRef.current = messages;
 
     // 检测 approval-requested 状态并显示审批对话框
+    // 注意：审批请求的part类型是 "tool-${toolName}" 或 "dynamic-tool"，state为 "approval-requested"
     if (status === 'streaming' || status === 'submitted') {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage?.role === 'assistant') {
         for (const part of lastMessage.parts) {
-          if (
-            part.type === 'tool-approval-request' &&
-            part.state === 'approval-requested'
-          ) {
-            // 从 part 中提取 toolCall 信息
-            const approvalPart = part as ToolApprovalRequestPart;
-            const toolCall = approvalPart.toolCall;
-            if (toolCall && !approvalDialog?.isOpen) {
-              setApprovalDialog({
-                isOpen: true,
-                approvalId: approvalPart.approvalId,
-                toolName: toolCall.toolName,
-                toolInput: toolCall.input as Record<string, unknown>,
-              });
+          // 使用正确的类型检测逻辑：type.startsWith('tool-') 或 type === 'dynamic-tool'
+          const isToolPart = part.type.startsWith('tool-') || part.type === 'dynamic-tool';
+          const hasToolCallId = 'toolCallId' in part;
+          const toolState = (part as { state?: string }).state;
+
+          if (isToolPart && hasToolCallId && toolState === 'approval-requested') {
+            // 从 part 中提取审批和工具调用信息
+            const toolPart = part as unknown as {
+              toolCallId: string;
+              toolName?: string;
+              input?: Record<string, unknown>;
+              approval?: { id: string };
+              type: string;
+            };
+            // 从 type 中提取工具名（格式如 "tool-bash"）
+            const toolName = toolPart.type.startsWith('tool-')
+              ? toolPart.type.replace('tool-', '').replace(/_/g, ' ')
+              : toolPart.toolName || 'unknown';
+
+            const approvalId = toolPart.approval?.id;
+            const toolInput = toolPart.input || {};
+
+            // 判断是否是 ask_user_question 工具
+            const isQuestionTool = toolName === 'ask user question';
+
+            if (approvalId) {
+              if (isQuestionTool && !questionDialog?.isOpen) {
+                // 显示问题收集面板
+                const questions = (toolInput.questions as Array<{
+                  question: string;
+                  header: string;
+                  options: Array<{ label: string; description?: string }>;
+                  multiSelect?: boolean;
+                }>) || [];
+                setQuestionDialog({
+                  isOpen: true,
+                  approvalId: approvalId,
+                  toolCallId: toolPart.toolCallId,
+                  questions,
+                });
+              } else if (!isQuestionTool && !approvalDialog?.isOpen) {
+                // 显示普通审批面板
+                setApprovalDialog({
+                  isOpen: true,
+                  approvalId: approvalId,
+                  toolCallId: toolPart.toolCallId,
+                  toolName: toolName,
+                  toolInput: toolInput,
+                });
+              }
             }
           }
         }
       }
     }
-  }, [messages, status, approvalDialog?.isOpen]);
+  }, [messages, status, approvalDialog?.isOpen, questionDialog?.isOpen]);
 
-  // 处理审批批准
+  // 处理问题收集完成
+  const handleQuestionsComplete = useCallback((answers: Record<string, string | string[]>) => {
+    if (questionDialog) {
+      // 发送审批响应，包含用户选择作为 reason
+      const responseReason = JSON.stringify({ answers });
+      addToolApprovalResponse({
+        id: questionDialog.approvalId,
+        approved: true,
+        reason: responseReason,
+      });
+
+      setQuestionDialog(null);
+    }
+  }, [addToolApprovalResponse, questionDialog]);
+
+  // 处理问题收集取消
+  const handleQuestionsCancel = useCallback(() => {
+    if (questionDialog) {
+      addToolApprovalResponse({
+        id: questionDialog.approvalId,
+        approved: false,
+        reason: '用户取消问题收集',
+      });
+      setQuestionDialog(null);
+    }
+  }, [addToolApprovalResponse, questionDialog]);
+
+  // 处理审批批准（普通工具）
   const handleApprove = useCallback((approvalId: string) => {
     addToolApprovalResponse({
       id: approvalId,
@@ -328,18 +393,6 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      {/* 审批对话框 */}
-      {approvalDialog && (
-        <ApprovalDialog
-          isOpen={approvalDialog.isOpen}
-          approvalId={approvalDialog.approvalId}
-          toolName={approvalDialog.toolName}
-          toolInput={approvalDialog.toolInput}
-          onApprove={handleApprove}
-          onDeny={handleDeny}
-        />
-      )}
-
       {error && (
         <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</div>
       )}
@@ -499,6 +552,29 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
         <div className="mx-auto max-w-3xl">
           {/* Task List Panel - always visible above input */}
           <TaskPanel conversationId={conversationId} />
+
+          {/* User Question Panel - 问题收集 */}
+          {questionDialog && (
+            <UserQuestionPanel
+              isOpen={questionDialog.isOpen}
+              questions={questionDialog.questions}
+              onComplete={handleQuestionsComplete}
+              onCancel={handleQuestionsCancel}
+            />
+          )}
+
+          {/* Approval Panel - 工具审批 */}
+          {approvalDialog && (
+            <ApprovalPanel
+              isOpen={approvalDialog.isOpen}
+              approvalId={approvalDialog.approvalId}
+              toolCallId={approvalDialog.toolCallId}
+              toolName={approvalDialog.toolName}
+              toolInput={approvalDialog.toolInput}
+              onApprove={handleApprove}
+              onDeny={handleDeny}
+            />
+          )}
 
           <PromptInput onSubmit={handleSend}>
             <PromptInputTextarea placeholder="Message AI Assistant..." />

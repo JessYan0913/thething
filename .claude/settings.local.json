@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc:*)",
-      "WebFetch(domain:ai-sdk.dev)"
+      "WebFetch(domain:ai-sdk.dev)",
+      "Bash(npx eslint *)",
+      "WebFetch(domain:elements.ai-sdk.dev)",
+      "WebSearch",
+      "Bash(npm search *)",
+      "Bash(pnpm tsc *)",
+      "Bash(pnpm exec *)",
+      "WebFetch(domain:sdk.vercel.ai)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
