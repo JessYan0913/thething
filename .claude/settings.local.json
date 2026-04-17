@@ -10,7 +10,9 @@
       "Bash(pnpm tsc *)",
       "Bash(pnpm exec *)",
       "WebFetch(domain:sdk.vercel.ai)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
