@@ -90,6 +90,58 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
   }
 }
 
+/**
+ * 保存 Always allow 规则到配置文件
+ * 通过 API 端点保存（因为客户端无法直接访问 fs）
+ */
+async function saveAlwaysAllowRule(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+): Promise<void> {
+  try {
+    // 标准化工具名
+    const normalizedToolName = toolName.replace(' ', '_').toLowerCase();
+
+    // 根据工具类型生成规则 pattern
+    let pattern: string | undefined;
+
+    if (normalizedToolName === 'bash') {
+      // Bash 工具：提取命令前缀作为 pattern
+      const command = String(toolInput.command || '');
+      const parts = command.trim().split(' ');
+      if (parts.length > 0) {
+        // 使用第一个词作为前缀，如 "git *" 或 "npm *"
+        pattern = `${parts[0]} *`;
+      }
+    } else if (['read_file', 'edit_file', 'write_file'].includes(normalizedToolName)) {
+      // 文件工具：使用文件路径作为 pattern
+      const filePath = String(toolInput.filePath || '');
+      if (filePath) {
+        pattern = filePath;
+      }
+    }
+
+    // 通过 API 保存规则
+    const res = await fetch('/api/permissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toolName: normalizedToolName,
+        pattern,
+        behavior: 'allow',
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status}`);
+    }
+
+    console.log(`[Permissions] Saved always-allow rule: ${normalizedToolName}${pattern ? ` (${pattern})` : ''}`);
+  } catch (error) {
+    console.error('[Permissions] Failed to save always-allow rule:', error);
+  }
+}
+
 export function getStoredConversationId(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(CONVERSATION_ID_KEY);
@@ -306,13 +358,19 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
   }, [addToolApprovalResponse, questionPanel]);
 
   // 处理审批批准（普通工具）
-  const handleApprove = useCallback((approvalId: string) => {
+  const handleApprove = useCallback((approvalId: string, options?: { alwaysAllow?: boolean }) => {
     addToolApprovalResponse({
       id: approvalId,
       approved: true,
     });
+
+    // 保存 Always allow 规则
+    if (options?.alwaysAllow && approvalDialog) {
+      saveAlwaysAllowRule(approvalDialog.toolName, approvalDialog.toolInput);
+    }
+
     setApprovalDialog(null);
-  }, [addToolApprovalResponse]);
+  }, [addToolApprovalResponse, approvalDialog]);
 
   // 处理审批拒绝
   const handleDeny = useCallback((approvalId: string, reason?: string) => {

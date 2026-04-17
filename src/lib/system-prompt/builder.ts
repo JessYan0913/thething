@@ -119,18 +119,24 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   },
   {
     name: "memory-guidelines",
-    create: (options) =>
-      options.memoryContext?.userId
-        ? createMemorySection(options.memoryContext.userId, options.memoryContext.teamId)
-        : { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 },
+    create: async (options) => {
+      if (options.memoryContext?.userId) {
+        const section = await createMemorySection(options.memoryContext.userId, options.memoryContext.teamId);
+        return section ?? { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
+      }
+      return { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
+    },
     cacheStrategy: "session",
   },
   {
     name: "recalled-memories",
-    create: (options) =>
-      options.memoryContext?.recalledMemoriesContent
-        ? createRecalledMemorySection(options.memoryContext.recalledMemoriesContent)
-        : { name: "recalled-memories", content: null, cacheStrategy: "dynamic" as const, priority: 46 },
+    create: async (options) => {
+      if (options.memoryContext?.recalledMemoriesContent) {
+        const section = await createRecalledMemorySection(options.memoryContext.recalledMemoriesContent);
+        return section ?? { name: "recalled-memories", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
+      }
+      return { name: "recalled-memories", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
+    },
     cacheStrategy: "dynamic",
   },
 ];

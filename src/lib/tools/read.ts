@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { z } from 'zod';
+import { checkPermissionRules, validatePath } from '@/lib/permissions';
 
 const MAX_CHARS = 50_000;
 
@@ -10,6 +11,25 @@ export const readFileTool = tool({
   inputSchema: z.object({
     filePath: z.string().describe('要读取的文件路径（相对于工作目录）'),
   }),
+  needsApproval: async ({ filePath }) => {
+    // Step 1: 检查持久化规则（Always allow）
+    const matchedRule = checkPermissionRules('read_file', { filePath });
+    if (matchedRule?.behavior === 'allow') {
+      return false;  // 自动放行
+    }
+    if (matchedRule?.behavior === 'deny') {
+      throw new Error(`操作被拒绝: ${matchedRule.pattern}`);
+    }
+
+    // Step 2: 路径安全检查
+    const pathCheck = validatePath(filePath);
+    if (!pathCheck.allowed) {
+      throw new Error(`路径安全阻止: ${pathCheck.reason}`);
+    }
+
+    // Step 3: 其他路径需要审批
+    return true;
+  },
   execute: async ({ filePath }) => {
     const absolutePath = path.resolve(filePath);
 

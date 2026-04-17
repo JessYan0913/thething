@@ -37,6 +37,7 @@ import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemor
 import { extractMemoriesInBackground } from '@/lib/memory/extractor';
 import { getMcpServerConfigs } from '@/lib/mcp/mcp-config-store';
 import { createMcpRegistry, type McpRegistry } from '@/lib/mcp/registry';
+import { initPermissions } from '@/lib/permissions';
 
 const dashscope = createOpenAICompatible({
   name: 'dashscope',
@@ -46,6 +47,9 @@ const dashscope = createOpenAICompatible({
 });
 
 export const maxDuration = 30;
+
+// 初始化权限系统（加载规则到内存缓存）
+initPermissions().catch((err) => console.error('[Permissions] Init failed:', err));
 
 async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
   const skillsMetadata = await getAvailableSkillsMetadata();
@@ -65,7 +69,7 @@ async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
     Array.from(activeSkillNames).map(async (name) => {
       const metadata = skillsMetadata.find((s) => s.name === name);
       if (!metadata) return null;
-      return loadFullSkill(metadata.sourcePath);
+      return loadFullSkill(metadata);  // 传入整个 metadata 对象
     })
   );
 

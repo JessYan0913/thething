@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { z } from 'zod';
+import { checkPermissionRules, validateWritePath } from '@/lib/permissions';
 
 export const editFileTool = tool({
   description:
@@ -11,8 +13,27 @@ export const editFileTool = tool({
     newString: z.string().describe('替换后的新文本'),
     replaceAll: z.boolean().optional().default(false).describe('是否替换所有匹配项（默认仅替换第一个）'),
   }),
+  needsApproval: async ({ filePath }) => {
+    // Step 1: 检查持久化规则（Always allow）
+    const matchedRule = checkPermissionRules('edit_file', { filePath });
+    if (matchedRule?.behavior === 'allow') {
+      return false;  // 自动放行
+    }
+    if (matchedRule?.behavior === 'deny') {
+      throw new Error(`操作被拒绝: ${matchedRule.pattern}`);
+    }
+
+    // Step 2: 路径安全检查（编辑是写操作，更严格）
+    const pathCheck = validateWritePath(filePath);
+    if (!pathCheck.allowed) {
+      throw new Error(`路径安全阻止: ${pathCheck.reason}`);
+    }
+
+    // Step 3: 编辑操作默认需要审批
+    return true;
+  },
   execute: async ({ filePath, oldString, newString, replaceAll = false }) => {
-    const absolutePath = filePath.startsWith('/') ? filePath : require('path').resolve(filePath);
+    const absolutePath = filePath.startsWith('/') ? filePath : path.resolve(filePath);
 
     const content = await fs.readFile(absolutePath, 'utf-8');
 

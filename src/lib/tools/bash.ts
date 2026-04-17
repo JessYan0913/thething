@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { exec as execCallback, ChildProcess } from 'child_process';
 import { z } from 'zod';
+import { checkPermissionRules } from '@/lib/permissions';
 
 // 危险命令黑名单 - 直接拒绝执行
 const DANGEROUS_PATTERNS = [
@@ -165,6 +166,15 @@ export const bashTool = tool({
     timeoutMs: z.number().min(1000).max(120000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒'),
   }),
   needsApproval: async ({ command }) => {
+    // Step 0: 检查持久化规则（Always allow）
+    const matchedRule = checkPermissionRules('bash', { command });
+    if (matchedRule?.behavior === 'allow') {
+      return false;  // 自动放行
+    }
+    if (matchedRule?.behavior === 'deny') {
+      throw new Error(`操作被拒绝: ${matchedRule.pattern}`);
+    }
+
     // Step 1: 检查危险命令黑名单 - 直接拒绝，不需要审批
     const dangerCheck = isCommandDangerous(command);
     if (dangerCheck.dangerous) {
@@ -221,7 +231,7 @@ export const bashTool = tool({
         throw new Error(`命令执行超时 (${timeoutMs}ms)。请增加 timeoutMs 或优化命令。`);
       }
 
-      if (execError.code === 'E2BIG' || execError.stdout?.length + execError.stderr?.length > MAX_OUTPUT_CHARS * 10) {
+      if (execError.code === 'E2BIG' || (execError.stdout?.length ?? 0) + (execError.stderr?.length ?? 0) > MAX_OUTPUT_CHARS * 10) {
         throw new Error(`命令输出过大。请重定向到文件或缩小输出范围。`);
       }
 

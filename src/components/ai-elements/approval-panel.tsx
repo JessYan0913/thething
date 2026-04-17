@@ -12,6 +12,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ApprovalPanelProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ interface ApprovalPanelProps {
   toolCallId: string;
   toolName: string;
   toolInput: Record<string, unknown>;
-  onApprove: (approvalId: string) => void;
+  onApprove: (approvalId: string, options?: { alwaysAllow?: boolean }) => void;
   onDeny: (approvalId: string, reason?: string) => void;
 }
 
@@ -67,6 +68,8 @@ export function ApprovalPanel({
   onApprove,
   onDeny,
 }: ApprovalPanelProps) {
+  const [alwaysAllow, setAlwaysAllow] = React.useState(false);
+
   if (!isOpen) return null;
 
   const config = getToolConfig(toolName);
@@ -75,7 +78,7 @@ export function ApprovalPanel({
   const summary = getSummary(name, toolInput, config.label);
 
   const handleApprove = () => {
-    onApprove(approvalId);
+    onApprove(approvalId, { alwaysAllow });
   };
 
   const handleDeny = () => {
@@ -102,6 +105,21 @@ export function ApprovalPanel({
         {/* 操作摘要 */}
         <div className='rounded-md bg-muted/50 px-3 py-1.5 mb-3'>
           <code className='text-xs font-mono break-all'>{summary}</code>
+        </div>
+
+        {/* Always allow 复选框 */}
+        <div className='flex items-center gap-2 mb-3'>
+          <Checkbox
+            id='always-allow'
+            checked={alwaysAllow}
+            onCheckedChange={(checked) => setAlwaysAllow(checked === true)}
+          />
+          <label
+            htmlFor='always-allow'
+            className='text-xs text-muted-foreground cursor-pointer select-none'
+          >
+            以后自动允许此操作
+          </label>
         </div>
 
         {/* 操作按钮 */}

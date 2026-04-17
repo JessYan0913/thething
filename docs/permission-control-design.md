@@ -1,6 +1,7 @@
 # 权限控制体系设计
 
 > 融合 Claude Code 三级权限模型设计哲学、AI SDK v6 原生能力与当前项目架构
+> **2026-04-18 更新**：移除 RBAC 和多用户系统相关内容，简化为单用户场景
 
 ## 文档信息
 
@@ -10,7 +11,7 @@
   - [claude-code-best/claude-code](https://github.com/claude-code-best/claude-code) 源码审计
   - [AI SDK v6 官方文档](https://ai-sdk.dev/docs)
   - 当前项目代码审计 (`E:\thething/src/`)
-- **工作场景**: 企业级私有化部署，多用户/团队，中心化云服务器
+- **工作场景**: 企业级私有化部署，单用户使用，中心化云服务器
 
 ---
 
@@ -38,15 +39,13 @@
 
 ### 1.3 规则来源的优先级链
 
-规则从 6 个来源汇聚，优先级从高到低（高优先级覆盖低优先级）：
+规则从 4 个来源汇聚，优先级从高到低（高优先级覆盖低优先级）：
 
 ```
 1. session         — 用户在当前对话中手动授权（"Always allow"）
 2. cliArg          — 启动参数 / 环境变量
 3. skill           — Skill 工具的 allowedTools 白名单
-4. projectSettings — 项目级配置（团队共享）
-5. userSettings    — 用户级配置（跨项目）
-6. policySettings  — 企业管理员下发的策略（用户不可覆盖）
+4. projectSettings — 项目级配置（.claude/settings.json）
 ```
 
 **关键设计**: 低优先级规则永远不能覆盖高优先级的 Deny。这是 Claude Code 的 "bypass-immune" 安全底线。
@@ -61,21 +60,22 @@
 |------|------|------|
 | DenialTracker | `src/lib/agent-control/denial-tracking.ts` | ✅ 完整（3 次拒绝 + 冷却期） |
 | Guardrails 中间件 | `src/lib/middleware/guardrails.ts` | ✅ PII 红化 |
-| Bash 危险命令黑名单 | `src/lib/tools/bash.ts` | ✅ 19 条正则模式 |
+| Bash needsApproval | `src/lib/tools/bash.ts:167-181` | ✅ 黑名单 + 白名单 + 需审批判定 |
+| ask_user_question needsApproval | `src/lib/tools/ask-user-question.ts:41` | ✅ 强制需审批 |
+| 前端审批 UI | `src/components/ai-elements/approval-panel.tsx` | ✅ 审批对话框 |
+| 问题收集 UI | `src/components/ai-elements/user-question-panel.tsx` | ✅ 多选问题面板 |
+| 审批响应流程 | `src/components/Chat.tsx:215-325` | ✅ addToolApprovalResponse |
 | 技能级工具白名单 | `src/lib/skills/` | ✅ `Skill.allowedTools` |
 | Denial 注入 pipeline | `src/lib/agent-control/pipeline.ts:59-67` | ✅ 阈值检查 |
 
 ### 2.2 缺失能力（本设计要解决的）
 
-| 缺失项 | 风险 | 影响 |
-|--------|------|------|
-| 文件路径 allowlist/blocklist | 高 | read/edit/write 可操作任意系统路径 |
-| 规则引擎 + 优先级层叠 | 高 | 无用户可配置的权限规则 |
-| SDK `needsApproval` 审批工作流 | 高 | 所有工具自动执行，无确认机制 |
-| Bash 命令安全分类器 | 中 | 仅黑名单，无白名单/上下文感知 |
-| 权限模式切换（plan/default/auto） | 中 | 无探索/生产模式隔离 |
-| RBAC 用户角色系统 | 中 | 企业多用户场景必需 |
-| 规则持久化与运行时更新 | 中 | 设置无法保存或动态生效 |
+| 缺失项 | 风险 | 影响 | 备注 |
+|--------|------|------|------|
+| 文件路径 allowlist/blocklist | 高 | read/edit/write 可操作任意系统路径 | **Phase 1 待完善** |
+| 规则引擎 + 优先级层叠 | 中 | 无统一规则匹配逻辑 | **Phase 1 待完善** |
+| Bash 安全命令白名单 | 低 | 已有部分实现 | 可扩展更多安全命令 |
+| 规则持久化（"Always allow"） | 低 | 会话结束后规则丢失 | 可选实现 |
 
 ---
 
@@ -85,18 +85,16 @@
 
 ```
 src/lib/permissions/
-├── types.ts                    # 类型定义（PermissionResult, PermissionRule, PermissionMode）
+├── types.ts                    # 类型定义（PermissionResult, PermissionRule）
 ├── engine.ts                   # 核心规则匹配引擎（三维度匹配）
-├── rule-loader.ts              # 规则加载器（6 层来源聚合）
+├── rule-loader.ts              # 规则加载器（4 层来源聚合）
 ├── rule-parser.ts              # 规则字符串解析（如 "Bash(git *)"）
 ├── path-validation.ts          # 文件系统路径验证
-├── command-classifier.ts       # Bash 命令安全分类器
-├── mode-manager.ts             # 权限模式管理（default/plan/auto/bypass）
-├── denial-tracking.ts          # 拒绝追踪（复用现有，增强）
-├── rbac.ts                     # 角色权限控制
-├── persistence.ts              # 规则持久化（SQLite）
-└── hooks.ts                    # 权限 Hook 系统
+└── persistence.ts              # 规则持久化（SQLite，可选）
 ```
+
+> **注**: Bash 命令安全分类器、权限模式管理、Hook 系统等高级功能已移除。
+> 当前基础审批流程已够用，文件路径验证是主要待完善项。
 
 ### 3.2 权限决策流水线
 
@@ -164,12 +162,10 @@ interface PermissionResult {
 
 ```typescript
 type PermissionRuleSource =
-  | 'session'
-  | 'cliArg'
-  | 'skill'
-  | 'projectSettings'
-  | 'userSettings'
-  | 'policySettings';
+  | 'session'        // 当前对话中的临时授权
+  | 'cliArg'         // 启动参数/环境变量
+  | 'skill'          // Skill 工具的 allowedTools
+  | 'projectSettings'; // .claude/settings.json
 
 interface PermissionRule {
   id: string;
@@ -178,47 +174,19 @@ interface PermissionRule {
   toolName: string;           // "Bash", "read_file", "mcp__server__*"
   ruleContent?: string;       // "git *", "src/**", "npm publish:*"
   createdAt: Date;
-  createdBy?: string;         // userId
-  expiresAt?: Date;           // 临时授权
+  expiresAt?: Date;           // 临时授权（session 级）
 }
 ```
 
-### 4.3 权限模式
+### 4.3 权限上下文
 
 ```typescript
-type PermissionMode =
-  | 'default'    // 敏感操作逐一确认
-  | 'plan'       // 只读模式，写操作 deny
-  | 'auto'       // AI 分类器自动决策
-  | 'bypass';    // 完全信任（需显式授权）
-
 interface PermissionContext {
-  mode: PermissionMode;
   rules: Map<PermissionRuleSource, PermissionRule[]>;
   workingDir: string;
-  userId: string;
-  roleId?: string;
   denialTracker: DenialTracker;
 }
 ```
-
-### 4.4 角色定义（RBAC）
-
-```typescript
-interface Role {
-  id: string;
-  name: 'admin' | 'developer' | 'viewer' | 'custom';
-  permissions: {
-    canExecuteBash: boolean;
-    canWriteFiles: boolean;
-    canReadFiles: boolean;
-    canUseMcp: boolean;
-    canCreateSubagents: boolean;
-    maxBashTimeoutMs: number;
-    allowedPaths: string[];     // glob patterns
-    deniedPaths: string[];      // glob patterns
-    allowedCommands: string[];  // command patterns
-    deniedCommands: string[];   // command patterns
   };
 }
 ```
@@ -278,8 +246,7 @@ function evaluatePermission(
 ): PermissionResult {
   // 按优先级从高到低检查每个来源
   const sources: PermissionRuleSource[] = [
-    'session', 'cliArg', 'skill',
-    'projectSettings', 'userSettings', 'policySettings',
+    'session', 'cliArg', 'skill', 'projectSettings',
   ];
 
   for (const source of sources) {
@@ -565,34 +532,11 @@ function securePathChecks(filePath: string): string[] {
 
 ## 8. 命令安全分类器
 
-### 8.1 两级分类
+> **当前状态**: 已在 `src/lib/tools/bash.ts` 中实现黑白名单检查。
 
-替代现有纯黑名单模式，实现上下文感知的分类：
+现有实现已够用，安全命令白名单可按需扩展：
 
 ```typescript
-interface CommandClassification {
-  level: 'safe' | 'caution' | 'dangerous';
-  reason: string;
-  suggestion?: string;
-}
-
-function classifyCommand(command: string): CommandClassification {
-  const trimmed = command.trim();
-
-  // Level 1: 硬规则（黑名单/白名单）
-  if (DANGEROUS_PATTERNS.some(p => p.test(trimmed))) {
-    return { level: 'dangerous', reason: '匹配危险命令黑名单' };
-  }
-
-  if (SAFE_COMMANDS.some(c => trimmed.startsWith(c))) {
-    return { level: 'safe', reason: '在白名单中' };
-  }
-
-  // Level 2: LLM 分类器（auto 模式使用）
-  // 发送命令 + 上下文给轻量模型评估
-  return { level: 'caution', reason: '需要用户确认' };
-}
-
 const SAFE_COMMANDS = [
   'git status', 'git log', 'git diff', 'git branch',
   'ls', 'dir', 'pwd', 'cd',
@@ -603,248 +547,67 @@ const SAFE_COMMANDS = [
 ];
 ```
 
-### 8.2 Auto 模式 AI 分类器
-
-```typescript
-async function aiClassifyCommand(
-  command: string,
-  transcript: ModelMessage[],
-  context: PermissionContext,
-): Promise<PermissionBehavior> {
-  const { text } = await generateText({
-    model: context.classifierModel, // 使用轻量模型
-    prompt: `
-      评估以下 shell 命令的安全性。考虑：
-      1. 命令是否会修改文件系统
-      2. 命令是否会访问网络
-      3. 命令是否会读取敏感信息
-      4. 当前对话上下文中的意图
-
-      命令: ${command}
-      对话摘要: ${summarizeTranscript(transcript)}
-
-      只返回一个词: allow, ask, 或 deny
-    `,
-  });
-
-  return text.trim() as PermissionBehavior;
-}
-```
+---
 
 ---
 
-## 9. 权限模式管理
+## 9. 持久化（可选）
 
-### 9.1 模式切换
+> **注**: 当前会话级规则已够用。持久化用于"Always allow"功能，可按需实现。
 
-```typescript
-interface ModeTransition {
-  from: PermissionMode;
-  to: PermissionMode;
-  effects: string[];
-}
-
-function getModeEffects(mode: PermissionMode): ModeTransition {
-  switch (mode) {
-    case 'default':
-      return {
-        from: mode,
-        to: mode,
-        effects: ['敏感操作需要确认', '读写操作按规则评估'],
-      };
-    case 'plan':
-      return {
-        from: mode,
-        to: mode,
-        effects: [
-          '所有写操作被 deny',
-          '所有 Bash 命令被 deny',
-          '仅允许只读工具: read_file, grep, glob',
-        ],
-      };
-    case 'auto':
-      return {
-        from: mode,
-        to: mode,
-        effects: [
-          'AI 分类器自动决策',
-          '危险规则被临时剥离',
-          '分类失败时 fallback 到 ask',
-        ],
-      };
-    case 'bypass':
-      return {
-        from: mode,
-        to: mode,
-        effects: [
-          '所有操作自动 allow',
-          '敏感路径检查仍然生效（bypass-immune）',
-          '需要显式授权才能启用',
-        ],
-      };
-  }
-}
-```
-
-### 9.2 Auto 模式的危险规则剥离
-
-进入 auto 模式时，临时剥离可能绕过分类器的危险 allow 规则：
-
-```typescript
-const DANGEROUS_AUTO_PATTERNS = [
-  { toolName: 'bash', ruleContent: '*' },
-  { toolName: 'bash', ruleContent: 'python:*' },
-  { toolName: 'edit_file', ruleContent: '*' },
-  { toolName: 'write_file', ruleContent: '*' },
-];
-
-function enterAutoMode(context: PermissionContext): PermissionContext {
-  const stashedRules: PermissionRule[] = [];
-
-  for (const pattern of DANGEROUS_AUTO_PATTERNS) {
-    for (const [source, rules] of context.rules) {
-      const matching = rules.filter(r =>
-        r.behavior === 'allow' &&
-        r.toolName === pattern.toolName &&
-        r.ruleContent === pattern.ruleContent
-      );
-      stashedRules.push(...matching);
-      // 从活跃规则中移除
-      context.rules.set(source, rules.filter(r => !matching.includes(r)));
-    }
-  }
-
-  context.stashedRules = stashedRules;
-  context.mode = 'auto';
-  return context;
-}
-```
-
----
-
-## 10. 持久化与运行时更新
-
-### 10.1 SQLite 存储
+SQLite 存储（简化版）：
 
 ```sql
 CREATE TABLE permission_rules (
   id TEXT PRIMARY KEY,
-  source TEXT NOT NULL CHECK (source IN ('session', 'cliArg', 'skill', 'projectSettings', 'userSettings', 'policySettings')),
+  source TEXT NOT NULL CHECK (source IN ('session', 'cliArg', 'skill', 'projectSettings')),
   behavior TEXT NOT NULL CHECK (behavior IN ('allow', 'ask', 'deny')),
   tool_name TEXT NOT NULL,
   rule_content TEXT,
-  user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   expires_at DATETIME,
-  UNIQUE(source, tool_name, rule_content, user_id)
+  UNIQUE(source, tool_name, rule_content)
 );
-
-CREATE TABLE permission_audit_log (
-  id TEXT PRIMARY KEY,
-  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-  user_id TEXT,
-  session_id TEXT,
-  tool_name TEXT,
-  input_json TEXT,
-  decision TEXT,
-  reason TEXT,
-  rule_source TEXT
-);
-
-CREATE TABLE user_roles (
-  user_id TEXT PRIMARY KEY,
-  role_id TEXT NOT NULL,
-  assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### 10.2 运行时更新
-
-```typescript
-type PermissionUpdate =
-  | { type: 'addRule'; behavior: PermissionBehavior; rule: string; destination: PermissionRuleSource }
-  | { type: 'removeRule'; behavior: PermissionBehavior; rule: string; destination: PermissionRuleSource }
-  | { type: 'setMode'; mode: PermissionMode; destination: PermissionRuleSource };
-
-function applyPermissionUpdate(
-  context: PermissionContext,
-  update: PermissionUpdate,
-): PermissionContext {
-  switch (update.type) {
-    case 'addRule': {
-      const parsed = parseRuleString(update.rule);
-      const newRule: PermissionRule = {
-        id: nanoid(),
-        source: update.destination,
-        behavior: parsed.behavior,
-        toolName: parsed.toolName,
-        ruleContent: parsed.ruleContent,
-        createdAt: new Date(),
-      };
-      const rules = context.rules.get(update.destination) || [];
-      rules.push(newRule);
-      context.rules.set(update.destination, rules);
-      persistRule(newRule);
-      break;
-    }
-    case 'setMode':
-      context.mode = update.mode;
-      break;
-  }
-  return context;
-}
 ```
 
 ---
 
-## 11. 前端审批 UI 设计
+## 10. 前端审批 UI（已实现）
 
-### 11.1 审批对话框
+> **当前状态**: 基础审批 UI 已在 `src/components/ai-elements/` 实现。
+
+### 10.1 已实现组件
+
+| 组件 | 文件 | 功能 |
+|------|------|------|
+| ApprovalPanel | `approval-panel.tsx` | Bash/文件工具审批对话框 |
+| UserQuestionPanel | `user-question-panel.tsx` | ask_user_question 多选问题面板 |
+
+### 10.2 审批响应流程（已实现）
 
 ```typescript
-// components/permissions/PermissionApprovalDialog.tsx
-interface ApprovalDialogProps {
-  approvalRequest: {
-    approvalId: string;
-    toolCall: {
-      toolName: string;
-      input: Record<string, unknown>;
-    };
-  };
-  riskLevel: 'low' | 'medium' | 'high';
-  riskExplanation?: string;
-  onApprove: (approvalId: string, options?: { alwaysAllow?: boolean }) => void;
-  onDeny: (approvalId: string) => void;
+// Chat.tsx 中已实现的流程
+const { addToolApprovalResponse } = useChat({...});
+
+// 检测 approval-requested 状态
+if (toolPart.state === 'approval-requested') {
+  setApprovalDialog({
+    isOpen: true,
+    approvalId: toolPart.approval.id,
+    toolName, toolInput,
+  });
 }
+
+// 用户批准
+const handleApprove = (approvalId: string) => {
+  addToolApprovalResponse({ id: approvalId, approved: true });
+};
+
+// 用户拒绝
+const handleDeny = (approvalId: string, reason?: string) => {
+  addToolApprovalResponse({ id: approvalId, approved: false, reason });
+};
 ```
-
-### 11.2 与 useChat 集成
-
-```typescript
-// 使用 AI SDK 的 useChat hook
-const { messages, addToolApprovalResponse } = useChat({
-  api: '/api/chat',
-  onToolCall({ toolCall }) {
-    // 检测到需要审批的工具调用
-    if (toolCall.toolName === 'bash' && isDangerous(toolCall.input.command)) {
-      showApprovalDialog(toolCall, {
-        onApprove: (approvalId, options) => {
-          addToolApprovalResponse({
-            approvalId,
-            approved: true,
-          });
-          if (options?.alwaysAllow) {
-            // 持久化 "Always allow" 规则
-            savePermissionRule({
-              behavior: 'allow',
-              rule: `bash(${toolCall.input.command.split(' ')[0]} *)`,
-              source: 'session',
-            });
-          }
-        },
-        onDeny: (approvalId) => {
-          addToolApprovalResponse({
-            approvalId,
             approved: false,
             reason: '用户拒绝此操作',
           });
@@ -858,111 +621,60 @@ const { messages, addToolApprovalResponse } = useChat({
 
 ---
 
-## 12. 三阶段实施计划
+## 11. 实施计划（简化版）
 
-### Phase 1: 基础权限框架（1-2 周）
+### 已完成 ✅
 
-**目标**: 利用 SDK `needsApproval` 实现基础审批流
-
-| 任务 | 文件 | 说明 |
+| 任务 | 文件 | 状态 |
 |------|------|------|
-| 定义类型系统 | `src/lib/permissions/types.ts` | PermissionResult, PermissionRule, PermissionMode |
-| 实现规则引擎 | `src/lib/permissions/engine.ts` | 三维度匹配 + 优先级评估 |
-| 集成 needsApproval | `src/lib/tools/bash.ts` | 改造现有 Bash 工具 |
-| 路径验证 | `src/lib/permissions/path-validation.ts` | 文件工具路径检查 |
-| 前端审批 UI | `src/components/permissions/` | 审批对话框 |
-| API 路由改造 | `src/app/api/chat/route.ts` | 处理 approval request/response |
+| Bash needsApproval | `src/lib/tools/bash.ts` | ✅ 黑名单 + 白名单 + 需审批判定 |
+| ask_user_question needsApproval | `src/lib/tools/ask-user-question.ts` | ✅ 强制需审批 |
+| 前端审批 UI | `src/components/ai-elements/` | ✅ ApprovalPanel + UserQuestionPanel |
+| 审批响应流程 | `src/components/Chat.tsx` | ✅ addToolApprovalResponse |
 
-### Phase 2: 规则持久化与 RBAC（1-2 周）
+### 待完成 ⏳
 
-**目标**: 规则可配置、可持久化、支持角色权限
+| 任务 | 文件 | 说明 | 优先级 |
+|------|------|------|--------|
+| 路径验证 | `src/lib/permissions/path-validation.ts` | read/edit/write 工具路径检查 | P1 |
+| 类型定义 | `src/lib/permissions/types.ts` | PermissionResult, PermissionRule | P2 |
+| 规则引擎 | `src/lib/permissions/engine.ts` | 三维度匹配（可选） | P3 |
+| 规则持久化 | `src/lib/permissions/persistence.ts` | "Always allow" 功能（可选） | P4 |
 
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| SQLite 规则表 | `src/lib/permissions/persistence.ts` | 规则 CRUD |
-| 规则加载器 | `src/lib/permissions/rule-loader.ts` | 6 层来源聚合 |
-| RBAC 系统 | `src/lib/permissions/rbac.ts` | 角色定义与检查 |
-| 规则管理 UI | `src/components/permissions/RuleManager.tsx` | 用户添加/删除规则 |
-| 权限审计日志 | `src/lib/permissions/audit.ts` | 操作记录 |
-
-### Phase 3: 高级模式与 AI 分类器（1 周）
-
-**目标**: 实现 plan/auto/bypass 模式 + AI 安全分类
-
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| 模式管理器 | `src/lib/permissions/mode-manager.ts` | 模式切换与效果 |
-| AI 分类器 | `src/lib/permissions/command-classifier.ts` | LLM 命令安全评估 |
-| 危险规则剥离 | `mode-manager.ts` | auto 模式安全保护 |
+> **注**: 当前基础审批流程已够用。路径验证是主要待完善项，规则引擎和持久化可按需实施。
 | 权限 Hook 系统 | `src/lib/permissions/hooks.ts` | PreToolUse 等钩子 |
 
 ---
 
-## 13. 与现有代码的兼容性
+## 12. 安全底线（Bypass-Immune）
 
-### 13.1 复用现有组件
-
-| 现有组件 | 复用方式 | 增强点 |
-|----------|---------|--------|
-| `DenialTracker` | 直接复用 | 增加 per-session 持久化 |
-| `guardrailsMiddleware` | 作为 L5 Hook | 增加权限审计输出 |
-| Bash 黑名单 | 作为 L3 工具自检 | 增加白名单和分类器 |
-| `pipeline.ts` | 集成 prepareStep | 增加权限模式检查 |
-| `Skill.allowedTools` | 作为 source='skill' 规则 | 纳入统一规则引擎 |
-
-### 13.2 渐进式迁移
-
-```
-当前状态:
-  bash.ts: isCommandDangerous() → throw Error
-  无路径检查
-  无审批流
-
-Phase 1 后:
-  bash.ts: evaluatePermission() → allow/ask/deny
-  ask → needsApproval → 前端确认
-  文件工具: validatePath() 检查
-
-Phase 2 后:
-  规则可持久化
-  RBAC 角色权限生效
-  用户可自定义规则
-
-Phase 3 后:
-  权限模式切换
-  AI 分类器自动决策
-  完整 Hook 系统
-```
-
----
-
-## 14. 安全底线（Bypass-Immune）
-
-以下安全检查**任何模式下都不可绕过**：
+以下安全检查**任何情况下都不可绕过**：
 
 1. **工作目录越界**: 不允许访问 `workingDir` 外的路径
 2. **敏感路径保护**: `.git/`, `.claude/`, `.env`, shell 配置文件
 3. **危险命令黑名单**: `rm -rf /`, `dd`, `mkfs`, `curl` 到未知域名等
 4. **Shell 展开阻止**: `$VAR`, `%VAR%`, `~user`, `` `cmd` ``
-5. **角色权限**: admin 配置的 `deniedPaths` / `deniedCommands`
 
-这些检查在规则引擎之前执行，确保即使 `bypass` 模式或配置错误也不会导致安全事故。
+这些检查在规则引擎之前执行，确保即使配置错误也不会导致安全事故。
 
 ---
 
-## 15. 总结
+## 13. 总结
 
-本设计融合了 Claude Code 的三级权限模型（Allow/Ask/Deny）和 AI SDK v6 的原生能力（`needsApproval`, `prepareStep`, `tool-approval-request/response`），针对当前项目的企业级部署场景进行了适配。
+本设计融合了 Claude Code 的三级权限模型（Allow/Ask/Deny）和 AI SDK v6 的原生能力（`needsApproval`, `tool-approval-request/response`），已实现基础审批流程。
 
-**核心优势**:
-1. **纵深防御**: 5 层独立防线，任何一层 Deny 即终止
-2. **SDK 原生集成**: 充分利用 AI SDK 的审批流和动态工具管理
-3. **渐进实施**: 3 阶段递进，每阶段都可独立上线
-4. **兼容现有代码**: 复用 DenialTracker、Guardrails、Pipeline 等已有组件
-5. **企业级特性**: RBAC、规则持久化、审计日志、模式切换
+**已实现功能**:
+1. Bash 工具 needsApproval（黑名单 + 白名单 + 需审批判定）
+2. ask_user_question 工具强制审批
+3. 前端审批 UI + 审批响应流程
 
-**与 Claude Code 的关键差异**:
+**待完善功能**:
+1. 文件工具路径验证（read/edit/write）
+2. 规则引擎（可选）
+3. 规则持久化（可选）
+
+**与 Claude Code 的差异**:
 - 无 OS 级 Sandbox（Web 应用不需要）
-- 无 Swarm 多代理协调（当前子代理框架已足够）
-- 规则来源简化为 6 层（Claude Code 有 8 层）
-- AI 分类器使用项目已有模型（无需额外模型）
+- 无 RBAC 多用户系统（单用户场景）
+- 规则来源简化为 4 层
+- 无权限模式切换（default 模式已够用）
