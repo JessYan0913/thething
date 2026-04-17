@@ -107,6 +107,11 @@ export function deleteMemoryRecord(id: string): void {
   db.prepare('DELETE FROM memories WHERE id = ?').run(id);
 }
 
+export function deleteMemoryRecordByPath(filePath: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM memories WHERE file_path = ?').run(filePath);
+}
+
 export async function syncMemoriesFromFiles(
   memoryDir: string,
   ownerType: 'user' | 'team' | 'project',

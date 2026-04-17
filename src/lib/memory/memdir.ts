@@ -8,6 +8,7 @@ import {
 } from './memory-types';
 import { memoryFreshnessNote } from './memory-age';
 import type { RelevantMemory } from './find-relevant';
+import type { ScannedMemory } from './memory-scan';
 
 export const ENTRYPOINT_NAME = 'MEMORY.md';
 export const MAX_ENTRYPOINT_LINES = 200;
@@ -109,6 +110,82 @@ export async function ensureEntrypointExists(memoryDir: string): Promise<void> {
 `;
     await fs.writeFile(entrypointPath, initialContent, 'utf-8');
   }
+}
+
+export async function rebuildEntrypoint(
+  memoryDir: string,
+): Promise<void> {
+  const { scanMemoryFiles } = await import('./memory-scan');
+  const memories = await scanMemoryFiles(memoryDir);
+
+  if (memories.length === 0) {
+    const emptyContent = `# MEMORY.md - 记忆入口索引
+
+> 本文件是记忆系统的入口点。每次对话从这里开始。
+> 限制: ${MAX_ENTRYPOINT_LINES} 行 / ${MAX_ENTRYPOINT_BYTES} 字节
+`;
+    await fs.writeFile(path.join(memoryDir, ENTRYPOINT_NAME), emptyContent, 'utf-8');
+    return;
+  }
+
+  const sectionHeaders: Record<string, string> = {
+    user: '## 用户记忆 (user)',
+    feedback: '## 反馈记忆 (feedback)',
+    project: '## 项目记忆 (project)',
+    reference: '## 参考记忆 (reference)',
+  };
+
+  const grouped: Record<string, ScannedMemory[]> = {
+    user: [],
+    feedback: [],
+    project: [],
+    reference: [],
+  };
+
+  for (const memory of memories) {
+    if (grouped[memory.type]) {
+      grouped[memory.type].push(memory);
+    }
+  }
+
+  const lines: string[] = [
+    '# MEMORY.md - 记忆入口索引',
+    '',
+    `> 本文件是记忆系统的入口点。每次对话从这里开始。`,
+    `> 限制: ${MAX_ENTRYPOINT_LINES} 行 / ${MAX_ENTRYPOINT_BYTES} 字节`,
+    '',
+  ];
+
+  for (const [type, header] of Object.entries(sectionHeaders)) {
+    const typeMemories = grouped[type];
+    if (typeMemories.length > 0) {
+      lines.push(header);
+      lines.push('');
+      for (const memory of typeMemories) {
+        lines.push(`- [${memory.name}](${memory.filename}) — ${memory.description}`);
+      }
+      lines.push('');
+    }
+  }
+
+  let content = lines.join('\n');
+  content = truncateEntrypointContent(content);
+
+  await fs.writeFile(path.join(memoryDir, ENTRYPOINT_NAME), content, 'utf-8');
+}
+
+export async function deleteMemoryFile(
+  memoryDir: string,
+  filename: string,
+): Promise<void> {
+  const filePath = path.join(memoryDir, filename);
+  try {
+    await fs.unlink(filePath);
+  } catch {
+    // 文件可能不存在
+  }
+
+  await rebuildEntrypoint(memoryDir);
 }
 
 export async function appendToEntrypoint(
