@@ -36,15 +36,18 @@ export {
   shutdownConnectorGateway,
 } from './init'
 
-// Webhook 配置动态加载
+// Webhook 配置动态加载（通用）
 export {
   loadWebhookConfigs,
   getWebhookConfig,
   getWebhookConfigByHandler,
-  getWecomWebhookConfig,
-  getWechatMpWebhookConfig,
-  getFeishuWebhookConfig,
-  getTestServiceWebhookConfig,
+  getWebhookConfigByPath,
+  buildWechatWebhookConfig,
+  buildFeishuWebhookConfig,
+  buildGenericWebhookConfig,
   refreshWebhookConfigs,
+  getWebhookConnectorsInfo,
   type WebhookConfigLoaded,
+  type WechatWebhookConfig,
+  type FeishuWebhookConfig,
 } from './webhook-config'

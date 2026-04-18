@@ -2,7 +2,7 @@
 // Webhook 处理器工厂 - 根据 connector_type 创建对应的处理器
 // ============================================================
 
-import { WechatMessageCrypto, parseWechatXml, xmlToInboundEvent } from './wechat-crypto'
+import { WechatMessageCrypto, xmlToInboundEvent } from './wechat-crypto'
 import { FeishuWebhookHandler } from './feishu-crypto'
 import type { InboundMessageEvent } from '../types'
 import { idempotencyGuard } from '../idempotency'
