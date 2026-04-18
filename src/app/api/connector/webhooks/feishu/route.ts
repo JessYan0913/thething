@@ -6,12 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { FeishuWebhookHandlerAdapter } from '@/lib/connector/inbound/webhook-handler'
 import { inboundEventQueue } from '@/lib/connector/inbound/event-queue'
-
-// 飞书配置
-const FEISHU_CONFIG = {
-  encryptKey: process.env.FEISHU_ENCRYPT_KEY || '',
-  verificationToken: process.env.FEISHU_VERIFICATION_TOKEN || '',
-}
+import { getFeishuWebhookConfig } from '@/lib/connector'
 
 const handler = new FeishuWebhookHandlerAdapter()
 
@@ -19,6 +14,16 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now()
 
   try {
+    // 动态加载飞书配置
+    const feishuConfig = await getFeishuWebhookConfig()
+
+    if (!feishuConfig) {
+      return NextResponse.json(
+        { success: false, error: 'Feishu connector not configured' },
+        { status: 500 }
+      )
+    }
+
     const url = new URL(req.url)
     const query: Record<string, string> = {}
     url.searchParams.forEach((value, key) => {
@@ -32,7 +37,10 @@ export async function POST(req: NextRequest) {
       headers[key] = value
     })
 
-    const result = await handler.handle({ query, body, headers }, FEISHU_CONFIG)
+    const result = await handler.handle({ query, body, headers }, {
+      encryptKey: feishuConfig.encryptKey,
+      verificationToken: feishuConfig.verificationToken,
+    })
 
     // URL 验证场景：返回 challenge
     if (result.challenge) {
@@ -63,16 +71,36 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const challenge = searchParams.get('challenge')
+  try {
+    // 动态加载飞书配置
+    const feishuConfig = await getFeishuWebhookConfig()
 
-  if (challenge) {
-    return NextResponse.json({ challenge })
+    if (!feishuConfig) {
+      return NextResponse.json({
+        status: 'not_configured',
+        service: 'feishu-webhook',
+        message: 'Feishu connector not configured. Add feishu.yaml to connectors/ directory.',
+        timestamp: Date.now(),
+      })
+    }
+
+    const { searchParams } = new URL(req.url)
+    const challenge = searchParams.get('challenge')
+
+    if (challenge) {
+      return NextResponse.json({ challenge })
+    }
+
+    return NextResponse.json({
+      status: 'ok',
+      service: 'feishu-webhook',
+      timestamp: Date.now(),
+    })
+  } catch (error) {
+    console.error('[FeishuWebhook] GET Error:', error)
+    return NextResponse.json(
+      { status: 'error', error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
   }
-
-  return NextResponse.json({
-    status: 'ok',
-    service: 'feishu-webhook',
-    timestamp: Date.now(),
-  })
 }

@@ -35,3 +35,16 @@ export {
   isInboundInitialized,
   shutdownConnectorGateway,
 } from './init'
+
+// Webhook 配置动态加载
+export {
+  loadWebhookConfigs,
+  getWebhookConfig,
+  getWebhookConfigByHandler,
+  getWecomWebhookConfig,
+  getWechatMpWebhookConfig,
+  getFeishuWebhookConfig,
+  getTestServiceWebhookConfig,
+  refreshWebhookConfigs,
+  type WebhookConfigLoaded,
+} from './webhook-config'

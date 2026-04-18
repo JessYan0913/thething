@@ -6,14 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { WechatWebhookHandler } from '@/lib/connector/inbound/webhook-handler'
 import { inboundEventQueue } from '@/lib/connector/inbound/event-queue'
-
-// 微信公众号配置
-const WECHAT_MP_CONFIG = {
-  token: process.env.WECHAT_MP_TOKEN || '',
-  encodingAesKey: process.env.WECHAT_MP_ENCODING_AES_KEY || '',
-  appId: process.env.WECHAT_MP_APP_ID || '',
-  subtype: 'wechat-mp' as const,
-}
+import { getWechatMpWebhookConfig } from '@/lib/connector'
 
 const handler = new WechatWebhookHandler()
 
@@ -21,6 +14,16 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now()
 
   try {
+    // 动态加载微信公众号配置
+    const wechatMpConfig = await getWechatMpWebhookConfig()
+
+    if (!wechatMpConfig) {
+      return NextResponse.json(
+        { success: false, error: 'WeChat MP connector not configured' },
+        { status: 500 }
+      )
+    }
+
     const url = new URL(req.url)
     const query: Record<string, string> = {}
     url.searchParams.forEach((value, key) => {
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
       headers[key] = value
     })
 
-    const result = await handler.handle({ query, body, headers }, WECHAT_MP_CONFIG)
+    const result = await handler.handle({ query, body, headers }, wechatMpConfig)
 
     if (result.challenge) {
       return new Response(result.challenge, { status: 200 })
@@ -69,22 +72,42 @@ export async function GET(req: NextRequest) {
     query[key] = value
   })
 
-  if (query.signature && query.timestamp && query.nonce) {
-    const body = query.echostr || ''
-    const headers: Record<string, string> = {}
+  try {
+    // 动态加载微信公众号配置
+    const wechatMpConfig = await getWechatMpWebhookConfig()
 
-    const result = await handler.handle({ query, body, headers }, WECHAT_MP_CONFIG)
-
-    if (result.challenge) {
-      return new Response(result.challenge, { status: 200 })
+    if (!wechatMpConfig) {
+      return NextResponse.json({
+        status: 'not_configured',
+        service: 'wechat-mp-webhook',
+        message: 'WeChat MP connector not configured. Add wechat-mp.yaml to connectors/ directory.',
+        timestamp: Date.now(),
+      })
     }
 
-    return NextResponse.json({ success: false, error: 'URL verification failed' }, { status: 400 })
-  }
+    if (query.signature && query.timestamp && query.nonce) {
+      const body = query.echostr || ''
+      const headers: Record<string, string> = {}
 
-  return NextResponse.json({
-    status: 'ok',
-    service: 'wechat-mp-webhook',
-    timestamp: Date.now(),
-  })
+      const result = await handler.handle({ query, body, headers }, wechatMpConfig)
+
+      if (result.challenge) {
+        return new Response(result.challenge, { status: 200 })
+      }
+
+      return NextResponse.json({ success: false, error: 'URL verification failed' }, { status: 400 })
+    }
+
+    return NextResponse.json({
+      status: 'ok',
+      service: 'wechat-mp-webhook',
+      timestamp: Date.now(),
+    })
+  } catch (error) {
+    console.error('[WeChatMPWebhook] GET Error:', error)
+    return NextResponse.json(
+      { status: 'error', error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
+  }
 }

@@ -106,7 +106,7 @@ class PostgreSQLPool implements DatabasePool {
 
     try {
       // 动态导入 pg 库（避免未安装时报错）
-      // @ts-ignore - pg 为可选依赖，仅在需要 PostgreSQL 支持时安装
+      // @ts-expect-error - pg 为可选依赖，仅在需要 PostgreSQL 支持时安装，TypeScript 无法识别该模块
       const pgModule = await import('pg')
       const { Pool } = pgModule
 
@@ -174,7 +174,7 @@ class MySQLPool implements DatabasePool {
 
     try {
       // 动态导入 mysql2 库
-      // @ts-ignore - mysql2 为可选依赖，仅在需要 MySQL 支持时安装
+      // @ts-expect-error - mysql2 为可选依赖，仅在需要 MySQL 支持时安装，TypeScript 无法识别该模块
       const mysql = await import('mysql2/promise')
 
       const mysqlConfig = config.mysql!

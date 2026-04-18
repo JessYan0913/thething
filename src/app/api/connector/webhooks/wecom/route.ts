@@ -6,14 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { WechatWebhookHandler } from '@/lib/connector/inbound/webhook-handler'
 import { inboundEventQueue } from '@/lib/connector/inbound/event-queue'
-
-// 企业微信配置（从环境变量或 Connector 配置读取）
-const WECOM_CONFIG = {
-  token: process.env.WECOM_TOKEN || '',
-  encodingAesKey: process.env.WECOM_ENCODING_AES_KEY || '',
-  appId: process.env.WECOM_CORP_ID || '',
-  subtype: 'wecom' as const,
-}
+import { getWecomWebhookConfig } from '@/lib/connector'
 
 const handler = new WechatWebhookHandler()
 
@@ -21,6 +14,16 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now()
 
   try {
+    // 动态加载企业微信配置
+    const wecomConfig = await getWecomWebhookConfig()
+
+    if (!wecomConfig) {
+      return NextResponse.json(
+        { success: false, error: 'WeCom connector not configured' },
+        { status: 500 }
+      )
+    }
+
     // 获取查询参数
     const url = new URL(req.url)
     const query: Record<string, string> = {}
@@ -38,7 +41,7 @@ export async function POST(req: NextRequest) {
     })
 
     // 处理 Webhook
-    const result = await handler.handle({ query, body, headers }, WECOM_CONFIG)
+    const result = await handler.handle({ query, body, headers }, wecomConfig)
 
     // URL 验证场景：返回 challenge
     if (result.challenge) {
@@ -77,23 +80,43 @@ export async function GET(req: NextRequest) {
     query[key] = value
   })
 
-  // 微信 URL 验证
-  if (query.signature && query.timestamp && query.nonce) {
-    const body = query.echostr || ''
-    const headers: Record<string, string> = {}
+  try {
+    // 动态加载企业微信配置
+    const wecomConfig = await getWecomWebhookConfig()
 
-    const result = await handler.handle({ query, body, headers }, WECOM_CONFIG)
-
-    if (result.challenge) {
-      return new Response(result.challenge, { status: 200 })
+    if (!wecomConfig) {
+      return NextResponse.json({
+        status: 'not_configured',
+        service: 'wecom-webhook',
+        message: 'WeCom connector not configured. Add wecom.yaml to connectors/ directory.',
+        timestamp: Date.now(),
+      })
     }
 
-    return NextResponse.json({ success: false, error: 'URL verification failed' }, { status: 400 })
-  }
+    // 微信 URL 验证
+    if (query.signature && query.timestamp && query.nonce) {
+      const body = query.echostr || ''
+      const headers: Record<string, string> = {}
 
-  return NextResponse.json({
-    status: 'ok',
-    service: 'wecom-webhook',
-    timestamp: Date.now(),
-  })
+      const result = await handler.handle({ query, body, headers }, wecomConfig)
+
+      if (result.challenge) {
+        return new Response(result.challenge, { status: 200 })
+      }
+
+      return NextResponse.json({ success: false, error: 'URL verification failed' }, { status: 400 })
+    }
+
+    return NextResponse.json({
+      status: 'ok',
+      service: 'wecom-webhook',
+      timestamp: Date.now(),
+    })
+  } catch (error) {
+    console.error('[WeComWebhook] GET Error:', error)
+    return NextResponse.json(
+      { status: 'error', error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
+  }
 }
