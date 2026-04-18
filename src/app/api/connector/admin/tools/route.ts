@@ -4,24 +4,11 @@
 // ============================================================
 
 import { NextResponse } from 'next/server'
-import path from 'path'
-import { ConnectorRegistry } from '@/lib/connector/registry'
-
-const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
-
-let registry: ConnectorRegistry | null = null
-
-async function getRegistry(): Promise<ConnectorRegistry> {
-  if (!registry) {
-    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
-    await registry.initialize()
-  }
-  return registry
-}
+import { getConnectorRegistry } from '@/lib/connector'
 
 export async function GET() {
   try {
-    const reg = await getRegistry()
+    const reg = await getConnectorRegistry()
     const connectorIds = reg.getConnectorIds()
 
     const tools: Array<{
@@ -29,7 +16,7 @@ export async function GET() {
       connector_name: string
       tool_name: string
       tool_description: string
-      input_schema: any
+      input_schema: unknown
       executor: string
       timeout_ms?: number
       retryable?: boolean

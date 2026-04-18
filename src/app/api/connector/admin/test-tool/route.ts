@@ -4,25 +4,12 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import path from 'path'
-import { ConnectorRegistry } from '@/lib/connector/registry'
+import { getConnectorRegistry } from '@/lib/connector'
 import type { ToolCallRequest } from '@/lib/connector/types'
-
-const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
-
-let registry: ConnectorRegistry | null = null
-
-async function getRegistry(): Promise<ConnectorRegistry> {
-  if (!registry) {
-    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
-    await registry.initialize()
-  }
-  return registry
-}
 
 export async function POST(req: NextRequest) {
   try {
-    const body: ToolCallRequest & { timeout_ms?: number } = await req.json()
+    const body: ToolCallRequest = await req.json()
 
     if (!body.connector_id || !body.tool_name) {
       return NextResponse.json(
@@ -31,7 +18,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const reg = await getRegistry()
+    const reg = await getConnectorRegistry()
 
     const startTime = Date.now()
     const result = await reg.callTool({

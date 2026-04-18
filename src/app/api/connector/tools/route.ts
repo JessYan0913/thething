@@ -4,23 +4,8 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import path from 'path'
-import { ConnectorRegistry } from '@/lib/connector/registry'
+import { getConnectorRegistry } from '@/lib/connector'
 import type { ToolCallRequest } from '@/lib/connector/types'
-
-// Connector 配置文件目录
-const CONNECTOR_CONFIG_DIR = path.join(process.cwd(), 'connectors')
-
-// 创建全局 Registry 实例
-let registry: ConnectorRegistry | null = null
-
-async function getRegistry(): Promise<ConnectorRegistry> {
-  if (!registry) {
-    registry = new ConnectorRegistry(CONNECTOR_CONFIG_DIR)
-    await registry.initialize()
-  }
-  return registry
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,7 +19,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const reg = await getRegistry()
+    const reg = await getConnectorRegistry()
 
     // 调用工具
     const result = await reg.callTool({
@@ -60,7 +45,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const connectorId = searchParams.get('connector_id')
 
-    const reg = await getRegistry()
+    const reg = await getConnectorRegistry()
 
     if (connectorId) {
       // 获取指定 Connector 的工具列表
