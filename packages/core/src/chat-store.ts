@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import type { UIMessage } from "ai";
-import type { LanguageModelV1 } from "@ai-sdk/provider";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { nanoid } from "nanoid";
 import { getDb } from "./db";
 import { getDefaultModelProvider } from "./model-provider";
@@ -211,7 +211,7 @@ export function getNextMessageOrder(conversationId: string): number {
  */
 export async function generateConversationTitle(
   messages: UIMessage[],
-  model?: LanguageModelV1
+  model?: LanguageModelV3
 ): Promise<string> {
   const firstUserMessage = messages.find((m) => m.role === "user");
   const firstAssistantMessage = messages.find((m) => m.role === "assistant");

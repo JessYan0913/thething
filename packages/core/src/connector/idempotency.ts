@@ -2,7 +2,7 @@
 // 幂等去重 - 使用 SQLite 替代 Redis（适合单实例部署）
 // ============================================================
 
-import Database from 'better-sqlite3'
+import { getDatabase } from '../native-loader'
 import path from 'path'
 
 export interface IdempotencyGuardOptions {
@@ -13,12 +13,14 @@ export interface IdempotencyGuardOptions {
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000 // 24 小时
 
 export class IdempotencyGuard {
-  private db: Database.Database
+  private db: any // Database.Database
   private ttlMs: number
 
   constructor(options?: IdempotencyGuardOptions) {
     this.ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS
     const dbPath = options?.dbPath ?? path.join(process.cwd(), '.connector-idempotency.db')
+    const Database = getDatabase()
+    // Use standard npm package signature: (filename, options)
     this.db = new Database(dbPath)
 
     this.init()

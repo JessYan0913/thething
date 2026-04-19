@@ -211,5 +211,4 @@ export type {
   SessionMemoryCompactConfig,
   MicroCompactConfig,
   PostCompactConfig,
-  StoredSummary,
 } from "./types";

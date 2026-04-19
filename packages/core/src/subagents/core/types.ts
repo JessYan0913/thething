@@ -1,5 +1,5 @@
 import { type LanguageModel, type StopCondition, type ToolSet, type UIMessage } from 'ai';
-import type { TaskStore } from '../tasks';
+import type { TaskStore } from '../../tasks';
 
 export type { LanguageModel, ToolSet, UIMessage, StopCondition };
 

@@ -5,6 +5,9 @@
 // Database
 export { getDb, configureDatabase, type DatabaseConfig } from './db';
 
+// Native Module Loader (for SEA support)
+export { loadBetterSqlite3, getDatabase } from './native-loader';
+
 // Chat Store
 export * from './chat-store';
 

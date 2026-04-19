@@ -127,18 +127,18 @@ export class TokenManager {
       throw new Error(`Token refresh failed: ${response.status} ${response.statusText}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as Record<string, unknown>
 
     const tokenField = authConfig.token_field || 'access_token'
     const expiresInField = authConfig.expires_in_field || 'expires_in'
 
-    const token = data[tokenField]
+    const token = data[tokenField] as string
     if (!token) {
       throw new Error(`Token field '${tokenField}' not found in response`)
     }
 
     // 飞书的过期时间是秒，微信的也是
-    const expiresIn = (data[expiresInField] || 7200) as number
+    const expiresIn = (data[expiresInField] as number) || 7200
     const expiresAt = Date.now() + expiresIn * 1000
 
     console.log(`[TokenManager] Token refreshed for ${connectorId}, expires in ${expiresIn}s`)

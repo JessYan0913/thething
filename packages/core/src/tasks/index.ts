@@ -72,3 +72,15 @@ export {
   findTasksBySubject,
   findTaskBySubject,
 } from './task-available';
+
+// Tools for AI SDK
+export {
+  createTaskTools,
+  createTaskToolsForConversation,
+  getTaskTool,
+  getTaskToolNames,
+  TASK_TOOL_NAMES,
+  TASK_TOOL_DESCRIPTIONS,
+  type TaskToolName,
+  type TaskTools,
+} from './tools';

@@ -6,8 +6,7 @@
 // the caller (Next.js API route, CLI, etc.).
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV1 } from "@ai-sdk/provider";
-import type { ProviderV1 } from "@ai-sdk/provider";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 
 export interface ModelProviderConfig {
   apiKey: string;
@@ -16,11 +15,14 @@ export interface ModelProviderConfig {
   includeUsage?: boolean;
 }
 
+// The provider is callable, returns LanguageModelV3
+type ModelProvider = (modelName: string) => LanguageModelV3;
+
 /**
  * Create an OpenAI-compatible model provider.
  * This is the primary way to create providers for the core engine.
  */
-export function createModelProvider(config: ModelProviderConfig): ProviderV1 {
+export function createModelProvider(config: ModelProviderConfig): ModelProvider {
   return createOpenAICompatible({
     name: "dashscope",
     apiKey: config.apiKey,
@@ -32,7 +34,7 @@ export function createModelProvider(config: ModelProviderConfig): ProviderV1 {
 /**
  * Get a LanguageModel instance from the provider config.
  */
-export function createLanguageModel(config: ModelProviderConfig): LanguageModelV1 {
+export function createLanguageModel(config: ModelProviderConfig): LanguageModelV3 {
   const provider = createModelProvider(config);
   return provider(config.modelName || "qwen-max");
 }
@@ -53,9 +55,9 @@ export function getDefaultProviderConfig(): ModelProviderConfig {
 /**
  * Convenience: get a default provider singleton.
  */
-let defaultProvider: ProviderV1 | null = null;
+let defaultProvider: ModelProvider | null = null;
 
-export function getDefaultModelProvider(): ProviderV1 {
+export function getDefaultModelProvider(): ModelProvider {
   if (!defaultProvider) {
     defaultProvider = createModelProvider(getDefaultProviderConfig());
   }
