@@ -7,6 +7,10 @@
 import path from 'path'
 import fs from 'fs'
 import module from 'module'
+import type { SqliteDatabase, SqliteDatabaseConstructor } from './types/sqlite'
+
+// Re-export SQLite types for use across the codebase
+export type { SqliteDatabase, SqliteDatabaseConstructor, SqliteDatabaseOptions, SqliteStatement } from './types/sqlite'
 
 // Cache for loaded native modules
 const nativeModuleCache: Map<string, any> = new Map()
@@ -246,15 +250,15 @@ function createDatabaseWrapper(nativeAddon: any): any {
  * Load better-sqlite3 Database constructor
  * Returns a Database class that works like the npm package
  */
-export function loadBetterSqlite3(): any {
+export function loadBetterSqlite3(): SqliteDatabaseConstructor {
   // Check cache first
   if (nativeModuleCache.has('better-sqlite3')) {
-    return nativeModuleCache.get('better-sqlite3')
+    return nativeModuleCache.get('better-sqlite3') as SqliteDatabaseConstructor
   }
 
   // Try to load via npm package first (works in non-SEA mode)
   try {
-    const Database = require('better-sqlite3')
+    const Database = require('better-sqlite3') as SqliteDatabaseConstructor
     nativeModuleCache.set('better-sqlite3', Database)
     return Database
   } catch {
@@ -267,7 +271,7 @@ export function loadBetterSqlite3(): any {
     throw new Error('Failed to load better-sqlite3 native addon')
   }
 
-  const DatabaseWrapper = createDatabaseWrapper(addon)
+  const DatabaseWrapper = createDatabaseWrapper(addon) as SqliteDatabaseConstructor
   nativeModuleCache.set('better-sqlite3', DatabaseWrapper)
   console.log('[NativeLoader] Created Database wrapper for SEA mode')
 
@@ -277,6 +281,6 @@ export function loadBetterSqlite3(): any {
 /**
  * Get Database class from better-sqlite3
  */
-export function getDatabase(): any {
+export function getDatabase(): SqliteDatabaseConstructor {
   return loadBetterSqlite3()
 }

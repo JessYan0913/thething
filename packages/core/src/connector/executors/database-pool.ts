@@ -3,7 +3,7 @@
 // PostgreSQL 和 MySQL 为可选依赖，需要时安装: npm install pg 或 npm install mysql2
 // ============================================================
 
-import Database from 'better-sqlite3'
+import { getDatabase, type SqliteDatabase, type SqliteDatabaseConstructor } from '../../native-loader'
 
 export type DatabaseType = 'sqlite' | 'postgresql' | 'mysql'
 
@@ -53,11 +53,12 @@ class SQLitePool implements DatabasePool {
   type: DatabaseType = 'sqlite'
   connectionId: string
   isConnected: boolean = false
-  private db: Database.Database | null = null
+  private db: SqliteDatabase | null = null
 
   constructor(config: DatabaseConnectionConfig) {
     this.connectionId = config.connection_id
     if (config.path) {
+      const Database = getDatabase() as SqliteDatabaseConstructor
       this.db = new Database(config.path, { readonly: true })
       this.db.pragma('journal_mode = WAL')
       this.isConnected = true

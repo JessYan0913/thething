@@ -2,7 +2,7 @@
 // SQL Executor - 数据库直连查询（只读，防 SQL 注入）
 // ============================================================
 
-import Database from 'better-sqlite3'
+import { getDatabase, type SqliteDatabase, type SqliteDatabaseConstructor } from '../../native-loader'
 import type { SqlExecutorConfig, ExecutorResult } from '../types'
 
 export interface SqlExecutorDeps {
@@ -10,7 +10,7 @@ export interface SqlExecutorDeps {
 }
 
 export class SqlExecutor {
-  private connectionPool = new Map<string, Database.Database>()
+  private connectionPool = new Map<string, SqliteDatabase>()
 
   constructor(
     private deps: SqlExecutorDeps
@@ -82,9 +82,10 @@ export class SqlExecutor {
     return { sql, params }
   }
 
-  private async getConnection(connectionId: string): Promise<Database.Database> {
+  private async getConnection(connectionId: string): Promise<SqliteDatabase> {
     if (!this.connectionPool.has(connectionId)) {
       const dbPath = await this.deps.getDbPath(connectionId)
+      const Database = getDatabase() as SqliteDatabaseConstructor
       const db = new Database(dbPath, { readonly: true })
       db.pragma('journal_mode = WAL')
       this.connectionPool.set(connectionId, db)

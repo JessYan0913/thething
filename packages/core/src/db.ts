@@ -1,6 +1,6 @@
-import Database from "better-sqlite3";
-import fs from "fs";
 import path from "path";
+import fs from "fs";
+import { getDatabase, type SqliteDatabase } from "./native-loader";
 
 // ============================================================================
 // Database Configuration
@@ -13,8 +13,15 @@ export interface DatabaseConfig {
 
 const DEFAULT_DATA_DIR = path.join(process.cwd(), ".data");
 
-let db: Database.Database | null = null;
+let db: SqliteDatabase | null = null;
 let configuredDataDir: string = DEFAULT_DATA_DIR;
+
+// ============================================================================
+// Database Operations
+// ============================================================================
+
+// Load Database class using native-loader (handles SEA mode)
+const Database = getDatabase();
 
 /**
  * Configure the data directory before calling getDb().
@@ -28,7 +35,7 @@ export function configureDatabase(config: DatabaseConfig): void {
   configuredDataDir = config.dataDir || DEFAULT_DATA_DIR;
 }
 
-export function getDb(): Database.Database {
+export function getDb(): SqliteDatabase {
   if (!db) {
     const dbPath = path.join(configuredDataDir, "chat.db");
 
@@ -49,7 +56,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-function initializeSchema(database: Database.Database): void {
+function initializeSchema(database: SqliteDatabase): void {
   database.exec(`
     -- Conversations table
     CREATE TABLE IF NOT EXISTS conversations (
