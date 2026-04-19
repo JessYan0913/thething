@@ -4,8 +4,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getConnectorRegistry } from '@/lib/connector'
-import type { ToolCallRequest } from '@/lib/connector/types'
+import { getConnectorRegistry, type ToolCallRequest } from '@thething/core'
 
 export async function POST(req: NextRequest) {
   try {

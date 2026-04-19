@@ -1,0 +1,54 @@
+// ============================================================
+// @thething/core — Unified Export Entry
+// ============================================================
+
+// Database
+export { getDb, configureDatabase, type DatabaseConfig } from './db';
+
+// Chat Store
+export * from './chat-store';
+
+// Compaction
+export * from './compaction';
+
+// Connector Gateway
+export * from './connector';
+
+// MCP
+export * from './mcp';
+
+// Memory
+export * from './memory';
+
+// Permissions
+export * from './permissions';
+
+// Session State
+export * from './session-state';
+
+// Skills
+export * from './skills';
+
+// SubAgents
+export * from './subagents';
+
+// System Prompt
+export * from './system-prompt';
+
+// Tasks
+export * from './tasks';
+
+// Tools
+export * from './tools';
+
+// Middleware
+export * from './middleware';
+
+// Agent Control
+export * from './agent-control';
+
+// Model Provider
+export * from './model-provider';
+
+// Utilities
+export * from './utils';

@@ -1,10 +1,9 @@
 // ============================================================
 // Connector 功能测试 API
-// GET /api/connector/test - 测试所有 Connector 功能
 // ============================================================
 
 import { NextResponse } from 'next/server'
-import { getConnectorRegistry } from '@/lib/connector'
+import { getConnectorRegistry } from '@thething/core'
 
 export async function GET() {
   const results: Array<{
@@ -17,7 +16,6 @@ export async function GET() {
   try {
     const reg = await getConnectorRegistry()
 
-    // 1. 列出所有已加载的 Connector
     const connectorIds = reg.getConnectorIds()
     results.push({
       step: '1-list-connectors',
@@ -25,7 +23,6 @@ export async function GET() {
       data: { connectors: connectorIds },
     })
 
-    // 2. 测试 test-service 的 echo 工具
     const echoResult = await reg.callTool({
       connector_id: 'test-service',
       tool_name: 'echo',
@@ -37,7 +34,6 @@ export async function GET() {
       data: echoResult,
     })
 
-    // 3. 测试 test-service 的 get_user_info 工具
     const userResult = await reg.callTool({
       connector_id: 'test-service',
       tool_name: 'get_user_info',
@@ -49,7 +45,6 @@ export async function GET() {
       data: userResult,
     })
 
-    // 汇总
     const allSuccess = results.every(r => r.success)
 
     return NextResponse.json({

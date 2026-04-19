@@ -5,9 +5,10 @@ import {
   addMcpServerConfig,
   updateMcpServerConfig,
   deleteMcpServerConfig,
-} from '@/lib/mcp/mcp-config-store'
-import { createMcpRegistry } from '@/lib/mcp/registry'
-import type { McpServerConfig } from '@/lib/mcp/registry'
+  createMcpRegistry,
+  type McpServerConfig,
+  type McpRegistry,
+} from '@thething/core'
 
 export async function GET(request: Request) {
   try {

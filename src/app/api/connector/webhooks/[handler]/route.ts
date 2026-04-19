@@ -5,13 +5,13 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createWebhookHandler } from '@/lib/connector/inbound/webhook-handler'
-import { inboundEventQueue } from '@/lib/connector/inbound/event-queue'
 import {
+  createWebhookHandler,
+  inboundEventQueue,
   getWebhookConfigByHandler,
   buildWechatWebhookConfig,
   buildFeishuWebhookConfig,
-} from '@/lib/connector'
+} from '@thething/core'
 
 /**
  * 动态路由参数
@@ -32,7 +32,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   console.log('[Webhook] Received request for handler:', handler)
 
   try {
-    // 获取请求参数
     const url = new URL(req.url)
     const query: Record<string, string> = {}
     url.searchParams.forEach((value, key) => {
@@ -46,7 +45,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       headers[key] = value
     })
 
-    // 根据 handler 类型构建配置
     let webhookHandlerResult
 
     switch (handler) {
@@ -109,13 +107,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       }
 
       case 'test-service': {
-        // 测试服务使用 JSON body
         let jsonBody: Record<string, unknown> = {}
         try {
           jsonBody = JSON.parse(body)
-        } catch {
-          // 非 JSON 格式
-        }
+        } catch {}
 
         const messageType = (jsonBody.message_type as string) || 'text'
         const validTypes = ['text', 'image', 'file', 'event'] as const
@@ -157,7 +152,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       }
 
       default: {
-        // 尝试从配置动态加载
         const config = await getWebhookConfigByHandler(handler)
         if (!config) {
           return NextResponse.json({
@@ -166,8 +160,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           }, { status: 404 })
         }
 
-        // 对于未知的 handler，返回配置信息但不处理
-        // 需要在 webhook-handler.ts 中添加对应的处理器
         return NextResponse.json({
           success: false,
           error: `Handler '${handler}' configured but processor not implemented. Add to webhook-handler.ts factory.`,
@@ -177,18 +169,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // URL 验证场景：返回 challenge
     if (webhookHandlerResult?.challenge) {
       return new Response(webhookHandlerResult.challenge, { status: 200 })
     }
 
-    // 入站消息：推送到事件队列
     if (webhookHandlerResult?.success && webhookHandlerResult.event) {
       await inboundEventQueue.push(webhookHandlerResult.event)
       console.log('[Webhook] Event queued:', webhookHandlerResult.eventId, 'duration:', Date.now() - startTime, 'ms')
     }
 
-    // 立即返回 200（微信/飞书要求 5 秒内响应）
     return NextResponse.json({
       success: webhookHandlerResult?.success ?? false,
       event_id: webhookHandlerResult?.eventId,
@@ -219,7 +208,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   })
 
   try {
-    // URL 验证（微信系）
     if (query.signature && query.timestamp && query.nonce && query.echostr) {
       switch (handler) {
         case 'wecom': {
@@ -262,7 +250,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: 'URL verification failed' }, { status: 400 })
     }
 
-    // 健康检查
     const config = await getWebhookConfigByHandler(handler)
 
     return NextResponse.json({

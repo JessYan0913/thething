@@ -1,0 +1,21 @@
+{
+  "name": "@thething/build",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build:portable": "tsx src/cli.ts",
+    "build:portable:macos": "tsx src/cli.ts --platform darwin-arm64",
+    "build:portable:win": "tsx src/cli.ts --platform win32-x64",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.19.3",
+    "typescript": "^5"
+  }
+}

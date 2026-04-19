@@ -12,7 +12,9 @@
       "WebFetch(domain:sdk.vercel.ai)",
       "WebFetch(domain:github.com)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(xargs kill *)",
+      "Bash(curl *)"
     ]
   }
 }

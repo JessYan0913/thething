@@ -1,12 +1,12 @@
 /**
  * Tasks API
- * 
+ *
  * Provides REST API for task management operations.
  * Supports conversation-based task isolation.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getGlobalTaskStore } from '@/lib/tasks';
+import { getGlobalTaskStore } from '@thething/core';
 
 export async function GET(request: Request) {
   try {

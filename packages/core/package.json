@@ -1,0 +1,32 @@
+{
+  "name": "@thething/core",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/mcp": "^1.0.35",
+    "@ai-sdk/openai-compatible": "^2.0.38",
+    "@ai-sdk/provider": "^3.0.8",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^6.0.149",
+    "better-sqlite3": "^12.8.0",
+    "exa-js": "^2.11.0",
+    "fast-glob": "^3.3.3",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0",
+    "minimatch": "^10.2.5",
+    "nanoid": "^5.1.7",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/minimatch": "^5.1.2",
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

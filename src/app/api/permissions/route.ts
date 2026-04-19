@@ -1,4 +1,4 @@
-import { removeRule, saveRule } from '@/lib/permissions';
+import { removeRule, saveRule, loadRules } from '@thething/core';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -42,7 +42,6 @@ export async function DELETE(req: Request) {
 
 export async function GET() {
   try {
-    const { loadRules } = await import('@/lib/permissions');
     const config = await loadRules();
     return NextResponse.json({ rules: config.rules });
   } catch (error) {

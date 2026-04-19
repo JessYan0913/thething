@@ -4,7 +4,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server'
-import { getConnectorRegistry } from '@/lib/connector'
+import { getConnectorRegistry } from '@thething/core'
 
 export async function GET() {
   try {

@@ -1,0 +1,35 @@
+{
+  "name": "@thething/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "thething": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.4",
+    "@thething/core": "workspace:*",
+    "@thething/server": "workspace:*",
+    "ai": "^6.0.149",
+    "better-sqlite3": "^12.8.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "nanoid": "^5.1.7",
+    "ora": "^8.2.0",
+    "open": "^10.1.0",
+    "readline": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "dotenv-cli": "^7.4.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5"
+  }
+}

@@ -1,8 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { estimateMessagesTokens } from "@/lib/compaction";
-import { getMessagesByConversation } from "@/lib/chat-store";
-import { getDb } from "@/lib/db";
+import { estimateMessagesTokens, getMessagesByConversation, getDb } from "@thething/core";
 
 export async function GET(req: Request) {
   try {

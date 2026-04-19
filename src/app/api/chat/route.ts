@@ -1,24 +1,47 @@
-import { createAgentPipeline } from '@/lib/agent-control/pipeline';
-import { createDefaultStopConditions } from '@/lib/agent-control/stop-conditions';
 import {
+  createAgentPipeline,
+  createDefaultStopConditions,
   generateConversationTitle,
   getMessagesByConversation,
   saveMessages,
   updateConversationTitle,
-} from '@/lib/chat-store';
-import { compactMessagesIfNeeded, estimateMessagesTokens } from '@/lib/compaction';
-import { runCompactInBackground } from '@/lib/compaction/background-queue';
-import { costTrackingMiddleware } from '@/lib/middleware/cost-tracking';
-import { telemetryMiddleware } from '@/lib/middleware/telemetry';
-import { createSessionState } from '@/lib/session-state/state';
-import { createResearchAgent } from '@/lib/subagents';
-import type { SubAgentStreamWriter } from '@/lib/subagents/agent-tool';
-import { buildSystemPrompt } from '@/lib/system-prompt';
-import { bashTool, editFileTool, exaSearchTool, globTool, grepTool, readFileTool, writeFileTool, askUserQuestionTool } from '@/lib/tools';
-import { getGlobalTaskStore } from '@/lib/tasks';
-import { createTaskToolsForConversation } from '@/lib/tasks/tools';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import path from 'path';
+  compactMessagesIfNeeded,
+  estimateMessagesTokens,
+  runCompactInBackground,
+  costTrackingMiddleware,
+  telemetryMiddleware,
+  createSessionState,
+  createResearchAgent,
+  type SubAgentStreamWriter,
+  buildSystemPrompt,
+  bashTool,
+  editFileTool,
+  exaSearchTool,
+  globTool,
+  grepTool,
+  readFileTool,
+  writeFileTool,
+  askUserQuestionTool,
+  getGlobalTaskStore,
+  createTaskToolsForConversation,
+  createModelProvider,
+  determineActiveSkills,
+  getAvailableSkillsMetadata,
+  loadFullSkill,
+  recordSkillUsage,
+  findRelevantMemories,
+  buildMemorySection,
+  getUserMemoryDir,
+  ensureMemoryDirExists,
+  extractMemoriesInBackground,
+  getMcpServerConfigs,
+  createMcpRegistry,
+  type McpRegistry,
+  initPermissions,
+  getConnectorRegistry,
+  getAllConnectorTools,
+  initConnectorGateway,
+} from '@thething/core';
 import {
   createAgentUIStream,
   createUIMessageStream,
@@ -28,23 +51,11 @@ import {
   wrapLanguageModel,
   type Tool,
 } from 'ai';
-import {
-  determineActiveSkills,
-  getAvailableSkillsMetadata,
-  loadFullSkill,
-  recordSkillUsage,
-} from '@/lib/skills';
-import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '@/lib/memory';
-import { extractMemoriesInBackground } from '@/lib/memory/extractor';
-import { getMcpServerConfigs } from '@/lib/mcp/mcp-config-store';
-import { createMcpRegistry, type McpRegistry } from '@/lib/mcp/registry';
-import { initPermissions } from '@/lib/permissions';
-import { getConnectorRegistry, getAllConnectorTools, initConnectorGateway } from '@/lib/connector';
 
-const dashscope = createOpenAICompatible({
-  name: 'dashscope',
+const dashscope = createModelProvider({
   apiKey: process.env.DASHSCOPE_API_KEY!,
   baseURL: process.env.DASHSCOPE_BASE_URL!,
+  modelName: process.env.DASHSCOPE_MODEL!,
   includeUsage: true,
 });
 
@@ -87,7 +98,7 @@ async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
     Array.from(activeSkillNames).map(async (name) => {
       const metadata = skillsMetadata.find((s) => s.name === name);
       if (!metadata) return null;
-      return loadFullSkill(metadata);  // 传入整个 metadata 对象
+      return loadFullSkill(metadata);
     })
   );
 

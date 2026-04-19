@@ -4,8 +4,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getConnectorRegistry } from '@/lib/connector'
-import type { ToolCallRequest } from '@/lib/connector/types'
+import { getConnectorRegistry, type ToolCallRequest } from '@thething/core'
 
 export async function POST(req: NextRequest) {
   try {
@@ -48,7 +47,6 @@ export async function GET(req: Request) {
     const reg = await getConnectorRegistry()
 
     if (connectorId) {
-      // 获取指定 Connector 的工具列表
       const connector = reg.getDefinition(connectorId)
       if (!connector) {
         return NextResponse.json(
@@ -73,7 +71,6 @@ export async function GET(req: Request) {
         },
       })
     } else {
-      // 获取所有已加载的 Connector
       return NextResponse.json({
         success: true,
         data: {

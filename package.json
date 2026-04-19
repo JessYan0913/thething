@@ -4,11 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:server": "pnpm --filter @thething/server dev",
+    "dev:web": "pnpm --filter @thething/web dev",
+    "dev:cli": "pnpm --filter @thething/cli dev",
     "build": "next build",
+    "build:web": "pnpm --filter @thething/web build",
     "start": "next start",
-    "lint": "eslint"
+    "start:server": "pnpm --filter @thething/server start",
+    "cli": "pnpm --filter @thething/cli start",
+    "lint": "eslint",
+    "typecheck": "pnpm -r typecheck",
+    "typecheck:core": "pnpm --filter @thething/core typecheck"
   },
   "dependencies": {
+    "@thething/core": "workspace:*",
     "@ai-sdk/mcp": "^1.0.35",
     "@ai-sdk/openai-compatible": "^2.0.38",
     "@ai-sdk/provider": "^3.0.8",
