@@ -18,6 +18,9 @@ import {
   createAgentPipeline,
   createDefaultStopConditions,
   createLanguageModel,
+  generateConversationTitle,
+  updateConversationTitle,
+  getConversation,
   bashTool,
   editFileTool,
   exaSearchTool,
@@ -171,6 +174,27 @@ export default async function chat(options: ChatOptions): Promise<void> {
             const newMessages = [...messages, ...completedMessages.slice(messages.length)]
             saveMessages(conversationId!, newMessages)
             messages = newMessages
+
+            // Generate title for new conversations (only on first response)
+            const conversation = getConversation(conversationId!)
+            if (conversation && conversation.title === 'CLI Chat') {
+              // Generate title asynchronously (don't block)
+              generateConversationTitle(newMessages, modelInstance)
+                .then(title => {
+                  updateConversationTitle(conversationId!, title)
+                })
+                .catch(() => {
+                  // Fallback: use first user message text
+                  const firstUserText = newMessages
+                    .find(m => m.role === 'user')
+                    ?.parts.filter(p => p.type === 'text')
+                    .map(p => p.type === 'text' ? p.text : '')
+                    .join('')
+                    .trim()
+                    .slice(0, 20) || 'New Chat'
+                  updateConversationTitle(conversationId!, firstUserText)
+                })
+            }
 
             // Log cost
             const costSummary = sessionState.costTracker.getSummary()
