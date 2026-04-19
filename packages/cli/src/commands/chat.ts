@@ -17,7 +17,7 @@ import {
   createSessionState,
   createAgentPipeline,
   createDefaultStopConditions,
-  createModelProvider,
+  createLanguageModel,
   bashTool,
   editFileTool,
   exaSearchTool,
@@ -57,14 +57,13 @@ export default async function chat(options: ChatOptions): Promise<void> {
     // Create new conversation
     conversationId = nanoid()
     createConversation(conversationId, 'CLI Chat')
-    console.log(chalk.blue(`Created new conversation: ${conversationId}`))
   } else {
     // Load existing conversation
     const messages = getMessagesByConversation(conversationId)
     if (messages.length > 0) {
-      console.log(chalk.blue(`Loaded conversation: ${conversationId} (${messages.length} messages)`))
+      console.log(chalk.dim(`Loaded: ${conversationId} (${messages.length} messages)`))
     } else {
-      console.log(chalk.yellow(`Conversation ${conversationId} not found. Creating new.`))
+      conversationId = nanoid()
       createConversation(conversationId, 'CLI Chat')
     }
   }
@@ -74,11 +73,15 @@ export default async function chat(options: ChatOptions): Promise<void> {
 
   // Model configuration
   const modelName = options.model || process.env.DASHSCOPE_MODEL || 'qwen-max'
-  const dashscope = createModelProvider({
+  const enableThinking = process.env.DASHSCOPE_ENABLE_THINKING === 'true'
+
+  // Get the actual model instance (with thinking enabled if configured)
+  const modelInstance = createLanguageModel({
     apiKey: process.env.DASHSCOPE_API_KEY!,
     baseURL: process.env.DASHSCOPE_BASE_URL!,
     modelName,
     includeUsage: true,
+    enableThinking,
   })
 
   // Create REPL
@@ -113,7 +116,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
 
       // Create model with middleware
       const wrappedModel = wrapLanguageModel({
-        model: dashscope(sessionState.model),
+        model: modelInstance,
         middleware: [telemetryMiddleware(), costTrackingMiddleware(sessionState.costTracker)],
       })
 
@@ -177,9 +180,23 @@ export default async function chat(options: ChatOptions): Promise<void> {
         })
 
         // Process stream
+        let isReasoning = false
         for await (const chunk of agentStream) {
           if (chunk.type === 'text-delta') {
+            // End reasoning block if we were in one
+            if (isReasoning) {
+              process.stdout.write(chalk.gray('\n────────────────────────────────────────\n'))
+              process.stdout.write(chalk.green('Assistant: '))
+              isReasoning = false
+            }
             process.stdout.write(chunk.delta || '')
+          } else if (chunk.type === 'reasoning-start') {
+            // Start reasoning block
+            process.stdout.write(chalk.gray('\n💭 Thinking...\n────────────────────────────────────────\n'))
+            isReasoning = true
+          } else if (chunk.type === 'reasoning-delta') {
+            // Append reasoning text in gray
+            process.stdout.write(chalk.gray(chunk.delta || ''))
           }
         }
       } catch (error) {

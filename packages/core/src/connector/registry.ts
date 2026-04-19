@@ -19,6 +19,7 @@ import { TokenManager } from './token-manager'
 import { CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
 import { AuditLogger } from './audit-logger'
 import { withRetry } from './retry'
+import { debugLog, debugWarn, debugError } from './debug'
 
 export interface ConnectorRegistryOptions {
   getDbPath?: (connectionId: string) => Promise<string>
@@ -54,7 +55,7 @@ export class ConnectorRegistry {
    */
   async initialize(): Promise<void> {
     if (!fs.existsSync(this.configDir)) {
-      console.log('[ConnectorRegistry] Config directory not found:', this.configDir)
+      debugLog('[ConnectorRegistry] Config directory not found:', this.configDir)
       return
     }
 
@@ -63,17 +64,17 @@ export class ConnectorRegistry {
       .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))
       .map(f => path.join(this.configDir, f))
 
-    console.log(`[ConnectorRegistry] Found ${yamlFiles.length} YAML files`)
+    debugLog(`[ConnectorRegistry] Found ${yamlFiles.length} YAML files`)
 
     for (const yamlPath of yamlFiles) {
       try {
         await this.loadConnector(yamlPath)
       } catch (error) {
-        console.error(`[ConnectorRegistry] Failed to load ${yamlPath}:`, error)
+        debugError(`[ConnectorRegistry] Failed to load ${yamlPath}:`, error)
       }
     }
 
-    console.log(`[ConnectorRegistry] Initialized ${this.connectors.size} connectors`)
+    debugLog(`[ConnectorRegistry] Initialized ${this.connectors.size} connectors`)
   }
 
   /**
@@ -109,7 +110,7 @@ export class ConnectorRegistry {
     }
 
     this.connectors.set(connector.id, connector)
-    console.log(`[ConnectorRegistry] Loaded connector: ${connector.id} (${connector.name} v${connector.version})`)
+    debugLog(`[ConnectorRegistry] Loaded connector: ${connector.id} (${connector.name} v${connector.version})`)
   }
 
   /**
@@ -146,7 +147,7 @@ export class ConnectorRegistry {
     return str.replace(/\$\{(\w+)\}/g, (_, varName) => {
       const envValue = process.env[varName]
       if (envValue === undefined) {
-        console.warn(`[ConnectorRegistry] Environment variable ${varName} not found, keeping original`)
+        debugWarn(`[ConnectorRegistry] Environment variable ${varName} not found, keeping original`)
         return str
       }
       return envValue

@@ -6,6 +6,7 @@ import type { InboundMessageEvent } from '../types'
 import { inboundEventQueue } from './event-queue'
 import { ConnectorRegistry } from '../registry'
 import { auditLogger } from '../audit-logger'
+import { debugLog, debugWarn, debugError } from '../debug'
 
 /**
  * 入站事件处理结果
@@ -36,7 +37,7 @@ export interface InboundEventHandler {
  */
 class DefaultInboundHandler implements InboundEventHandler {
   async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
-    console.log('[DefaultInboundHandler] Received event:', {
+    debugLog('[DefaultInboundHandler] Received event:', {
       eventId: event.event_id,
       connectorType: event.connector_type,
       channelId: event.channel_id,
@@ -67,7 +68,7 @@ class InboundEventProcessor {
    */
   setHandler(handler: InboundEventHandler): void {
     this.handler = handler
-    console.log('[InboundEventProcessor] Handler registered')
+    debugLog('[InboundEventProcessor] Handler registered')
   }
 
   /**
@@ -75,7 +76,7 @@ class InboundEventProcessor {
    */
   setRegistry(registry: ConnectorRegistry): void {
     this.registry = registry
-    console.log('[InboundEventProcessor] Registry registered')
+    debugLog('[InboundEventProcessor] Registry registered')
   }
 
   /**
@@ -83,7 +84,7 @@ class InboundEventProcessor {
    */
   start(): void {
     inboundEventQueue.onEvent(async (event) => {
-      console.log('[InboundEventProcessor] Processing event:', event.event_id)
+      debugLog('[InboundEventProcessor] Processing event:', event.event_id)
 
       try {
         const result = await this.handler.handle(event)
@@ -102,7 +103,7 @@ class InboundEventProcessor {
         )
 
       } catch (error) {
-        console.error('[InboundEventProcessor] Processing error:', event.event_id, error)
+        debugError('[InboundEventProcessor] Processing error:', event.event_id, error)
         auditLogger.logInboundMessage(
           event.connector_type,
           event.event_id,
@@ -112,7 +113,7 @@ class InboundEventProcessor {
       }
     })
 
-    console.log('[InboundEventProcessor] Started')
+    debugLog('[InboundEventProcessor] Started')
   }
 
   /**
@@ -120,7 +121,7 @@ class InboundEventProcessor {
    */
   private async sendReply(event: InboundMessageEvent, response: string): Promise<void> {
     if (!this.registry) {
-      console.warn('[InboundEventProcessor] No registry, cannot send reply')
+      debugWarn('[InboundEventProcessor] No registry, cannot send reply')
       return
     }
 
@@ -129,7 +130,7 @@ class InboundEventProcessor {
     const connectorId = this.getReplyConnectorId(event.connector_type)
 
     if (!toolName || !connectorId) {
-      console.warn('[InboundEventProcessor] No reply tool for connector type:', event.connector_type)
+      debugWarn('[InboundEventProcessor] No reply tool for connector type:', event.connector_type)
       return
     }
 
@@ -144,9 +145,9 @@ class InboundEventProcessor {
     })
 
     if (!result.success) {
-      console.error('[InboundEventProcessor] Reply failed:', result.error)
+      debugError('[InboundEventProcessor] Reply failed:', result.error)
     } else {
-      console.log('[InboundEventProcessor] Reply sent:', event.connector_type, event.channel_id)
+      debugLog('[InboundEventProcessor] Reply sent:', event.connector_type, event.channel_id)
     }
   }
 

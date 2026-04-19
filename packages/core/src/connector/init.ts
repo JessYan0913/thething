@@ -6,6 +6,7 @@ import path from 'path'
 import { ConnectorRegistry } from './registry'
 import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
+import { debugLog, debugWarn } from './debug'
 
 // ============================================================================
 // Connector Gateway Configuration
@@ -33,7 +34,7 @@ let inboundInitialized = false
  */
 export function configureConnectorGateway(config: ConnectorGatewayConfig): void {
   if (connectorRegistry) {
-    console.warn('[ConnectorGateway] Registry already initialized. configureConnectorGateway() must be called before first getConnectorRegistry().')
+    debugWarn('[ConnectorGateway] Registry already initialized. configureConnectorGateway() must be called before first getConnectorRegistry().')
     return
   }
   configuredConfigDir = config.configDir || DEFAULT_CONFIG_DIR
@@ -62,7 +63,7 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
 
   const registry = await getConnectorRegistry()
 
-  console.log('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
+  debugLog('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
 
   // 初始化 Inbound Processor（可选）
   if (config?.enableInbound !== false) {
@@ -78,7 +79,7 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
     inboundEventProcessor.start()
 
     inboundInitialized = true
-    console.log('[ConnectorGateway] Inbound processor started')
+    debugLog('[ConnectorGateway] Inbound processor started')
   }
 }
 
@@ -98,5 +99,5 @@ export async function shutdownConnectorGateway(): Promise<void> {
     connectorRegistry = null
   }
   inboundInitialized = false
-  console.log('[ConnectorGateway] Shutdown complete')
+  debugLog('[ConnectorGateway] Shutdown complete')
 }

@@ -38,6 +38,10 @@ function createState(): TelemetryState {
 }
 
 function log(level: 'info' | 'warn' | 'error' | 'debug', message: string, meta?: Record<string, unknown>) {
+  // Only log when DEBUG environment variable is set
+  if (!process.env.DEBUG && level !== 'error') {
+    return;
+  }
   const timestamp = new Date().toISOString();
   const prefix = `[TELE:${level.toUpperCase()}]`;
   const metaStr = meta ? ` | ${JSON.stringify(meta)}` : '';

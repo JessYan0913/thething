@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "tsx src/index.ts",
+    "start": "NODE_NO_WARNINGS=1 tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

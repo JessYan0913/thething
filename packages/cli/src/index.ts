@@ -22,15 +22,15 @@ program
   .version('0.1.0')
   .description('Multi-form AI Agent - CLI, Web, and Portable')
 
-// Default command: start server
+// Default command: start chat
 program
   .action(() => {
-    start({})
+    chat({})
   })
 
-// Start command
+// Server command: start HTTP server and open browser
 program
-  .command('start')
+  .command('server')
   .description('Start the HTTP server and open browser')
   .option('--port <port>', 'Port number', '3456')
   .option('--no-open', 'Do not open browser')
@@ -48,14 +48,6 @@ program
   .command('status')
   .description('Show server status')
   .action(() => status())
-
-// Chat command
-program
-  .command('chat')
-  .description('Start interactive chat session')
-  .option('--conversation <id>', 'Conversation ID to continue')
-  .option('--model <name>', 'Model name')
-  .action((options) => chat(options))
 
 // Config command (with subcommands)
 const configCmd = program

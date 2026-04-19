@@ -4,9 +4,29 @@
 // This file MUST be imported before any other modules
 // to ensure environment variables are loaded before other modules initialize
 
+// ============================================================
+// Environment Variables Loader
+// ============================================================
+// This file MUST be imported before any other modules
+// to ensure environment variables are loaded before other modules initialize
+
+// Suppress punycode deprecation warning (from dependencies) - must be before any imports
+process.on('warning', (warning) => {
+  if (warning.name === 'DeprecationWarning' && warning.message.includes('punycode')) {
+    return
+  }
+  console.warn(warning)
+})
+
 import dotenv from 'dotenv'
 import path from 'path'
 import fs from 'fs'
+import { fileURLToPath } from 'url'
+
+// Get directory path in ESM-compatible way
+const currentDir = typeof __dirname !== 'undefined'
+  ? __dirname
+  : fileURLToPath(new URL('.', import.meta.url))
 
 // Try to load .env files from multiple locations
 function loadEnvFiles(): void {
@@ -20,8 +40,12 @@ function loadEnvFiles(): void {
     path.resolve(process.cwd(), '.env.local'),
     path.resolve(process.cwd(), '.env'),
     // Monorepo root (when running from packages/cli)
-    path.resolve(__dirname, '../../../.env.local'),
-    path.resolve(__dirname, '../../../.env'),
+    // Go up from currentDir: src/lib -> src -> cli -> packages -> root
+    path.resolve(currentDir, '../../../.env.local'),
+    path.resolve(currentDir, '../../../.env'),
+    // Alternative: go up 4 levels to account for tsx execution context
+    path.resolve(currentDir, '../../../../.env.local'),
+    path.resolve(currentDir, '../../../../.env'),
     // User home directory
     path.resolve(process.env.HOME || '', '.thething/.env.local'),
   ]

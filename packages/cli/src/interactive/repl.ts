@@ -65,9 +65,6 @@ export function createRepl(options: ReplOptions): readline.Interface {
     pendingCancel = false
 
     printSeparator()
-    printUserPrefix()
-    console.log(trimmed)
-    printSeparator()
     printAssistantPrefix()
 
     try {
@@ -94,8 +91,7 @@ export function createRepl(options: ReplOptions): readline.Interface {
  * Start REPL loop
  */
 export function startRepl(rl: readline.Interface): void {
-  console.log(chalk.blue('Interactive Chat Mode'))
-  console.log(chalk.gray('Commands: /clear, /exit, Ctrl+C to cancel'))
+  console.log(chalk.dim('Commands: /clear, /exit, Ctrl+C to cancel'))
   printSeparator()
   rl.prompt()
 }
