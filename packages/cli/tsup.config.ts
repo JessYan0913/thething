@@ -13,10 +13,10 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
-  // 原生模块必须 external
+  // 原生模块必须 external（无法打包）
   external: ['better-sqlite3'],
-  // workspace 依赖打包进 bundle（不 external）
-  noExternal: [/^@thething\/(core|server)$/],
+  // 打包所有其他依赖（正则匹配所有非原生模块）
+  noExternal: [/.*/],
   // 不需要类型声明文件
   dts: false,
 })
