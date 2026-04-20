@@ -43,7 +43,7 @@ export const WHAT_NOT_TO_SAVE = `### 什么 NOT 要保存
 - 代码模式（可以从代码推导）
 - 文件结构（可以实时查看）
 - Git 历史（可以 git log 查看）
-- 已经在 CLAUDE.md 中描述的内容
+- 已经在 THING.md 中描述的内容
 - 临时性任务信息`;
 
 export const MEMORY_TYPES_PROMPT = `## 系统记忆管理指南
@@ -72,7 +72,7 @@ export const MEMORY_TYPES_PROMPT = `## 系统记忆管理指南
 - 代码模式（可以从代码推导）
 - 文件结构（可以实时查看）
 - Git 历史（可以 git log 查看）
-- 已经在 CLAUDE.md 中描述的内容
+- 已经在 THING.md 中描述的内容
 - 临时性任务信息`;
 
 export const TRUSTING_RECALL_SECTION = `## 记忆召回防御

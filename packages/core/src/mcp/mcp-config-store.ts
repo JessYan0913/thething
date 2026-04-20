@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { McpServerConfig } from './registry';
 
-const DEFAULT_mcpConfigDir = path.join(process.cwd(), '.thething', 'mcp');
+const DEFAULT_mcpConfigDir = path.join(process.cwd(), '.thething', 'mcps');
 let mcpConfigDir: string = process.env.mcpConfigDir || DEFAULT_mcpConfigDir;
 
 /**

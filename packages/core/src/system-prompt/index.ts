@@ -14,7 +14,7 @@
 //   - rules.ts: Behavioral rules
 //   - tools.ts: Tool registry and descriptions
 //   - user-preferences.ts: User-specific settings
-//   - project-context.ts: CLAUDE.md multi-level merging
+//   - project-context.ts: THING.md multi-level merging
 //   - session.ts: Dynamic per-conversation content
 //
 // Usage:
@@ -124,7 +124,7 @@ export const SYSTEM_PROMPT_MODULE_VERSION = "1.0.0";
  * Feature flags for the system prompt module.
  */
 export const FEATURES = {
-  /** Whether CLAUDE.md multi-level merging is supported */
+  /** Whether THING.md multi-level merging is supported */
   MULTI_LEVEL_CONTEXT: true,
 
   /** Whether dynamic boundary splitting is supported */

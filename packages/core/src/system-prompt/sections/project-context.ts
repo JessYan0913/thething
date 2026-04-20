@@ -3,14 +3,13 @@ import * as path from 'path';
 import type { SystemPromptSection } from '../types';
 
 // ============================================================================
-// CLAUDE.md Context Loading
+// THING.md Context Loading
 // ============================================================================
 
 /**
  * Marker files that indicate project context.
- * Similar to Claude Code's CLAUDE.md design.
  */
-const CONTEXT_MARKERS = ['CLAUDE.md', '.claude.md', 'AGENT.md', 'CONTEXT.md'] as const;
+const CONTEXT_MARKERS = ['THING.md', '.thething.md', 'CONTEXT.md'] as const;
 
 /**
  * Represents a loaded context file.
@@ -102,10 +101,10 @@ async function searchContextFilesInDir(dir: string, cwd: string): Promise<Loaded
  * Load project context by traversing up from the current working directory.
  * Stops at the home directory or filesystem root.
  *
- * This implements the multi-level CLAUDE.md merging strategy from Claude Code:
- * - User level: ~/.claude/CLAUDE.md (personal preferences)
- * - Project level: /project/CLAUDE.md (team shared)
- * - Module level: /project/src/CLAUDE.md (module specific)
+ * Multi-level context merging strategy:
+ * - User level: ~/.thething/THING.md (personal preferences)
+ * - Project level: /project/THING.md (team shared)
+ * - Module level: /project/src/THING.md (module specific)
  */
 export async function loadProjectContext(
   cwd: string = process.cwd()
@@ -116,7 +115,7 @@ export async function loadProjectContext(
   }
 
   const userHome = process.env.HOME || process.env.USERPROFILE || '/';
-  const userContextDir = path.join(userHome, '.claude');
+  const userContextDir = path.join(userHome, '.thething');
 
   const userLevel: LoadedContextFile[] = [];
   const projectLevel: LoadedContextFile[] = [];
@@ -126,10 +125,10 @@ export async function loadProjectContext(
   let reachedRoot = false;
 
   while (!reachedRoot && currentDir !== '/') {
-    // Check for user-level context (in ~/.claude directory)
+    // Check for user-level context (in ~/.thething directory)
     if (currentDir === userHome || currentDir === userContextDir) {
-      const userContextPath = path.join(userContextDir, 'CLAUDE.md');
-      const loaded = await loadContextFile(userContextPath, cwd, 'CLAUDE.md');
+      const userContextPath = path.join(userContextDir, 'THING.md');
+      const loaded = await loadContextFile(userContextPath, cwd, 'THING.md');
       if (loaded) {
         userLevel.push(loaded);
       }

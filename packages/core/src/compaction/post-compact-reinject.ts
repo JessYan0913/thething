@@ -18,7 +18,7 @@ export const POST_COMPACT_CONFIG = {
 export interface ReinjectContext {
   recentlyReadFiles: Array<{ path: string; content: string }>;
   activeSkills: Array<{ name: string; instructions: string }>;
-  claudeMdContent?: string;
+  thingMdContent?: string;
   mcpToolResults?: Array<{ tool: string; result: string }>;
 }
 
@@ -81,15 +81,15 @@ export function reinjectAfterCompact(
     }
   }
 
-  // 3. Restore CLAUDE.md if available
-  if (context.claudeMdContent && usedTokens < remainingBudget) {
-    const truncated = truncateToTokens(context.claudeMdContent, POST_COMPACT_CONFIG.maxTokensPerFile);
+  // 3. Restore THING.md if available
+  if (context.thingMdContent && usedTokens < remainingBudget) {
+    const truncated = truncateToTokens(context.thingMdContent, POST_COMPACT_CONFIG.maxTokensPerFile);
     const tokenCost = estimateTextTokens(truncated);
 
     if (usedTokens + tokenCost <= remainingBudget) {
       reinjectParts.push({
         type: "text",
-        text: `[Project context: CLAUDE.md]\n${truncated}\n[End of project context]`,
+        text: `[Project context: THING.md]\n${truncated}\n[End of project context]`,
       });
       usedTokens += tokenCost;
     }

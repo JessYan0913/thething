@@ -30,7 +30,9 @@
       "Bash(dir \"E:\\\\thething\\\\dist\\\\portable\\\\release\" /B)",
       "Bash(./thing.exe --help)",
       "Bash(timeout 5 ./thing.exe)",
-      "Bash(echo \"Exit code: $?\")"
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(bunx tsc *)",
+      "Bash(bun run *)"
     ]
   }
 }

@@ -10,7 +10,6 @@ import type { PathValidationResult } from './types';
 // 敏感路径列表 - 任何模式下都不可绕过
 const SENSITIVE_PATHS = [
   '.git',
-  '.claude',
   '.thething',
   '.env',
   '.env.local',
@@ -177,8 +176,8 @@ export function validateWritePath(
     'package.json',
     'tsconfig.json',
     '.gitignore',
-    '.claude/settings.json',
-    '.claude/settings.local.json',
+    '.thething/settings.json',
+    '.thething/settings.local.json',
   ];
 
   for (const protectedFile of protectedWriteFiles) {

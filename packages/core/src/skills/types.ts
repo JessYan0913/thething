@@ -41,7 +41,7 @@ export interface SkillLoaderConfig {
   maxSkills?: number;
 }
 
-export const DEFAULT_SKILL_SCAN_DIRS = ['.thething/skills/', '.claude/skills/', '.sime/skills/'];
+export const DEFAULT_SKILL_SCAN_DIRS = ['.thething/skills/'];
 
 export const DEFAULT_SKILL_LOADER_CONFIG: SkillLoaderConfig = {
   scanDirs: DEFAULT_SKILL_SCAN_DIRS,

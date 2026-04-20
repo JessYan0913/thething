@@ -26,10 +26,10 @@ DISABLE_COMPACT=true
 DISABLE_AUTO_COMPACT=true
 
 # Custom auto-compact window (override default threshold)
-CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000
+THING_CODE_AUTO_COMPACT_WINDOW=100000
 
 # Percentage-based trigger (0-100)
-CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=80
+THING_AUTOCOMPACT_PCT_OVERRIDE=80
 ```
 
 ## Time-Based MicroCompact Configuration
@@ -75,5 +75,5 @@ export DISABLE_COMPACT=true
 
 ```bash
 # Compact at 80% of context window
-export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=80
+export THING_AUTOCOMPACT_PCT_OVERRIDE=80
 ```
