@@ -5,6 +5,17 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+// esbuild 插件：在解析阶段强制 external better-sqlite3
+const externalizeBetterSqlite3 = {
+  name: 'externalize-better-sqlite3',
+  setup(build: any) {
+    // 拦截所有 better-sqlite3 相关的导入
+    build.onResolve({ filter: /better-sqlite3/ }, (args: any) => {
+      return { path: 'better-sqlite3', external: true }
+    })
+  },
+}
+
 export default defineConfig({
   entry: ['src/index.ts'],
   format: 'cjs',
@@ -17,10 +28,10 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
-  // 只 external 原生模块
-  external: ['better-sqlite3'],
-  // 打包所有其他依赖
+  // 打包所有其他依赖（包括 workspace 包）
   noExternal: [/.*/],
+  // 使用 esbuild 插件强制 external 原生模块
+  esbuildPlugins: [externalizeBetterSqlite3],
   dts: false,
   // 构建完成后生成发布用的 package.json
   async onSuccess() {
