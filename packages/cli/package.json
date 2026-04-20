@@ -7,10 +7,13 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "NODE_NO_WARNINGS=1 tsx src/index.ts",
+    "build": "node build.mjs",
+    "start": "cross-env NODE_NO_WARNINGS=1 tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@hono/node-server": "^1.14.4",
     "@thething/core": "workspace:*",
@@ -28,7 +31,9 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
+    "cross-env": "^7.0.3",
     "dotenv-cli": "^7.4.2",
+    "esbuild": "^0.25.2",
     "tsx": "^4.19.3",
     "typescript": "^5"
   }

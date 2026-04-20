@@ -4,13 +4,7 @@
 // This file MUST be imported before any other modules
 // to ensure environment variables are loaded before other modules initialize
 
-// ============================================================
-// Environment Variables Loader
-// ============================================================
-// This file MUST be imported before any other modules
-// to ensure environment variables are loaded before other modules initialize
-
-// Suppress punycode deprecation warning (from dependencies) - must be before any imports
+// Suppress punycode deprecation warning (from dependencies)
 process.on('warning', (warning) => {
   if (warning.name === 'DeprecationWarning' && warning.message.includes('punycode')) {
     return
@@ -21,12 +15,9 @@ process.on('warning', (warning) => {
 import dotenv from 'dotenv'
 import path from 'path'
 import fs from 'fs'
-import { fileURLToPath } from 'url'
 
-// Get directory path in ESM-compatible way
-const currentDir = typeof __dirname !== 'undefined'
-  ? __dirname
-  : fileURLToPath(new URL('.', import.meta.url))
+// Get directory path - use __dirname (available in bundled CJS output)
+const currentDir = __dirname
 
 // Try to load .env files from multiple locations
 function loadEnvFiles(): void {
