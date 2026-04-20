@@ -6,7 +6,7 @@ import { generateText } from 'ai'
 import { nanoid } from 'nanoid'
 import type { InboundMessageEvent } from '../types'
 import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
-import { getMessagesByConversation, saveMessages, createConversation, getConversation } from '../../chat-store'
+import { getGlobalDataStore } from '../../datastore'
 import { buildSystemPrompt } from '../../system-prompt'
 import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '../../memory'
 import { getDefaultModelProvider } from '../../model-provider'
@@ -51,7 +51,8 @@ export class AgentInboundHandler implements InboundEventHandler {
       const userMessage = this.buildUserMessage(event)
 
       // 3. 获取对话历史
-      const existingMessages = getMessagesByConversation(conversationId)
+      const store = getGlobalDataStore()
+      const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
       const messages = [...existingMessages, userMessage]
 
       // 4. 获取记忆上下文
@@ -90,7 +91,7 @@ export class AgentInboundHandler implements InboundEventHandler {
 
       // 7. 构建助手消息并保存
       const assistantMessage = this.buildAssistantMessage(response)
-      await saveMessages(conversationId, [...messages, assistantMessage])
+      store.messageStore.saveMessages(conversationId, [...messages, assistantMessage])
 
       console.log('[AgentInboundHandler] Generated response:', response.substring(0, 100))
 
@@ -115,15 +116,16 @@ export class AgentInboundHandler implements InboundEventHandler {
   private async findOrCreateConversation(event: InboundMessageEvent): Promise<string> {
     // 使用 channel_id 作为对话 ID（格式：connector_type_channel_id）
     const conversationId = `${event.connector_type}_${event.channel_id}`
+    const store = getGlobalDataStore()
 
-    const existing = getConversation(conversationId)
+    const existing = store.conversationStore.getConversation(conversationId)
     if (existing) {
       return conversationId
     }
 
     // 创建新对话，标题使用发送者信息
     const title = `${event.connector_type} - ${event.sender.name || event.sender.id}`
-    createConversation(conversationId, title)
+    store.conversationStore.createConversation(conversationId, title)
     console.log('[AgentInboundHandler] Created conversation:', conversationId)
 
     return conversationId

@@ -5,12 +5,7 @@
 import { Hono } from 'hono'
 import {
   generateConversationTitle,
-  getMessagesByConversation,
-  saveMessages,
-  updateConversationTitle,
-  listConversations,
-  createConversation,
-  deleteConversation,
+  getGlobalDataStore,
 } from '@thething/core'
 
 const app = new Hono()
@@ -18,7 +13,8 @@ const app = new Hono()
 // GET: List all conversations
 app.get('/', (c) => {
   try {
-    const conversations = listConversations()
+    const store = getGlobalDataStore()
+    const conversations = store.conversationStore.listConversations()
     return c.json({ conversations })
   } catch (error) {
     console.error('[Conversations API] GET error:', error)
@@ -35,7 +31,8 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing conversation id' }, 400)
     }
 
-    const conversation = createConversation(body.id, body.title)
+    const store = getGlobalDataStore()
+    const conversation = store.conversationStore.createConversation(body.id, body.title)
     return c.json({ conversation })
   } catch (error) {
     console.error('[Conversations API] POST error:', error)
@@ -52,7 +49,8 @@ app.patch('/', async (c) => {
       return c.json({ error: 'Missing id or title' }, 400)
     }
 
-    updateConversationTitle(body.id, body.title)
+    const store = getGlobalDataStore()
+    store.conversationStore.updateConversationTitle(body.id, body.title)
     return c.json({ success: true })
   } catch (error) {
     console.error('[Conversations API] PATCH error:', error)
@@ -69,7 +67,9 @@ app.delete('/', (c) => {
       return c.json({ error: 'Missing conversation id' }, 400)
     }
 
-    deleteConversation(id)
+    const store = getGlobalDataStore()
+    store.summaryStore.deleteSummariesByConversation(id)
+    store.conversationStore.deleteConversation(id)
     return c.json({ success: true })
   } catch (error) {
     console.error('[Conversations API] DELETE error:', error)

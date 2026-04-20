@@ -11,7 +11,7 @@ import {
   hasTextBlocks,
 } from "./token-counter";
 import type { StoredSummary } from "./types";
-import { getDb } from "../db";
+import { getGlobalDataStore } from "../datastore";
 
 export function shouldUseSessionMemoryCompaction(): boolean {
   return true;
@@ -19,12 +19,7 @@ export function shouldUseSessionMemoryCompaction(): boolean {
 
 function getSummaryByConversation(conversationId: string): StoredSummary | null {
   try {
-    const db = getDb();
-    const stmt = db.prepare(
-      "SELECT * FROM summaries WHERE conversation_id = ? ORDER BY compacted_at DESC LIMIT 1"
-    );
-    const row = stmt.get(conversationId) as StoredSummary | undefined;
-    return row || null;
+    return getGlobalDataStore().summaryStore.getSummaryByConversation(conversationId);
   } catch {
     return null;
   }

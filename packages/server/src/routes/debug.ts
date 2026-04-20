@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { estimateMessagesTokens, getMessagesByConversation, getDb } from '@thething/core'
+import { estimateMessagesTokens, getGlobalDataStore, SQLiteDataStore } from '@thething/core'
 
 const app = new Hono()
 
@@ -15,13 +15,11 @@ app.get('/compaction', (c) => {
       return c.json({ error: 'Missing conversationId' }, 400)
     }
 
-    const messages = getMessagesByConversation(conversationId)
+    const store = getGlobalDataStore()
+    const messages = store.messageStore.getMessagesByConversation(conversationId)
     const tokenCount = estimateMessagesTokens(messages)
 
-    const db = getDb()
-    const summary = db.prepare(
-      "SELECT * FROM summaries WHERE conversation_id = ? ORDER BY compacted_at DESC LIMIT 1"
-    ).get(conversationId) as Record<string, unknown> | undefined
+    const summary = store.summaryStore.getSummaryByConversation(conversationId)
 
     const boundaryMessages = messages.filter(m => {
       if (m.role !== 'system') return false
@@ -38,10 +36,10 @@ app.get('/compaction', (c) => {
       wouldTriggerCompaction: tokenCount > 60000,
       hasSummary: !!summary,
       summary: summary ? {
-        compactedAt: summary?.compacted_at,
-        preCompactTokens: summary?.pre_compact_token_count,
-        lastMessageOrder: summary?.last_message_order,
-        summaryPreview: (summary?.summary as string)?.slice(0, 200),
+        compactedAt: summary.compactedAt,
+        preCompactTokens: summary.preCompactTokenCount,
+        lastMessageOrder: summary.lastMessageOrder,
+        summaryPreview: summary.summary.slice(0, 200),
       } : null,
       boundaryMessageCount: boundaryMessages.length,
     })

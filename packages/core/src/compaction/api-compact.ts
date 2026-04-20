@@ -14,6 +14,8 @@ import {
 } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
 import { getDefaultModelProvider } from "../model-provider";
+import { getGlobalDataStore } from "../datastore";
+
 async function saveSummarySafe(
   conversationId: string,
   summary: string,
@@ -21,8 +23,7 @@ async function saveSummarySafe(
   tokenCount: number
 ) {
   try {
-    const { saveSummary } = await import("../chat-store");
-    saveSummary(conversationId, summary, lastOrder, tokenCount);
+    getGlobalDataStore().summaryStore.saveSummary(conversationId, summary, lastOrder, tokenCount);
   } catch {
     console.error("[Compaction] Failed to save summary (store not ready)");
   }
@@ -230,8 +231,7 @@ function validateSummaryQuality(summary: string, messagesToSummarize: UIMessage[
 
 async function getExistingSummarySafe(conversationId: string): Promise<string | null> {
   try {
-    const { getSummaryByConversation } = await import("../chat-store");
-    const summary = getSummaryByConversation(conversationId);
+    const summary = getGlobalDataStore().summaryStore.getSummaryByConversation(conversationId);
     return summary?.summary || null;
   } catch {
     return null;

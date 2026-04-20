@@ -6,7 +6,7 @@ import chalk from 'chalk'
 import fs from 'fs'
 import path from 'path'
 import { getDataDirConfig } from '../lib/data-dir'
-import { getDb } from '@thething/core'
+import { getGlobalDataStore, SQLiteDataStore } from '@thething/core'
 
 export interface DbOptions {}
 
@@ -53,9 +53,17 @@ export async function dbBackup(backupPath: string): Promise<void> {
   console.log(chalk.blue(`Backing up database to: ${backupPath}`))
 
   try {
-    const db = getDb()
-    await db.backup(backupPath)
-    console.log(chalk.green('Backup completed successfully.'))
+    const store = getGlobalDataStore()
+    if (store instanceof SQLiteDataStore) {
+      const db = store.getRawDb()
+      await db.backup(backupPath)
+      console.log(chalk.green('Backup completed successfully.'))
+    } else {
+      // Fallback for non-SQLite stores: file copy
+      console.log(chalk.yellow('Using file copy fallback (non-SQLite store)...'))
+      fs.copyFileSync(dataDirConfig.dbPath, backupPath)
+      console.log(chalk.green('Backup completed (via file copy).'))
+    }
   } catch (error) {
     // Fallback: copy file
     console.log(chalk.yellow('Using file copy fallback...'))

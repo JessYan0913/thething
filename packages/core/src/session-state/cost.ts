@@ -1,4 +1,4 @@
-import { getDb } from '../db';
+import { getGlobalDataStore } from '../datastore';
 
 const PRICING: Record<string, { input: number; output: number; cached: number }> = {
   'qwen-max': { input: 4, output: 12, cached: 1 },
@@ -101,72 +101,16 @@ export class CostTracker {
     if (this._persistedToDB) return;
 
     try {
-      const db = getDb();
+      const costStore = getGlobalDataStore().costStore;
 
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS chat_costs (
-          id TEXT PRIMARY KEY,
-          conversation_id TEXT NOT NULL,
-          model TEXT NOT NULL,
-          input_tokens INTEGER DEFAULT 0,
-          output_tokens INTEGER DEFAULT 0,
-          cached_read_tokens INTEGER DEFAULT 0,
-          total_cost_usd REAL DEFAULT 0,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_chat_costs_conversation
-          ON chat_costs(conversation_id);
-      `);
-
-      const existing = db
-        .prepare(
-          `
-        SELECT id, input_tokens, output_tokens, cached_read_tokens, total_cost_usd
-        FROM chat_costs WHERE conversation_id = ?
-      `,
-        )
-        .get(this._conversationId) as
-        | {
-            id: string;
-            input_tokens: number;
-            output_tokens: number;
-            cached_read_tokens: number;
-            total_cost_usd: number;
-          }
-        | undefined;
-
-      if (existing) {
-        db.prepare(
-          `
-          UPDATE chat_costs
-          SET input_tokens = ?,
-              output_tokens = ?,
-              cached_read_tokens = ?,
-              total_cost_usd = ?,
-              updated_at = datetime('now')
-          WHERE conversation_id = ?
-        `,
-        ).run(this._inputTokens, this._outputTokens, this._cachedReadTokens, this._totalCost, this._conversationId);
-      } else {
-        db.prepare(
-          `
-          INSERT INTO chat_costs (
-            id, conversation_id, model,
-            input_tokens, output_tokens, cached_read_tokens, total_cost_usd
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-        ).run(
-          `cost_${Date.now()}`,
-          this._conversationId,
-          this._model,
-          this._inputTokens,
-          this._outputTokens,
-          this._cachedReadTokens,
-          this._totalCost,
-        );
-      }
+      costStore.saveCostRecord({
+        conversationId: this._conversationId,
+        model: this._model,
+        inputTokens: this._inputTokens,
+        outputTokens: this._outputTokens,
+        cachedReadTokens: this._cachedReadTokens,
+        totalCostUsd: this._totalCost,
+      });
 
       this._persistedToDB = true;
     } catch (error) {

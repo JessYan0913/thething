@@ -9,12 +9,8 @@ import { getDataDirConfig } from '../lib/data-dir'
 import {
   initAll,
   createChatAgent,
-  createConversation,
-  getMessagesByConversation,
-  saveMessages,
+  getGlobalDataStore,
   generateConversationTitle,
-  updateConversationTitle,
-  getConversation,
   createLanguageModel,
 } from '@thething/core'
 import { createAgentUIStream, type UIMessage } from 'ai'
@@ -29,24 +25,27 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const dataDirConfig = getDataDirConfig()
   await initAll({ dataDir: dataDirConfig.dataDir })
 
+  // Get datastore
+  const store = getGlobalDataStore()
+
   // Get or create conversation
   let conversationId = options.conversation
 
   if (!conversationId) {
     conversationId = nanoid()
-    createConversation(conversationId, 'CLI Chat')
+    store.conversationStore.createConversation(conversationId, 'CLI Chat')
   } else {
-    const existingMessages = getMessagesByConversation(conversationId)
+    const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
     if (existingMessages.length > 0) {
       console.log(chalk.dim(`Loaded: ${conversationId} (${existingMessages.length} messages)`))
     } else {
       conversationId = nanoid()
-      createConversation(conversationId, 'CLI Chat')
+      store.conversationStore.createConversation(conversationId, 'CLI Chat')
     }
   }
 
   // Store messages
-  let messages: UIMessage[] = getMessagesByConversation(conversationId)
+  let messages: UIMessage[] = store.messageStore.getMessagesByConversation(conversationId)
 
   // Model configuration
   const modelName = options.model || process.env.DASHSCOPE_MODEL || 'qwen-max'
@@ -98,11 +97,11 @@ export default async function chat(options: ChatOptions): Promise<void> {
           onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             // Save messages
             const newMessages = [...messages, ...completedMessages.slice(messages.length)]
-            saveMessages(conversationId!, newMessages)
+            store.messageStore.saveMessages(conversationId!, newMessages)
             messages = newMessages
 
             // Generate title for new conversations
-            const conversation = getConversation(conversationId!)
+            const conversation = store.conversationStore.getConversation(conversationId!)
             if (conversation && conversation.title === 'CLI Chat') {
               const modelInstance = createLanguageModel({
                 apiKey: process.env.DASHSCOPE_API_KEY!,
@@ -113,7 +112,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
               })
               generateConversationTitle(newMessages, modelInstance)
                 .then(title => {
-                  updateConversationTitle(conversationId!, title)
+                  store.conversationStore.updateConversationTitle(conversationId!, title)
                 })
                 .catch(() => {
                   const firstUserText = newMessages
@@ -123,7 +122,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
                     .join('')
                     .trim()
                     .slice(0, 20) || 'New Chat'
-                  updateConversationTitle(conversationId!, firstUserText)
+                  store.conversationStore.updateConversationTitle(conversationId!, firstUserText)
                 })
             }
 

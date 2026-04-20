@@ -6,7 +6,7 @@ import { getUserMemoryDir, ensureMemoryDirExists } from "./paths";
 import { formatMemoryFrontmatter, type MemoryType } from "./memory-types";
 import { scanMemoryFiles } from "./memory-scan";
 import { appendToEntrypoint, rebuildEntrypoint, deleteMemoryFile } from "./memdir";
-import { createMemoryRecord, deleteMemoryRecordByPath } from "./store";
+import { removeMemoryUsage } from "./usage-tracker";
 import { getDefaultModelProvider } from "../model-provider";
 import type { UIMessage } from "ai";
 
@@ -198,7 +198,7 @@ ${conversationText}`;
 
       try {
         if (memory.action === "create") {
-          // 创建新记忆
+          // 创建新记忆文件
           const filePath = path.join(userDir, fileName);
           const fileContent =
             formatMemoryFrontmatter({
@@ -217,19 +217,11 @@ ${conversationText}`;
             description: memory.description,
             type: memory.type,
           });
-          createMemoryRecord({
-            ownerType: "user",
-            ownerId: userId,
-            memoryType: memory.type,
-            name: memory.name,
-            description: memory.description,
-            filePath,
-          });
         } else if (memory.action === "update" && memory.targetFilename) {
           // 更新：删除旧文件，创建新文件，重建索引
           const oldFilePath = path.join(userDir, memory.targetFilename);
-          await deleteMemoryRecordByPath(oldFilePath);
           await fs.unlink(oldFilePath).catch(() => {});
+          await removeMemoryUsage(userDir, memory.targetFilename);
 
           const newFilePath = path.join(userDir, fileName);
           const fileContent =
@@ -244,18 +236,9 @@ ${conversationText}`;
 
           await fs.writeFile(newFilePath, fileContent, "utf-8");
           await rebuildEntrypoint(userDir);
-          createMemoryRecord({
-            ownerType: "user",
-            ownerId: userId,
-            memoryType: memory.type,
-            name: memory.name,
-            description: memory.description,
-            filePath: newFilePath,
-          });
         } else if (memory.action === "delete" && memory.targetFilename) {
-          // 删除：删除文件和数据库记录，重建索引
-          const filePath = path.join(userDir, memory.targetFilename);
-          await deleteMemoryRecordByPath(filePath);
+          // 删除：删除文件，清除使用记录，重建索引
+          await removeMemoryUsage(userDir, memory.targetFilename);
           await deleteMemoryFile(userDir, memory.targetFilename);
         } else if (memory.action === "invalidate" && memory.targetFilename) {
           // 标记过期：在内容前添加过期标记

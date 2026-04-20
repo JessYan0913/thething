@@ -6,9 +6,7 @@ import { Hono } from 'hono'
 import {
   createChatAgent,
   generateConversationTitle,
-  getMessagesByConversation,
-  saveMessages,
-  updateConversationTitle,
+  getGlobalDataStore,
   compactMessagesIfNeeded,
   estimateMessagesTokens,
   runCompactInBackground,
@@ -41,7 +39,8 @@ app.get('/', (c) => {
       return c.json({ error: 'Missing conversationId' }, 400)
     }
 
-    const messages = getMessagesByConversation(conversationId)
+    const store = getGlobalDataStore()
+    const messages = store.messageStore.getMessagesByConversation(conversationId)
     return c.json({ messages })
   } catch (error) {
     console.error('[Chat API] GET error:', error)
@@ -64,14 +63,15 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing conversationId' }, 400)
     }
 
-    let existingMessages = getMessagesByConversation(conversationId)
+    const store = getGlobalDataStore()
+    let existingMessages = store.messageStore.getMessagesByConversation(conversationId)
     const isFirstMessage = existingMessages.length === 0
 
-    const existingMessageIndex = existingMessages.findIndex((m) => m.id === message.id)
+    const existingMessageIndex = existingMessages.findIndex((m: UIMessage) => m.id === message.id)
     if (existingMessageIndex >= 0) {
       existingMessages = existingMessages.slice(0, existingMessageIndex)
     } else {
-      const lastUserMessageIndex = existingMessages.findLastIndex((m) => m.role === 'user')
+      const lastUserMessageIndex = existingMessages.findLastIndex((m: UIMessage) => m.role === 'user')
       if (lastUserMessageIndex >= 0 && existingMessages[lastUserMessageIndex].id === message.id) {
         existingMessages = existingMessages.slice(0, lastUserMessageIndex)
       }
@@ -144,7 +144,7 @@ app.post('/', async (c) => {
                 `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
               )
 
-              await saveMessages(conversationId, messagesToSave)
+              store.messageStore.saveMessages(conversationId, messagesToSave)
 
               const costSummary = sessionState.costTracker.getSummary()
               console.log(
@@ -161,7 +161,7 @@ app.post('/', async (c) => {
 
               if (isFirstMessage) {
                 const title = await generateConversationTitle(completedMessages)
-                updateConversationTitle(conversationId, title)
+                store.conversationStore.updateConversationTitle(conversationId, title)
                 console.log(`[Title Generated] ${conversationId}: ${title}`)
               }
 
@@ -200,7 +200,8 @@ app.patch('/', async (c) => {
       return c.json({ error: 'Missing conversationId or messages' }, 400)
     }
 
-    await saveMessages(body.conversationId, body.messages)
+    const store = getGlobalDataStore()
+    store.messageStore.saveMessages(body.conversationId, body.messages)
 
     return c.json({ success: true })
   } catch (error) {

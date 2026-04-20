@@ -2,14 +2,11 @@
 // @thething/core — Unified Export Entry
 // ============================================================
 
-// Database
-export { getDb, configureDatabase, type DatabaseConfig } from './db';
+// DataStore (data storage abstraction layer)
+export * from './datastore';
 
 // Native Module Loader (for SEA support)
 export { loadBetterSqlite3, getDatabase } from './native-loader';
-
-// Chat Store
-export * from './chat-store';
 
 // Compaction
 export * from './compaction';
@@ -59,5 +56,3 @@ export * from './agent';
 // Init
 export { initAll } from './init';
 export type { InitConfig } from './init';
-
-// Agent

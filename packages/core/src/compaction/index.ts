@@ -6,7 +6,7 @@ import { trySessionMemoryCompact } from "./session-memory-compact";
 import { getMessagesAfterCompactBoundary } from "./boundary";
 import { tryPtlDegradation } from "./ptl-degradation";
 import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
-import { getSummaryByConversation } from "../chat-store";
+import { getGlobalDataStore } from "../datastore";
 
 export async function compactMessagesIfNeeded(
   messages: UIMessage[],
@@ -95,7 +95,7 @@ export async function compactMessagesIfNeeded(
       `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
     );
     // Inject existing DB summary to restore context lost by truncation
-    const storedSummary = getSummaryByConversation(conversationId);
+    const storedSummary = getGlobalDataStore().summaryStore.getSummaryByConversation(conversationId);
     if (storedSummary) {
       const summaryMessage: UIMessage = {
         id: `summary-${Date.now()}`,
@@ -202,6 +202,8 @@ export {
   recordCompactSuccess,
   getAutoCompactStatus,
 } from "./auto-compact";
+
+export { generateConversationTitle } from "./title-generator";
 
 export type {
   CompactionResult,

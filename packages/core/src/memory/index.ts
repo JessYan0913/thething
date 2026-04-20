@@ -4,5 +4,5 @@ export * from './memory-scan';
 export * from './memory-age';
 export * from './find-relevant';
 export * from './memdir';
-export * from './store';
+export * from './usage-tracker';
 export { extractMemoriesFromConversation, extractMemoriesInBackground } from './extractor';

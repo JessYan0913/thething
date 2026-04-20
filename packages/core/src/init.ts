@@ -2,18 +2,18 @@
 // Init - 统一初始化入口
 // ============================================================
 
-import { configureDatabase, type DatabaseConfig } from './db'
+import { configureDataStore, type SQLiteDataStoreConfig } from './datastore'
 import { initPermissions } from './permissions'
 import { initConnectorGateway, type ConnectorGatewayConfig } from './connector'
 
 export interface InitConfig {
   dataDir: string
-  databaseConfig?: DatabaseConfig
+  databaseConfig?: SQLiteDataStoreConfig
   connectorConfig?: ConnectorGatewayConfig
 }
 
 export async function initAll(config: InitConfig): Promise<void> {
-  configureDatabase({
+  configureDataStore({
     dataDir: config.dataDir,
     ...config.databaseConfig,
   })
