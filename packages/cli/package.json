@@ -7,8 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
-    "prepublishOnly": "node scripts/prepublish.mjs",
-    "postpublish": "node scripts/postpublish.mjs",
+    "release": "cd dist && npm publish --access public",
     "start": "cross-env NODE_NO_WARNINGS=1 tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
