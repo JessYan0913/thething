@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getGlobalTaskStore } from '@thething/core'
+import { getGlobalTaskStore } from '@the-thing/core'
 
 const app = new Hono()
 

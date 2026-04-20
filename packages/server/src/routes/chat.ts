@@ -13,7 +13,7 @@ import {
   extractMemoriesInBackground,
   type SubAgentStreamWriter,
   createModelProvider,
-} from '@thething/core'
+} from '@the-thing/core'
 import {
   createAgentUIStream,
   createUIMessageStream,

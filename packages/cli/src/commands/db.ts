@@ -6,7 +6,7 @@ import chalk from 'chalk'
 import fs from 'fs'
 import path from 'path'
 import { getDataDirConfig } from '../lib/data-dir'
-import { getGlobalDataStore, SQLiteDataStore } from '@thething/core'
+import { getGlobalDataStore, SQLiteDataStore } from '@the-thing/core'
 
 export interface DbOptions {}
 

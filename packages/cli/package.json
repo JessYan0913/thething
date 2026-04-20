@@ -16,8 +16,8 @@
   ],
   "dependencies": {
     "@hono/node-server": "^1.14.4",
-    "@thething/core": "workspace:*",
-    "@thething/server": "workspace:*",
+    "@the-thing/core": "workspace:*",
+    "@the-thing/server": "workspace:*",
     "ai": "^6.0.149",
     "better-sqlite3": "^12.8.0",
     "chalk": "^5.4.1",

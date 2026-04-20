@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getConnectorRegistry, type ToolCallRequest } from '@thething/core'
+import { getConnectorRegistry, type ToolCallRequest } from '@the-thing/core'
 
 const app = new Hono()
 

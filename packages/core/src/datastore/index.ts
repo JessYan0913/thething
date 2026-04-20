@@ -10,7 +10,7 @@
 //
 // @example Basic usage (default SQLite)
 // ```typescript
-// import { getGlobalDataStore } from '@thething/core/datastore';
+// import { getGlobalDataStore } from '@the-thing/core/datastore';
 //
 // const store = getGlobalDataStore();
 // store.conversationStore.createConversation('conv-123', 'My Chat');
@@ -18,14 +18,14 @@
 //
 // @example Custom implementation
 // ```typescript
-// import { setGlobalDataStore, type DataStore } from '@thething/core/datastore';
+// import { setGlobalDataStore, type DataStore } from '@the-thing/core/datastore';
 //
 // setGlobalDataStore(new MyPostgresDataStore());
 // ```
 //
 // @example Partial replacement (mix SQLite with custom)
 // ```typescript
-// import { createSQLiteDataStore, setGlobalDataStore } from '@thething/core/datastore';
+// import { createSQLiteDataStore, setGlobalDataStore } from '@the-thing/core/datastore';
 //
 // const sqlite = createSQLiteDataStore();
 // setGlobalDataStore({

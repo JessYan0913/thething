@@ -11,7 +11,7 @@ import {
   deleteMcpServerConfig,
   createMcpRegistry,
   type McpServerConfig,
-} from '@thething/core'
+} from '@the-thing/core'
 
 const app = new Hono()
 

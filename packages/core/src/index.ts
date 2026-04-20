@@ -1,5 +1,5 @@
 // ============================================================
-// @thething/core — Unified Export Entry
+// @the-thing/core — Unified Export Entry
 // ============================================================
 
 // DataStore (data storage abstraction layer)

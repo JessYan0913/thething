@@ -9,7 +9,7 @@ import {
   getWebhookConfigByHandler,
   buildWechatWebhookConfig,
   buildFeishuWebhookConfig,
-} from '@thething/core'
+} from '@the-thing/core'
 
 const app = new Hono()
 

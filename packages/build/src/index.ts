@@ -1,5 +1,5 @@
 // ============================================================
-// @thething/build - Portable Build Entry Point
+// @the-thing/build - Portable Build Entry Point
 // ============================================================
 
 export { PLATFORMS, getCurrentPlatform, getPlatformConfig, isValidPlatform } from './platforms'

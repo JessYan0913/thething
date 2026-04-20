@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { removeRule, saveRule, loadRules, type PermissionBehavior } from '@thething/core'
+import { removeRule, saveRule, loadRules, type PermissionBehavior } from '@the-thing/core'
 
 const app = new Hono()
 

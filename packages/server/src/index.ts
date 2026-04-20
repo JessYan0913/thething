@@ -1,5 +1,5 @@
 // ============================================================
-// @thething/server — Hono HTTP API Entry
+// @the-thing/server — Hono HTTP API Entry
 // ============================================================
 
 import { Hono } from 'hono'

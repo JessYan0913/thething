@@ -1,5 +1,5 @@
 // ============================================================
-// @thething/server — Server Startup
+// @the-thing/server — Server Startup
 // ============================================================
 
 // IMPORTANT: Import env-preload FIRST to load environment variables

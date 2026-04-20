@@ -1,4 +1,4 @@
-# @thething/web
+# @the-thing/web
 
 Web 前端包，React SPA 应用提供图形化界面。
 
@@ -62,7 +62,7 @@ pnpm preview
 
 ## 与服务器集成
 
-前端需要配合 `@thething/server` 使用:
+前端需要配合 `@the-thing/server` 使用:
 - 服务器提供 `/api/*` REST API
 - 服务器可配置为提供静态资源服务
 - 默认 CORS 配置允许本地开发

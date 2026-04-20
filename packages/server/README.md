@@ -1,4 +1,4 @@
-# @thething/server
+# @the-thing/server
 
 HTTP API 服务器包，基于 Hono 框架提供 REST API 接口。
 
@@ -28,7 +28,7 @@ HTTP API 服务器包，基于 Hono 框架提供 REST API 接口。
 ### 启动服务器
 
 ```typescript
-import { startServer, configureStaticAssets, setupStaticAssets } from '@thething/server'
+import { startServer, configureStaticAssets, setupStaticAssets } from '@the-thing/server'
 
 // 配置静态资源目录 (可选)
 configureStaticAssets('/path/to/web/dist')
@@ -64,4 +64,4 @@ pnpm start
 
 - `hono` - 轻量级 Web 框架
 - `@hono/node-server` - Node.js 服务器适配器
-- `@thething/core` - 核心功能模块
+- `@the-thing/core` - 核心功能模块

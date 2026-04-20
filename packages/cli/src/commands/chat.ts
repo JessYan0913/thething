@@ -14,7 +14,7 @@ import {
   getGlobalDataStore,
   generateConversationTitle,
   createLanguageModel,
-} from '@thething/core'
+} from '@the-thing/core'
 import { createAgentUIStream, type UIMessage } from 'ai'
 
 export interface ChatOptions {

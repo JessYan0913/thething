@@ -1,4 +1,4 @@
-# @thething/build
+# @the-thing/build
 
 构建工具包，用于生成跨平台可移植可执行文件。
 
@@ -33,7 +33,7 @@ pnpm build:portable:win
 ### API
 
 ```typescript
-import { buildPortable, getPlatformConfig } from '@thething/build'
+import { buildPortable, getPlatformConfig } from '@the-thing/build'
 
 // 获取平台配置
 const config = getPlatformConfig('darwin-arm64')

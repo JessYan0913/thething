@@ -1,5 +1,5 @@
 {
-  "name": "@thething/web",
+  "name": "@the-thing/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -25,7 +25,7 @@
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
     "@streamdown/mermaid": "^1.0.2",
-    "@thething/core": "workspace:*",
+    "@the-thing/core": "workspace:*",
     "ai": "^6.0.149",
     "ai-elements": "^1.9.0",
     "class-variance-authority": "^0.7.1",

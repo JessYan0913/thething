@@ -21,7 +21,7 @@
       "Bash(EXA_API_KEY=placeholder node *)",
       "Bash(EXA_API_KEY=placeholder pnpm dev:server)",
       "Bash(kill %1)",
-      "Bash(EXA_API_KEY=placeholder pnpm --filter @thething/server dev)",
+      "Bash(EXA_API_KEY=placeholder pnpm --filter @the-thing/server dev)",
       "Bash(EXA_API_KEY=placeholder tsx /Users/yanheng/Documents/work/thething/packages/cli/src/index.ts start --no-open --port 3456)",
       "Bash(node *)",
       "Bash(git add *)",

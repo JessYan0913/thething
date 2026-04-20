@@ -3,22 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:server": "pnpm --filter @thething/server dev",
-    "dev:web": "pnpm --filter @thething/web dev",
-    "dev:cli": "pnpm --filter @thething/cli dev",
-    "build:web": "pnpm --filter @thething/web build",
-    "build:cli": "pnpm --filter @thething/cli build",
-    "build:portable": "pnpm --filter @thething/build build:portable",
-    "build:portable:macos": "pnpm --filter @thething/build build:portable:macos",
-    "build:portable:win": "pnpm --filter @thething/build build:portable:win",
-    "start:server": "pnpm --filter @thething/server start",
-    "cli": "pnpm --filter @thething/cli start",
+    "dev:server": "pnpm --filter @the-thing/server dev",
+    "dev:web": "pnpm --filter @the-thing/web dev",
+    "dev:cli": "pnpm --filter @the-thing/cli dev",
+    "build:web": "pnpm --filter @the-thing/web build",
+    "build:cli": "pnpm --filter @the-thing/cli build",
+    "build:portable": "pnpm --filter @the-thing/build build:portable",
+    "build:portable:macos": "pnpm --filter @the-thing/build build:portable:macos",
+    "build:portable:win": "pnpm --filter @the-thing/build build:portable:win",
+    "start:server": "pnpm --filter @the-thing/server start",
+    "cli": "pnpm --filter @the-thing/cli start",
     "lint": "eslint",
     "typecheck": "pnpm -r typecheck",
-    "typecheck:core": "pnpm --filter @thething/core typecheck"
+    "typecheck:core": "pnpm --filter @the-thing/core typecheck"
   },
   "dependencies": {
-    "@thething/core": "workspace:*"
+    "@the-thing/core": "workspace:*"
   },
   "devDependencies": {
     "eslint": "^9",

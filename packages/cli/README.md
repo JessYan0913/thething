@@ -1,4 +1,4 @@
-# @thething/cli
+# @the-thing/cli
 
 命令行界面包，提供 CLI 工具管理应用。
 
@@ -87,5 +87,5 @@ pnpm start
 - `chalk` - 终端颜色
 - `ora` - 进度指示器
 - `open` - 打开浏览器
-- `@thething/core` - 核心功能
-- `@thething/server` - HTTP 服务器
+- `@the-thing/core` - 核心功能
+- `@the-thing/server` - HTTP 服务器

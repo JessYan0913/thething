@@ -1,5 +1,5 @@
 {
-  "name": "@thething/server",
+  "name": "@the-thing/server",
   "version": "0.1.0",
   "private": true,
   "main": "./src/index.ts",
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
-    "@thething/core": "workspace:*",
+    "@the-thing/core": "workspace:*",
     "ai": "^6.0.149",
     "dotenv": "^16.4.5",
     "hono": "^4.7.7"

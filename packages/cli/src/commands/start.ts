@@ -8,8 +8,8 @@ import path from 'path'
 import net from 'net'
 import { getDataDirConfig, ensureDataDirSubdirs } from '../lib/data-dir'
 import { writeServerLock, isServerRunning, deleteServerLock } from '../lib/server-manager'
-import { startServer, configureStaticAssets, setupStaticAssets } from '@thething/server'
-import { configureDatabase, initPermissions, initConnectorGateway } from '@thething/core'
+import { startServer, configureStaticAssets, setupStaticAssets } from '@the-thing/server'
+import { configureDatabase, initPermissions, initConnectorGateway } from '@the-thing/core'
 
 export interface StartOptions {
   port?: string

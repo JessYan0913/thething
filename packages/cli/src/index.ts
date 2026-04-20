@@ -1,10 +1,10 @@
 // ============================================================
-// @thething/cli - CLI Entry Point
+// @the-thing/cli - CLI Entry Point
 // ============================================================
 
 // IMPORTANT: Load environment variables before any other imports
 // This must be the first import to ensure env vars are available
-// when other modules (like @thething/core) initialize
+// when other modules (like @the-thing/core) initialize
 import './lib/env-loader'
 
 import { Command } from 'commander'

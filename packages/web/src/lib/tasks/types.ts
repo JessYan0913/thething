@@ -1,3 +1,3 @@
-// Re-export task types from @thething/core
-export type { Task, TaskStatus, TaskStore, TaskCreateInput, TaskUpdateInput } from '@thething/core'
-export { STATUS_CONFIG } from '@thething/core'
+// Re-export task types from @the-thing/core
+export type { Task, TaskStatus, TaskStore, TaskCreateInput, TaskUpdateInput } from '@the-thing/core'
+export { STATUS_CONFIG } from '@the-thing/core'

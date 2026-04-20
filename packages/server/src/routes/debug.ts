@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { estimateMessagesTokens, getGlobalDataStore, SQLiteDataStore } from '@thething/core'
+import { estimateMessagesTokens, getGlobalDataStore, SQLiteDataStore } from '@the-thing/core'
 
 const app = new Hono()
 
