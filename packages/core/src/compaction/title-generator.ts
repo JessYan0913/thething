@@ -14,7 +14,8 @@ import { getDefaultModelProvider } from "../model-provider";
  */
 export async function generateConversationTitle(
   messages: UIMessage[],
-  model?: LanguageModelV3
+  model?: LanguageModelV3,
+  delayMs?: number,
 ): Promise<string> {
   const firstUserMessage = messages.find((m) => m.role === "user");
   const firstAssistantMessage = messages.find((m) => m.role === "assistant");
@@ -30,6 +31,11 @@ export async function generateConversationTitle(
     : "New Conversation") || "New Conversation";
 
   try {
+    // 延迟 1 秒再调用 API，避免与主聊天请求同时触发 DashScope 限速
+    // 标题生成优先于记忆提取（3秒），错开 API 调用时间
+    const delay = delayMs ?? 1000;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
     const userText = firstUserMessage?.parts
       .filter((p) => p.type === "text")
       .map((p) => (p.type === "text" ? p.text : ""))

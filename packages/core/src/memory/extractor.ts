@@ -288,6 +288,9 @@ export async function extractMemoriesInBackground(
 ): Promise<void> {
   setImmediate(async () => {
     try {
+      // 延迟 3 秒再调用 API，避免与主聊天请求和标题生成同时触发 DashScope 限速
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
       const result = await extractMemoriesFromConversation(
         messages,
         userId,
