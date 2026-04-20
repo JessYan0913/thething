@@ -12,14 +12,18 @@ export interface MemoryConfig {
 
 const DEFAULT_MEMORY_BASE_DIR = path.join(process.cwd(), '.thething', 'memory');
 
-let configuredMemoryBaseDir: string = DEFAULT_MEMORY_BASE_DIR;
+// 环境变量名称: THETHING_MEMORY_DIR
+// 允许用户自定义项目内存存储目录
+let configuredMemoryBaseDir: string =
+  process.env.THETHING_MEMORY_DIR || DEFAULT_MEMORY_BASE_DIR;
 
 /**
  * Configure the memory base directory.
  * Must be called before other memory operations.
  */
 export function configureMemory(config: MemoryConfig): void {
-  configuredMemoryBaseDir = config.baseDir || DEFAULT_MEMORY_BASE_DIR;
+  configuredMemoryBaseDir =
+    config.baseDir || process.env.THETHING_MEMORY_DIR || DEFAULT_MEMORY_BASE_DIR;
 }
 
 export function getMemoryBaseDir(): string {

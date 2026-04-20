@@ -6,7 +6,9 @@ import os from 'os'
 import path from 'path'
 import fs from 'fs'
 
-const DEFAULT_DATA_DIR = path.join(os.homedir(), '.thething', 'data')
+// 环境变量: THETHING_GLOBAL_DATA_DIR
+// 允许用户自定义全局数据目录（替代 ~/.thething/data）
+const DEFAULT_DATA_DIR = process.env.THETHING_GLOBAL_DATA_DIR || path.join(os.homedir(), '.thething', 'data')
 
 export interface DataDirConfig {
   dataDir: string

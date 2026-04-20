@@ -2,8 +2,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { McpServerConfig } from './registry';
 
-const DEFAULT_mcpConfigDir = path.join(process.cwd(), '.thething', 'mcps');
-let mcpConfigDir: string = process.env.mcpConfigDir || DEFAULT_mcpConfigDir;
+const DEFAULT_MCP_CONFIG_DIR = path.join(process.cwd(), '.thething', 'mcps');
+// 环境变量: THETHING_MCP_DIR
+// 允许用户自定义项目 MCP 配置目录
+let mcpConfigDir: string = process.env.THETHING_MCP_DIR || DEFAULT_MCP_CONFIG_DIR;
 
 /**
  * Configure MCP config directory.

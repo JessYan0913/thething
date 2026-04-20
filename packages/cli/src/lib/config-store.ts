@@ -6,7 +6,9 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-const CONFIG_DIR = path.join(os.homedir(), '.thething')
+// 环境变量: THETHING_GLOBAL_CONFIG_DIR
+// 允许用户自定义全局配置目录（替代 ~/.thething）
+const CONFIG_DIR = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
 
 export interface AppConfig {
