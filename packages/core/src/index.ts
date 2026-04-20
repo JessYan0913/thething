@@ -53,5 +53,11 @@ export * from './agent-control';
 // Model Provider
 export * from './model-provider';
 
-// Utilities
-export * from './utils';
+// Agent
+export * from './agent';
+
+// Init
+export { initAll } from './init';
+export type { InitConfig } from './init';
+
+// Agent

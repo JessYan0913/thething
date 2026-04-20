@@ -175,6 +175,33 @@ function createDatabaseWrapper(nativeAddon: any): any {
       this[CPPDB].close()
     }
 
+    backup(destination: string, options?: {
+      progress?: (progress: { totalPages: number; remainingPages: number }) => void
+    }): Promise<void> {
+      // better-sqlite3 backup is synchronous, wrap in Promise
+      return new Promise((resolve, reject) => {
+        try {
+          // Native addon may not support backup directly
+          // Fallback to file copy if backup method doesn't exist
+          if (typeof this[CPPDB].backup === 'function') {
+            this[CPPDB].backup(destination)
+            resolve()
+          } else {
+            // Manual file copy fallback
+            const sourcePath = this[CPPDB].filename || ''
+            if (sourcePath && fs.existsSync(sourcePath)) {
+              fs.copyFileSync(sourcePath, destination)
+              resolve()
+            } else {
+              reject(new Error('Cannot backup: source database path not available'))
+            }
+          }
+        } catch (err) {
+          reject(err)
+        }
+      })
+    }
+
     // Properties
     get open(): boolean {
       return this[CPPDB].open

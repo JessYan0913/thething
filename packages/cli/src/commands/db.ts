@@ -54,7 +54,7 @@ export async function dbBackup(backupPath: string): Promise<void> {
 
   try {
     const db = getDb()
-    db.backup(backupPath)
+    await db.backup(backupPath)
     console.log(chalk.green('Backup completed successfully.'))
   } catch (error) {
     // Fallback: copy file

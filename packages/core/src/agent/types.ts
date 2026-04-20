@@ -1,0 +1,73 @@
+// ============================================================
+// Agent Types - 统一的 Agent 创建类型定义
+// ============================================================
+
+import type { UIMessage, Tool, ToolSet } from 'ai'
+import type { SessionStateOptions, SessionState } from '../session-state'
+import type { ModelProviderConfig } from '../model-provider'
+import type { McpRegistry } from '../mcp'
+import type { SubAgentStreamWriter } from '../subagents'
+
+export interface AgentContextConfig {
+  userId?: string
+  teamId?: string
+  conversationMeta?: {
+    messageCount: number
+    isNewConversation: boolean
+    conversationStartTime: number
+  }
+}
+
+export interface LoadToolsConfig {
+  conversationId: string
+  sessionState: SessionState
+  enableMcp?: boolean
+  enableConnector?: boolean
+  writerRef?: { current: SubAgentStreamWriter | null }
+  model: any // LanguageModelV3
+}
+
+export interface CreateAgentConfig {
+  conversationId: string
+  messages?: UIMessage[]
+  userId?: string
+  teamId?: string
+  modelConfig: ModelProviderConfig
+  sessionOptions?: SessionStateOptions
+  conversationMeta?: {
+    messageCount: number
+    isNewConversation: boolean
+    conversationStartTime: number
+  }
+  enableMcp?: boolean
+  enableSkills?: boolean
+  enableMemory?: boolean
+  enableConnector?: boolean
+  writerRef?: { current: SubAgentStreamWriter | null }
+}
+
+export interface CreateAgentResult {
+  agent: any // ToolLoopAgent
+  sessionState: SessionState
+  mcpRegistry?: McpRegistry
+  tools: Record<string, Tool>
+  instructions: string
+}
+
+export interface SkillResolution {
+  activeSkillNames: Set<string>
+  activeSkills: Array<{
+    name: string
+    body: string
+    allowedTools: string[]
+    model?: string
+  }>
+  activeToolsWhitelist: Set<string> | null
+  activeModelOverride: string | null
+}
+
+export interface MemoryContext {
+  userId: string
+  teamId?: string
+  recalledMemoriesContent?: string
+}

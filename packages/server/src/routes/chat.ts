@@ -1,11 +1,10 @@
 // ============================================================
-// Chat API - 流式响应
+// Chat API - 流式响应（使用统一的 createChatAgent）
 // ============================================================
 
 import { Hono } from 'hono'
 import {
-  createAgentPipeline,
-  createDefaultStopConditions,
+  createChatAgent,
   generateConversationTitle,
   getMessagesByConversation,
   saveMessages,
@@ -13,48 +12,15 @@ import {
   compactMessagesIfNeeded,
   estimateMessagesTokens,
   runCompactInBackground,
-  costTrackingMiddleware,
-  telemetryMiddleware,
-  createSessionState,
-  createResearchAgent,
-  type SubAgentStreamWriter,
-  buildSystemPrompt,
-  bashTool,
-  editFileTool,
-  exaSearchTool,
-  globTool,
-  grepTool,
-  readFileTool,
-  writeFileTool,
-  askUserQuestionTool,
-  getGlobalTaskStore,
-  createTaskToolsForConversation,
-  createModelProvider,
-  determineActiveSkills,
-  getAvailableSkillsMetadata,
-  loadFullSkill,
-  recordSkillUsage,
-  findRelevantMemories,
-  buildMemorySection,
-  getUserMemoryDir,
-  ensureMemoryDirExists,
   extractMemoriesInBackground,
-  getMcpServerConfigs,
-  createMcpRegistry,
-  type McpRegistry,
-  initPermissions,
-  getConnectorRegistry,
-  getAllConnectorTools,
-  initConnectorGateway,
+  type SubAgentStreamWriter,
+  createModelProvider,
 } from '@thething/core'
 import {
   createAgentUIStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
-  ToolLoopAgent,
   type UIMessage,
-  wrapLanguageModel,
-  type Tool,
 } from 'ai'
 
 const app = new Hono()
@@ -65,212 +31,6 @@ const dashscope = createModelProvider({
   modelName: process.env.DASHSCOPE_MODEL!,
   includeUsage: true,
 })
-
-// 初始化权限系统（加载规则到内存缓存）
-initPermissions().catch((err) => console.error('[Permissions] Init failed:', err))
-
-// 初始化 Connector Gateway（包括 Inbound Processor）
-initConnectorGateway({ enableInbound: true }).catch((err) => console.error('[ConnectorGateway] Init failed:', err))
-
-/**
- * 加载所有已启用的 Connector 工具
- */
-async function loadAllConnectorTools(): Promise<Record<string, Tool>> {
-  try {
-    const registry = await getConnectorRegistry()
-    return await getAllConnectorTools(registry)
-  } catch (error) {
-    console.error('[Connector Tools] Failed to load:', error)
-    return {}
-  }
-}
-
-async function resolveActiveSkillsAndBodies(messages: UIMessage[]) {
-  const skillsMetadata = await getAvailableSkillsMetadata()
-
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
-  if (!lastUserMessage) return { activeSkillNames: new Set<string>(), activeSkills: [], activeToolsWhitelist: null, activeModelOverride: null }
-
-  const userMessageText = lastUserMessage.parts
-    .filter((p) => p.type === 'text')
-    .map((p) => p.text)
-    .join(' ')
-
-  const activeSkillNames = determineActiveSkills(skillsMetadata, userMessageText)
-  if (activeSkillNames.size === 0) return { activeSkillNames, activeSkills: [], activeToolsWhitelist: null, activeModelOverride: null }
-
-  const activeSkills = await Promise.all(
-    Array.from(activeSkillNames).map(async (name) => {
-      const metadata = skillsMetadata.find((s) => s.name === name)
-      if (!metadata) return null
-      return loadFullSkill(metadata)
-    })
-  )
-
-  const filteredActiveSkills = activeSkills.filter((s): s is NonNullable<typeof s> => s !== null)
-
-  for (const skill of filteredActiveSkills) {
-    recordSkillUsage(skill.name)
-  }
-
-  const allAllowedTools = new Set<string>()
-  let modelOverride: string | null = null
-  for (const skill of filteredActiveSkills) {
-    for (const tool of skill.allowedTools) {
-      allAllowedTools.add(tool)
-    }
-    if (skill.model && !modelOverride) {
-      modelOverride = skill.model
-    }
-  }
-
-  return {
-    activeSkillNames,
-    activeSkills: filteredActiveSkills,
-    activeToolsWhitelist: allAllowedTools.size > 0 ? allAllowedTools : null,
-    activeModelOverride: modelOverride,
-  }
-}
-
-function formatActiveSkillBodies(skillBodies: { name: string; body: string }[]): string {
-  if (skillBodies.length === 0) return ''
-
-  const sections = skillBodies
-    .map((s) => `<技能指令 name="${s.name}">\n${s.body}\n</技能指令>`)
-    .join('\n\n')
-
-  return `## 已激活技能完整指令
-
-以下技能已根据你的需求自动激活，请严格按照指令执行：
-
-${sections}`
-}
-
-async function createChatAgent(
-  conversationId: string,
-  conversationMeta?: {
-    messageCount: number
-    isNewConversation: boolean
-    conversationStartTime: number
-  },
-  writerRef?: { current: SubAgentStreamWriter | null },
-  messages?: UIMessage[],
-  memoryContext?: {
-    userId: string
-    teamId?: string
-    recalledMemoriesContent?: string
-  },
-  mcpRegistry?: McpRegistry,
-) {
-  const skillResolution = messages ? await resolveActiveSkillsAndBodies(messages) : null
-
-  const sessionState = createSessionState(conversationId, {
-    maxContextTokens: 128_000,
-    compactThreshold: 25_000,
-    maxBudgetUsd: 5.0,
-    model: process.env.DASHSCOPE_MODEL,
-  })
-
-  if (skillResolution?.activeModelOverride) {
-    sessionState.model = skillResolution.activeModelOverride
-  }
-
-  if (skillResolution?.activeSkillNames) {
-    for (const name of skillResolution.activeSkillNames) {
-      sessionState.activeSkills.add(name)
-    }
-    for (const skill of skillResolution.activeSkills) {
-      sessionState.loadedSkills.set(skill.name, skill)
-    }
-  }
-
-  const { prompt } = await buildSystemPrompt({
-    includeProjectContext: true,
-    conversationMeta: conversationMeta ?? undefined,
-    memoryContext: memoryContext ?? undefined,
-  })
-
-  const finalInstructions = skillResolution?.activeSkills && skillResolution.activeSkills.length > 0
-    ? `${prompt}\n\n${formatActiveSkillBodies(skillResolution.activeSkills.map((s) => ({ name: s.name, body: s.body })))}`
-    : prompt
-
-  const wrappedModel = wrapLanguageModel({
-    model: dashscope(sessionState.model),
-    middleware: [telemetryMiddleware(), costTrackingMiddleware(sessionState.costTracker)],
-  })
-
-  const allTools: Record<string, Tool> = {
-    web_search: exaSearchTool,
-    read_file: readFileTool,
-    write_file: writeFileTool,
-    edit_file: editFileTool,
-    bash: bashTool,
-    grep: grepTool,
-    glob: globTool,
-    ask_user_question: askUserQuestionTool,
-    research: createResearchAgent({
-      model: wrappedModel,
-      tools: {
-        web_search: exaSearchTool,
-        read_file: readFileTool,
-        grep: grepTool,
-        glob: globTool,
-      },
-      maxSteps: 20,
-      maxContextMessages: 10,
-      writerRef,
-    }),
-    ...createTaskToolsForConversation(getGlobalTaskStore(), conversationId),
-  }
-
-  if (mcpRegistry) {
-    const mcpTools = mcpRegistry.getAllTools()
-    for (const [toolName, toolDef] of Object.entries(mcpTools)) {
-      const prefixedName = `mcp_${toolName}`
-      if (!(prefixedName in allTools)) {
-        allTools[prefixedName] = toolDef as Tool
-      }
-    }
-    const mcpSnapshot = mcpRegistry.snapshot()
-    console.log(`[MCP] ${mcpSnapshot.totalTools} MCP tools available: ${Object.keys(mcpTools).join(', ')}`)
-  }
-
-  // 加载 Connector 工具
-  const connectorTools = await loadAllConnectorTools()
-  for (const [toolName, toolDef] of Object.entries(connectorTools)) {
-    if (!(toolName in allTools)) {
-      allTools[toolName] = toolDef
-    }
-  }
-
-  const tools = allTools
-
-  type ChatToolsType = Record<string, Tool>
-
-  const prepareStep = createAgentPipeline<ChatToolsType>({
-    sessionState,
-    maxSteps: 50,
-    maxBudgetUsd: 5.0,
-  })
-
-  const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {
-    maxSteps: 50,
-    denialTracker: sessionState.denialTracker,
-    sessionState,
-  })
-
-  return {
-    agent: new ToolLoopAgent({
-      model: wrappedModel,
-      instructions: finalInstructions,
-      tools,
-      prepareStep,
-      stopWhen,
-      toolChoice: 'auto',
-    }),
-    sessionState,
-  }
-}
 
 // GET: Load messages for a conversation
 app.get('/', (c) => {
@@ -291,7 +51,6 @@ app.get('/', (c) => {
 
 // POST: Stream chat response
 app.post('/', async (c) => {
-  let mcpRegistry: McpRegistry | undefined
   try {
     const body = await c.req.json<{
       message: UIMessage
@@ -340,54 +99,30 @@ app.post('/', async (c) => {
     )
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
-
-    // ========== Memory Recall ==========
     const userId = messageUserId || 'default'
-    const userMemDir = getUserMemoryDir(userId)
-    await ensureMemoryDirExists(userMemDir)
 
-    const lastUserMessage = [...compactedMessages].reverse().find((m) => m.role === 'user')
-    const lastUserMessageText = lastUserMessage?.parts
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text)
-      .join(' ') || ''
-
-    let recalledMemoriesContent = ''
-    if (lastUserMessageText) {
-      const relevantMemories = await findRelevantMemories(lastUserMessageText, userMemDir, {
-        maxResults: 5,
-      })
-
-      if (relevantMemories.length > 0) {
-        recalledMemoriesContent = await buildMemorySection(relevantMemories, userMemDir)
-      }
-    }
-
-    const mcpConfigs = await getMcpServerConfigs()
-    if (mcpConfigs.length > 0) {
-      mcpRegistry = createMcpRegistry(mcpConfigs)
-      try {
-        await mcpRegistry.connectAll()
-      } catch (mcpError) {
-        console.error('[MCP] Connection error:', mcpError)
-      }
-    }
-
-    const { agent, sessionState } = await createChatAgent(
+    // 使用统一的 createChatAgent
+    const { agent, sessionState, mcpRegistry } = await createChatAgent({
       conversationId,
-      {
+      messages: compactedMessages,
+      userId,
+      modelConfig: {
+        apiKey: process.env.DASHSCOPE_API_KEY!,
+        baseURL: process.env.DASHSCOPE_BASE_URL!,
+        modelName: process.env.DASHSCOPE_MODEL!,
+        includeUsage: true,
+      },
+      conversationMeta: {
         messageCount: compactedMessages.length,
         isNewConversation: isFirstMessage,
         conversationStartTime: Date.now(),
       },
+      enableMcp: true,
+      enableSkills: true,
+      enableMemory: true,
+      enableConnector: true,
       writerRef,
-      compactedMessages,
-      {
-        userId,
-        recalledMemoriesContent,
-      },
-      mcpRegistry,
-    )
+    })
 
     const abortController = new AbortController()
 
@@ -408,9 +143,6 @@ app.post('/', async (c) => {
               console.log(
                 `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
               )
-              console.log(
-                `[Storage] Compaction was ${compactionExecuted ? 'executed' : 'not executed'}, but database receives ORIGINAL messages`,
-              )
 
               await saveMessages(conversationId, messagesToSave)
 
@@ -420,7 +152,7 @@ app.post('/', async (c) => {
               )
               await sessionState.costTracker.persistToDB()
 
-              // ========== Background Memory Extraction ==========
+              // Background Memory Extraction
               extractMemoriesInBackground(
                 completedMessages,
                 userId,
@@ -454,9 +186,6 @@ app.post('/', async (c) => {
       headers: { 'X-Conversation-Id': conversationId },
     })
   } catch (error) {
-    if (mcpRegistry) {
-      try { await mcpRegistry.disconnectAll() } catch {}
-    }
     console.error('[Chat API] POST error:', error)
     return c.json({ error: 'Failed to process chat request' }, 500)
   }

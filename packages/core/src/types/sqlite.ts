@@ -26,6 +26,9 @@ export interface SqliteDatabase {
   transaction<T>(fn: (...args: unknown[]) => T): (...args: unknown[]) => T
   pragma(sql: string, simplify?: boolean): unknown
   exec(sql: string): SqliteDatabase
+  backup(destination: string, options?: {
+    progress?: (progress: { totalPages: number; remainingPages: number }) => void
+  }): Promise<void>
   close(): void
 
   // Properties

@@ -6,6 +6,7 @@
 // the caller (Next.js API route, CLI, etc.).
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { wrapLanguageModel, defaultSettingsMiddleware } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 
 export interface ModelProviderConfig {
@@ -13,7 +14,7 @@ export interface ModelProviderConfig {
   baseURL: string;
   modelName?: string;
   includeUsage?: boolean;
-  /** Enable thinking/reasoning mode for models that support it (e.g., qwen3) */
+  /** Enable thinking/reasoning mode for models that support it (e.g., qwen3, gpt-5) */
   enableThinking?: boolean;
 }
 
@@ -35,21 +36,34 @@ export function createModelProvider(config: ModelProviderConfig): ModelProvider 
 
 /**
  * Get a LanguageModel instance from the provider config.
- * For qwen3 models, enables thinking mode if requested.
+ * Uses defaultSettingsMiddleware to configure providerOptions for thinking mode.
  */
 export function createLanguageModel(config: ModelProviderConfig): LanguageModelV3 {
   const provider = createModelProvider(config);
   const modelName = config.modelName || "qwen-max";
 
-  // For qwen3 models, we can enable thinking via provider options
-  if (config.enableThinking && modelName.includes('qwen3')) {
-    return provider(modelName, {
-      // Enable thinking mode for qwen3 - DashScope uses this format
-      reasoningEffort: 'high',
+  // Base model from provider
+  const baseModel = provider(modelName);
+
+  // If thinking mode is enabled, wrap with defaultSettingsMiddleware
+  if (config.enableThinking) {
+    return wrapLanguageModel({
+      model: baseModel,
+      middleware: defaultSettingsMiddleware({
+        settings: {
+          // For OpenAI-compatible providers (like DashScope), use openai namespace
+          // Note: DashScope may have its own format, but we try the OpenAI format first
+          providerOptions: {
+            openai: {
+              reasoningEffort: 'high',
+            },
+          },
+        },
+      }),
     });
   }
 
-  return provider(modelName);
+  return baseModel;
 }
 
 /**

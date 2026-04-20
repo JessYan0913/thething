@@ -5,43 +5,19 @@
 import chalk from 'chalk'
 import { nanoid } from 'nanoid'
 import { createRepl, startRepl } from '../interactive/repl'
-import { renderStreamText, createSpinner } from '../interactive/stream-output'
 import { getDataDirConfig } from '../lib/data-dir'
 import {
-  configureDatabase,
+  initAll,
+  createChatAgent,
   createConversation,
   getMessagesByConversation,
   saveMessages,
-  listConversations,
-  buildSystemPrompt,
-  createSessionState,
-  createAgentPipeline,
-  createDefaultStopConditions,
-  createLanguageModel,
   generateConversationTitle,
   updateConversationTitle,
   getConversation,
-  bashTool,
-  editFileTool,
-  exaSearchTool,
-  globTool,
-  grepTool,
-  readFileTool,
-  writeFileTool,
-  askUserQuestionTool,
-  getGlobalTaskStore,
-  createTaskToolsForConversation,
-  costTrackingMiddleware,
-  telemetryMiddleware,
-  type SubAgentStreamWriter,
+  createLanguageModel,
 } from '@thething/core'
-import {
-  ToolLoopAgent,
-  createAgentUIStream,
-  wrapLanguageModel,
-  type UIMessage,
-  type Tool,
-} from 'ai'
+import { createAgentUIStream, type UIMessage } from 'ai'
 
 export interface ChatOptions {
   conversation?: string
@@ -49,22 +25,20 @@ export interface ChatOptions {
 }
 
 export default async function chat(options: ChatOptions): Promise<void> {
-  // Configure database
+  // Initialize all systems
   const dataDirConfig = getDataDirConfig()
-  configureDatabase({ dataDir: dataDirConfig.dataDir })
+  await initAll({ dataDir: dataDirConfig.dataDir })
 
   // Get or create conversation
   let conversationId = options.conversation
 
   if (!conversationId) {
-    // Create new conversation
     conversationId = nanoid()
     createConversation(conversationId, 'CLI Chat')
   } else {
-    // Load existing conversation
-    const messages = getMessagesByConversation(conversationId)
-    if (messages.length > 0) {
-      console.log(chalk.dim(`Loaded: ${conversationId} (${messages.length} messages)`))
+    const existingMessages = getMessagesByConversation(conversationId)
+    if (existingMessages.length > 0) {
+      console.log(chalk.dim(`Loaded: ${conversationId} (${existingMessages.length} messages)`))
     } else {
       conversationId = nanoid()
       createConversation(conversationId, 'CLI Chat')
@@ -78,15 +52,6 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const modelName = options.model || process.env.DASHSCOPE_MODEL || 'qwen-max'
   const enableThinking = process.env.DASHSCOPE_ENABLE_THINKING === 'true'
 
-  // Get the actual model instance (with thinking enabled if configured)
-  const modelInstance = createLanguageModel({
-    apiKey: process.env.DASHSCOPE_API_KEY!,
-    baseURL: process.env.DASHSCOPE_BASE_URL!,
-    modelName,
-    includeUsage: true,
-    enableThinking,
-  })
-
   // Create REPL
   const rl = createRepl({
     onInput: async (input: string) => {
@@ -99,65 +64,26 @@ export default async function chat(options: ChatOptions): Promise<void> {
 
       messages = [...messages, userMessage]
 
-      // Create session state
-      const sessionState = createSessionState(conversationId!, {
-        maxContextTokens: 128_000,
-        compactThreshold: 25_000,
-        maxBudgetUsd: 5.0,
-        model: modelName,
-      })
-
-      // Build system prompt
-      const { prompt } = await buildSystemPrompt({
-        includeProjectContext: false,
+      // Create agent using unified createChatAgent
+      const { agent, sessionState, mcpRegistry } = await createChatAgent({
+        conversationId: conversationId!,
+        messages,
+        modelConfig: {
+          apiKey: process.env.DASHSCOPE_API_KEY!,
+          baseURL: process.env.DASHSCOPE_BASE_URL!,
+          modelName,
+          includeUsage: true,
+          enableThinking,
+        },
         conversationMeta: {
           messageCount: messages.length,
           isNewConversation: messages.length === 1,
           conversationStartTime: Date.now(),
         },
-      })
-
-      // Create model with middleware
-      const wrappedModel = wrapLanguageModel({
-        model: modelInstance,
-        middleware: [telemetryMiddleware(), costTrackingMiddleware(sessionState.costTracker)],
-      })
-
-      // Create tools
-      const tools: Record<string, Tool> = {
-        web_search: exaSearchTool,
-        read_file: readFileTool,
-        write_file: writeFileTool,
-        edit_file: editFileTool,
-        bash: bashTool,
-        grep: grepTool,
-        glob: globTool,
-        ask_user_question: askUserQuestionTool,
-        ...createTaskToolsForConversation(getGlobalTaskStore(), conversationId!),
-      }
-
-      // Create agent pipeline
-      const prepareStep = createAgentPipeline({
-        sessionState,
-        maxSteps: 50,
-        maxBudgetUsd: 5.0,
-      })
-
-      const stopWhen = createDefaultStopConditions(sessionState.costTracker, {
-        maxSteps: 50,
-        denialTracker: sessionState.denialTracker,
-        sessionState,
-      })
-
-      // Create agent
-      const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
-      const agent = new ToolLoopAgent({
-        model: wrappedModel,
-        instructions: prompt,
-        tools,
-        prepareStep,
-        stopWhen,
-        toolChoice: 'auto',
+        enableMcp: true,
+        enableSkills: true,
+        enableMemory: true,
+        enableConnector: true,
       })
 
       // Stream response
@@ -175,16 +101,21 @@ export default async function chat(options: ChatOptions): Promise<void> {
             saveMessages(conversationId!, newMessages)
             messages = newMessages
 
-            // Generate title for new conversations (only on first response)
+            // Generate title for new conversations
             const conversation = getConversation(conversationId!)
             if (conversation && conversation.title === 'CLI Chat') {
-              // Generate title asynchronously (don't block)
+              const modelInstance = createLanguageModel({
+                apiKey: process.env.DASHSCOPE_API_KEY!,
+                baseURL: process.env.DASHSCOPE_BASE_URL!,
+                modelName,
+                includeUsage: true,
+                enableThinking,
+              })
               generateConversationTitle(newMessages, modelInstance)
                 .then(title => {
                   updateConversationTitle(conversationId!, title)
                 })
                 .catch(() => {
-                  // Fallback: use first user message text
                   const firstUserText = newMessages
                     .find(m => m.role === 'user')
                     ?.parts.filter(p => p.type === 'text')
@@ -194,6 +125,11 @@ export default async function chat(options: ChatOptions): Promise<void> {
                     .slice(0, 20) || 'New Chat'
                   updateConversationTitle(conversationId!, firstUserText)
                 })
+            }
+
+            // Disconnect MCP
+            if (mcpRegistry) {
+              await mcpRegistry.disconnectAll()
             }
 
             // Log cost
@@ -207,7 +143,6 @@ export default async function chat(options: ChatOptions): Promise<void> {
         let isReasoning = false
         for await (const chunk of agentStream) {
           if (chunk.type === 'text-delta') {
-            // End reasoning block if we were in one
             if (isReasoning) {
               process.stdout.write(chalk.gray('\n────────────────────────────────────────\n'))
               process.stdout.write(chalk.green('Assistant: '))
@@ -215,15 +150,16 @@ export default async function chat(options: ChatOptions): Promise<void> {
             }
             process.stdout.write(chunk.delta || '')
           } else if (chunk.type === 'reasoning-start') {
-            // Start reasoning block
             process.stdout.write(chalk.gray('\n💭 Thinking...\n────────────────────────────────────────\n'))
             isReasoning = true
           } else if (chunk.type === 'reasoning-delta') {
-            // Append reasoning text in gray
             process.stdout.write(chalk.gray(chunk.delta || ''))
           }
         }
       } catch (error) {
+        if (mcpRegistry) {
+          try { await mcpRegistry.disconnectAll() } catch {}
+        }
         if (error instanceof Error && error.message.includes('abort')) {
           console.log(chalk.yellow('\nGeneration cancelled.'))
         } else {
@@ -249,7 +185,6 @@ export default async function chat(options: ChatOptions): Promise<void> {
       if (cmd.startsWith('/model ')) {
         const newModel = command.slice(7).trim()
         console.log(chalk.blue(`Model set to: ${newModel}`))
-        // Note: This would need to update sessionState
         return true
       }
 
