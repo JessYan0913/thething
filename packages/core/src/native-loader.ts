@@ -3,6 +3,10 @@
 // ============================================================
 // In SEA mode, the standard require() only supports built-in modules.
 // To load external modules, we need to use require("module").createRequire().
+//
+// Strategy: Use the better-sqlite3 npm package's lib/ wrapper files
+// which properly implement methods like pragma, transaction, etc.
+// These wrappers use the native addon's prepare() method internally.
 
 import path from 'path'
 import fs from 'fs'
@@ -15,262 +19,65 @@ export type { SqliteDatabase, SqliteDatabaseConstructor, SqliteDatabaseOptions, 
 // Cache for loaded native modules
 const nativeModuleCache: Map<string, any> = new Map()
 
-// Native addon reference (cached after first load)
-let nativeAddon: any = null
-
 /**
- * Create a require function that can load external modules in SEA mode
- * Uses process.execPath as the base for SEA compatibility
+ * Find the better-sqlite3 package directory (contains lib/)
  */
-function createExternalRequire(): NodeRequire {
-  return module.createRequire(process.execPath)
-}
-
-/**
- * Find the native binding path (better_sqlite3.node)
- */
-function findNativeBindingPath(): string | null {
+function findBetterSqlite3PackageDir(): string | null {
   const execDir = path.dirname(process.execPath)
   const nativeFileName = 'better_sqlite3.node'
 
-  const searchPaths: string[] = [
-    // SEA portable mode - native/better-sqlite3/build/Release/
-    path.join(execDir, 'native', 'better-sqlite3', 'build', 'Release', nativeFileName),
-    // Alternative: native/better_sqlite3.node (direct)
-    path.join(execDir, 'native', nativeFileName),
-    // Current working directory
-    path.join(process.cwd(), 'native', 'better-sqlite3', 'build', 'Release', nativeFileName),
-    path.join(process.cwd(), 'native', nativeFileName),
-  ]
+  // Check if native/better-sqlite3/lib/index.js exists (SEA portable mode)
+  const portableLibPath = path.join(execDir, 'native', 'better-sqlite3', 'lib', 'index.js')
+  if (fs.existsSync(portableLibPath)) {
+    return path.join(execDir, 'native', 'better-sqlite3')
+  }
 
-  for (const searchPath of searchPaths) {
-    if (fs.existsSync(searchPath)) {
-      return searchPath
-    }
+  // Check current working directory
+  const cwdLibPath = path.join(process.cwd(), 'native', 'better-sqlite3', 'lib', 'index.js')
+  if (fs.existsSync(cwdLibPath)) {
+    return path.join(process.cwd(), 'native', 'better-sqlite3')
   }
 
   return null
 }
 
 /**
- * Load the native addon directly
+ * Create a custom bindings module that returns the native addon
+ * This replaces the npm bindings package's behavior
  */
-function loadNativeAddon(): any {
-  if (nativeAddon) {
-    return nativeAddon
-  }
-
-  const bindingPath = findNativeBindingPath()
-  if (bindingPath) {
-    try {
-      const externalRequire = createExternalRequire()
-      nativeAddon = externalRequire(bindingPath)
-      // Initialize error constructor
-      if (nativeAddon.setErrorConstructor && !nativeAddon.isInitialized) {
-        // Create a simple error class
-        class SqliteError extends Error {
-          code: string
-          constructor(message: string, code: string) {
-            super(message)
-            this.code = code
-            this.name = 'SqliteError'
-          }
-        }
-        nativeAddon.setErrorConstructor(SqliteError)
-        nativeAddon.isInitialized = true
-      }
-      console.log(`[NativeLoader] Loaded native addon from ${bindingPath}`)
-      return nativeAddon
-    } catch (err) {
-      console.warn(`[NativeLoader] Failed to load native addon from ${bindingPath}:`, err)
-    }
-  }
-
-  // Fall back to standard npm package (works in non-SEA mode)
-  try {
-    nativeAddon = require('better-sqlite3/build/Release/better_sqlite3.node')
-    return nativeAddon
-  } catch {
-    // Try bindings
-    try {
-      const bindings = require('bindings')
-      nativeAddon = bindings('better_sqlite3.node')
-      return nativeAddon
-    } catch {
-      throw new Error(
-        `Failed to load better-sqlite3 native module. ` +
-        `Please ensure the native module is compiled for your platform (${process.platform}-${process.arch}). ` +
-        `Run 'pnpm rebuild better-sqlite3' to compile.`
-      )
-    }
+function createBindingsModule(nativeAddonPath: string): any {
+  return function bindings(moduleName: string): any {
+    // Load the native addon directly
+    const externalRequire = module.createRequire(process.execPath)
+    return externalRequire(nativeAddonPath)
   }
 }
 
-// Symbol for internal native database reference (matches npm package's util.cppdb)
-const CPPDB = Symbol('cppdb')
-
 /**
- * Create a Database wrapper that mimics the npm package behavior
- * The native addon's methods expect different parameters than the npm package
+ * Create a custom require function for the better-sqlite3 package
+ * This handles the special require('bindings') call in database.js
  */
-function createDatabaseWrapper(nativeAddon: any): any {
-  const NativeDatabase = nativeAddon.Database
+function createPackageRequire(packageDir: string): NodeRequire {
+  const nativeAddonPath = path.join(packageDir, 'build', 'Release', 'better_sqlite3.node')
 
-  class DatabaseWrapper {
-    private [CPPDB]: any
+  // Create a require function based on the package directory
+  const baseRequire = module.createRequire(path.join(packageDir, 'lib', 'index.js'))
 
-    constructor(filename: string, options?: { readonly?: boolean; fileMustExist?: boolean; timeout?: number }) {
-      // Convert npm-style options to native addon parameters
-      const readonly = options?.readonly ?? false
-      const fileMustExist = options?.fileMustExist ?? false
-      const timeout = options?.timeout ?? 5000
-
-      // Determine if anonymous/temporary
-      const trimmedFilename = filename?.trim() ?? ''
-      const anonymous = trimmedFilename === '' || trimmedFilename === ':memory:'
-
-      // Ensure directory exists for non-anonymous databases
-      if (!anonymous && !trimmedFilename.startsWith('file:')) {
-        const dir = path.dirname(trimmedFilename)
-        if (!fs.existsSync(dir)) {
-          throw new TypeError('Cannot open database because the directory does not exist')
-        }
-      }
-
-      // Create native database
-      // Native addon signature: (filename, originalFilename, anonymous, readonly, fileMustExist, timeout, verbose, buffer)
-      this[CPPDB] = new NativeDatabase(
-        trimmedFilename,
-        filename,
-        anonymous,
-        readonly,
-        fileMustExist,
-        timeout,
-        null,  // verbose
-        null   // buffer
-      )
+  // Create a custom require that intercepts 'bindings' calls
+  const customRequire = (id: string) => {
+    if (id === 'bindings') {
+      return createBindingsModule(nativeAddonPath)
     }
-
-    // Wrapper methods (match npm package signatures)
-    prepare(sql: string): StatementWrapper {
-      // Native prepare signature: (sql, databaseWrapper, unsafeMode)
-      const stmt = this[CPPDB].prepare(sql, this, false)
-      return new StatementWrapper(stmt, this)
-    }
-
-    transaction(fn: Function): any {
-      return this[CPPDB].transaction(fn)
-    }
-
-    pragma(sql: string, simplify?: boolean): any {
-      return this[CPPDB].pragma(sql, simplify)
-    }
-
-    exec(sql: string): this {
-      this[CPPDB].exec(sql)
-      return this
-    }
-
-    close(): void {
-      this[CPPDB].close()
-    }
-
-    backup(destination: string, options?: {
-      progress?: (progress: { totalPages: number; remainingPages: number }) => void
-    }): Promise<void> {
-      // better-sqlite3 backup is synchronous, wrap in Promise
-      return new Promise((resolve, reject) => {
-        try {
-          // Native addon may not support backup directly
-          // Fallback to file copy if backup method doesn't exist
-          if (typeof this[CPPDB].backup === 'function') {
-            this[CPPDB].backup(destination)
-            resolve()
-          } else {
-            // Manual file copy fallback
-            const sourcePath = this[CPPDB].filename || ''
-            if (sourcePath && fs.existsSync(sourcePath)) {
-              fs.copyFileSync(sourcePath, destination)
-              resolve()
-            } else {
-              reject(new Error('Cannot backup: source database path not available'))
-            }
-          }
-        } catch (err) {
-          reject(err)
-        }
-      })
-    }
-
-    // Properties
-    get open(): boolean {
-      return this[CPPDB].open
-    }
-
-    get inTransaction(): boolean {
-      return this[CPPDB].inTransaction
-    }
-
-    get readonly(): boolean {
-      return this[CPPDB].readonly
-    }
+    return baseRequire(id)
   }
 
-  /**
-   * Statement wrapper - proxies native statement methods
-   */
-  class StatementWrapper {
-    private _stmt: any
-    private _db: DatabaseWrapper
+  // Copy properties from base require
+  customRequire.resolve = baseRequire.resolve
+  customRequire.cache = baseRequire.cache
+  customRequire.extensions = baseRequire.extensions
+  customRequire.main = baseRequire.main
 
-    constructor(stmt: any, db: DatabaseWrapper) {
-      this._stmt = stmt
-      this._db = db
-    }
-
-    run(...params: unknown[]): this {
-      this._stmt.run(...params)
-      return this
-    }
-
-    get(...params: unknown[]): any {
-      return this._stmt.get(...params)
-    }
-
-    all(...params: unknown[]): any[] {
-      return this._stmt.all(...params)
-    }
-
-    iterate(...params: unknown[]): any {
-      return this._stmt.iterate(...params)
-    }
-
-    bind(...params: unknown[]): this {
-      this._stmt.bind(...params)
-      return this
-    }
-
-    pluck(toggle?: boolean): this {
-      this._stmt.pluck(toggle)
-      return this
-    }
-
-    expand(toggle?: boolean): this {
-      this._stmt.expand(toggle)
-      return this
-    }
-
-    raw(toggle?: boolean): this {
-      this._stmt.raw(toggle)
-      return this
-    }
-
-    columns(): any[] {
-      return this._stmt.columns()
-    }
-  }
-
-  return DatabaseWrapper
+  return customRequire as NodeRequire
 }
 
 /**
@@ -292,17 +99,29 @@ export function loadBetterSqlite3(): SqliteDatabaseConstructor {
     // Fall back to SEA native loading
   }
 
-  // SEA mode: load native addon and create wrapper
-  const addon = loadNativeAddon()
-  if (!addon) {
-    throw new Error('Failed to load better-sqlite3 native addon')
+  // SEA mode: load from native/better-sqlite3 package
+  const packageDir = findBetterSqlite3PackageDir()
+  if (!packageDir) {
+    throw new Error(
+      `Failed to find better-sqlite3 package. ` +
+      `Please ensure the native module is compiled for your platform (${process.platform}-${process.arch}). ` +
+      `Run 'pnpm rebuild better-sqlite3' to compile.`
+    )
   }
 
-  const DatabaseWrapper = createDatabaseWrapper(addon) as SqliteDatabaseConstructor
-  nativeModuleCache.set('better-sqlite3', DatabaseWrapper)
-  console.log('[NativeLoader] Created Database wrapper for SEA mode')
+  console.log(`[NativeLoader] Loading better-sqlite3 from ${packageDir}`)
 
-  return DatabaseWrapper
+  // Create custom require for this package
+  const customRequire = createPackageRequire(packageDir)
+
+  // Load the lib/index.js which exports Database
+  const libIndexPath = path.join(packageDir, 'lib', 'index.js')
+  const Database = customRequire(libIndexPath)
+
+  nativeModuleCache.set('better-sqlite3', Database)
+  console.log('[NativeLoader] Successfully loaded better-sqlite3 Database class')
+
+  return Database as SqliteDatabaseConstructor
 }
 
 /**
