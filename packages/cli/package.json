@@ -1,5 +1,5 @@
 {
-  "name": "@thething/cli",
+  "name": "@the-thing/cli",
   "version": "0.1.0",
   "bin": {
     "thething": "./dist/index.js"
