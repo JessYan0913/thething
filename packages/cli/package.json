@@ -1,7 +1,6 @@
 {
   "name": "@thething/cli",
   "version": "0.1.0",
-  "private": true,
   "bin": {
     "thething": "./dist/index.js"
   },
