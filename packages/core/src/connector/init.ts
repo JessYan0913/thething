@@ -6,6 +6,7 @@ import path from 'path'
 import { ConnectorRegistry } from './registry'
 import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
+import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
 import { debugLog, debugWarn } from './debug'
 
 // ============================================================================
@@ -15,6 +16,8 @@ import { debugLog, debugWarn } from './debug'
 export interface ConnectorGatewayConfig {
   /** Directory containing connector YAML configs. Defaults to process.cwd() + '/connectors' */
   configDir?: string;
+  /** Path to idempotency database. Defaults to ~/.thething/data/.connector-idempotency.db */
+  idempotencyDbPath?: string;
   userId?: string;
   model?: string;
   enableInbound?: boolean;
@@ -56,6 +59,11 @@ export async function getConnectorRegistry(): Promise<ConnectorRegistry> {
  * 包括 Registry 和 Inbound Processor
  */
 export async function initConnectorGateway(config?: ConnectorGatewayConfig): Promise<void> {
+  // 配置 IdempotencyGuard（可选路径）
+  if (config?.idempotencyDbPath) {
+    configureIdempotencyGuard({ dbPath: config.idempotencyDbPath })
+  }
+
   // Apply config dir if provided and not yet initialized
   if (config?.configDir && !connectorRegistry) {
     configuredConfigDir = config.configDir
@@ -101,3 +109,6 @@ export async function shutdownConnectorGateway(): Promise<void> {
   inboundInitialized = false
   debugLog('[ConnectorGateway] Shutdown complete')
 }
+
+// Re-export getIdempotencyGuard for convenience
+export { getIdempotencyGuard } from './idempotency'

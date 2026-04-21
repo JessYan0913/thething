@@ -5,7 +5,7 @@
 import { WechatMessageCrypto, xmlToInboundEvent } from './wechat-crypto'
 import { FeishuWebhookHandler } from './feishu-crypto'
 import type { InboundMessageEvent } from '../types'
-import { idempotencyGuard } from '../idempotency'
+import { getIdempotencyGuard } from '../init'
 
 export interface WebhookHandlerResult {
   success: boolean
@@ -97,7 +97,7 @@ export class WechatWebhookHandler {
     const parsed = xmlToInboundEvent(xmlContent, subtype)
 
     // 4. 幂等检查
-    const isDuplicate = await idempotencyGuard.isDuplicate(parsed.messageId, 'wechat')
+    const isDuplicate = await getIdempotencyGuard().isDuplicate(parsed.messageId, 'wechat')
     if (isDuplicate) {
       console.log('[WechatWebhook] Duplicate message skipped:', parsed.messageId)
       return { success: true, eventId: parsed.messageId }  // 返回成功但不处理
@@ -213,7 +213,7 @@ export class FeishuWebhookHandlerAdapter {
 
     // 幂等检查
     if (result.eventId) {
-      const isDuplicate = await idempotencyGuard.isDuplicate(result.eventId, 'feishu')
+      const isDuplicate = await getIdempotencyGuard().isDuplicate(result.eventId, 'feishu')
       if (isDuplicate) {
         console.log('[FeishuWebhook] Duplicate message skipped:', result.eventId)
         return { success: true, eventId: result.eventId }

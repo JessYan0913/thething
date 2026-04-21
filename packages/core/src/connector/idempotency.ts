@@ -4,6 +4,10 @@
 
 import { getDatabase } from '../native-loader'
 import path from 'path'
+import os from 'os'
+
+// 默认数据目录: ~/.thething/data 或环境变量 THETHING_GLOBAL_DATA_DIR
+const DEFAULT_DATA_DIR = process.env.THETHING_GLOBAL_DATA_DIR || path.join(os.homedir(), '.thething', 'data')
 
 export interface IdempotencyGuardOptions {
   dbPath?: string
@@ -18,7 +22,9 @@ export class IdempotencyGuard {
 
   constructor(options?: IdempotencyGuardOptions) {
     this.ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS
-    const dbPath = options?.dbPath ?? path.join(process.cwd(), '.connector-idempotency.db')
+    // 默认使用 dataDir，而非 cwd
+    const defaultDbPath = path.join(DEFAULT_DATA_DIR, '.connector-idempotency.db')
+    const dbPath = options?.dbPath ?? defaultDbPath
     const Database = getDatabase()
     // Use standard npm package signature: (filename, options)
     this.db = new Database(dbPath)
@@ -126,5 +132,26 @@ export class IdempotencyGuard {
   }
 }
 
-// 默认实例
-export const idempotencyGuard = new IdempotencyGuard()
+// 单例管理（延迟初始化）
+let idempotencyGuardInstance: IdempotencyGuard | null = null
+
+/**
+ * 获取 IdempotencyGuard 单例（延迟初始化）
+ */
+export function getIdempotencyGuard(): IdempotencyGuard {
+  if (!idempotencyGuardInstance) {
+    idempotencyGuardInstance = new IdempotencyGuard()
+  }
+  return idempotencyGuardInstance
+}
+
+/**
+ * 配置 IdempotencyGuard（必须在首次使用前调用）
+ */
+export function configureIdempotencyGuard(options?: IdempotencyGuardOptions): void {
+  if (idempotencyGuardInstance) {
+    console.warn('[IdempotencyGuard] Already initialized. configureIdempotencyGuard() must be called before first use.')
+    return
+  }
+  idempotencyGuardInstance = new IdempotencyGuard(options)
+}

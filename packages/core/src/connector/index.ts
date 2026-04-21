@@ -20,7 +20,7 @@ export {
 export { withRetry } from './retry'
 export { CircuitBreaker, CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
 export { AuditLogger, auditLogger } from './audit-logger'
-export { IdempotencyGuard, idempotencyGuard } from './idempotency'
+export { IdempotencyGuard, configureIdempotencyGuard } from './idempotency'
 
 // 凭证加密存储
 export * from './credentials/index'
@@ -35,6 +35,7 @@ export {
   isInboundInitialized,
   shutdownConnectorGateway,
   configureConnectorGateway,
+  getIdempotencyGuard,
   type ConnectorGatewayConfig,
 } from './init'
 
