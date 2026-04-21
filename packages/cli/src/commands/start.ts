@@ -60,14 +60,22 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
  * Find the web static assets directory
  * Priority:
  * 1. packages/web/dist (monorepo development)
- * 2. web/ adjacent to executable (portable mode - SEA)
- * 3. web/ in current directory (portable mode - cwd)
+ * 2. dist/web (npm package - same directory as CLI code)
+ * 3. web/ adjacent to executable (portable mode - SEA)
+ * 4. web/ in current directory (portable mode - cwd)
  */
 function findWebAssetsDir(): string | null {
   // Try monorepo path (packages/web/dist)
   const monorepoPath = path.resolve(__dirname, '../../../web/dist')
   if (fs.existsSync(monorepoPath) && fs.existsSync(path.join(monorepoPath, 'index.html'))) {
     return monorepoPath
+  }
+
+  // Try npm package path (dist/web - same directory as bundled CLI)
+  // When installed via npm, __dirname is node_modules/@the-thing/cli/dist
+  const npmPackagePath = path.resolve(__dirname, 'web')
+  if (fs.existsSync(npmPackagePath) && fs.existsSync(path.join(npmPackagePath, 'index.html'))) {
+    return npmPackagePath
   }
 
   // Try SEA portable mode (web/ adjacent to executable)

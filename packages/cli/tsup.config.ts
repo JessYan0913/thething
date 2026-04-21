@@ -1,5 +1,5 @@
 import { defineConfig } from 'tsup'
-import { writeFileSync, readFileSync } from 'fs'
+import { writeFileSync, readFileSync, existsSync, cpSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -33,7 +33,7 @@ export default defineConfig({
   // 使用 esbuild 插件强制 external 原生模块
   esbuildPlugins: [externalizeBetterSqlite3],
   dts: false,
-  // 构建完成后生成发布用的 package.json
+  // 构建完成后生成发布用的 package.json并复制 web 资源
   async onSuccess() {
     const srcPkg = JSON.parse(
       readFileSync(resolve(__dirname, 'package.json'), 'utf-8')
@@ -67,5 +67,16 @@ export default defineConfig({
     )
 
     console.log('✓ 已生成 dist/package.json（发布版本）')
+
+    // 复制 web 静态资源到 dist/web
+    const webSrcDir = resolve(__dirname, '../web/dist')
+    const webDestDir = resolve(__dirname, 'dist/web')
+
+    if (existsSync(webSrcDir)) {
+      cpSync(webSrcDir, webDestDir, { recursive: true })
+      console.log('✓ 已复制 web 静态资源到 dist/web')
+    } else {
+      console.warn('⚠ 未找到 web/dist 目录，请先运行 pnpm build:web')
+    }
   },
 })
