@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { LanguageModelUsage } from 'ai';
-import type { CompactionResult } from '../compaction/types';
+import type { CompactionResult } from '../../compaction/types';
 import { TokenBudgetTracker } from '../token-budget';
 import { CostTracker, PRICING } from '../cost';
 

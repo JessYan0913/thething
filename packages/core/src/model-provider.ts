@@ -9,6 +9,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, defaultSettingsMiddleware } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 
+// 从统一配置模块导入环境变量名
+import { ENV_MODEL } from "./config/defaults";
+
 export interface ModelProviderConfig {
   apiKey: string;
   baseURL: string;
@@ -74,7 +77,7 @@ export function getDefaultProviderConfig(): ModelProviderConfig {
   return {
     apiKey: process.env.DASHSCOPE_API_KEY!,
     baseURL: process.env.DASHSCOPE_BASE_URL!,
-    modelName: process.env.DASHSCOPE_MODEL || "qwen-max",
+    modelName: process.env[ENV_MODEL] || "qwen-max",
     includeUsage: true,
     enableThinking: process.env.DASHSCOPE_ENABLE_THINKING === 'true',
   };

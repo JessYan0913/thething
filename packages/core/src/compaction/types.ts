@@ -1,5 +1,19 @@
 import type { UIMessage } from "ai";
 
+// 从统一配置模块导入常量
+import {
+  DEFAULT_SESSION_MEMORY_CONFIG,
+  DEFAULT_MICRO_COMPACT_CONFIG_RAW,
+  DEFAULT_POST_COMPACT_CONFIG,
+  COMPACT_TOKEN_THRESHOLD,
+} from '../config/defaults';
+
+// 导出压缩阈值供其他模块使用
+export { COMPACT_TOKEN_THRESHOLD };
+
+// 导出其他配置（无需转换）
+export { DEFAULT_SESSION_MEMORY_CONFIG, DEFAULT_POST_COMPACT_CONFIG };
+
 export type CompactionType = "auto" | "manual" | "micro";
 
 export interface PreservedSegment {
@@ -64,32 +78,15 @@ export interface StoredSummary {
   preCompactTokenCount: number;
 }
 
-export const DEFAULT_SESSION_MEMORY_CONFIG: SessionMemoryCompactConfig = {
-  minTokens: 10_000,
-  maxTokens: 40_000,
-  minTextBlockMessages: 5,
+// 使用统一配置中的默认值
+// 注意：DEFAULT_MICRO_COMPACT_CONFIG 需要将数组转换为 Set
+const DEFAULT_MICRO_COMPACT_CONFIG: MicroCompactConfig = {
+  ...DEFAULT_MICRO_COMPACT_CONFIG_RAW,
+  compactableTools: new Set(DEFAULT_MICRO_COMPACT_CONFIG_RAW.compactableTools),
 };
 
-export const DEFAULT_MICRO_COMPACT_CONFIG: MicroCompactConfig = {
-  timeWindowMs: 15 * 60 * 1000,
-  imageMaxTokenSize: 2000,
-  compactableTools: new Set([
-    // 核心工具（输出通常较大）
-    "web_search",
-    "Read",
-    "Bash",
-    "Grep",
-    "Glob",
-    "WebSearch",
-    "WebFetch",
-    "Edit",
-    "Write",
-    // MCP 工具（动态添加）
-    // Connector 工具（动态添加）
-  ]),
-  gapThresholdMinutes: 60,
-  keepRecent: 5,
-};
+// 导出供本模块和其他模块使用
+export { DEFAULT_MICRO_COMPACT_CONFIG };
 
 /**
  * 判断工具是否可压缩
@@ -126,15 +123,5 @@ export function isCompactableTool(toolName: string, config?: MicroCompactConfig)
 
   return false;
 }
-
-export const DEFAULT_POST_COMPACT_CONFIG: PostCompactConfig = {
-  totalBudget: 50_000,
-  maxFilesToRestore: 5,
-  maxTokensPerFile: 5_000,
-  maxTokensPerSkill: 5_000,
-  skillsTokenBudget: 25_000,
-};
-
-export const COMPACT_TOKEN_THRESHOLD = 25_000;
 
 export const SYSTEM_COMPACT_BOUNDARY_MARKER = "SYSTEM_COMPACT_BOUNDARY";

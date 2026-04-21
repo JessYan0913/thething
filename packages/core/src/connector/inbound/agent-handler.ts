@@ -10,10 +10,11 @@ import { getGlobalDataStore } from '../../datastore'
 import { buildSystemPrompt } from '../../system-prompt'
 import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '../../memory'
 import { getDefaultModelProvider } from '../../model-provider'
+import { ENV_MODEL } from '../../config/defaults'
 import { ConnectorRegistry } from '../registry'
 import type { UIMessage } from 'ai'
 
-const getModel = (modelName?: string) => getDefaultModelProvider()(modelName || process.env.DASHSCOPE_MODEL || 'qwen-max')
+const getModel = (modelName?: string) => getDefaultModelProvider()(modelName || process.env[ENV_MODEL] || 'qwen-max')
 
 /**
  * Agent 入站处理器配置
@@ -74,7 +75,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       })
 
       // 6. 调用 LLM 生成回复
-      const model = this.config.model || process.env.DASHSCOPE_MODEL || 'qwen-max'
+      const model = this.config.model || process.env[ENV_MODEL] || 'qwen-max'
       const { text: response } = await generateText({
         model: getModel(model),
         system: prompt,

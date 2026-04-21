@@ -10,9 +10,16 @@ import { memoryFreshnessNote } from './memory-age';
 import type { RelevantMemory } from './find-relevant';
 import type { ScannedMemory } from './memory-scan';
 
+// 从统一配置模块导入常量
+import {
+  MAX_ENTRYPOINT_LINES,
+  MAX_ENTRYPOINT_BYTES,
+} from '../config/defaults';
+
+// 重新导出供其他模块使用
+export { MAX_ENTRYPOINT_LINES, MAX_ENTRYPOINT_BYTES };
+
 export const ENTRYPOINT_NAME = 'MEMORY.md';
-export const MAX_ENTRYPOINT_LINES = 200;
-export const MAX_ENTRYPOINT_BYTES = 25_000;
 
 export async function loadEntrypoint(memoryDir: string): Promise<string> {
   const entrypointPath = path.join(memoryDir, ENTRYPOINT_NAME);

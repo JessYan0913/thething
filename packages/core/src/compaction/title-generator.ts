@@ -6,6 +6,7 @@ import { generateText } from "ai";
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { getDefaultModelProvider } from "../model-provider";
+import { ENV_MODEL } from "../config/defaults";
 
 /**
  * Generate a concise title for a conversation using the LLM.
@@ -50,7 +51,7 @@ export async function generateConversationTitle(
 
     if (!userText) return fallbackTitle;
 
-    const titleModel = model || getDefaultModelProvider()(process.env.DASHSCOPE_MODEL || "qwen-max");
+    const titleModel = model || getDefaultModelProvider()(process.env[ENV_MODEL] || "qwen-max");
 
     const { text } = await generateText({
       model: titleModel,

@@ -6,8 +6,11 @@ import { getDatabase } from '../native-loader'
 import path from 'path'
 import os from 'os'
 
+// 从统一配置模块导入常量
+import { ENV_GLOBAL_DATA_DIR } from '../config/defaults';
+
 // 默认数据目录: ~/.thething/data 或环境变量 THETHING_GLOBAL_DATA_DIR
-const DEFAULT_DATA_DIR = process.env.THETHING_GLOBAL_DATA_DIR || path.join(os.homedir(), '.thething', 'data')
+const DEFAULT_DATA_DIR = process.env[ENV_GLOBAL_DATA_DIR] || path.join(os.homedir(), '.thething', 'data')
 
 export interface IdempotencyGuardOptions {
   dbPath?: string

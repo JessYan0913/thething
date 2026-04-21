@@ -2,6 +2,9 @@
 // @the-thing/core — Unified Export Entry
 // ============================================================
 
+// Config (统一配置导出 - 所有配置常量和类型)
+export * from './config';
+
 // DataStore (data storage abstraction layer)
 export * from './datastore';
 
@@ -41,12 +44,8 @@ export * from './tasks';
 // Tools
 export * from './tools';
 
-// Tool Output Management
+// Tool Output Management (仅导出函数和类型，常量已在 config 中导出)
 export {
-  DEFAULT_MAX_RESULT_SIZE_CHARS,
-  MAX_TOOL_RESULT_TOKENS,
-  MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
-  PREVIEW_SIZE_CHARS,
   TOOL_RESULT_CLEARED_MESSAGE,
   PERSISTED_OUTPUT_TAG,
   PERSISTED_OUTPUT_CLOSING_TAG,
@@ -97,13 +96,8 @@ export * from './agent-control';
 // Model Provider
 export * from './model-provider';
 
-// Model Capabilities
+// Model Capabilities (仅导出函数，常量已在 config 中导出)
 export {
-  ENV_CONTEXT_LIMIT,
-  ENV_OUTPUT_TOKENS,
-  DEFAULT_CONTEXT_LIMIT,
-  DEFAULT_OUTPUT_TOKENS,
-  AUTOCOMPACT_BUFFER_TOKENS,
   getModelContextLimit,
   getDefaultOutputTokens,
   getModelCapabilities,
@@ -118,4 +112,3 @@ export * from './agent';
 
 // Init
 export { initAll } from './init';
-export type { InitConfig } from './init';

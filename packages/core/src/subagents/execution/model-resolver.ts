@@ -1,13 +1,13 @@
 import type { AgentDefinition, AgentExecutionContext, LanguageModel } from '../core/types';
 import { getDefaultModelProvider } from '../../model-provider';
 
-const provider = getDefaultModelProvider();
+// 从统一配置模块导入常量
+import { MODEL_MAPPING } from '../../config/defaults';
 
-export const MODEL_MAPPING = {
-  fast: 'qwen-turbo',
-  smart: 'qwen-max',
-  default: 'qwen-plus',
-};
+// 重新导出供其他模块使用
+export { MODEL_MAPPING };
+
+const provider = getDefaultModelProvider();
 
 export function resolveModelForAgent(
   definition: AgentDefinition,

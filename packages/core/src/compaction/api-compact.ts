@@ -1,6 +1,9 @@
 import { generateText, type UIMessage } from "ai";
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
+  ENV_MODEL,
+} from "../config/defaults";
+import {
   type CompactBoundaryMessage,
   type CompactionResult,
   SYSTEM_COMPACT_BOUNDARY_MARKER,
@@ -30,7 +33,7 @@ async function saveSummarySafe(
 }
 
 // Model provider — uses default config from env vars or injected config
-const getModel = () => getDefaultModelProvider()(process.env.DASHSCOPE_MODEL || "qwen-max");
+const getModel = () => getDefaultModelProvider()(process.env[ENV_MODEL] || "qwen-max");
 
 const COMPACT_SUMMARY_PROMPT = `你是一个对话摘要助手。请用简洁的语言总结对话，捕捉关键信息和价值。
 

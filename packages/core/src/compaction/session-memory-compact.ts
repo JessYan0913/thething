@@ -1,16 +1,18 @@
 import type { UIMessage } from "ai";
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
+} from "../config/defaults";
+import {
   type SessionMemoryCompactConfig,
   type CompactBoundaryMessage,
   SYSTEM_COMPACT_BOUNDARY_MARKER,
+  type StoredSummary,
 } from "./types";
 import {
   estimateMessagesTokens,
   estimateMessageTokens,
   hasTextBlocks,
 } from "./token-counter";
-import type { StoredSummary } from "./types";
 import { getGlobalDataStore } from "../datastore";
 
 export function shouldUseSessionMemoryCompaction(): boolean {

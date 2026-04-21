@@ -567,97 +567,6 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 }
 ```
 
-### 3.5 统一工具输出截断配置
-
-**新增文件**: `packages/core/src/tools/output-limits.ts`
-
-```typescript
-/**
- * 工具输出限制配置
- * 参考 ClaudeCode maxResultSizeChars（通常 100K）
- */
-
-/** 默认最大输出字符数 */
-export const DEFAULT_MAX_OUTPUT_CHARS = 50_000;
-
-/** 默认最大输出 Token 数（保守估计） */
-export const DEFAULT_MAX_OUTPUT_TOKENS = 15_000;  // 50K chars / 3.5 ≈ 14K
-
-/** 工具输出限制配置表 */
-export const TOOL_OUTPUT_LIMITS: Record<string, {
-  maxChars: number;
-  maxTokens: number;
-  truncationMessage: string;
-}> = {
-  'bash': {
-    maxChars: 50_000,
-    maxTokens: 15_000,
-    truncationMessage: '\n\n... (输出被截断，超过限制) ...',
-  },
-  'read_file': {
-    maxChars: 50_000,
-    maxTokens: 15_000,
-    truncationMessage: '\n\n... (文件内容被截断) ...',
-  },
-  'grep': {
-    maxChars: 30_000,  // grep 结果通常不需要太长
-    maxTokens: 9_000,
-    truncationMessage: '\n\n... (搜索结果被截断，请缩小范围) ...',
-  },
-  'web_search': {
-    maxChars: 20_000,
-    maxTokens: 6_000,
-    truncationMessage: '\n\n... (搜索结果被截断) ...',
-  },
-  'connector_sql': {
-    maxChars: 50_000,
-    maxTokens: 15_000,
-    truncationMessage: '\n\n... (SQL 结果被截断) ...',
-  },
-  // 默认配置
-  'default': {
-    maxChars: DEFAULT_MAX_OUTPUT_CHARS,
-    maxTokens: DEFAULT_MAX_OUTPUT_TOKENS,
-    truncationMessage: '\n\n... (结果被截断) ...',
-  },
-};
-
-/**
- * 获取工具输出限制
- */
-export function getToolOutputLimit(toolName: string) {
-  // 精确匹配
-  if (TOOL_OUTPUT_LIMITS[toolName]) {
-    return TOOL_OUTPUT_LIMITS[toolName];
-  }
-  
-  // 前缀匹配（如 mcp_*, connector_*）
-  for (const [key, limits] of Object.entries(TOOL_OUTPUT_LIMITS)) {
-    if (toolName.startsWith(key) || key === 'default') {
-      return limits;
-    }
-  }
-  
-  return TOOL_OUTPUT_LIMITS['default'];
-}
-
-/**
- * 截断输出到限制
- */
-export function truncateToolOutput(
-  output: string,
-  toolName: string
-): { content: string; truncated: boolean } {
-  const limits = getToolOutputLimit(toolName);
-  
-  if (output.length <= limits.maxChars) {
-    return { content: output, truncated: false };
-  }
-  
-  const truncated = output.slice(0, limits.maxChars) + limits.truncationMessage;
-  return { content: truncated, truncated: true };
-}
-```
 
 ### 3.6 增强压缩配置
 
@@ -768,10 +677,6 @@ tool.execute(input)
   │
   ├─► 执行工具逻辑
   │
-  ├─► ✅ NEW: truncateToolOutput(result, toolName)
-  │     └─► maxChars = getToolOutputLimit(toolName)
-  │     └─► if exceeds: result = truncated + message
-  │
   ├─► return result
   │
   └─► (后续) MicroCompact 检查
@@ -809,8 +714,6 @@ tool.execute(input)
 | **Phase 2** | Token 估算扩展 (`token-counter.ts`) | 1 天 | Phase 1 | ✅ 已完成 |
 | **Phase 3** | 初始预算检查 (`initial-budget-check.ts`) | 1.5 天 | Phase 2 | ✅ 已完成 |
 | **Phase 4** | Agent 创建集成 | 0.5 天 | Phase 3 | ✅ 已完成 |
-| **Phase 5** | 统一输出截断 (`output-limits.ts`) | 0.5 天 | 无 | ✅ 已完成 |
-| **Phase 6** | 工具集成使用统一截断 | 0.5 天 | Phase 5 | ✅ 已完成 |
 | **Phase 7** | 测试 + 文档 | 1 天 | 全部 | ⏳ 进行中 |
 
 **总计**: 约 5 天
@@ -823,35 +726,6 @@ tool.execute(input)
 - `initial-budget-check.ts`: 四层降级策略已实现（MicroCompact → 工具过滤 → API Compact → 紧急截断）
 - `agent/create.ts`: 在第 84 行调用 `checkInitialBudget()`
 
-**Phase 5 已完成**:
-- `output-limits.ts`: 文件已创建，包含完整的配置和截断函数
-  - `TOOL_OUTPUT_LIMITS`: 各工具的输出限制配置表
-  - `getToolOutputLimit()`: 获取工具限制配置（支持精确匹配和前缀匹配）
-  - `truncateToolOutput()`: 字符串截断
-  - `truncateJsonOutput()`: JSON 输出截断
-  - `estimateToolOutputTokens()`: Token 估算
-  - `shouldMarkForMicroCompact()`: 判断是否需要 MicroCompact
-
-**Phase 6 已完成**:
-- `bash.ts`: 使用 `truncateToolOutput()` 替代手动截断，导入 `DEFAULT_MAX_OUTPUT_CHARS`
-- `read.ts`: 使用 `truncateToolOutput()` 处理最终输出，导入 `DEFAULT_MAX_OUTPUT_CHARS`
-- `grep.ts`: 使用 `truncateJsonOutput()` 处理 JSON 结果
-- `glob.ts`: 使用 `truncateJsonOutput()` 处理文件列表
-- `exa-search.ts`: 使用 `truncateJsonOutput()` 处理搜索结果
-- `compaction/types.ts`: 可压缩工具列表已配置，`isCompactableTool()` 支持别名匹配和前缀匹配
-
-### 5.2 工具集成对照表
-
-| 工具文件 | 截断函数 | 配置键名 | 状态 |
-|---------|---------|---------|------|
-| `bash.ts` | `truncateToolOutput()` | `bash` | ✅ |
-| `read.ts` | `truncateToolOutput()` | `read_file` | ✅ |
-| `grep.ts` | `truncateJsonOutput()` | `grep` | ✅ |
-| `glob.ts` | `truncateJsonOutput()` | `glob` | ✅ |
-| `exa-search.ts` | `truncateJsonOutput()` | `exa_search` | ✅ |
-| `write.ts` | 无需截断（输出小） | `write_file` | ⏭️ 跳过 |
-| `edit.ts` | 无需截断（输出小） | `edit_file` | ⏭️ 跳过 |
-| `ask-user-question.ts` | 无需截断（输出小） | `ask_user_question` | ⏭️ 跳过 |
 
 ---
 
@@ -919,7 +793,6 @@ describe('checkInitialBudget', () => {
 |-----|------|
 | `model-capabilities.ts` | 模型能力元数据 |
 | `compaction/initial-budget-check.ts` | 初始预算检查与降级 |
-| `tools/output-limits.ts` | 统一输出截断配置 |
 
 ---
 
@@ -932,7 +805,6 @@ describe('checkInitialBudget', () => {
 | `Range of input length should be [1, 258048]` | 初始预算检查 + 降级策略 | 第一次调用不再超限 |
 | 模型上下文限制硬编码 | `MODEL_CAPABILITIES` 配置表 | 支持任意模型动态限制 |
 | 工具定义未计入预算 | `estimateToolsTokens()` | 预算计算完整准确 |
-| 工具输出过大 | 统一截断配置 + MicroCompact | 工具输出受控，不堵塞上下文 |
 
 ### 8.2 性能影响
 
@@ -948,7 +820,6 @@ describe('checkInitialBudget', () => {
 |----------------|----------|------|
 | `getContextWindowForModel()` | `getModelCapabilities()` | ✅ 设计 |
 | `AUTOCOMPACT_BUFFER_TOKENS = 13K` | 动态计算 | ✅ 设计 |
-| `maxResultSizeChars (100K)` | `TOOL_OUTPUT_LIMITS` | ✅ 设计 |
 | `COMPACTABLE_TOOLS` 白名单 | `isCompactableTool()` | ✅ 扩展 |
 | `POST_COMPACT_TOKEN_BUDGET = 50K` | 已实现 | ✅ 保持 |
 | MicroCompact 时间衰减 | 已实现 | ✅ 保持 |

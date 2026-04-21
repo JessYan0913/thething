@@ -4,33 +4,28 @@
 // 参考 ClaudeCode getContextWindowForModel() 优先级解析
 //
 // 设计原则：
-// 1. 环境变量优先（DASHSCOPE_MODEL_CONTEXT_LIMIT）
+// 1. 环境变量优先（THETHING_MODEL_CONTEXT_LIMIT）
 // 2. 模型名后缀可指定（如 qwen-max[1m] 表示 1M）
 // 3. 简化配置表作为默认值（仅保留常用模型）
 // 4. 兜底保守默认值 128K
 
-// ============================================================
-// 环境变量配置
-// ============================================================
+// 从统一配置模块导入常量
+import {
+  ENV_CONTEXT_LIMIT,
+  ENV_OUTPUT_TOKENS,
+  DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_OUTPUT_TOKENS,
+  AUTOCOMPACT_BUFFER_TOKENS,
+} from './config/defaults';
 
-/** 环境变量名：覆盖所有模型的上下文限制 */
-export const ENV_CONTEXT_LIMIT = 'DASHSCOPE_MODEL_CONTEXT_LIMIT';
-
-/** 环境变量名：覆盖默认输出预留 */
-export const ENV_OUTPUT_TOKENS = 'DASHSCOPE_MODEL_OUTPUT_TOKENS';
-
-// ============================================================
-// 默认值常量
-// ============================================================
-
-/** 默认上下文限制（保守估计，用于无法识别的模型） */
-export const DEFAULT_CONTEXT_LIMIT = 128_000;
-
-/** 默认输出预留 */
-export const DEFAULT_OUTPUT_TOKENS = 8_000;
-
-/** 自动压缩缓冲区（参考 ClaudeCode: 13,000） */
-export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
+// 重新导出供其他模块使用
+export {
+  ENV_CONTEXT_LIMIT,
+  ENV_OUTPUT_TOKENS,
+  DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_OUTPUT_TOKENS,
+  AUTOCOMPACT_BUFFER_TOKENS,
+};
 
 // ============================================================
 // 类型定义
@@ -73,7 +68,7 @@ const KNOWN_MODEL_LIMITS: Record<string, number> = {
  * 获取模型上下文限制
  *
  * 优先级（参考 ClaudeCode 5级解析）：
- * 1. 环境变量 DASHSCOPE_MODEL_CONTEXT_LIMIT（最高优先级）
+ * 1. 环境变量 THETHING_MODEL_CONTEXT_LIMIT（最高优先级）
  * 2. 模型名后缀 [1m]、[512k]、[256k]
  * 3. 已知模型配置表
  * 4. 前缀匹配（如 qwen-* → 128K）

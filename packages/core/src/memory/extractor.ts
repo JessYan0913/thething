@@ -8,9 +8,10 @@ import { scanMemoryFiles } from "./memory-scan";
 import { appendToEntrypoint, rebuildEntrypoint, deleteMemoryFile } from "./memdir";
 import { removeMemoryUsage } from "./usage-tracker";
 import { getDefaultModelProvider } from "../model-provider";
+import { ENV_MODEL } from "../config/defaults";
 import type { UIMessage } from "ai";
 
-const getModel = () => getDefaultModelProvider()(process.env.DASHSCOPE_MODEL || "qwen-max");
+const getModel = () => getDefaultModelProvider()(process.env[ENV_MODEL] || "qwen-max");
 
 const memoryExtractionSchema = z.object({
   memories: z

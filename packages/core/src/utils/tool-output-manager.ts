@@ -7,27 +7,24 @@
 // 3. 状态稳定性（保证 prompt cache）
 // ============================================================
 
-// ============================================================
-// 配置常量（参考 Claude Code toolLimits.ts）
-// ============================================================
+// 从统一配置模块导入常量
+import {
+  DEFAULT_MAX_RESULT_SIZE_CHARS,
+  MAX_TOOL_RESULT_TOKENS,
+  MAX_TOOL_RESULT_BYTES,
+  MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
+  PREVIEW_SIZE_CHARS,
+  BYTES_PER_TOKEN,
+} from '../config/defaults';
 
-/** 默认最大输出字符数 */
-export const DEFAULT_MAX_RESULT_SIZE_CHARS = 50_000
-
-/** 最大工具结果 Token 数（约 400KB） */
-export const MAX_TOOL_RESULT_TOKENS = 100_000
-
-/** 单轮消息中所有工具结果总额上限 */
-export const MAX_TOOL_RESULTS_PER_MESSAGE_CHARS = 200_000
-
-/** 预览内容大小（字符） */
-export const PREVIEW_SIZE_CHARS = 2_000
-
-/** Bytes per Token 估算 */
-export const BYTES_PER_TOKEN = 4
-
-/** 最大工具结果字节（从 Token 限制推导） */
-export const MAX_TOOL_RESULT_BYTES = MAX_TOOL_RESULT_TOKENS * BYTES_PER_TOKEN
+// 重新导出供其他模块使用
+export {
+  DEFAULT_MAX_RESULT_SIZE_CHARS,
+  MAX_TOOL_RESULT_TOKENS,
+  MAX_TOOL_RESULT_BYTES,
+  MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
+  PREVIEW_SIZE_CHARS,
+};
 
 /** 持久化输出 XML 标签 */
 export const PERSISTED_OUTPUT_TAG = '<persisted-output>'

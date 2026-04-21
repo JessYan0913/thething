@@ -22,11 +22,19 @@ import { SQLiteMessageStore } from './message-store';
 import { SQLiteSummaryStore } from './summary-store';
 import { SQLiteCostStore } from './cost-store';
 
+// 从统一配置模块导入常量
+import {
+  ENV_DATA_DIR,
+  DEFAULT_DATA_DIR,
+  DEFAULT_DB_FILENAME,
+} from '../../config/defaults';
+
+// 默认数据目录：环境变量优先，否则使用 cwd/.data
+const getEffectiveDataDir = () => process.env[ENV_DATA_DIR] || path.join(process.cwd(), DEFAULT_DATA_DIR);
+
 // ============================================================================
 // SQLite DataStore Implementation
 // ============================================================================
-
-const DEFAULT_DATA_DIR = path.join(process.cwd(), '.data');
 
 /**
  * SQLite-based DataStore implementation.
@@ -45,8 +53,8 @@ export class SQLiteDataStore implements DataStore {
   readonly costStore: CostStore;
 
   constructor(config: SQLiteDataStoreConfig = {}) {
-    const dataDir = config.dataDir || DEFAULT_DATA_DIR;
-    const dbPath = path.join(dataDir, 'chat.db');
+    const dataDir = config.dataDir || getEffectiveDataDir();
+    const dbPath = path.join(dataDir, DEFAULT_DB_FILENAME);
 
     // Ensure directory exists
     if (!fs.existsSync(dataDir)) {

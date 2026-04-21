@@ -1,4 +1,5 @@
 import { getGlobalDataStore } from '../datastore';
+import { ENV_MODEL } from '../config/defaults';
 
 const PRICING: Record<string, { input: number; output: number; cached: number }> = {
   'qwen-max': { input: 4, output: 12, cached: 1 },
@@ -37,7 +38,7 @@ export class CostTracker {
 
   constructor(conversationId: string, options?: CostTrackerOptions) {
     this._conversationId = conversationId;
-    this._model = options?.model ?? process.env.DASHSCOPE_MODEL ?? 'unknown';
+    this._model = options?.model ?? process.env[ENV_MODEL] ?? 'unknown';
     this._maxBudgetUsd = options?.maxBudgetUsd ?? 5.0;
   }
 
