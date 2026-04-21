@@ -172,13 +172,14 @@ export const bashTool = tool({
       return false;  // 自动放行
     }
     if (matchedRule?.behavior === 'deny') {
-      throw new Error(`操作被拒绝: ${matchedRule.pattern}`);
+      // 不抛出错误，返回 true 让审批流程处理，或让 execute 返回错误结果
+      return true;
     }
 
-    // Step 1: 检查危险命令黑名单 - 直接拒绝，不需要审批
+    // Step 1: 检查危险命令黑名单 - 需要审批（让 execute 返回错误结果）
     const dangerCheck = isCommandDangerous(command);
     if (dangerCheck.dangerous) {
-      throw new Error(`安全阻止: ${dangerCheck.reason}`);
+      return true;
     }
 
     // Step 2: 检查安全命令白名单 - 自动放行，不需要审批
@@ -190,10 +191,24 @@ export const bashTool = tool({
     return true;
   },
   execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, options) => {
-    // 工具执行层的二次安全检查（defense-in-depth）
+    // Step 1: 检查危险命令黑名单（返回错误结果而非抛出错误）
     const safety = isCommandDangerous(command);
     if (safety.dangerous) {
-      throw new Error(`安全阻止: ${safety.reason}\n\n该命令包含危险操作，已被安全策略拒绝。`);
+      return {
+        error: true,
+        command,
+        message: `安全阻止: ${safety.reason}\n\n该命令包含危险操作，已被安全策略拒绝。`,
+      };
+    }
+
+    // Step 2: 检查 deny 规则
+    const matchedRule = checkPermissionRules('bash', { command });
+    if (matchedRule?.behavior === 'deny') {
+      return {
+        error: true,
+        command,
+        message: `操作被拒绝: ${matchedRule.pattern}`,
+      };
     }
 
     try {

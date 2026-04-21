@@ -18,19 +18,34 @@ export const readFileTool = tool({
       return false;  // 自动放行
     }
     if (matchedRule?.behavior === 'deny') {
-      throw new Error(`操作被拒绝: ${matchedRule.pattern}`);
+      // 不抛出错误，返回 true 让审批流程处理，或让 execute 返回错误结果
+      return true;
     }
 
-    // Step 2: 路径安全检查
-    const pathCheck = validatePath(filePath);
-    if (!pathCheck.allowed) {
-      throw new Error(`路径安全阻止: ${pathCheck.reason}`);
-    }
-
-    // Step 3: 其他路径需要审批
+    // Step 2: 其他路径需要审批
     return true;
   },
   execute: async ({ filePath }) => {
+    // Step 1: 路径安全检查（移到 execute 中，返回错误结果而非抛出错误）
+    const pathCheck = validatePath(filePath);
+    if (!pathCheck.allowed) {
+      return {
+        error: true,
+        path: filePath,
+        message: `路径安全阻止: ${pathCheck.reason}`,
+      };
+    }
+
+    // Step 2: 检查 deny 规则
+    const matchedRule = checkPermissionRules('read_file', { filePath });
+    if (matchedRule?.behavior === 'deny') {
+      return {
+        error: true,
+        path: filePath,
+        message: `操作被拒绝: ${matchedRule.pattern}`,
+      };
+    }
+
     const absolutePath = path.resolve(filePath);
 
     const stat = await fs.stat(absolutePath);
