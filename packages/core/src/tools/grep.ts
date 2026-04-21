@@ -149,7 +149,7 @@ export const grepTool = tool({
     const searchEngine = useRg ? 'ripgrep' : 'node.js';
     const maxDisplay = 200;
 
-    return {
+    const result = {
       pattern,
       searchPath: absolutePath,
       totalMatches: matches.length,
@@ -158,5 +158,7 @@ export const grepTool = tool({
       searchEngine,
       flags: { ignoreCase, include },
     };
+
+    return JSON.stringify(result, null, 2);
   },
 });

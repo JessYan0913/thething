@@ -1,6 +1,7 @@
 import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage } from 'ai';
 import type { SessionState } from '../session-state/state';
 import { activateConditionalSkills, formatConditionalSkillActivation } from '../skills/conditional-activation';
+import { enforceToolResultBudget } from '../utils/message-budget';
 
 function debugLog(...args: unknown[]): void {
   if (process.env.DEBUG) {
@@ -97,6 +98,25 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         return {
           messages: compactionResult.messages as unknown as ModelMessageType[],
         } as unknown as PrepareStepResult<TOOLS>;
+      }
+    }
+
+    // ✅ 新增：工具结果预算检查
+    // 在工具结果进入下一轮前，检查总额是否超过预算
+    if (stepNumber > 0 && lastStep?.toolResults && lastStep.toolResults.length > 0) {
+      const budgetResult = await enforceToolResultBudget(
+        messages as unknown as UIMessage[],
+        sessionState.contentReplacementState,
+        sessionState.conversationId,
+        sessionState.projectDir
+      );
+
+      if (budgetResult.newlyPersisted.length > 0) {
+        debugLog(
+          `[Agent] Tool result budget: persisted ${budgetResult.newlyPersisted.length} results, ` +
+          `saved ${budgetResult.tokensSaved} tokens`
+        );
+        messages = budgetResult.messages as unknown as ModelMessageType[];
       }
     }
 

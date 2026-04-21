@@ -88,7 +88,13 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   if (config.enableConnector) {
     try {
       const registry = await getConnectorRegistry()
-      const connectorTools = await getAllConnectorTools(registry)
+      // ✅ 新增：传递 sessionContext 用于输出持久化
+      const sessionContext = {
+        sessionId: config.conversationId,
+        projectDir: config.sessionState.projectDir,
+        contentReplacementState: config.sessionState.contentReplacementState,
+      }
+      const connectorTools = await getAllConnectorTools(registry, sessionContext)
       for (const [toolName, toolDef] of Object.entries(connectorTools)) {
         if (!(toolName in tools)) {
           tools[toolName] = toolDef

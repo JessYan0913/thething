@@ -6,10 +6,21 @@ import { tool as aiTool } from 'ai'
 import { z } from 'zod'
 import type { ToolDefinition, SchemaProperty } from './types'
 import { ConnectorRegistry } from './registry'
+import {
+  processToolOutput,
+  getToolOutputConfig,
+} from '../utils/tool-output-manager'
+import type { ContentReplacementState } from '../utils/tool-output-manager'
 
 export interface ConnectorToolOptions {
   registry: ConnectorRegistry
   getCredentials?: (connectorId: string) => Promise<Record<string, string>>
+  /** 会话信息，用于输出持久化 */
+  sessionContext?: {
+    sessionId: string
+    projectDir: string
+    contentReplacementState: ContentReplacementState
+  }
 }
 
 /**
@@ -96,15 +107,17 @@ export function schemaPropertyToZod(prop: SchemaProperty): z.ZodTypeAny {
 export function convertConnectorToolToAItool(
   connectorId: string,
   toolDef: ToolDefinition,
-  registry: ConnectorRegistry
+  options: ConnectorToolOptions
 ) {
   const inputSchema = buildZodSchemaFromToolDefinition(toolDef)
+  const toolName = `${connectorId}_${toolDef.name}`
+  const outputConfig = getToolOutputConfig(toolName)
 
   return aiTool({
     description: `[Connector: ${connectorId}] ${toolDef.description}`,
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
-      const result = await registry.callTool({
+      const result = await options.registry.callTool({
         connector_id: connectorId,
         tool_name: toolDef.name,
         tool_input: input,
@@ -112,6 +125,25 @@ export function convertConnectorToolToAItool(
 
       if (!result.success) {
         throw new Error(`Connector tool error: ${result.error}`)
+      }
+
+      // ✅ 新增：统一输出处理（如果有 sessionContext）
+      if (options.sessionContext && outputConfig.shouldPersistToDisk) {
+        // 生成 toolUseId（AI SDK 内部会生成，这里用于预览）
+        const toolUseId = `connector_${connectorId}_${toolDef.name}_${Date.now()}`
+
+        const processed = await processToolOutput(
+          result.result,
+          toolName,
+          toolUseId,
+          {
+            sessionId: options.sessionContext.sessionId,
+            projectDir: options.sessionContext.projectDir,
+            state: options.sessionContext.contentReplacementState,
+          }
+        )
+
+        return processed.content
       }
 
       return result.result
@@ -123,7 +155,8 @@ export function convertConnectorToolToAItool(
  * 将所有已注册的 Connector 工具转换为 AI SDK 工具映射
  */
 export async function getAllConnectorTools(
-  registry: ConnectorRegistry
+  registry: ConnectorRegistry,
+  sessionContext?: ConnectorToolOptions['sessionContext']
 ): Promise<Record<string, ReturnType<typeof convertConnectorToolToAItool>>> {
   const tools: Record<string, ReturnType<typeof convertConnectorToolToAItool>> = {}
   const connectorIds = registry.getConnectorIds()
@@ -137,7 +170,10 @@ export async function getAllConnectorTools(
 
     for (const toolDef of connector.tools) {
       const toolName = `${connectorId}_${toolDef.name}`
-      tools[toolName] = convertConnectorToolToAItool(connectorId, toolDef, registry)
+      tools[toolName] = convertConnectorToolToAItool(connectorId, toolDef, {
+        registry,
+        sessionContext,
+      })
     }
   }
 

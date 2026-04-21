@@ -52,6 +52,10 @@ export interface CreateAgentResult {
   mcpRegistry?: McpRegistry
   tools: Record<string, Tool>
   instructions: string
+  /** 预算检查后调整的消息（如果有调整） */
+  adjustedMessages?: UIMessage[]
+  /** 预算检查执行的降级动作列表 */
+  budgetActions?: string[]
 }
 
 export interface SkillResolution {

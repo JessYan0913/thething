@@ -148,6 +148,15 @@ export async function compactMessagesWithCustomInstructions(
 
 export { estimateMessagesTokens } from "./token-counter";
 
+export {
+  estimateToolTokens,
+  estimateToolsTokens,
+  estimateInstructionsTokens,
+  estimateFullRequest,
+  formatEstimationResult,
+  type FullRequestEstimation,
+} from "./token-counter";
+
 export { microCompactMessages } from "./micro-compact";
 
 export { trySessionMemoryCompact } from "./session-memory-compact";
@@ -193,6 +202,7 @@ export {
   DEFAULT_SESSION_MEMORY_CONFIG,
   DEFAULT_MICRO_COMPACT_CONFIG,
   DEFAULT_POST_COMPACT_CONFIG,
+  isCompactableTool,
 } from "./types";
 
 export {
@@ -204,6 +214,13 @@ export {
 } from "./auto-compact";
 
 export { generateConversationTitle } from "./title-generator";
+
+// Initial Budget Check
+export {
+  checkInitialBudget,
+  quickBudgetCheck,
+  type InitialBudgetCheckResult,
+} from "./initial-budget-check";
 
 export type {
   CompactionResult,

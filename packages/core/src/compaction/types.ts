@@ -74,6 +74,7 @@ export const DEFAULT_MICRO_COMPACT_CONFIG: MicroCompactConfig = {
   timeWindowMs: 15 * 60 * 1000,
   imageMaxTokenSize: 2000,
   compactableTools: new Set([
+    // 核心工具（输出通常较大）
     "web_search",
     "Read",
     "Bash",
@@ -83,10 +84,48 @@ export const DEFAULT_MICRO_COMPACT_CONFIG: MicroCompactConfig = {
     "WebFetch",
     "Edit",
     "Write",
+    // MCP 工具（动态添加）
+    // Connector 工具（动态添加）
   ]),
   gapThresholdMinutes: 60,
   keepRecent: 5,
 };
+
+/**
+ * 判断工具是否可压缩
+ * 扩展支持 MCP 和 Connector 工具
+ */
+export function isCompactableTool(toolName: string, config?: MicroCompactConfig): boolean {
+  const effectiveConfig = config ?? DEFAULT_MICRO_COMPACT_CONFIG;
+
+  // 1. 精确匹配配置中的工具
+  if (effectiveConfig.compactableTools.has(toolName)) {
+    return true;
+  }
+
+  // 2. 前缀匹配：MCP 工具（输出可能很大）
+  if (toolName.startsWith('mcp_')) {
+    return true;
+  }
+
+  // 3. 前缀匹配：Connector 工具（SQL、HTTP 等可能很大）
+  if (toolName.startsWith('connector_')) {
+    return true;
+  }
+
+  // 4. 前缀匹配：别名工具
+  const aliases: Record<string, string> = {
+    'read_file': 'Read',
+    'bash': 'Bash',
+    'grep': 'Grep',
+    'glob': 'Glob',
+  };
+  if (aliases[toolName] && effectiveConfig.compactableTools.has(aliases[toolName])) {
+    return true;
+  }
+
+  return false;
+}
 
 export const DEFAULT_POST_COMPACT_CONFIG: PostCompactConfig = {
   totalBudget: 50_000,

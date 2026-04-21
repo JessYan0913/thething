@@ -3,6 +3,9 @@ import { exec as execCallback, ChildProcess } from 'child_process';
 import { z } from 'zod';
 import { checkPermissionRules } from '../permissions';
 
+// Node.js maxBuffer 保护（防止进程内存溢出）
+const BASH_MAX_BUFFER = 200_000;
+
 // 危险命令黑名单 - 直接拒绝执行
 const DANGEROUS_PATTERNS = [
   /^\s*rm\s+(-rf?|--recursive)\s+\/?/i,
@@ -65,7 +68,6 @@ const SAFE_COMMANDS = [
   'tsx',
 ];
 
-const MAX_OUTPUT_CHARS = 50_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
@@ -215,23 +217,13 @@ export const bashTool = tool({
       const { stdout, stderr } = await execWithAbort(command, {
         encoding: 'utf-8',
         timeout: timeoutMs,
-        maxBuffer: MAX_OUTPUT_CHARS * 10,
+        maxBuffer: BASH_MAX_BUFFER,
         signal: options?.abortSignal,
       });
 
-      const truncatedStdout =
-        stdout.length > MAX_OUTPUT_CHARS
-          ? stdout.slice(0, MAX_OUTPUT_CHARS) + '\n\n... (输出被截断，超过 50,000 字符) ...'
-          : stdout;
-
-      const truncatedStderr =
-        stderr.length > MAX_OUTPUT_CHARS
-          ? stderr.slice(0, MAX_OUTPUT_CHARS) + '\n\n... (输出被截断，超过 50,000 字符) ...'
-          : stderr;
-
       return {
-        stdout: truncatedStdout,
-        stderr: truncatedStderr,
+        stdout,
+        stderr,
         exitCode: 0,
         command,
         timedOut: false,
@@ -246,7 +238,7 @@ export const bashTool = tool({
         throw new Error(`命令执行超时 (${timeoutMs}ms)。请增加 timeoutMs 或优化命令。`);
       }
 
-      if (execError.code === 'E2BIG' || (execError.stdout?.length ?? 0) + (execError.stderr?.length ?? 0) > MAX_OUTPUT_CHARS * 10) {
+      if (execError.code === 'E2BIG' || (execError.stdout?.length ?? 0) + (execError.stderr?.length ?? 0) > BASH_MAX_BUFFER) {
         throw new Error(`命令输出过大。请重定向到文件或缩小输出范围。`);
       }
 
@@ -255,8 +247,8 @@ export const bashTool = tool({
       const exitCode = execError.code || execError.status || 1;
 
       return {
-        stdout: stdout.slice(0, MAX_OUTPUT_CHARS),
-        stderr: stderr.slice(0, MAX_OUTPUT_CHARS),
+        stdout,
+        stderr,
         exitCode,
         command,
         timedOut: false,

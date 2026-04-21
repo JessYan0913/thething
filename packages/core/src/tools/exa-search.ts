@@ -44,12 +44,14 @@ export const exaSearchTool = tool({
         score: result.score || 0,
       }));
 
-      return {
+      const result = {
         success: true,
         query,
         totalResults: formattedResults.length,
         results: formattedResults,
       };
+
+      return JSON.stringify(result, null, 2);
     } catch (error) {
       console.error('[Exa Search Error]', error);
       return {

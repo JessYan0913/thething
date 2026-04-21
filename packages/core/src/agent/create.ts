@@ -9,6 +9,8 @@ import { createAgentPipeline, createDefaultStopConditions } from '../agent-contr
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
 import { resolveActiveSkills, loadMemoryContext, buildAgentInstructions } from './context'
 import { loadAllTools } from './tools'
+import { checkInitialBudget } from '../compaction/initial-budget-check'
+import { formatEstimationResult } from '../compaction/token-counter'
 import type { CreateAgentConfig, CreateAgentResult, SkillResolution, MemoryContext } from './types'
 
 export async function createChatAgent(config: CreateAgentConfig): Promise<CreateAgentResult> {
@@ -74,6 +76,41 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     model: wrappedModel,
   })
 
+  // ============================================================
+  // ✅ 新增：初始预算检查
+  // 参考 ClaudeCode 在第一次调用前估算完整请求
+  // ============================================================
+  const modelName = modelConfig.modelName || 'qwen-max'  // 默认模型名
+  const budgetCheck = await checkInitialBudget(
+    messages || [],
+    instructions,
+    tools,
+    modelName,
+    conversationId
+  )
+
+  // 记录预算检查结果
+  console.log(formatEstimationResult(budgetCheck.estimation))
+
+  if (budgetCheck.actions.length > 0) {
+    console.log(`[Agent Create] Budget adjustments: ${budgetCheck.actions.join(', ')}`)
+  }
+
+  // 如果仍未通过（极端情况），记录警告但继续执行
+  // 让 API 返回实际错误以便触发恢复链
+  if (!budgetCheck.passed) {
+    console.warn(
+      `[Agent Create] ⚠️ Budget check failed after all strategies. ` +
+      `Request may still fail with context limit error.`
+    )
+  }
+
+  // 使用调整后的工具（如果有调整）
+  const finalTools = budgetCheck.adjustedTools ?? tools
+
+  // 注意：消息在流式调用时传入，这里返回 adjustedMessages 供调用方使用
+  const adjustedMessages = budgetCheck.adjustedMessages
+
   type ChatToolsType = Record<string, any>
 
   const prepareStep = createAgentPipeline<ChatToolsType>({
@@ -91,7 +128,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const agent = new ToolLoopAgent({
     model: wrappedModel,
     instructions,
-    tools,
+    tools: finalTools,
     prepareStep,
     stopWhen,
     toolChoice: 'auto',
@@ -101,7 +138,9 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     agent,
     sessionState,
     mcpRegistry,
-    tools,
+    tools: finalTools,
     instructions,
+    adjustedMessages,
+    budgetActions: budgetCheck.actions,
   }
 }

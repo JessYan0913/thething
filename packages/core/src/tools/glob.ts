@@ -22,11 +22,13 @@ export const globTool = tool({
       followSymbolicLinks: true,
     });
 
-    return {
+    const result = {
       pattern,
       searchDir,
       files: files.sort(),
       count: files.length,
     };
+
+    return JSON.stringify(result, null, 2);
   },
 });

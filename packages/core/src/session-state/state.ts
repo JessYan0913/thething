@@ -4,6 +4,13 @@ import { ModelSwapper } from '../agent-control/model-switching';
 import { compactMessagesIfNeeded } from '../compaction';
 import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../skills/types';
+import {
+  createContentReplacementState,
+  setToolOutputOverrides,
+  type ContentReplacementState,
+  type ToolOutputOverrides,
+} from '../utils/tool-output-manager';
+import { cleanupSessionToolResults } from '../utils/tool-result-storage';
 import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
 
@@ -13,6 +20,10 @@ export interface SessionStateOptions {
   maxBudgetUsd?: number;
   model?: string;
   maxDenialsPerTool?: number;
+  /** 项目目录，用于工具结果持久化 */
+  projectDir?: string;
+  /** 工具输出配置覆盖（由应用层注入） */
+  toolOutputOverrides?: ToolOutputOverrides;
 }
 
 export interface SessionState {
@@ -26,9 +37,15 @@ export interface SessionState {
   loadedSkills: Map<string, Skill>;
   model: string;
   aborted: boolean;
+  /** 项目目录 */
+  projectDir: string;
+  /** 内容替换状态（保证 prompt cache 稳定） */
+  contentReplacementState: ContentReplacementState;
 
   compact(messages: UIMessage[]): Promise<CompactionResult>;
   abort(): void;
+  /** 清理工具结果存储 */
+  cleanupToolResults(): Promise<void>;
 }
 
 export function createSessionState(conversationId: string, options?: SessionStateOptions): SessionState {
@@ -37,7 +54,14 @@ export function createSessionState(conversationId: string, options?: SessionStat
     compactThreshold = 25_000,
     maxBudgetUsd = 5.0,
     model = process.env.DASHSCOPE_MODEL ?? 'unknown',
+    projectDir = process.cwd(),
+    toolOutputOverrides,
   } = options ?? {};
+
+  // 应用工具输出配置覆盖（如果有）
+  if (toolOutputOverrides) {
+    setToolOutputOverrides(toolOutputOverrides);
+  }
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
   const costTracker = new CostTracker(conversationId, { model, maxBudgetUsd });
@@ -56,6 +80,7 @@ export function createSessionState(conversationId: string, options?: SessionStat
   let aborted = false;
   const activeSkills = new Set<string>();
   const loadedSkills = new Map<string, Skill>();
+  const contentReplacementState = createContentReplacementState();
 
   const state: SessionState = {
     conversationId,
@@ -72,6 +97,8 @@ export function createSessionState(conversationId: string, options?: SessionStat
     activeSkills,
     loadedSkills,
     model,
+    projectDir,
+    contentReplacementState,
     get aborted() {
       return aborted;
     },
@@ -93,6 +120,10 @@ export function createSessionState(conversationId: string, options?: SessionStat
 
     abort() {
       aborted = true;
+    },
+
+    async cleanupToolResults(): Promise<void> {
+      await cleanupSessionToolResults(conversationId, projectDir);
     },
   };
 

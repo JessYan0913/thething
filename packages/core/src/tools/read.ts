@@ -4,10 +4,8 @@ import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validatePath } from '../permissions';
 
-const MAX_CHARS = 50_000;
-
 export const readFileTool = tool({
-  description: '读取文件内容并返回带行号的文本。用于查看源代码、配置文件或文本文件。最大返回 50,000 字符。',
+  description: '读取文件内容并返回带行号的文本。用于查看源代码、配置文件或文本文件。',
   inputSchema: z.object({
     filePath: z.string().describe('要读取的文件路径（相对于工作目录）'),
   }),
@@ -53,29 +51,16 @@ export const readFileTool = tool({
       throw new Error(`路径不是一个文件: ${filePath}`);
     }
 
-    if (stat.size > MAX_CHARS * 2) {
-      throw new Error(
-        `文件过大 (${(stat.size / 1024).toFixed(1)}KB)，超出 ${MAX_CHARS} 字符限制。请使用 grep 搜索特定内容。`,
-      );
-    }
-
     const content = await fs.readFile(absolutePath, 'utf-8');
     const lines = content.split('\n');
-    const maxLines = Math.min(lines.length, Math.floor(MAX_CHARS / 50));
-    const truncated = lines.length > maxLines;
 
     const numberedLines = lines
-      .slice(0, maxLines)
       .map((line, i) => `${i + 1}: ${line}`)
       .join('\n');
 
-    const result = truncated
-      ? `${numberedLines}\n\n... (文件共 ${lines.length} 行，仅显示前 ${maxLines} 行) ...`
-      : numberedLines;
-
     return {
       path: filePath,
-      content: result,
+      content: numberedLines,
       totalLines: lines.length,
       encoding: 'utf-8',
     };

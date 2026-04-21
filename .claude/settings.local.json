@@ -32,7 +32,14 @@
       "Bash(timeout 5 ./thing.exe)",
       "Bash(echo \"Exit code: $?\")",
       "Bash(bunx tsc *)",
-      "Bash(bun run *)"
+      "Bash(bun run *)",
+      "Bash(npm test *)",
+      "Bash([ -f \"$dir/$dir.test.ts\" ])",
+      "Bash(mv __TRACKED_VAR__/__TRACKED_VAR__.test.ts __TRACKED_VAR__/__tests__/__TRACKED_VAR__.test.ts)",
+      "Bash(git restore *)",
+      "Bash(npx vitest *)",
+      "Bash(npx vite *)",
+      "Bash(npm run *)"
     ]
   }
 }
