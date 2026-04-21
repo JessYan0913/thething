@@ -121,23 +121,56 @@ export class HttpExecutor {
     const now = new Date()
 
     return str
-      // 内置变量
+      // 内置变量 - {{timestamp}} 格式
       .replace(/\{\{timestamp\}\}/g, () => String(Date.now()))
       .replace(/\{\{iso_timestamp\}\}/g, () => now.toISOString())
       .replace(/\{\{uuid\}\}/g, () => crypto.randomUUID())
 
-      // 输入变量
+      // 内置变量 - ${timestamp} 格式（兼容）
+      .replace(/\$\{timestamp\}/g, () => String(Date.now()))
+      .replace(/\$\{iso_timestamp\}/g, () => now.toISOString())
+
+      // 输入变量 - {{input.xxx}} 格式
       .replace(/\{\{input\.(\w+)\}\}/g, (_, key) => {
-        return String(input[key] ?? '')
+        const val = input[key]
+        if (Array.isArray(val)) {
+          return JSON.stringify(val)
+        }
+        return String(val ?? '')
       })
 
-      // Credentials 变量
+      // 输入变量 - ${input.xxx} 格式（兼容 feishu.yaml）
+      .replace(/\$\{input\.(\w+)\}/g, (_, key) => {
+        const val = input[key]
+        if (Array.isArray(val)) {
+          return JSON.stringify(val)
+        }
+        return String(val ?? '')
+      })
+
+      // 输入变量嵌套 - ${input.xxx.yyy} 格式
+      .replace(/\$\{input\.(\w+)\.(\w+)\}/g, (_, key1, key2) => {
+        const obj = input[key1] as Record<string, unknown> | undefined
+        return String(obj?.[key2] ?? '')
+      })
+
+      // Credentials 变量 - {{credentials.xxx}} 格式
       .replace(/\{\{credentials\.(\w+)\}\}/g, (_, key) => {
         return credentials[key] || ''
       })
 
-      // Token 变量
+      // Credentials 变量 - ${credentials.xxx} 格式（兼容）
+      .replace(/\$\{credentials\.(\w+)\}/g, (_, key) => {
+        return credentials[key] || ''
+      })
+
+      // Token 变量 - {{token}} 格式
       .replace(/\{\{token\}\}/g, () => {
+        return token || ''
+      })
+
+      // Token 变量 - ${token} 格式（兼容）
+      .replace(/\$\{token\}/g, () => {
         return token || ''
       })
   }
@@ -151,7 +184,33 @@ export class HttpExecutor {
 
     for (const [key, value] of Object.entries(obj)) {
       if (typeof value === 'string') {
+        // 特殊语法 $input.xxx - 直接引用输入值（保留原类型，如数组）
+        const directRefMatch = value.match(/^\$input\.(\w+)$/)
+        if (directRefMatch) {
+          const inputKey = directRefMatch[1]
+          result[key] = input[inputKey] ?? value
+          continue
+        }
+
+        // 特殊语法 @input.xxx - 直接引用输入值（兼容语法）
+        const altRefMatch = value.match(/^@input\.(\w+)$/)
+        if (altRefMatch) {
+          const inputKey = altRefMatch[1]
+          result[key] = input[inputKey] ?? value
+          continue
+        }
+
         result[key] = this.renderTemplate(value, input, credentials)
+      } else if (Array.isArray(value)) {
+        // 处理数组：遍历每个元素进行渲染
+        result[key] = value.map(item => {
+          if (typeof item === 'string') {
+            return this.renderTemplate(item, input, credentials)
+          } else if (typeof item === 'object' && item !== null) {
+            return this.renderObject(item as Record<string, unknown>, input, credentials)
+          }
+          return item
+        })
       } else if (typeof value === 'object' && value !== null) {
         result[key] = this.renderObject(value as Record<string, unknown>, input, credentials)
       } else {

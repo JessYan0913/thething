@@ -1,0 +1,84 @@
+# ============================================================
+# 数字孪生 Connector 配置
+# ============================================================
+# 用于查询数字孪生系统的实时数据和历史数据
+
+id: digital-twin
+name: 数字孪生
+version: "1.0.0"
+description: 数字孪生数据查询接口，支持实时数据和历史数据查询
+enabled: true
+
+# 基础 API 地址（通过环境变量配置）
+base_url: "${DIGITAL_TWIN_API_URL}"
+
+# 认证配置（根据实际系统调整，支持 none/api_key/bearer/custom）
+auth:
+  type: api_key
+  config:
+    header: "X-API-Key"
+
+# 凭证（通过环境变量注入）
+credentials:
+  api_url: "${DIGITAL_TWIN_API_URL}"
+  api_key: "${DIGITAL_TWIN_API_KEY}"
+
+# 工具定义
+tools:
+  - name: get_realtime_data
+    description: 查询点位实时数据，返回点位的当前值和更新时间
+    input_schema:
+      type: object
+      properties:
+        dataCodes:
+          type: array
+          items:
+            type: string
+          description: 点位编码列表
+      required: [dataCodes]
+    retryable: true
+    timeout_ms: 10000
+    executor: http
+    executor_config:
+      method: POST
+      url: "${credentials.api_url}/bk/siact-sec-api/v2/prop/rt"
+      headers:
+        Content-Type: "application/json"
+      body:
+        dataCodes: "$input.dataCodes"
+
+  - name: get_history_data
+    description: 查询点位历史数据，返回设备测点在过去一段时间的历史趋势数据
+    input_schema:
+      type: object
+      properties:
+        dataCodes:
+          type: array
+          items:
+            type: string
+          description: 数据编码列表
+        startTime:
+          type: string
+          description: 开始时间，格式 YYYY-MM-DD HH:mm:ss
+        endTime:
+          type: string
+          description: 结束时间，格式 YYYY-MM-DD HH:mm:ss
+        ts:
+          type: integer
+          default: 30
+          description: 步长，单位分钟，默认30
+      required: [dataCodes, startTime, endTime]
+    retryable: true
+    timeout_ms: 30000
+    executor: http
+    executor_config:
+      method: POST
+      url: "${credentials.api_url}/bk/siact-sec-api/v2/prop/history"
+      headers:
+        Content-Type: "application/json"
+      body:
+        startTime: "$input.startTime"
+        endTime: "$input.endTime"
+        ts: "$input.ts"
+        calcType: "INC"
+        dataCodes: "$input.dataCodes"

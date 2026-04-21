@@ -26,7 +26,7 @@ credentials: {}
 # 工具定义（Mock 执行器，返回模拟数据）
 tools:
   - name: send_message
-    description: 发送消息（测试用，返回模拟响应）
+    description: 发送消息给用户
     input_schema:
       type: object
       properties:
@@ -46,7 +46,7 @@ tools:
       delay_ms: 100
 
   - name: get_user_info
-    description: 获取用户信息（测试用，返回模拟数据）
+    description: 查询用户详细信息，包括姓名、头像、部门等
     input_schema:
       type: object
       properties:
@@ -64,7 +64,7 @@ tools:
         department: "测试部门"
 
   - name: echo
-    description: 回显输入内容（测试用）
+    description: 回显输入内容
     input_schema:
       type: object
       properties:
