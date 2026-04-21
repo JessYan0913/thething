@@ -11,6 +11,10 @@ import { writeServerLock, isServerRunning, deleteServerLock } from '../lib/serve
 import { startServer, configureStaticAssets, setupStaticAssets } from '@the-thing/server'
 import { configureDatabase, initPermissions, initConnectorGateway } from '@the-thing/core'
 
+// 环境变量: THETHING_CONNECTORS_DIR
+// 允许用户自定义 connectors 配置目录
+const DEFAULT_CONNECTORS_DIR = process.env.THETHING_CONNECTORS_DIR
+
 export interface StartOptions {
   port?: string
   noOpen?: boolean
@@ -130,7 +134,26 @@ export default async function start(options: StartOptions): Promise<void> {
 
   // Initialize permissions and connector gateway
   await initPermissions().catch(err => console.error(chalk.red('[Permissions] Init failed:', err)))
-  await initConnectorGateway({ enableInbound: true }).catch(err => console.error(chalk.red('[ConnectorGateway] Init failed:', err)))
+
+  // Determine connectors directory:
+  // 1. THETHING_CONNECTORS_DIR environment variable (highest priority)
+  // 2. connectors/ in current working directory (if exists)
+  // 3. connectors/ in data directory (fallback)
+  const cwdConnectorsDir = path.join(process.cwd(), 'connectors')
+  const dataConnectorsDir = path.join(dataDirConfig.dataDir, 'connectors')
+
+  let connectorsDir: string
+  if (DEFAULT_CONNECTORS_DIR) {
+    connectorsDir = DEFAULT_CONNECTORS_DIR
+  } else if (fs.existsSync(cwdConnectorsDir)) {
+    connectorsDir = cwdConnectorsDir
+  } else {
+    connectorsDir = dataConnectorsDir
+  }
+
+  console.log(chalk.blue('Initializing connector gateway...'))
+  console.log(chalk.gray(`  Connectors directory: ${connectorsDir}`))
+  await initConnectorGateway({ enableInbound: true, configDir: connectorsDir }).catch(err => console.error(chalk.red('[ConnectorGateway] Init failed:', err)))
 
   // Find and configure static assets
   const webAssetsDir = findWebAssetsDir()
