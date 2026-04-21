@@ -13,7 +13,6 @@ import {
 import { cleanupSessionToolResults } from '../utils/tool-result-storage';
 import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
-import { ENV_MODEL } from '../config/defaults';
 
 export interface SessionStateOptions {
   maxContextTokens?: number;
@@ -54,7 +53,7 @@ export function createSessionState(conversationId: string, options?: SessionStat
     maxContextTokens = 128_000,
     compactThreshold = 25_000,
     maxBudgetUsd = 5.0,
-    model = process.env[ENV_MODEL] || 'unknown',
+    model = 'unknown',
     projectDir = process.cwd(),
     toolOutputOverrides,
   } = options ?? {};

@@ -3,6 +3,7 @@
 // ============================================================
 
 import path from 'path'
+import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { ConnectorRegistry } from './registry'
 import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
@@ -19,7 +20,8 @@ export interface ConnectorGatewayConfig {
   /** Path to idempotency database. Defaults to ~/.thething/data/.connector-idempotency.db */
   idempotencyDbPath?: string;
   userId?: string;
-  model?: string;
+  /** 模型实例（必须提供，用于 Inbound Processor） */
+  model?: LanguageModelV3;
   enableInbound?: boolean;
 }
 
@@ -75,6 +77,10 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
 
   // 初始化 Inbound Processor（可选）
   if (config?.enableInbound !== false) {
+    if (!config?.model) {
+      debugWarn('[ConnectorGateway] Model is required for Inbound processor. Skipping inbound initialization.')
+      return
+    }
     const handlerConfig: AgentHandlerConfig = {
       registry,
       userId: config?.userId,

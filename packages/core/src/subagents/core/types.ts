@@ -30,6 +30,8 @@ export interface AgentExecutionContext {
   recursionDepth: number;
   taskStore?: TaskStore;
   taskId?: string;
+  /** 模型提供者，用于创建子代理的模型实例 */
+  provider?: (modelName: string) => LanguageModel;
 }
 
 export interface AgentExecutionResult {

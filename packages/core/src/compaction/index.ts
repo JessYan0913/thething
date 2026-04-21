@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { COMPACT_TOKEN_THRESHOLD, type CompactionResult } from "./types";
 import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
@@ -137,12 +138,14 @@ export async function compactMessagesWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
   customInstructions: string,
+  model?: LanguageModelV3
 ): Promise<CompactionResult> {
   const { compactWithCustomInstructions } = await import("./api-compact");
   return compactWithCustomInstructions(
     messages,
     conversationId,
     customInstructions,
+    model,
   );
 }
 

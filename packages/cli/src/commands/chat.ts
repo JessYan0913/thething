@@ -13,8 +13,8 @@ import {
   createChatAgent,
   getGlobalDataStore,
   generateConversationTitle,
-  createLanguageModel,
 } from '@the-thing/core'
+import { ENV_MODEL } from '../lib/env-names'
 import { createAgentUIStream, type UIMessage } from 'ai'
 
 export interface ChatOptions {
@@ -109,7 +109,7 @@ async function ensureConfig(): Promise<{ apiKey: string; baseURL: string; modelN
   const fileConfig = loadConfig()
   let apiKey = fileConfig.api?.key || process.env.DASHSCOPE_API_KEY
   let baseURL = fileConfig.api?.baseUrl || process.env.DASHSCOPE_BASE_URL
-  let modelName = fileConfig.default?.model || process.env.DASHSCOPE_MODEL || 'qwen-max'
+  let modelName = fileConfig.default?.model || process.env[ENV_MODEL] || 'qwen-max'
 
   if (apiKey && baseURL) {
     return { apiKey, baseURL, modelName }
@@ -201,7 +201,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
       messages = [...messages, userMessage]
 
       // Create agent using unified createChatAgent
-      const { agent, sessionState, mcpRegistry } = await createChatAgent({
+      const { agent, sessionState, mcpRegistry, model } = await createChatAgent({
         conversationId: conversationId!,
         messages,
         modelConfig: {
@@ -240,14 +240,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
             // Generate title for new conversations
             const conversation = store.conversationStore.getConversation(conversationId!)
             if (conversation && conversation.title === 'CLI Chat') {
-              const modelInstance = createLanguageModel({
-                apiKey,
-                baseURL,
-                modelName,
-                includeUsage: true,
-                enableThinking,
-              })
-              generateConversationTitle(newMessages, modelInstance)
+              generateConversationTitle(newMessages, model)
                 .then(title => {
                   store.conversationStore.updateConversationTitle(conversationId!, title)
                 })

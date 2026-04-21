@@ -1,8 +1,6 @@
 import { generateText, type UIMessage } from "ai";
-import {
-  DEFAULT_SESSION_MEMORY_CONFIG,
-  ENV_MODEL,
-} from "../config/defaults";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
+import { DEFAULT_SESSION_MEMORY_CONFIG } from "../config/defaults";
 import {
   type CompactBoundaryMessage,
   type CompactionResult,
@@ -16,8 +14,15 @@ import {
   stripImagesFromMessages,
 } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
-import { getDefaultModelProvider } from "../model-provider";
 import { getGlobalDataStore } from "../datastore";
+
+// 检查 model 参数是否提供
+function requireModel(model?: LanguageModelV3): LanguageModelV3 {
+  if (!model) {
+    throw new Error("[Compaction] Model parameter is required. Application layer must provide a LanguageModelV3 instance.");
+  }
+  return model;
+}
 
 async function saveSummarySafe(
   conversationId: string,
@@ -31,9 +36,6 @@ async function saveSummarySafe(
     console.error("[Compaction] Failed to save summary (store not ready)");
   }
 }
-
-// Model provider — uses default config from env vars or injected config
-const getModel = () => getDefaultModelProvider()(process.env[ENV_MODEL] || "qwen-max");
 
 const COMPACT_SUMMARY_PROMPT = `你是一个对话摘要助手。请用简洁的语言总结对话，捕捉关键信息和价值。
 
@@ -243,7 +245,8 @@ async function getExistingSummarySafe(conversationId: string): Promise<string | 
 
 export async function compactViaAPI(
   messages: UIMessage[],
-  conversationId: string
+  conversationId: string,
+  model?: LanguageModelV3
 ): Promise<CompactionResult> {
   const preCompactTokenCount = estimateMessagesTokens(messages);
 
@@ -301,7 +304,7 @@ export async function compactViaAPI(
   let summary = "";
   try {
     const result = await generateText({
-      model: getModel(),
+      model: requireModel(model),
       system: COMPACT_SUMMARY_PROMPT,
       prompt: promptWithContext,
       maxOutputTokens: 800,
@@ -387,7 +390,8 @@ export async function compactViaAPI(
 export async function compactWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
-  customInstructions: string
+  customInstructions: string,
+  model?: LanguageModelV3
 ): Promise<CompactionResult> {
   const preCompactTokenCount = estimateMessagesTokens(messages);
 
@@ -430,7 +434,7 @@ export async function compactWithCustomInstructions(
   let summary = "";
   try {
     const result = await generateText({
-      model: getModel(),
+      model: requireModel(model),
       system: `${COMPACT_SUMMARY_PROMPT}\n\nADDITIONAL INSTRUCTIONS: ${customInstructions}`,
       prompt: promptWithContext,
       maxOutputTokens: 800,

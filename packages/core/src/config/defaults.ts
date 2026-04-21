@@ -5,34 +5,11 @@
 //
 // 重要：packages/core 中所有模块的配置常量都应从此文件导入
 // 不允许在其他模块中重复定义相同的常量
-
-// ============================================================
-// 环境变量名定义
-// ============================================================
-
-/** 环境变量：模型名称 */
-export const ENV_MODEL = 'THETHING_MODEL';
-
-/** 环境变量：模型上下文限制 */
-export const ENV_CONTEXT_LIMIT = 'THETHING_MODEL_CONTEXT_LIMIT';
-
-/** 环境变量：模型输出预留 */
-export const ENV_OUTPUT_TOKENS = 'THETHING_MODEL_OUTPUT_TOKENS';
-
-/** 环境变量：MCP 配置目录 */
-export const ENV_MCP_DIR = 'THETHING_MCP_DIR';
-
-/** 环境变量：Connector 配置目录 */
-export const ENV_CONNECTORS_DIR = 'THETHING_CONNECTORS_DIR';
-
-/** 环境变量：全局配置目录 */
-export const ENV_GLOBAL_CONFIG_DIR = 'THETHING_GLOBAL_CONFIG_DIR';
-
-/** 环境变量：数据目录 */
-export const ENV_DATA_DIR = 'THETHING_DATA_DIR';
-
-/** 环境变量：全局数据目录（用于幂等去重等全局状态） */
-export const ENV_GLOBAL_DATA_DIR = 'THETHING_GLOBAL_DATA_DIR';
+//
+// 设计原则：
+// - Core 模块只定义业务逻辑默认值，不定义环境变量名
+// - 环境变量名由应用层（CLI/Server）定义
+// - Core 模块通过参数接收配置，不直接读取 process.env
 
 // ============================================================
 // 模型能力默认值

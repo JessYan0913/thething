@@ -3,18 +3,15 @@
 // ============================================================
 
 import { generateText } from 'ai'
+import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { nanoid } from 'nanoid'
 import type { InboundMessageEvent } from '../types'
 import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
 import { getGlobalDataStore } from '../../datastore'
 import { buildSystemPrompt } from '../../system-prompt'
 import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '../../memory'
-import { getDefaultModelProvider } from '../../model-provider'
-import { ENV_MODEL } from '../../config/defaults'
 import { ConnectorRegistry } from '../registry'
 import type { UIMessage } from 'ai'
-
-const getModel = (modelName?: string) => getDefaultModelProvider()(modelName || process.env[ENV_MODEL] || 'qwen-max')
 
 /**
  * Agent 入站处理器配置
@@ -22,7 +19,8 @@ const getModel = (modelName?: string) => getDefaultModelProvider()(modelName || 
 export interface AgentHandlerConfig {
   registry: ConnectorRegistry
   userId?: string
-  model?: string
+  /** 模型实例（必须提供） */
+  model: LanguageModelV3
 }
 
 /**
@@ -75,9 +73,11 @@ export class AgentInboundHandler implements InboundEventHandler {
       })
 
       // 6. 调用 LLM 生成回复
-      const model = this.config.model || process.env[ENV_MODEL] || 'qwen-max'
+      if (!this.config.model) {
+        throw new Error('[AgentInboundHandler] Model is required in config')
+      }
       const { text: response } = await generateText({
-        model: getModel(model),
+        model: this.config.model,
         system: prompt,
         messages: messages.map(m => ({
           role: m.role,

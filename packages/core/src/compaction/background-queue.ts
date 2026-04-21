@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { compactViaAPI } from "./api-compact";
 import { estimateMessagesTokens } from "./token-counter";
 
@@ -10,7 +11,8 @@ const compactQueue = new Map<string, Promise<void>>();
  */
 export function runCompactInBackground(
   messages: UIMessage[],
-  conversationId: string
+  conversationId: string,
+  model?: LanguageModelV3
 ): void {
   if (compactQueue.has(conversationId)) {
     console.log(`[Background Compact] Already in progress for ${conversationId}, skipping`);
@@ -27,7 +29,7 @@ export function runCompactInBackground(
 
       console.log(`[Background Compact] Starting for ${conversationId} (${tokenCount} tokens)`);
 
-      const result = await compactViaAPI(messages, conversationId);
+      const result = await compactViaAPI(messages, conversationId, model);
 
       if (result.executed) {
         console.log(

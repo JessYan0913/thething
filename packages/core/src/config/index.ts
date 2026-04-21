@@ -4,23 +4,10 @@
 // 参考 Claude Code 的配置架构：集中导出，便于使用
 //
 // 设计原则：
-// 1. 默认值常量和环境变量名统一在此导出
+// 1. 默认值常量统一在此导出
 // 2. 类型定义在各模块中维护，config 仅重新导出常用类型
 // 3. 所有 core 包模块的配置常量都从这里导入
-
-// ============================================================
-// 环境变量名（统一命名）
-// ============================================================
-export {
-  ENV_MODEL,
-  ENV_CONTEXT_LIMIT,
-  ENV_OUTPUT_TOKENS,
-  ENV_MCP_DIR,
-  ENV_CONNECTORS_DIR,
-  ENV_GLOBAL_CONFIG_DIR,
-  ENV_DATA_DIR,
-  ENV_GLOBAL_DATA_DIR,
-} from './defaults';
+// 4. 环境变量名由应用层（CLI/Server）定义，core 不导出
 
 // ============================================================
 // 默认值常量（统一导出）
@@ -116,7 +103,6 @@ export {
   getModelCapabilities,
   getEffectiveContextBudget,
   getAutoCompactThreshold,
-  setModelContextLimit,
 } from '../model-capabilities';
 
 // ============================================================

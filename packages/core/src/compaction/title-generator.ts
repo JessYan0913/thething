@@ -5,12 +5,10 @@
 import { generateText } from "ai";
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { getDefaultModelProvider } from "../model-provider";
-import { ENV_MODEL } from "../config/defaults";
 
 /**
  * Generate a concise title for a conversation using the LLM.
- * Accepts an optional model override; otherwise uses the default provider.
+ * Requires a LanguageModelV3 instance provided by application layer.
  * Runs asynchronously so it never blocks the main response stream.
  */
 export async function generateConversationTitle(
@@ -51,10 +49,14 @@ export async function generateConversationTitle(
 
     if (!userText) return fallbackTitle;
 
-    const titleModel = model || getDefaultModelProvider()(process.env[ENV_MODEL] || "qwen-max");
+    // 如果没有传入 model，无法生成标题，使用 fallback
+    if (!model) {
+      console.warn("[TitleGenerator] No model provided, using fallback title");
+      return fallbackTitle;
+    }
 
     const { text } = await generateText({
-      model: titleModel,
+      model,
       system:
         "你是一个对话标题生成助手。请根据用户的首条消息和AI的回复，生成一个简洁、准确的对话标题。",
       prompt: `用户消息: ${userText.slice(0, 300)}\n${

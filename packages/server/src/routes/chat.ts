@@ -14,6 +14,7 @@ import {
   type SubAgentStreamWriter,
   createModelProvider,
 } from '@the-thing/core'
+import { ENV_MODEL } from '../env-names'
 import {
   createAgentUIStream,
   createUIMessageStream,
@@ -26,7 +27,7 @@ const app = new Hono()
 const dashscope = createModelProvider({
   apiKey: process.env.DASHSCOPE_API_KEY!,
   baseURL: process.env.DASHSCOPE_BASE_URL!,
-  modelName: process.env.DASHSCOPE_MODEL!,
+  modelName: process.env[ENV_MODEL]!,
   includeUsage: true,
 })
 
@@ -102,14 +103,14 @@ app.post('/', async (c) => {
     const userId = messageUserId || 'default'
 
     // 使用统一的 createChatAgent
-    const { agent, sessionState, mcpRegistry } = await createChatAgent({
+    const { agent, sessionState, mcpRegistry, model } = await createChatAgent({
       conversationId,
       messages: compactedMessages,
       userId,
       modelConfig: {
         apiKey: process.env.DASHSCOPE_API_KEY!,
         baseURL: process.env.DASHSCOPE_BASE_URL!,
-        modelName: process.env.DASHSCOPE_MODEL!,
+        modelName: process.env[ENV_MODEL]!,
         includeUsage: true,
       },
       conversationMeta: {
@@ -157,15 +158,16 @@ app.post('/', async (c) => {
                 completedMessages,
                 userId,
                 conversationId,
+                model,
               ).catch((err) => console.error('[Memory Extraction] Error:', err))
 
               if (isFirstMessage) {
-                const title = await generateConversationTitle(completedMessages)
+                const title = await generateConversationTitle(completedMessages, model)
                 store.conversationStore.updateConversationTitle(conversationId, title)
                 console.log(`[Title Generated] ${conversationId}: ${title}`)
               }
 
-              runCompactInBackground(messagesToSave, conversationId)
+              runCompactInBackground(messagesToSave, conversationId, model)
 
               if (mcpRegistry) {
                 await mcpRegistry.disconnectAll()

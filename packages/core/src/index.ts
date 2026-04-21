@@ -103,7 +103,6 @@ export {
   getModelCapabilities,
   getEffectiveContextBudget,
   getAutoCompactThreshold,
-  setModelContextLimit,
   type ModelCapabilities,
 } from './model-capabilities';
 

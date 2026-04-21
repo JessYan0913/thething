@@ -142,5 +142,6 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     instructions,
     adjustedMessages,
     budgetActions: budgetCheck.actions,
+    model: modelInstance,
   }
 }

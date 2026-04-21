@@ -1,17 +1,22 @@
 import fs from "fs/promises";
 import path from "path";
 import { generateText, Output } from "ai";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { z } from "zod";
 import { getUserMemoryDir, ensureMemoryDirExists } from "./paths";
 import { formatMemoryFrontmatter, type MemoryType } from "./memory-types";
 import { scanMemoryFiles } from "./memory-scan";
 import { appendToEntrypoint, rebuildEntrypoint, deleteMemoryFile } from "./memdir";
 import { removeMemoryUsage } from "./usage-tracker";
-import { getDefaultModelProvider } from "../model-provider";
-import { ENV_MODEL } from "../config/defaults";
 import type { UIMessage } from "ai";
 
-const getModel = () => getDefaultModelProvider()(process.env[ENV_MODEL] || "qwen-max");
+// 检查 model 参数是否提供
+function requireModel(model?: LanguageModelV3): LanguageModelV3 {
+  if (!model) {
+    throw new Error("[MemoryExtractor] Model parameter is required. Application layer must provide a LanguageModelV3 instance.");
+  }
+  return model;
+}
 
 const memoryExtractionSchema = z.object({
   memories: z
@@ -133,6 +138,7 @@ export async function extractMemoriesFromConversation(
   messages: UIMessage[],
   userId: string,
   conversationId?: string,
+  model?: LanguageModelV3,
 ): Promise<MemoryExtractionResult> {
   if (messages.length < 2) {
     return { memories: [], count: 0 };
@@ -165,7 +171,7 @@ ${existingMemoriesPrompt}
 ${conversationText}`;
 
     const result = await generateText({
-      model: getModel(),
+      model: requireModel(model),
       system: MEMORY_EXTRACTION_SYSTEM_PROMPT,
       prompt: fullPrompt,
       providerOptions: {
@@ -286,6 +292,7 @@ export async function extractMemoriesInBackground(
   messages: UIMessage[],
   userId: string,
   conversationId?: string,
+  model?: LanguageModelV3,
 ): Promise<void> {
   setImmediate(async () => {
     try {
@@ -296,6 +303,7 @@ export async function extractMemoriesInBackground(
         messages,
         userId,
         conversationId,
+        model,
       );
       if (result.count > 0) {
         console.log(

@@ -1,27 +1,16 @@
 // ============================================================
 // Model Capabilities - 模型上下文限制配置
 // ============================================================
-// 参考 ClaudeCode getContextWindowForModel() 优先级解析
-//
-// 设计原则：
-// 1. 环境变量优先（THETHING_MODEL_CONTEXT_LIMIT）
-// 2. 模型名后缀可指定（如 qwen-max[1m] 表示 1M）
-// 3. 简化配置表作为默认值（仅保留常用模型）
-// 4. 兜底保守默认值 128K
+// Core 模块只提供计算函数和默认值，不读取环境变量。
+// 应用层负责注入配置覆盖值。
 
-// 从统一配置模块导入常量
 import {
-  ENV_CONTEXT_LIMIT,
-  ENV_OUTPUT_TOKENS,
   DEFAULT_CONTEXT_LIMIT,
   DEFAULT_OUTPUT_TOKENS,
   AUTOCOMPACT_BUFFER_TOKENS,
 } from './config/defaults';
 
-// 重新导出供其他模块使用
 export {
-  ENV_CONTEXT_LIMIT,
-  ENV_OUTPUT_TOKENS,
   DEFAULT_CONTEXT_LIMIT,
   DEFAULT_OUTPUT_TOKENS,
   AUTOCOMPACT_BUFFER_TOKENS,
@@ -67,21 +56,17 @@ const KNOWN_MODEL_LIMITS: Record<string, number> = {
 /**
  * 获取模型上下文限制
  *
- * 优先级（参考 ClaudeCode 5级解析）：
- * 1. 环境变量 THETHING_MODEL_CONTEXT_LIMIT（最高优先级）
+ * 优先级：
+ * 1. 显式传入的 limitOverride 参数（最高优先级）
  * 2. 模型名后缀 [1m]、[512k]、[256k]
  * 3. 已知模型配置表
  * 4. 前缀匹配（如 qwen-* → 128K）
  * 5. 兜底默认值 128K
  */
-export function getModelContextLimit(modelName: string): number {
-  // 1. 环境变量覆盖（最高优先级）
-  const envLimit = process.env[ENV_CONTEXT_LIMIT];
-  if (envLimit) {
-    const parsed = parseInt(envLimit, 10);
-    if (parsed > 0) {
-      return parsed;
-    }
+export function getModelContextLimit(modelName: string, limitOverride?: number): number {
+  // 1. 显式传入的覆盖值（最高优先级）
+  if (limitOverride && limitOverride > 0) {
+    return limitOverride;
   }
 
   if (!modelName) {
@@ -126,13 +111,9 @@ export function getModelContextLimit(modelName: string): number {
 /**
  * 获取输出预留 Token 数
  */
-export function getDefaultOutputTokens(): number {
-  const envOutput = process.env[ENV_OUTPUT_TOKENS];
-  if (envOutput) {
-    const parsed = parseInt(envOutput, 10);
-    if (parsed > 0) {
-      return parsed;
-    }
+export function getDefaultOutputTokens(outputOverride?: number): number {
+  if (outputOverride && outputOverride > 0) {
+    return outputOverride;
   }
   return DEFAULT_OUTPUT_TOKENS;
 }
@@ -140,10 +121,13 @@ export function getDefaultOutputTokens(): number {
 /**
  * 获取模型能力配置
  */
-export function getModelCapabilities(modelName: string): ModelCapabilities {
+export function getModelCapabilities(
+  modelName: string,
+  options?: { contextLimitOverride?: number; outputOverride?: number }
+): ModelCapabilities {
   return {
-    contextLimit: getModelContextLimit(modelName),
-    defaultOutputTokens: getDefaultOutputTokens(),
+    contextLimit: getModelContextLimit(modelName, options?.contextLimitOverride),
+    defaultOutputTokens: getDefaultOutputTokens(options?.outputOverride),
   };
 }
 
@@ -151,9 +135,12 @@ export function getModelCapabilities(modelName: string): ModelCapabilities {
  * 计算有效上下文预算
  * 有效上下文 = 窗口 - 输出预留
  */
-export function getEffectiveContextBudget(modelName: string): number {
-  const contextLimit = getModelContextLimit(modelName);
-  const outputReserve = Math.min(getDefaultOutputTokens(), 20_000);
+export function getEffectiveContextBudget(
+  modelName: string,
+  options?: { contextLimitOverride?: number; outputOverride?: number }
+): number {
+  const contextLimit = getModelContextLimit(modelName, options?.contextLimitOverride);
+  const outputReserve = Math.min(getDefaultOutputTokens(options?.outputOverride), 20_000);
   return contextLimit - outputReserve;
 }
 
@@ -161,13 +148,9 @@ export function getEffectiveContextBudget(modelName: string): number {
  * 自动压缩触发阈值
  * triggerPoint = effectiveBudget - buffer
  */
-export function getAutoCompactThreshold(modelName: string): number {
-  return getEffectiveContextBudget(modelName) - AUTOCOMPACT_BUFFER_TOKENS;
-}
-
-/**
- * 快速设置模型上下文限制（用于调试或临时调整）
- */
-export function setModelContextLimit(limit: number): void {
-  process.env[ENV_CONTEXT_LIMIT] = String(limit);
+export function getAutoCompactThreshold(
+  modelName: string,
+  options?: { contextLimitOverride?: number; outputOverride?: number }
+): number {
+  return getEffectiveContextBudget(modelName, options) - AUTOCOMPACT_BUFFER_TOKENS;
 }

@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { UIMessage, Tool, ToolSet } from 'ai'
+import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { SessionStateOptions, SessionState } from '../session-state'
 import type { ModelProviderConfig } from '../model-provider'
 import type { McpRegistry } from '../mcp'
@@ -56,6 +57,8 @@ export interface CreateAgentResult {
   adjustedMessages?: UIMessage[]
   /** 预算检查执行的降级动作列表 */
   budgetActions?: string[]
+  /** 模型实例（未包装 middleware），供后台任务使用 */
+  model?: LanguageModelV3
 }
 
 export interface SkillResolution {

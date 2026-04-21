@@ -1,16 +1,12 @@
 // ============================================================
 // Model Provider Configuration
 // ============================================================
-// Extracts model provider creation from environment variables.
-// The core package should not hardcode provider config — it receives it from
-// the caller (Next.js API route, CLI, etc.).
+// Core package 只提供配置类型和创建函数，不读取环境变量。
+// 应用层（CLI/Server）负责组装配置并传入。
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, defaultSettingsMiddleware } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-
-// 从统一配置模块导入环境变量名
-import { ENV_MODEL } from "./config/defaults";
 
 export interface ModelProviderConfig {
   apiKey: string;
@@ -54,8 +50,6 @@ export function createLanguageModel(config: ModelProviderConfig): LanguageModelV
       model: baseModel,
       middleware: defaultSettingsMiddleware({
         settings: {
-          // For OpenAI-compatible providers (like DashScope), use openai namespace
-          // Note: DashScope may have its own format, but we try the OpenAI format first
           providerOptions: {
             openai: {
               reasoningEffort: 'high',
@@ -67,30 +61,4 @@ export function createLanguageModel(config: ModelProviderConfig): LanguageModelV
   }
 
   return baseModel;
-}
-
-/**
- * Default provider config from environment variables.
- * Used as fallback when no explicit config is provided.
- */
-export function getDefaultProviderConfig(): ModelProviderConfig {
-  return {
-    apiKey: process.env.DASHSCOPE_API_KEY!,
-    baseURL: process.env.DASHSCOPE_BASE_URL!,
-    modelName: process.env[ENV_MODEL] || "qwen-max",
-    includeUsage: true,
-    enableThinking: process.env.DASHSCOPE_ENABLE_THINKING === 'true',
-  };
-}
-
-/**
- * Convenience: get a default provider singleton.
- */
-let defaultProvider: ModelProvider | null = null;
-
-export function getDefaultModelProvider(): ModelProvider {
-  if (!defaultProvider) {
-    defaultProvider = createModelProvider(getDefaultProviderConfig());
-  }
-  return defaultProvider;
 }
