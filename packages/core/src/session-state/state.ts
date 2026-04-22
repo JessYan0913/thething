@@ -1,3 +1,7 @@
+// ============================================================
+// Session State - 会话状态管理
+// ============================================================
+
 import type { UIMessage } from 'ai';
 import { DenialTracker } from '../agent-control/denial-tracking';
 import { ModelSwapper } from '../agent-control/model-switching';
@@ -7,46 +11,13 @@ import type { Skill } from '../skills/types';
 import {
   createContentReplacementState,
   setToolOutputOverrides,
-  type ContentReplacementState,
-  type ToolOutputOverrides,
 } from '../utils/tool-output-manager';
 import { cleanupSessionToolResults } from '../utils/tool-result-storage';
 import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
+import type { SessionState, SessionStateOptions } from './types';
 
-export interface SessionStateOptions {
-  maxContextTokens?: number;
-  compactThreshold?: number;
-  maxBudgetUsd?: number;
-  model?: string;
-  maxDenialsPerTool?: number;
-  /** 项目目录，用于工具结果持久化 */
-  projectDir?: string;
-  /** 工具输出配置覆盖（由应用层注入） */
-  toolOutputOverrides?: ToolOutputOverrides;
-}
-
-export interface SessionState {
-  conversationId: string;
-  turnCount: number;
-  tokenBudget: TokenBudgetTracker;
-  costTracker: CostTracker;
-  denialTracker: DenialTracker;
-  modelSwapper: ModelSwapper;
-  activeSkills: Set<string>;
-  loadedSkills: Map<string, Skill>;
-  model: string;
-  aborted: boolean;
-  /** 项目目录 */
-  projectDir: string;
-  /** 内容替换状态（保证 prompt cache 稳定） */
-  contentReplacementState: ContentReplacementState;
-
-  compact(messages: UIMessage[]): Promise<CompactionResult>;
-  abort(): void;
-  /** 清理工具结果存储 */
-  cleanupToolResults(): Promise<void>;
-}
+export type { SessionState, SessionStateOptions };
 
 export function createSessionState(conversationId: string, options?: SessionStateOptions): SessionState {
   const {

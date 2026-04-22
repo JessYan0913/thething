@@ -2,7 +2,7 @@
 // SQLite Cost Store Implementation
 // ============================================================
 
-import type { SqliteDatabase } from '../../types/sqlite';
+import type { SqliteDatabase } from '../types';
 import type { CostStore, CostRecord, CostRow } from '../types';
 
 /**

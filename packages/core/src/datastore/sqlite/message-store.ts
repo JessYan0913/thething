@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { UIMessage } from 'ai';
-import type { SqliteDatabase } from '../../types/sqlite';
+import type { SqliteDatabase } from '../types';
 import type { MessageStore } from '../types';
 import { nanoid } from 'nanoid';
 import type { ConversationStore } from '../types';

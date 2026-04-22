@@ -2,11 +2,12 @@
 // Parser Module - 解析器导出
 // ============================================================
 
+export type { ParseResult } from './types';
+
 export {
   parseFrontmatterFile,
   parseToolsList,
   ParseError,
-  type ParseResult,
 } from './frontmatter';
 
 export { parseYamlFile, parsePlainYamlFile } from './yaml';

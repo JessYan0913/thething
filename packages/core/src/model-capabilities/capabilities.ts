@@ -8,7 +8,7 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   DEFAULT_OUTPUT_TOKENS,
   AUTOCOMPACT_BUFFER_TOKENS,
-} from './config/defaults';
+} from '../config/defaults';
 
 export {
   DEFAULT_CONTEXT_LIMIT,
@@ -16,16 +16,9 @@ export {
   AUTOCOMPACT_BUFFER_TOKENS,
 };
 
-// ============================================================
-// 类型定义
-// ============================================================
+import type { ModelCapabilities } from './types';
 
-export interface ModelCapabilities {
-  /** 上下文窗口限制（tokens） */
-  contextLimit: number;
-  /** 默认输出预留（tokens） */
-  defaultOutputTokens: number;
-}
+export type { ModelCapabilities };
 
 // ============================================================
 // 简化配置表（仅保留常用模型的实测值）

@@ -5,37 +5,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getUserConfigDir } from '../paths';
+import type { ScanOptions, ScanConfig, ScanResult } from './types';
 
-// ============================================================
-// 扫描配置
-// ============================================================
-
-export interface ScanOptions {
-  /** 文件匹配模式（如 '*.md', '*.json'） */
-  pattern: string;
-  /** 是否递归扫描 */
-  recursive?: boolean;
-}
-
-export interface ScanConfig {
-  /** 扫描目录列表（相对或绝对路径） */
-  dirs: string[];
-  /** 文件匹配模式（如 '*.md', 'SKILL.md'） */
-  filePattern: string;
-  /** 目录名匹配模式（如 '*'，用于目录格式如 skill-name/SKILL.md） */
-  dirPattern?: string;
-  /** 是否递归扫描 */
-  recursive?: boolean;
-}
-
-export interface ScanResult {
-  /** 文件绝对路径 */
-  filePath: string;
-  /** 文件所在目录 */
-  dirPath: string;
-  /** 来源标识 */
-  source: 'user' | 'project';
-}
+export type { ScanOptions, ScanConfig, ScanResult };
 
 // ============================================================
 // 目录扫描

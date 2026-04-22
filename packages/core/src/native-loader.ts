@@ -8,13 +8,18 @@
 // which properly implement methods like pragma, transaction, etc.
 // These wrappers use the native addon's prepare() method internally.
 
-import path from 'path'
-import fs from 'fs'
-import module from 'module'
-import type { SqliteDatabase, SqliteDatabaseConstructor } from './types/sqlite'
+import path from 'path';
+import fs from 'fs';
+import module from 'module';
+import type { SqliteDatabase, SqliteDatabaseConstructor } from './datastore/types';
 
 // Re-export SQLite types for use across the codebase
-export type { SqliteDatabase, SqliteDatabaseConstructor, SqliteDatabaseOptions, SqliteStatement } from './types/sqlite'
+export type {
+  SqliteDatabase,
+  SqliteDatabaseConstructor,
+  SqliteDatabaseOptions,
+  SqliteStatement,
+} from './datastore/types';
 
 // Cache for loaded native modules
 const nativeModuleCache: Map<string, any> = new Map()

@@ -37,6 +37,12 @@ export * from './datastore';
 
 // Native Module Loader (for SEA support)
 export { loadBetterSqlite3, getDatabase } from './native-loader';
+export type {
+  SqliteDatabase,
+  SqliteDatabaseConstructor,
+  SqliteDatabaseOptions,
+  SqliteStatement,
+} from './datastore/types';
 
 // Compaction
 export * from './compaction';
@@ -147,8 +153,11 @@ export * from './agent-control';
 // Model Provider
 export * from './model-provider';
 
-// Model Capabilities (仅导出函数，常量已在 config 中导出)
+// Model Capabilities
 export {
+  DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_OUTPUT_TOKENS,
+  AUTOCOMPACT_BUFFER_TOKENS,
   getModelContextLimit,
   getDefaultOutputTokens,
   getModelCapabilities,
@@ -162,3 +171,4 @@ export * from './agent';
 
 // Init
 export { initAll } from './init';
+export type { InitConfig } from './config/types';

@@ -4,7 +4,7 @@ import { generateText, Output } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { z } from "zod";
 import { getUserMemoryDir, ensureMemoryDirExists } from "./paths";
-import { formatMemoryFrontmatter, type MemoryType } from "./memory-types";
+import { formatMemoryFrontmatter, type MemoryType } from "./types";
 import { scanMemoryFiles } from "./memory-scan";
 import { appendToEntrypoint, rebuildEntrypoint, deleteMemoryFile } from "./memdir";
 import { removeMemoryUsage } from "./usage-tracker";

@@ -6,6 +6,9 @@ import fs from 'fs/promises';
 import matter from 'gray-matter';
 import path from 'path';
 import type { z } from 'zod';
+import type { ParseResult } from './types';
+
+export type { ParseResult };
 
 // ============================================================
 // 解析错误
@@ -36,16 +39,6 @@ export class ParseError extends Error {
     this.zodError = zodError;
     this.rawError = rawError;
   }
-}
-
-// ============================================================
-// 解析结果
-// ============================================================
-
-export interface ParseResult<T> {
-  data: T;
-  body: string;  // 改为必需，因为 trim() 总是返回 string
-  filePath: string;
 }
 
 // ============================================================

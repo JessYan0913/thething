@@ -11,10 +11,10 @@
 // ============================================================
 
 // 模型能力
-export type { ModelCapabilities } from '../model-capabilities';
+export type { ModelCapabilities } from '../model-capabilities/types';
 
 // 模型提供商配置
-export type { ModelProviderConfig } from '../model-provider';
+export type { ModelProviderConfig } from '../model-provider/types';
 
 // 压缩配置
 export type {
@@ -57,8 +57,8 @@ export type { McpServerConfig } from '../mcp/types';
 // Permissions
 export type { PermissionConfig, PermissionRule } from '../permissions/types';
 
-// Session State（来自 state.ts）
-export type { SessionStateOptions, SessionState } from '../session-state/state';
+// Session State（来自 types.ts）
+export type { SessionStateOptions, SessionState } from '../session-state/types';
 
 // Agent Control（来自 agent-control）
 export type {
@@ -90,6 +90,8 @@ export type { MemoryConfig } from '../memory/paths';
 export interface InitConfig {
   /** 数据目录 */
   dataDir: string;
+  /** 项目目录（可选，默认自动检测） */
+  cwd?: string;
   /** 数据库配置 */
   databaseConfig?: import('../datastore/types').SQLiteDataStoreConfig;
   /** Connector 配置 */

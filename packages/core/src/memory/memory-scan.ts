@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import matter from 'gray-matter';
-import type { MemoryType } from './memory-types';
+import type { MemoryType } from './types';
 
 export interface ScannedMemory {
   filename: string;

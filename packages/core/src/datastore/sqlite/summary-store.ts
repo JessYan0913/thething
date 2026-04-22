@@ -2,7 +2,7 @@
 // SQLite Summary Store Implementation
 // ============================================================
 
-import type { SqliteDatabase } from '../../types/sqlite';
+import type { SqliteDatabase } from '../types';
 import type { SummaryStore, StoredSummary, SummaryRow } from '../types';
 import { nanoid } from 'nanoid';
 

@@ -2,7 +2,7 @@
 // SQLite Conversation Store Implementation
 // ============================================================
 
-import type { SqliteDatabase } from '../../types/sqlite';
+import type { SqliteDatabase } from '../types';
 import type { ConversationStore, Conversation, ConversationRow } from '../types';
 
 /**

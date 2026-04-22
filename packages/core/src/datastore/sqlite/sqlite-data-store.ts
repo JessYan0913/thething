@@ -6,7 +6,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import type { SqliteDatabase } from '../../types/sqlite';
+import type { SqliteDatabase } from '../types';
 import { getDatabase } from '../../native-loader';
 import { initializeSchema } from './schema';
 import type {

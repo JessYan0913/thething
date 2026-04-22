@@ -1,5 +1,5 @@
 // ============================================================
-// Model Provider Configuration
+// Model Provider - OpenAI Compatible Provider Factory
 // ============================================================
 // Core package 只提供配置类型和创建函数，不读取环境变量。
 // 应用层（CLI/Server）负责组装配置并传入。
@@ -7,24 +7,15 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, defaultSettingsMiddleware } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { ModelProviderConfig, ModelProviderFn } from './types';
 
-export interface ModelProviderConfig {
-  apiKey: string;
-  baseURL: string;
-  modelName?: string;
-  includeUsage?: boolean;
-  /** Enable thinking/reasoning mode for models that support it (e.g., qwen3, gpt-5) */
-  enableThinking?: boolean;
-}
-
-// The provider is callable, returns LanguageModelV3
-type ModelProvider = (modelName: string) => LanguageModelV3;
+export type { ModelProviderConfig, ModelProviderFn };
 
 /**
  * Create an OpenAI-compatible model provider.
  * This is the primary way to create providers for the core engine.
  */
-export function createModelProvider(config: ModelProviderConfig): ModelProvider {
+export function createModelProvider(config: ModelProviderConfig): ModelProviderFn {
   return createOpenAICompatible({
     name: "dashscope",
     apiKey: config.apiKey,

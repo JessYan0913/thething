@@ -1,5 +1,5 @@
 export * from './paths';
-export * from './memory-types';
+export * from './types';
 export * from './memory-scan';
 export * from './memory-age';
 export * from './find-relevant';

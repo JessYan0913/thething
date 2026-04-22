@@ -5,7 +5,7 @@ import {
   WHAT_NOT_TO_SAVE,
   TRUSTING_RECALL_SECTION,
   WHEN_TO_ACCESS_SECTION,
-} from './memory-types';
+} from './types';
 import { memoryFreshnessNote } from './memory-age';
 import type { RelevantMemory } from './find-relevant';
 import type { ScannedMemory } from './memory-scan';
