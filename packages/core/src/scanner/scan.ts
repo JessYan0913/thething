@@ -1,9 +1,22 @@
+// ============================================================
+// Scanner - 目录扫描
+// ============================================================
+
 import fs from 'fs/promises';
 import path from 'path';
+import { getUserConfigDir } from '../paths';
 
-/**
- * 目录扫描配置
- */
+// ============================================================
+// 扫描配置
+// ============================================================
+
+export interface ScanOptions {
+  /** 文件匹配模式（如 '*.md', '*.json'） */
+  pattern: string;
+  /** 是否递归扫描 */
+  recursive?: boolean;
+}
+
 export interface ScanConfig {
   /** 扫描目录列表（相对或绝对路径） */
   dirs: string[];
@@ -15,20 +28,86 @@ export interface ScanConfig {
   recursive?: boolean;
 }
 
-/**
- * 扫描结果项
- */
 export interface ScanResult {
   /** 文件绝对路径 */
   filePath: string;
   /** 文件所在目录 */
   dirPath: string;
-  /** 来源标识（如 'user', 'project'） */
-  source: string;
+  /** 来源标识 */
+  source: 'user' | 'project';
+}
+
+// ============================================================
+// 目录扫描
+// ============================================================
+
+/**
+ * 扫描单个目录中的匹配文件
+ *
+ * @param dir 目录绝对路径
+ * @param options 扫描选项
+ * @returns 扫描结果
+ */
+export async function scanDir(
+  dir: string,
+  options: ScanOptions,
+): Promise<ScanResult[]> {
+  const results: ScanResult[] = [];
+
+  try {
+    const dirStat = await fs.stat(dir).catch(() => null);
+    if (!dirStat?.isDirectory()) {
+      return results;
+    }
+
+    const files = await scanDirForFiles(dir, options);
+
+    for (const file of files) {
+      const source = determineSource(dir);
+      results.push({
+        filePath: file,
+        dirPath: dir,
+        source,
+      });
+    }
+  } catch (error) {
+    console.debug(`[Scanner] Failed to scan ${dir}: ${(error as Error).message}`);
+  }
+
+  return results;
 }
 
 /**
- * 扫描配置目录中的文件
+ * 扫描多个目录
+ *
+ * @param dirs 目录列表
+ * @param options 扫描选项
+ * @returns 扫描结果（去重）
+ */
+export async function scanDirs(
+  dirs: string[],
+  options: ScanOptions,
+): Promise<ScanResult[]> {
+  const results: ScanResult[] = [];
+  const seenPaths = new Set<string>();
+
+  for (const dir of dirs) {
+    const dirResults = await scanDir(dir, options);
+
+    for (const result of dirResults) {
+      const resolved = path.resolve(result.filePath);
+      if (!seenPaths.has(resolved)) {
+        seenPaths.add(resolved);
+        results.push(result);
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * 扫描配置目录中的文件（支持 dirPattern）
  *
  * @param cwd 当前工作目录（用于解析相对路径）
  * @param config 扫描配置
@@ -50,7 +129,7 @@ export async function scanConfigDirs(
         continue;
       }
 
-      const files = await scanDirForFiles(absoluteDir, config);
+      const files = await scanDirForConfigFiles(absoluteDir, config);
 
       for (const file of files) {
         const resolved = path.resolve(file);
@@ -59,7 +138,7 @@ export async function scanConfigDirs(
         }
         seenPaths.add(resolved);
 
-        const source = determineSource(absoluteDir, cwd);
+        const source = determineSource(absoluteDir);
         results.push({
           filePath: resolved,
           dirPath: absoluteDir,
@@ -74,10 +153,29 @@ export async function scanConfigDirs(
   return results;
 }
 
-/**
- * 扫描目录中的匹配文件
- */
-async function scanDirForFiles(dir: string, config: ScanConfig): Promise<string[]> {
+// ============================================================
+// 内部函数
+// ============================================================
+
+async function scanDirForFiles(dir: string, options: ScanOptions): Promise<string[]> {
+  const files: string[] = [];
+
+  if (options.recursive) {
+    files.push(...await scanRecursive(dir, options.pattern));
+  } else {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (matchesPattern(entry.name, options.pattern)) {
+        files.push(path.join(dir, entry.name));
+      }
+    }
+  }
+
+  return files;
+}
+
+async function scanDirForConfigFiles(dir: string, config: ScanConfig): Promise<string[]> {
   const files: string[] = [];
 
   if (config.dirPattern) {
@@ -133,9 +231,6 @@ async function scanDirForFiles(dir: string, config: ScanConfig): Promise<string[
   return files;
 }
 
-/**
- * 递归扫描目录
- */
 async function scanRecursive(dir: string, pattern: string): Promise<string[]> {
   const files: string[] = [];
 
@@ -157,15 +252,10 @@ async function scanRecursive(dir: string, pattern: string): Promise<string[]> {
   return files;
 }
 
-/**
- * 简单的模式匹配（支持 * 通配符）
- */
 function matchesPattern(name: string, pattern: string): boolean {
   if (pattern === '*') return true;
-  if (pattern === '*.md') return name.endsWith('.md');
-  if (pattern === 'SKILL.md') return name === 'SKILL.md';
 
-  // 处理 glob 模式
+  // glob 模式
   if (pattern.includes('*')) {
     const regex = pattern
       .replace(/\./g, '\\.')
@@ -176,50 +266,13 @@ function matchesPattern(name: string, pattern: string): boolean {
   return name === pattern;
 }
 
-/**
- * 根据目录路径确定来源
- */
-function determineSource(dir: string, cwd: string): string {
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
-  const userConfigDir = path.join(homeDir, '.thething');
+function determineSource(dir: string): 'user' | 'project' {
+  const userConfigDir = getUserConfigDir();
 
   if (dir.startsWith(userConfigDir)) {
     return 'user';
   }
 
-  if (dir.startsWith(cwd)) {
-    return 'project';
-  }
-
-  return 'unknown';
-}
-
-/**
- * 按优先级合并配置项
- *
- * @param items 配置项列表
- * @param priorityOrder 优先级顺序（如 ['project', 'user', 'builtin']）
- * @param getKey 获取唯一标识的函数
- * @returns 合并后的列表
- */
-export function mergeByPriority<T>(
-  items: T[],
-  priorityOrder: string[],
-  getKey: (item: T) => string,
-): T[] {
-  const merged = new Map<string, T>();
-
-  // 按优先级顺序处理（低优先级先处理，高优先级覆盖）
-  for (const source of priorityOrder.reverse()) {
-    for (const item of items) {
-      const key = getKey(item);
-      const itemSource = (item as { source?: string }).source;
-
-      if (itemSource === source) {
-        merged.set(key, item);
-      }
-    }
-  }
-
-  return Array.from(merged.values());
+  // 默认为 project
+  return 'project';
 }

@@ -1,12 +1,17 @@
 import { z } from 'zod';
 import {
   parsePlainYamlFile,
+} from '../parser';
+import {
   scanConfigDirs,
-  getUserConfigDir,
-  getProjectConfigDir,
   mergeByPriority,
   LoadingCache,
-} from '../loading';
+} from '../scanner';
+import {
+  detectProjectDir,
+  getUserConfigDir,
+  getProjectConfigDir,
+} from '../paths';
 
 // ============================================================
 // Connector Frontmatter Schema
@@ -57,7 +62,7 @@ const InboundSchema = z.object({
   handler: z.string(),
 });
 
-const ConnectorFrontmatterSchema = z.object({
+export const ConnectorFrontmatterSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   version: z.string().optional().default('1.0.0'),
@@ -192,7 +197,7 @@ export async function scanConnectorDirs(
   cwd?: string,
   config?: Partial<ConnectorLoaderConfig>,
 ): Promise<ConnectorFrontmatter[]> {
-  const effectiveCwd = cwd ?? process.cwd();
+  const effectiveCwd = cwd ?? detectProjectDir();
   const resolvedConfig = { ...DEFAULT_CONNECTOR_LOADER_CONFIG, ...config };
 
   // 检查缓存

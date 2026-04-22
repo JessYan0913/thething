@@ -1,16 +1,17 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { detectProjectDir } from '../paths';
 
 // ============================================================================
 // Memory Configuration
 // ============================================================================
 
 export interface MemoryConfig {
-  /** Base directory for memory storage. Defaults to process.cwd() + '/.thething/memory' */
+  /** Base directory for memory storage. Defaults to detectProjectDir() + '/.thething/memory' */
   baseDir?: string;
 }
 
-const DEFAULT_MEMORY_BASE_DIR = path.join(process.cwd(), '.thething', 'memory');
+const DEFAULT_MEMORY_BASE_DIR = path.join(detectProjectDir(), '.thething', 'memory');
 
 // 环境变量名称: THETHING_MEMORY_DIR
 // 允许用户自定义项目内存存储目录

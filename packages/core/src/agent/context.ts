@@ -18,8 +18,8 @@ import {
 import { buildSystemPrompt } from '../system-prompt'
 import type { SkillResolution, MemoryContext } from './types'
 
-export async function resolveActiveSkills(messages: UIMessage[]): Promise<SkillResolution> {
-  const skillsMetadata = await getAvailableSkillsMetadata()
+export async function resolveActiveSkills(messages: UIMessage[], cwd?: string): Promise<SkillResolution> {
+  const skillsMetadata = await getAvailableSkillsMetadata({ cwd })
 
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
   if (!lastUserMessage) {
@@ -136,8 +136,10 @@ export async function buildAgentInstructions(
     isNewConversation: boolean
     conversationStartTime: number
   },
+  cwd?: string,
 ): Promise<string> {
   const { prompt } = await buildSystemPrompt({
+    cwd,
     includeProjectContext: true,
     conversationMeta: conversationMeta ?? undefined,
     memoryContext: memoryContext ?? undefined,

@@ -38,7 +38,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   let skillResolution: SkillResolution | null = null
   if (enableSkills && messages && messages.length > 0) {
-    skillResolution = await resolveActiveSkills(messages)
+    skillResolution = await resolveActiveSkills(messages, sessionOptions?.projectDir)
     if (skillResolution?.activeModelOverride) {
       sessionState.model = skillResolution.activeModelOverride
     }
@@ -56,7 +56,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     memoryContext = await loadMemoryContext(messages, userId)
   }
 
-  const instructions = await buildAgentInstructions(skillResolution, memoryContext, conversationMeta)
+  const instructions = await buildAgentInstructions(skillResolution, memoryContext, conversationMeta, sessionOptions?.projectDir)
 
   const modelInstance = createLanguageModel(modelConfig)
   const provider = createModelProvider(modelConfig)

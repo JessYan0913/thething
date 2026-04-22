@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import matter from 'gray-matter';
 import path from 'path';
+import { detectProjectDir, getProjectConfigDir, getUserConfigDir } from '../paths';
 import type { SkillMetadata, SkillLoaderConfig } from './types';
 import { DEFAULT_SKILL_LOADER_CONFIG, SkillFrontmatterSchema } from './types';
 
@@ -68,7 +69,8 @@ async function findSkillFiles(dir: string): Promise<string[]> {
   return skillFiles;
 }
 
-async function scanMetadataDirs(config?: Partial<SkillLoaderConfig>): Promise<SkillMetadata[]> {
+async function scanMetadataDirs(cwd?: string, config?: Partial<SkillLoaderConfig>): Promise<SkillMetadata[]> {
+  const effectiveCwd = cwd ?? config?.cwd ?? detectProjectDir();
   const resolvedConfig: SkillLoaderConfig = {
     ...DEFAULT_SKILL_LOADER_CONFIG,
     ...config,
@@ -77,42 +79,48 @@ async function scanMetadataDirs(config?: Partial<SkillLoaderConfig>): Promise<Sk
   const skills: SkillMetadata[] = [];
   const seen = new Set<string>();
 
-  for (const scanDir of resolvedConfig.scanDirs) {
-    const absoluteDir = path.resolve(process.cwd(), scanDir);
+  // 用户全局目录
+  const userSkillsDir = getUserConfigDir('skills');
+  const userSkillFiles = await findSkillFiles(userSkillsDir);
+  for (const skillFile of userSkillFiles) {
+    const realPath = path.resolve(skillFile);
+    if (seen.has(realPath)) continue;
+    seen.add(realPath);
 
     try {
-      const exists = await fs.stat(absoluteDir).catch(() => null);
-      if (!exists || !exists.isDirectory()) {
-        continue;
-      }
-
-      const skillFiles = await findSkillFiles(absoluteDir);
-
-      for (const skillFile of skillFiles) {
-        const realPath = path.resolve(skillFile);
-        if (seen.has(realPath)) continue;
-        seen.add(realPath);
-
-        try {
-          const skill = await loadSkillMetadataOnly(skillFile);
-
-          const duplicate = skills.find((s) => s.name === skill.name);
-          if (duplicate) {
-            continue;
-          }
-
-          skills.push(skill);
-
-          if (resolvedConfig.maxSkills && skills.length >= resolvedConfig.maxSkills) {
-            return skills;
-          }
-        } catch (error) {
-          console.warn(`[SkillMetadataLoader] Failed to load skill from ${skillFile}: ${(error as Error).message}`);
-        }
+      const skill = await loadSkillMetadataOnly(skillFile);
+      if (!skills.some(s => s.name === skill.name)) {
+        skills.push(skill);
       }
     } catch (error) {
-      console.debug(`[SkillMetadataLoader] Scan directory not found: ${absoluteDir}`);
+      console.warn(`[SkillMetadataLoader] Failed to load skill from ${skillFile}: ${(error as Error).message}`);
     }
+  }
+
+  // 项目级目录
+  const projectSkillsDir = getProjectConfigDir(effectiveCwd, 'skills');
+  const projectSkillFiles = await findSkillFiles(projectSkillsDir);
+  for (const skillFile of projectSkillFiles) {
+    const realPath = path.resolve(skillFile);
+    if (seen.has(realPath)) continue;
+    seen.add(realPath);
+
+    try {
+      const skill = await loadSkillMetadataOnly(skillFile);
+      // 项目级覆盖同名的用户级技能
+      const existingIndex = skills.findIndex(s => s.name === skill.name);
+      if (existingIndex >= 0) {
+        skills[existingIndex] = skill;
+      } else {
+        skills.push(skill);
+      }
+    } catch (error) {
+      console.warn(`[SkillMetadataLoader] Failed to load skill from ${skillFile}: ${(error as Error).message}`);
+    }
+  }
+
+  if (resolvedConfig.maxSkills && skills.length >= resolvedConfig.maxSkills) {
+    return skills.slice(0, resolvedConfig.maxSkills);
   }
 
   return skills;
@@ -129,7 +137,7 @@ export async function getAvailableSkillsMetadata(config?: Partial<SkillLoaderCon
     return metadataCache;
   }
 
-  metadataCache = await scanMetadataDirs(config);
+  metadataCache = await scanMetadataDirs(undefined, config);
   cacheTimestamp = now;
 
   return metadataCache;

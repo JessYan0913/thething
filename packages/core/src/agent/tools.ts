@@ -79,7 +79,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   if (config.enableMcp) {
     try {
-      const mcpConfigs = await getMcpServerConfigs()
+      const mcpConfigs = await getMcpServerConfigs(config.sessionState.projectDir)
       if (mcpConfigs.length > 0) {
         mcpRegistry = createMcpRegistry(mcpConfigs)
         await mcpRegistry.connectAll()
@@ -100,7 +100,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   if (config.enableConnector) {
     try {
-      const registry = await getConnectorRegistry()
+      const registry = await getConnectorRegistry(config.sessionState.projectDir)
       // ✅ 新增：传递 sessionContext 用于输出持久化
       const sessionContext = {
         sessionId: config.conversationId,

@@ -4,7 +4,7 @@
 
 import * as fs from 'fs/promises';
 import { nanoid } from 'nanoid';
-import { getProjectConfigDir } from '../loading';
+import { detectProjectDir, getProjectConfigDir } from '../paths';
 import type { PermissionConfig, PermissionRule, RuleMatchResult } from './types';
 import {
   loadRules,
@@ -36,7 +36,7 @@ export { loadRules, loadRulesSync, clearPermissionsCache, initPermissions } from
  * @param cwd 当前工作目录（默认 process.cwd()）
  */
 async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void> {
-  const effectiveCwd = cwd ?? process.cwd();
+  const effectiveCwd = cwd ?? detectProjectDir();
   const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
 
   await ensurePermissionsDir(projectDir);

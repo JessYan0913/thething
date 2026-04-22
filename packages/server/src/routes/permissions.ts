@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { removeRule, saveRule, loadRules, getProjectDir, type PermissionBehavior } from '@the-thing/core'
+import { removeRule, saveRule, loadRules, detectProjectDir, type PermissionBehavior } from '@the-thing/core'
 
 const app = new Hono()
 
@@ -16,7 +16,7 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing toolName' }, 400)
     }
 
-    const projectDir = getProjectDir()
+    const projectDir = detectProjectDir()
     const rule = await saveRule({
       toolName,
       pattern,
@@ -38,7 +38,7 @@ app.delete('/', async (c) => {
       return c.json({ error: 'Missing id' }, 400)
     }
 
-    const projectDir = getProjectDir()
+    const projectDir = detectProjectDir()
     await removeRule(id, projectDir)
     return c.json({ success: true })
   } catch (error) {
@@ -49,7 +49,7 @@ app.delete('/', async (c) => {
 
 app.get('/', async (c) => {
   try {
-    const projectDir = getProjectDir()
+    const projectDir = detectProjectDir()
     const config = await loadRules(projectDir)
     return c.json({ rules: config.rules })
   } catch (error) {

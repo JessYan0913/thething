@@ -46,6 +46,7 @@ export interface SkillUsageRecord {
 }
 
 export interface SkillLoaderConfig {
+  cwd?: string;
   scanDirs: string[];
   maxSkills?: number;
 }

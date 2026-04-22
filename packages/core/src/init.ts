@@ -5,7 +5,7 @@
 import { configureDataStore, type SQLiteDataStoreConfig } from './datastore'
 import { initPermissions } from './permissions'
 import { initConnectorGateway, type ConnectorGatewayConfig } from './connector'
-import { getProjectDir } from './config'
+import { detectProjectDir } from './paths'
 import path from 'path'
 
 export interface InitConfig {
@@ -16,7 +16,7 @@ export interface InitConfig {
 }
 
 export async function initAll(config: InitConfig): Promise<void> {
-  const projectDir = config.cwd ?? getProjectDir()
+  const projectDir = config.cwd ?? detectProjectDir()
 
   configureDataStore({
     dataDir: config.dataDir,

@@ -1,6 +1,8 @@
 import type { Skill, SkillLoaderConfig } from './types';
 import { DEFAULT_SKILL_LOADER_CONFIG, SkillFrontmatterSchema } from './types';
-import { parseFrontmatterFile, scanConfigDirs, getUserConfigDir, getProjectConfigDir } from '../loading';
+import { parseFrontmatterFile } from '../parser';
+import { scanConfigDirs } from '../scanner';
+import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../paths';
 
 export async function loadSkill(skillPath: string): Promise<Skill> {
   const result = await parseFrontmatterFile(skillPath, SkillFrontmatterSchema);
@@ -25,7 +27,7 @@ export async function scanSkillsDirs(cwd?: string, config?: Partial<SkillLoaderC
     ...config,
   };
 
-  const effectiveCwd = cwd ?? process.cwd();
+  const effectiveCwd = cwd ?? resolvedConfig.cwd ?? detectProjectDir();
 
   // 构建扫描目录列表
   const dirs: string[] = [

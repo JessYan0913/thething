@@ -34,7 +34,6 @@ export {
   initConnectorGateway,
   isInboundInitialized,
   shutdownConnectorGateway,
-  configureConnectorGateway,
   getIdempotencyGuard,
   type ConnectorGatewayConfig,
 } from './init'

@@ -29,6 +29,7 @@ export interface SystemPromptSection {
  * Options for building the complete system prompt.
  */
 export interface BuildSystemPromptOptions {
+  cwd?: string;
   override?: string | null;
   customInstructions?: string | null;
   userPreferences?: UserPreferences | null;

@@ -5,6 +5,7 @@ import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from './loader';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
+import { detectProjectDir } from '../paths';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
 
 // ============================================================
@@ -40,7 +41,7 @@ const tracker = new RecursionTracker();
  * @returns Tool 对象
  */
 export function createAgentTool(config: AgentToolConfig) {
-  const cwd = config.cwd ?? process.cwd();
+  const cwd = config.cwd ?? detectProjectDir();
 
   // 动态生成 agent 列表描述
   const registeredAgents = globalAgentRegistry.getAll();

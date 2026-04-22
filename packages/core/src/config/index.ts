@@ -8,38 +8,7 @@
 // 2. 类型定义在各模块中维护，config 仅重新导出常用类型
 // 3. 所有 core 包模块的配置常量都从这里导入
 // 4. 环境变量名由应用层（CLI/Server）定义，core 不导出
-
-import path from 'path';
-
-// ============================================================
-// 项目目录获取
-// ============================================================
-
-/**
- * 获取项目根目录
- *
- * 在 monorepo 开发模式下（从 packages/server 或 packages/cli 运行），
- * 返回 monorepo 根目录，而不是 packages 目录
- *
- * 这样可以确保配置文件在正确的位置：
- * - 项目级配置: 项目根/.thething/
- * - 用户级配置: ~/.thething/
- */
-export function getProjectDir(): string {
-  const cwd = process.cwd();
-
-  // Monorepo 开发模式检测
-  if (cwd.includes('packages/server') || cwd.includes('packages/cli')) {
-    // 向上找到不包含 packages 的目录
-    let dir = cwd;
-    while (dir.includes('packages')) {
-      dir = path.dirname(dir);
-    }
-    return dir;
-  }
-
-  return cwd;
-}
+// 5. 项目目录检测由 paths/ 模块提供（detectProjectDir）
 
 // ============================================================
 // 默认值常量（统一导出）

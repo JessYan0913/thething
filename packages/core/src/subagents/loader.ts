@@ -1,5 +1,7 @@
 import path from 'path';
-import { parseFrontmatterFile, parseToolsList, scanConfigDirs, getUserConfigDir, getProjectConfigDir, mergeByPriority, LoadingCache } from '../loading';
+import { parseFrontmatterFile, parseToolsList } from '../parser';
+import { scanConfigDirs, mergeByPriority, LoadingCache } from '../scanner';
+import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../paths';
 import type { AgentDefinition, AgentFrontmatter, AgentSource } from './types';
 import { AgentFrontmatterSchema } from './types';
 
@@ -100,7 +102,7 @@ export async function scanAgentDirs(
   cwd?: string,
   config?: Partial<AgentLoaderConfig>,
 ): Promise<AgentDefinition[]> {
-  const effectiveCwd = cwd ?? process.cwd();
+  const effectiveCwd = cwd ?? detectProjectDir();
   const resolvedConfig = { ...DEFAULT_AGENT_LOADER_CONFIG, ...config };
 
   // 检查缓存

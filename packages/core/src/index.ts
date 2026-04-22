@@ -2,6 +2,33 @@
 // @the-thing/core — Unified Export Entry
 // ============================================================
 
+// App (高层 API - 推荐)
+export { createAgent, createContext } from './app';
+export type {
+  AppContext,
+  CreateContextOptions,
+  CreateAgentOptions,
+  CreateAgentResult,
+  LoadEvent,
+  LoadSourceInfo,
+  LoadError,
+} from './app/types';
+
+// Paths (路径计算)
+export { detectProjectDir, getUserDataDir, getUserConfigDir, getProjectConfigDir } from './paths';
+
+// Loaders (中层 API - 单模块加载)
+export {
+  loadSkills,
+  loadAgents,
+  loadMcpServers,
+  loadConnectors,
+  loadPermissions,
+  loadMemory,
+  loadAll,
+  clearAllCache,
+} from './loaders';
+
 // Config (统一配置导出 - 所有配置常量和类型)
 export * from './config';
 
@@ -32,8 +59,29 @@ export * from './session-state';
 // Skills
 export * from './skills';
 
-// Loading (共享加载基础设施)
-export * from './loading';
+// Parser (底层 API - 文件解析)
+export {
+  parseFrontmatterFile,
+  parseYamlFile,
+  parsePlainYamlFile,
+  parseJsonFile,
+  parseToolsList,
+  ParseError,
+  type ParseResult,
+} from './parser';
+
+// Scanner (底层 API - 目录扫描)
+export {
+  scanDir,
+  scanDirs,
+  scanConfigDirs,
+  mergeByPriority,
+  LoadingCache,
+  type ScanOptions,
+  type ScanConfig,
+  type ScanResult,
+  type CacheConfig,
+} from './scanner';
 
 // SubAgents
 export * from './subagents';

@@ -9,7 +9,7 @@ import net from 'net'
 import { getDataDirConfig, ensureDataDirSubdirs } from '../lib/data-dir'
 import { writeServerLock, isServerRunning, deleteServerLock } from '../lib/server-manager'
 import { startServer, configureStaticAssets, setupStaticAssets } from '@the-thing/server'
-import { configureDatabase, initPermissions, initConnectorGateway, getProjectDir } from '@the-thing/core'
+import { configureDatabase, initPermissions, initConnectorGateway, detectProjectDir } from '@the-thing/core'
 
 // 环境变量: THETHING_CONNECTORS_DIR
 // 允许用户自定义 connectors 配置目录
@@ -133,7 +133,7 @@ export default async function start(options: StartOptions): Promise<void> {
   configureDatabase({ dataDir: dataDirConfig.dataDir })
 
   // Initialize permissions and connector gateway
-  const projectDir = getProjectDir()
+  const projectDir = detectProjectDir()
   await initPermissions(projectDir).catch(err => console.error(chalk.red('[Permissions] Init failed:', err)))
 
   // Determine connectors directory:

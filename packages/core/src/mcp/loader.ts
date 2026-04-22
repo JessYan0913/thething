@@ -1,11 +1,6 @@
-import {
-  parseJsonFile,
-  scanConfigDirs,
-  getUserConfigDir,
-  getProjectConfigDir,
-  mergeByPriority,
-  LoadingCache,
-} from '../loading';
+import { parseJsonFile } from '../parser';
+import { scanConfigDirs, mergeByPriority, LoadingCache } from '../scanner';
+import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../paths';
 import {
   McpServerConfigSchema,
   DEFAULT_MCP_LOADER_CONFIG,
@@ -62,7 +57,7 @@ export async function scanMcpDirs(
   cwd?: string,
   config?: Partial<McpLoaderConfig>,
 ): Promise<McpServerConfig[]> {
-  const effectiveCwd = cwd ?? process.cwd();
+  const effectiveCwd = cwd ?? detectProjectDir();
   const resolvedConfig = { ...DEFAULT_MCP_LOADER_CONFIG, ...config };
 
   // 检查缓存

@@ -109,12 +109,12 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   },
   {
     name: "project-context",
-    create: () => createProjectContextSection(),
+    create: (options) => createProjectContextSection(options.cwd),
     cacheStrategy: "session",
   },
   {
     name: "skills",
-    create: () => createSkillsSection(),
+    create: (options) => createSkillsSection(options.cwd),
     cacheStrategy: "session",
   },
   {

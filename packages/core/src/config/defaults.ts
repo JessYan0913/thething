@@ -97,6 +97,7 @@ export const DEFAULT_SKILL_SCAN_DIRS = [
 
 /** 默认 Skills 加载配置 */
 export const DEFAULT_SKILL_LOADER_CONFIG = {
+  cwd: undefined,
   scanDirs: DEFAULT_SKILL_SCAN_DIRS,
   maxSkills: 100,
   enableUsageTracking: true,

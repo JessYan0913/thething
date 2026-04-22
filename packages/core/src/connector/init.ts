@@ -2,12 +2,12 @@
 // Connector Gateway 初始化
 // ============================================================
 
-import path from 'path'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { ConnectorRegistry } from './registry'
 import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
 import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
+import { getProjectConfigDir } from '../paths'
 import { debugLog, debugWarn } from './debug'
 
 // ============================================================================
@@ -15,7 +15,9 @@ import { debugLog, debugWarn } from './debug'
 // ============================================================================
 
 export interface ConnectorGatewayConfig {
-  /** Directory containing connector YAML configs. Defaults to process.cwd() + '/connectors' */
+  /** Project directory for loading connector configs */
+  cwd?: string;
+  /** Directory containing connector YAML configs. */
   configDir?: string;
   /** Path to idempotency database. Defaults to ~/.thething/data/.connector-idempotency.db */
   idempotencyDbPath?: string;
@@ -25,35 +27,28 @@ export interface ConnectorGatewayConfig {
   enableInbound?: boolean;
 }
 
-const DEFAULT_CONFIG_DIR = path.join(process.cwd(), 'connectors')
-
-let configuredConfigDir: string = DEFAULT_CONFIG_DIR
-
-// 单例 Registry
-let connectorRegistry: ConnectorRegistry | null = null
+// 单例 Registry（按 cwd 缓存）
+const connectorRegistries = new Map<string, ConnectorRegistry>()
 let inboundInitialized = false
 
 /**
- * Configure the connector config directory before calling getConnectorRegistry().
- * Must be called before first getConnectorRegistry() invocation.
- */
-export function configureConnectorGateway(config: ConnectorGatewayConfig): void {
-  if (connectorRegistry) {
-    debugWarn('[ConnectorGateway] Registry already initialized. configureConnectorGateway() must be called before first getConnectorRegistry().')
-    return
-  }
-  configuredConfigDir = config.configDir || DEFAULT_CONFIG_DIR
-}
-
-/**
  * 获取 Connector Registry 单例
+ *
+ * @param cwd 项目目录，用于加载 connector 配置
  */
-export async function getConnectorRegistry(): Promise<ConnectorRegistry> {
-  if (!connectorRegistry) {
-    connectorRegistry = new ConnectorRegistry(configuredConfigDir)
-    await connectorRegistry.initialize()
+export async function getConnectorRegistry(cwd?: string): Promise<ConnectorRegistry> {
+  const effectiveCwd = cwd ?? process.cwd()
+  const cacheKey = effectiveCwd
+
+  if (!connectorRegistries.has(cacheKey)) {
+    const configDir = getProjectConfigDir(effectiveCwd, 'connectors')
+    const registry = new ConnectorRegistry(configDir)
+    await registry.initialize()
+    connectorRegistries.set(cacheKey, registry)
+    debugLog('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
   }
-  return connectorRegistry
+
+  return connectorRegistries.get(cacheKey)!
 }
 
 /**
@@ -66,12 +61,7 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
     configureIdempotencyGuard({ dbPath: config.idempotencyDbPath })
   }
 
-  // Apply config dir if provided and not yet initialized
-  if (config?.configDir && !connectorRegistry) {
-    configuredConfigDir = config.configDir
-  }
-
-  const registry = await getConnectorRegistry()
+  const registry = await getConnectorRegistry(config?.cwd)
 
   debugLog('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
 
@@ -108,9 +98,9 @@ export function isInboundInitialized(): boolean {
  * 关闭 Connector Gateway（清理资源）
  */
 export async function shutdownConnectorGateway(): Promise<void> {
-  if (connectorRegistry) {
-    connectorRegistry.dispose()
-    connectorRegistry = null
+  for (const [key, registry] of connectorRegistries) {
+    registry.dispose()
+    connectorRegistries.delete(key)
   }
   inboundInitialized = false
   debugLog('[ConnectorGateway] Shutdown complete')

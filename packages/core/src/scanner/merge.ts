@@ -1,10 +1,45 @@
-/**
- * 加载缓存 - 用于缓存 Agent/Skills 加载结果
- */
+// ============================================================
+// Scanner - 配置合并与缓存
+// ============================================================
+
+// ============================================================
+// 按优先级合并
+// ============================================================
 
 /**
- * 缓存配置
+ * 按优先级合并配置项
+ *
+ * @param items 配置项列表（带 source 字段）
+ * @param priorityOrder 优先级顺序（如 ['project', 'user']，project 最高）
+ * @param getKey 获取唯一标识的函数
+ * @returns 合并后的列表
  */
+export function mergeByPriority<T extends { source: string }>(
+  items: T[],
+  priorityOrder: string[],
+  getKey: (item: T) => string,
+): T[] {
+  const merged = new Map<string, T>();
+
+  // 按优先级顺序处理（低优先级先处理，高优先级覆盖）
+  const reversedOrder = [...priorityOrder].reverse();
+
+  for (const source of reversedOrder) {
+    for (const item of items) {
+      const key = getKey(item);
+      if (item.source === source) {
+        merged.set(key, item);
+      }
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
+// ============================================================
+// 缓存
+// ============================================================
+
 export interface CacheConfig {
   /** 缓存 TTL（毫秒），默认 60 秒 */
   ttlMs?: number;
@@ -12,16 +47,11 @@ export interface CacheConfig {
   maxEntries?: number;
 }
 
-const DEFAULT_TTL_MS = 60_000; // 60 秒
+const DEFAULT_TTL_MS = 60_000;
 const DEFAULT_MAX_ENTRIES = 100;
 
-/**
- * 缓存条目
- */
 interface CacheEntry<T> {
-  /** 缓存数据 */
   data: T;
-  /** 缓存时间戳 */
   timestamp: number;
 }
 
@@ -38,9 +68,6 @@ export class LoadingCache<T> {
     this.maxEntries = config?.maxEntries ?? DEFAULT_MAX_ENTRIES;
   }
 
-  /**
-   * 获取缓存（如果未过期）
-   */
   get(key: string): T | null {
     const entry = this.cache.get(key);
     if (!entry) return null;
@@ -54,11 +81,7 @@ export class LoadingCache<T> {
     return entry.data;
   }
 
-  /**
-   * 设置缓存
-   */
   set(key: string, data: T): void {
-    // 清理过期条目或超出限制时清理最旧的
     if (this.cache.size >= this.maxEntries) {
       this.evictOldest();
     }
@@ -69,62 +92,18 @@ export class LoadingCache<T> {
     });
   }
 
-  /**
-   * 检查缓存是否存在且未过期
-   */
   has(key: string): boolean {
     return this.get(key) !== null;
   }
 
-  /**
-   * 删除缓存
-   */
   delete(key: string): boolean {
     return this.cache.delete(key);
   }
 
-  /**
-   * 清除所有缓存
-   */
   clear(): void {
     this.cache.clear();
   }
 
-  /**
-   * 获取缓存统计
-   */
-  getStats(): {
-    size: number;
-    maxEntries: number;
-    ttlMs: number;
-  } {
-    return {
-      size: this.cache.size,
-      maxEntries: this.maxEntries,
-      ttlMs: this.ttlMs,
-    };
-  }
-
-  /**
-   * 清理过期条目
-   */
-  cleanupExpired(): number {
-    const now = Date.now();
-    let cleaned = 0;
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > this.ttlMs) {
-        this.cache.delete(key);
-        cleaned++;
-      }
-    }
-
-    return cleaned;
-  }
-
-  /**
-   * 清理最旧的条目
-   */
   private evictOldest(): void {
     let oldestKey: string | null = null;
     let oldestTimestamp = Infinity;
@@ -140,25 +119,4 @@ export class LoadingCache<T> {
       this.cache.delete(oldestKey);
     }
   }
-}
-
-/**
- * 创建带缓存的加载函数
- */
-export function createCachedLoader<T>(
-  loader: (key: string) => Promise<T>,
-  config?: CacheConfig,
-): (key: string) => Promise<T> {
-  const cache = new LoadingCache<T>(config);
-
-  return async (key: string): Promise<T> => {
-    const cached = cache.get(key);
-    if (cached !== null) {
-      return cached;
-    }
-
-    const data = await loader(key);
-    cache.set(key, data);
-    return data;
-  };
 }
