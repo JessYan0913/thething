@@ -1,12 +1,15 @@
 export {
   parseFrontmatterFile,
   parseYamlFile,
+  parseJsonFile,
   parseToolsList,
   getUserConfigDir,
   getProjectConfigDir,
   DEFAULT_AGENT_SCAN_DIRS,
   DEFAULT_SKILL_SCAN_DIRS,
   DEFAULT_CONNECTORS_DIR,
+  DEFAULT_PERMISSIONS_DIR,
+  PERMISSIONS_FILENAME,
   FrontmatterParseError,
   type FrontmatterParseResult,
 } from './frontmatter';

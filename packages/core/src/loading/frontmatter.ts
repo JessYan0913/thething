@@ -8,10 +8,12 @@ import {
   DEFAULT_AGENT_SCAN_DIRS,
   DEFAULT_SKILL_SCAN_DIRS,
   DEFAULT_CONNECTORS_DIR,
+  DEFAULT_PERMISSIONS_DIR,
+  PERMISSIONS_FILENAME,
 } from '../config/defaults';
 
 // 重新导出供其他模块使用
-export { DEFAULT_AGENT_SCAN_DIRS, DEFAULT_SKILL_SCAN_DIRS, DEFAULT_CONNECTORS_DIR };
+export { DEFAULT_AGENT_SCAN_DIRS, DEFAULT_SKILL_SCAN_DIRS, DEFAULT_CONNECTORS_DIR, DEFAULT_PERMISSIONS_DIR, PERMISSIONS_FILENAME };
 
 // ============================================================
 // Frontmatter 解析
@@ -88,6 +90,39 @@ export async function parseYamlFile<T>(
   const content = await fs.readFile(absolutePath, 'utf-8');
 
   const { data } = matter(content);
+
+  const validated = schema.safeParse(data);
+
+  if (!validated.success) {
+    throw new FrontmatterParseError(absolutePath, validated.error);
+  }
+
+  return {
+    data: validated.data,
+    filePath: absolutePath,
+  };
+}
+
+/**
+ * 解析 JSON 文件
+ *
+ * @param filePath 文件路径
+ * @param schema Zod schema 用于验证
+ * @returns 解析结果
+ */
+export async function parseJsonFile<T>(
+  filePath: string,
+  schema: z.ZodSchema<T>,
+): Promise<{ data: T; filePath: string }> {
+  const absolutePath = path.resolve(filePath);
+  const content = await fs.readFile(absolutePath, 'utf-8');
+
+  let data: unknown;
+  try {
+    data = JSON.parse(content);
+  } catch (e) {
+    throw new Error(`Invalid JSON in ${absolutePath}: ${(e as Error).message}`);
+  }
 
   const validated = schema.safeParse(data);
 

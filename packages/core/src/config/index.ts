@@ -62,6 +62,12 @@ export {
   DEFAULT_MCP_CONFIG_DIR,
 } from './defaults';
 
+// Permissions
+export {
+  DEFAULT_PERMISSIONS_DIR,
+  PERMISSIONS_FILENAME,
+} from './defaults';
+
 // Connector
 export {
   DEFAULT_CONNECTORS_DIR,

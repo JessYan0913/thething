@@ -110,6 +110,16 @@ export const DEFAULT_SKILL_LOADER_CONFIG = {
 export const DEFAULT_MCP_CONFIG_DIR = '.thething/mcps';
 
 // ============================================================
+// Permissions 配置默认值
+// ============================================================
+
+/** 默认 Permissions 配置目录 */
+export const DEFAULT_PERMISSIONS_DIR = '.thething/permissions';
+
+/** Permissions 配置文件名 */
+export const PERMISSIONS_FILENAME = 'permissions.json';
+
+// ============================================================
 // Connector 配置默认值
 // ============================================================
 

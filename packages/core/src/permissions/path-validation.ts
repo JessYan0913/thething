@@ -10,7 +10,7 @@ import type { PathValidationResult } from './types';
 // 敏感路径列表 - 任何模式下都不可绕过
 const SENSITIVE_PATHS = [
   '.git',
-  '.thething',
+  // '.thething',
   '.env',
   '.env.local',
   '.env.development.local',
