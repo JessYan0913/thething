@@ -1,22 +1,45 @@
 import fs from 'fs/promises';
 import path from 'path';
 import type { McpServerConfig } from './registry';
+import { scanMcpDirs, clearMcpCache } from './mcp-loader';
+import type { McpServerConfigSource } from './mcp-loader-types';
 
-const DEFAULT_MCP_CONFIG_DIR = path.join(process.cwd(), '.thething', 'mcps');
-// 环境变量: THETHING_MCP_DIR
-// 允许用户自定义项目 MCP 配置目录
-let mcpConfigDir: string = process.env.THETHING_MCP_DIR || DEFAULT_MCP_CONFIG_DIR;
+// ============================================================
+// MCP 配置目录
+// ============================================================
 
 /**
- * Configure MCP config directory.
+ * 获取用户级 MCP 配置目录
  */
-export function configureMcpConfigDir(dir: string): void {
-  mcpConfigDir = dir;
+export function getUserMcpConfigDir(): string {
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
+  return path.join(homeDir, '.thething', 'mcps');
 }
 
-async function ensureDir(): Promise<void> {
+/**
+ * 获取项目级 MCP 配置目录
+ */
+export function getProjectMcpConfigDir(cwd: string): string {
+  return path.join(cwd, '.thething', 'mcps');
+}
+
+/**
+ * 获取默认 MCP 配置目录（项目级）
+ */
+export function getDefaultMcpConfigDir(): string {
+  return getProjectMcpConfigDir(process.cwd());
+}
+
+// ============================================================
+// MCP 配置 CRUD
+// ============================================================
+
+/**
+ * 确保目录存在
+ */
+async function ensureDir(dir: string): Promise<void> {
   try {
-    await fs.mkdir(mcpConfigDir, { recursive: true });
+    await fs.mkdir(dir, { recursive: true });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
       throw err;
@@ -24,10 +47,16 @@ async function ensureDir(): Promise<void> {
   }
 }
 
-function configFilePath(name: string): string {
-  return path.join(mcpConfigDir, `${encodeURIComponent(name)}.json`);
+/**
+ * 配置文件路径
+ */
+function configFilePath(dir: string, name: string): string {
+  return path.join(dir, `${encodeURIComponent(name)}.json`);
 }
 
+/**
+ * 序列化配置
+ */
 function toSerializable(config: McpServerConfig): Record<string, unknown> {
   return {
     name: config.name,
@@ -38,66 +67,119 @@ function toSerializable(config: McpServerConfig): Record<string, unknown> {
   };
 }
 
-function fromSerializable(data: Record<string, unknown>): McpServerConfig {
+/**
+ * 反序列化配置（带来源信息）
+ */
+function fromSerializable(data: Record<string, unknown>, filePath: string): McpServerConfigSource {
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
+  const userConfigDir = path.join(homeDir, '.thething', 'mcps');
+
+  const source = filePath.startsWith(userConfigDir) ? 'user' : 'project';
+
   return {
     name: data.name as string,
     transport: data.transport as McpServerConfig['transport'],
-    enabled: data.enabled as boolean,
+    enabled: (data.enabled ?? true) as boolean,
     tools: data.tools as McpServerConfig['tools'],
     elicitation: data.elicitation as McpServerConfig['elicitation'],
+    source,
+    filePath,
   };
 }
 
-export async function getMcpServerConfigs(): Promise<McpServerConfig[]> {
-  await ensureDir();
+/**
+ * 获取所有 MCP 服务器配置（使用新加载器）
+ */
+export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig[]> {
+  return scanMcpDirs(cwd ?? process.cwd());
+}
 
-  let entries: string[];
-  try {
-    entries = await fs.readdir(mcpConfigDir);
-  } catch {
-    return [];
-  }
+/**
+ * 获取所有 MCP 服务器配置（带来源信息）
+ */
+export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpServerConfigSource[]> {
+  const effectiveCwd = cwd ?? process.cwd();
+  const configs: McpServerConfigSource[] = [];
+  const dirs: string[] = [getUserMcpConfigDir(), getProjectMcpConfigDir(effectiveCwd)];
 
-  const configs: McpServerConfig[] = [];
-  for (const entry of entries) {
-    if (!entry.endsWith('.json')) continue;
+  for (const dir of dirs) {
     try {
-      const content = await fs.readFile(path.join(mcpConfigDir, entry), 'utf-8');
-      const data = JSON.parse(content) as Record<string, unknown>;
-      configs.push(fromSerializable(data));
+      const entries = await fs.readdir(dir);
+      for (const entry of entries) {
+        if (!entry.endsWith('.json')) continue;
+        try {
+          const filePath = path.join(dir, entry);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const data = JSON.parse(content) as Record<string, unknown>;
+          configs.push(fromSerializable(data, filePath));
+        } catch {
+          // skip corrupted files
+        }
+      }
     } catch {
-      // skip corrupted files
+      // directory not exists, skip
     }
   }
 
   return configs;
 }
 
-export async function getMcpServerConfig(name: string): Promise<McpServerConfig | null> {
-  const filePath = configFilePath(name);
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    return fromSerializable(JSON.parse(content) as Record<string, unknown>);
-  } catch {
-    return null;
-  }
+/**
+ * 获取单个 MCP 服务器配置
+ */
+export async function getMcpServerConfig(name: string, cwd?: string): Promise<McpServerConfig | null> {
+  const configs = await getMcpServerConfigsWithSource(cwd);
+  return configs.find((c) => c.name === name) ?? null;
 }
 
-export async function addMcpServerConfig(config: McpServerConfig): Promise<McpServerConfig> {
-  await ensureDir();
+/**
+ * 获取单个 MCP 服务器配置（带来源信息）
+ */
+export async function getMcpServerConfigWithSource(name: string, cwd?: string): Promise<McpServerConfigSource | null> {
+  const configs = await getMcpServerConfigsWithSource(cwd);
+  return configs.find((c) => c.name === name) ?? null;
+}
 
-  const existing = await getMcpServerConfig(config.name);
+/**
+ * 添加 MCP 服务器配置
+ *
+ * @param config MCP 服务器配置
+ * @param cwd 当前工作目录
+ * @param targetDir 目标目录类型（'project' 或 'user'）
+ */
+export async function addMcpServerConfig(
+  config: McpServerConfig,
+  cwd?: string,
+  targetDir: 'project' | 'user' = 'project',
+): Promise<McpServerConfigSource> {
+  const dir = targetDir === 'user'
+    ? getUserMcpConfigDir()
+    : getProjectMcpConfigDir(cwd ?? process.cwd());
+
+  await ensureDir(dir);
+
+  const existing = await getMcpServerConfigWithSource(config.name, cwd);
   if (existing) {
-    throw new Error(`MCP server "${config.name}" already exists`);
+    throw new Error(`MCP server "${config.name}" already exists at ${existing.filePath}`);
   }
 
-  const filePath = configFilePath(config.name);
+  const filePath = configFilePath(dir, config.name);
   await fs.writeFile(filePath, JSON.stringify(toSerializable(config), null, 2), 'utf-8');
-  return config;
+
+  clearMcpCache();
+
+  return fromSerializable(toSerializable(config), filePath);
 }
 
-export async function updateMcpServerConfig(name: string, updates: Partial<McpServerConfig>): Promise<McpServerConfig | null> {
-  const existing = await getMcpServerConfig(name);
+/**
+ * 更新 MCP 服务器配置
+ */
+export async function updateMcpServerConfig(
+  name: string,
+  updates: Partial<McpServerConfig>,
+  cwd?: string,
+): Promise<McpServerConfigSource | null> {
+  const existing = await getMcpServerConfigWithSource(name, cwd);
   if (!existing) return null;
 
   const merged: McpServerConfig = {
@@ -106,20 +188,31 @@ export async function updateMcpServerConfig(name: string, updates: Partial<McpSe
     transport: updates.transport ?? existing.transport,
   };
 
-  const filePath = configFilePath(name);
+  // 如果名称改变，需要删除旧文件
   if (merged.name !== name) {
-    // Name changed — remove old file
-    await fs.unlink(configFilePath(name));
+    await fs.unlink(existing.filePath);
+    const newFilePath = configFilePath(path.dirname(existing.filePath), merged.name);
+    await fs.writeFile(newFilePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
+    clearMcpCache();
+    return fromSerializable(toSerializable(merged), newFilePath);
   }
 
-  await fs.writeFile(filePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
-  return merged;
+  await fs.writeFile(existing.filePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
+  clearMcpCache();
+
+  return fromSerializable(toSerializable(merged), existing.filePath);
 }
 
-export async function deleteMcpServerConfig(name: string): Promise<boolean> {
-  const filePath = configFilePath(name);
+/**
+ * 删除 MCP 服务器配置
+ */
+export async function deleteMcpServerConfig(name: string, cwd?: string): Promise<boolean> {
+  const existing = await getMcpServerConfigWithSource(name, cwd);
+  if (!existing) return false;
+
   try {
-    await fs.unlink(filePath);
+    await fs.unlink(existing.filePath);
+    clearMcpCache();
     return true;
   } catch {
     return false;
