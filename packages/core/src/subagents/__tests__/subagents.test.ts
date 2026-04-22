@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { AgentDefinition, AgentExecutionResult, TokenUsageStats, AgentToolInput } from '../core/types';
-import { globalAgentRegistry } from '../core/registry';
+import type { AgentDefinition, AgentExecutionResult, TokenUsageStats, AgentToolInput } from '../types';
+import { globalAgentRegistry } from '../registry';
 
 // ============================================================
 // Subagents Module Tests
@@ -11,10 +11,14 @@ describe('subagents', () => {
       it('should have required fields', () => {
         const agent: AgentDefinition = {
           agentType: 'test-agent',
+          description: 'Test agent description',
           instructions: 'Test agent instructions',
+          source: 'builtin',
         };
         expect(agent.agentType).toBeDefined();
         expect(agent.instructions).toBeDefined();
+        expect(agent.description).toBeDefined();
+        expect(agent.source).toBeDefined();
       });
 
       it('should have optional fields', () => {
@@ -22,18 +26,19 @@ describe('subagents', () => {
           agentType: 'full-agent',
           displayName: 'Full Agent',
           description: 'A complete agent definition',
-          allowedTools: ['bash', 'read'],
+          tools: ['bash', 'read'],
           disallowedTools: ['write'],
           model: 'inherit',
           includeParentContext: true,
           maxParentMessages: 10,
-          maxSteps: 5,
+          maxTurns: 5,
           instructions: 'Full instructions',
           summarizeOutput: true,
+          source: 'project',
         };
         expect(agent.displayName).toBeDefined();
-        expect(agent.allowedTools).toBeDefined();
-        expect(agent.maxSteps).toBeDefined();
+        expect(agent.tools).toBeDefined();
+        expect(agent.maxTurns).toBeDefined();
       });
 
       it('should accept valid model types', () => {
@@ -42,7 +47,9 @@ describe('subagents', () => {
           const agent: AgentDefinition = {
             agentType: 'agent-' + model,
             model: model,
-            instructions: 'Test',
+            description: 'Test',
+            instructions: 'Test instructions',
+            source: 'builtin',
           };
           expect(agent.model).toBe(model);
         });
@@ -124,7 +131,7 @@ describe('subagents', () => {
     beforeEach(() => {
       // Get all agents and unregister them
       const allAgents = globalAgentRegistry.getAll();
-      allAgents.forEach((agent) => {
+      allAgents.forEach((agent: AgentDefinition) => {
         globalAgentRegistry.unregister(agent.agentType);
       });
     });
@@ -133,7 +140,9 @@ describe('subagents', () => {
       it('should register agent', () => {
         const agent: AgentDefinition = {
           agentType: 'test-agent',
+          description: 'Test agent',
           instructions: 'Test instructions',
+          source: 'builtin',
         };
         globalAgentRegistry.register(agent);
         expect(globalAgentRegistry.has('test-agent')).toBe(true);
@@ -142,7 +151,9 @@ describe('subagents', () => {
       it('should get agent by type', () => {
         const agent: AgentDefinition = {
           agentType: 'get-test',
+          description: 'Test',
           instructions: 'Test',
+          source: 'builtin',
         };
         globalAgentRegistry.register(agent);
         const retrieved = globalAgentRegistry.get('get-test');
@@ -154,20 +165,20 @@ describe('subagents', () => {
       });
 
       it('should get all agents', () => {
-        globalAgentRegistry.register({ agentType: 'agent1', instructions: '1' });
-        globalAgentRegistry.register({ agentType: 'agent2', instructions: '2' });
+        globalAgentRegistry.register({ agentType: 'agent1', description: '1', instructions: '1', source: 'builtin' });
+        globalAgentRegistry.register({ agentType: 'agent2', description: '2', instructions: '2', source: 'builtin' });
         const all = globalAgentRegistry.getAll();
         expect(all.length).toBe(2);
       });
 
       it('should check if agent exists', () => {
-        globalAgentRegistry.register({ agentType: 'exists-test', instructions: 'Test' });
+        globalAgentRegistry.register({ agentType: 'exists-test', description: 'Test', instructions: 'Test', source: 'builtin' });
         expect(globalAgentRegistry.has('exists-test')).toBe(true);
         expect(globalAgentRegistry.has('no-exists')).toBe(false);
       });
 
       it('should unregister agent', () => {
-        globalAgentRegistry.register({ agentType: 'unregister-test', instructions: 'Test' });
+        globalAgentRegistry.register({ agentType: 'unregister-test', description: 'Test', instructions: 'Test', source: 'builtin' });
         expect(globalAgentRegistry.has('unregister-test')).toBe(true);
         globalAgentRegistry.unregister('unregister-test');
         expect(globalAgentRegistry.has('unregister-test')).toBe(false);
@@ -178,10 +189,11 @@ describe('subagents', () => {
       });
 
       it('should overwrite existing agent', () => {
-        globalAgentRegistry.register({ agentType: 'overwrite', instructions: 'Original' });
-        globalAgentRegistry.register({ agentType: 'overwrite', instructions: 'Updated' });
+        globalAgentRegistry.register({ agentType: 'overwrite', description: 'Original', instructions: 'Original', source: 'builtin' });
+        globalAgentRegistry.register({ agentType: 'overwrite', description: 'Updated', instructions: 'Updated', source: 'project' });
         const agent = globalAgentRegistry.get('overwrite');
         expect(agent?.instructions).toBe('Updated');
+        expect(agent?.source).toBe('project');
       });
     });
   });

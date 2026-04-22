@@ -15,7 +15,7 @@ import {
   askUserQuestionTool,
 } from '../tools'
 import { createTaskToolsForConversation, getGlobalTaskStore } from '../tasks'
-import { createResearchAgent } from '../subagents'
+import { registerBuiltinAgents, scanAgentDirs, createAgentTool, globalAgentRegistry } from '../subagents'
 import { getMcpServerConfigs, createMcpRegistry, type McpRegistry } from '../mcp'
 import { getConnectorRegistry, getAllConnectorTools } from '../connector'
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
@@ -51,17 +51,30 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   Object.assign(tools, createTaskToolsForConversation(getGlobalTaskStore(), config.conversationId))
 
-  tools.research = createResearchAgent({
-    model: wrappedModel,
-    tools: {
-      web_search: exaSearchTool,
-      read_file: readFileTool,
-      grep: grepTool,
-      glob: globTool,
-    },
-    maxSteps: 20,
-    maxContextMessages: 10,
-    writerRef: config.writerRef,
+  // 1. 注册内置 Agent
+  registerBuiltinAgents()
+
+  // 2. 加载并注册用户/项目自定义 Agent
+  const customAgents = await scanAgentDirs(config.sessionState.projectDir)
+  if (customAgents.length > 0) {
+    console.log(`[AgentLoader] Loaded ${customAgents.length} custom agents: ${customAgents.map(a => a.agentType).join(', ')}`)
+  }
+  for (const agent of customAgents) {
+    globalAgentRegistry.register(agent)
+  }
+
+  // Log total registered agents
+  console.log(`[AgentRegistry] Total registered: ${globalAgentRegistry.getAll().map(a => `${a.agentType}(${a.source})`).join(', ')}`)
+
+  // 3. 创建统一的 agent 工具
+  tools.agent = createAgentTool({
+    parentTools: tools,
+    parentModel: wrappedModel,
+    parentSystemPrompt: '',
+    parentMessages: [],
+    writerRef: config.writerRef ?? { current: null },
+    cwd: config.sessionState.projectDir,
+    provider: config.provider,
   })
 
   if (config.enableMcp) {

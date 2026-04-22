@@ -92,7 +92,6 @@ export const DEFAULT_MAX_OUTPUT_TOKENS = 15_000;
 
 /** 默认 Skills 扫描目录 */
 export const DEFAULT_SKILL_SCAN_DIRS = [
-  '.claude/skills',
   '.thething/skills',
 ];
 
@@ -115,7 +114,7 @@ export const DEFAULT_MCP_CONFIG_DIR = '.thething/mcps';
 // ============================================================
 
 /** 默认 Connector 配置目录 */
-export const DEFAULT_CONNECTORS_DIR = 'connectors';
+export const DEFAULT_CONNECTORS_DIR = '.thething/connectors';
 
 /** 电路断路器阈值 */
 export const CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -124,8 +123,20 @@ export const CIRCUIT_BREAKER_THRESHOLD = 3;
 export const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ============================================================
-// Agent Control 默认值
+// Agent 配置默认值
 // ============================================================
+
+/** Agent 扫描目录 */
+export const DEFAULT_AGENT_SCAN_DIRS = [
+  '.thething/agents',
+];
+
+/** Agent 加载默认配置 */
+export const DEFAULT_AGENT_LOADER_CONFIG = {
+  sources: ['user', 'project'] as const,
+  maxAgents: 50,
+  enableCache: true,
+};
 
 /** 模型切换成本阈值（百分比） */
 export const MODEL_SWITCH_COST_THRESHOLD = 80;

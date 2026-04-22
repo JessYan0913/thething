@@ -21,8 +21,8 @@ import {
 /** 工具结果存储子目录名 */
 export const TOOL_RESULTS_SUBDIR = 'tool-results'
 
-/** Claude 工作目录名 */
-export const CLAUDE_DIR = '.claude'
+/** TheThing 工作目录名 */
+export const THETHING_DIR = '.thething'
 
 // ============================================================
 // 路径辅助函数
@@ -32,7 +32,7 @@ export const CLAUDE_DIR = '.claude'
  * 获取工具结果存储目录
  */
 export function getToolResultsDir(sessionId: string, projectDir: string): string {
-  return join(projectDir, CLAUDE_DIR, TOOL_RESULTS_SUBDIR, sessionId)
+  return join(projectDir, THETHING_DIR, TOOL_RESULTS_SUBDIR, sessionId)
 }
 
 /**
@@ -197,7 +197,7 @@ export async function cleanupOldToolResults(
   projectDir: string,
   maxAgeDays: number = 7
 ): Promise<{ cleanedSessions: number; cleanedFiles: number }> {
-  const toolResultsDir = join(projectDir, CLAUDE_DIR, TOOL_RESULTS_SUBDIR)
+  const toolResultsDir = join(projectDir, THETHING_DIR, TOOL_RESULTS_SUBDIR)
 
   try {
     const sessions = await readdir(toolResultsDir)

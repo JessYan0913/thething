@@ -1,18 +1,30 @@
 import { ToolLoopAgent, stepCountIs } from 'ai';
-import type {
-  AgentDefinition,
-  AgentExecutionContext,
-  AgentExecutionResult,
-} from '../core/types';
+import type { AgentDefinition, AgentExecutionContext, AgentExecutionResult } from './types';
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
-import { completeTask, failTask, updateTaskStatus } from '../../tasks';
+import { completeTask, failTask, updateTaskStatus } from '../tasks';
+
+// ============================================================
+// Helper Functions
+// ============================================================
 
 function fireAndForget<T>(fn: () => T): void {
   setTimeout(fn, 0);
 }
 
+// ============================================================
+// Agent Executor
+// ============================================================
+
+/**
+ * 执行路由后的 Agent
+ *
+ * @param definition Agent 定义
+ * @param context 执行上下文
+ * @param task 任务描述
+ * @returns 执行结果
+ */
 export async function executeRoutedAgent(
   definition: AgentDefinition,
   context: AgentExecutionContext,
@@ -23,12 +35,20 @@ export async function executeRoutedAgent(
   const writer = writerRef.current;
 
   try {
+    // 1. 解析工具
     const activeTools = resolveToolsForAgent(definition, context);
-    const model = resolveModelForAgent(definition, context);
-    const instructions = buildSubAgentPrompt(definition, context);
-    const maxSteps = definition.maxSteps ?? 20;
-    const stopWhen = definition.stopWhen ?? [stepCountIs(maxSteps)];
 
+    // 2. 解析模型
+    const model = resolveModelForAgent(definition, context);
+
+    // 3. 构建 System Prompt
+    const instructions = buildSubAgentPrompt(definition, context);
+
+    // 4. 解析 maxTurns 和 stopWhen
+    const maxTurns = definition.maxTurns ?? 20;
+    const stopWhen = definition.stopWhen ?? [stepCountIs(maxTurns)];
+
+    // 5. 创建 ToolLoopAgent
     const subAgent = new ToolLoopAgent({
       model,
       instructions,
@@ -37,17 +57,23 @@ export async function executeRoutedAgent(
       stopWhen,
     });
 
-    const streamResult = await subAgent.stream({
-      prompt: definition.includeParentContext
-        ? buildContextPrompt(context, task)
-        : task,
-      abortSignal,
-    });
+    // 6. 构建初始 Prompt
+    const initialPrompt = definition.includeParentContext
+      ? buildContextPrompt(context, task)
+      : task;
 
+    // 7. 更新任务状态
     if (taskStore && taskId) {
       updateTaskStatus(taskStore, taskId, 'in_progress');
     }
 
+    // 8. 执行流式输出
+    const streamResult = await subAgent.stream({
+      prompt: initialPrompt,
+      abortSignal,
+    });
+
+    // 9. 处理输出流
     let textContent = '';
     let stepsExecuted = 0;
     const toolsUsed: string[] = [];
@@ -83,6 +109,7 @@ export async function executeRoutedAgent(
       }
     }
 
+    // 10. 获取 usage 统计
     const usage = await streamResult.usage;
     const duration = Date.now() - startTime;
     const tokenUsage = usage
@@ -93,6 +120,7 @@ export async function executeRoutedAgent(
         }
       : undefined;
 
+    // 11. 构建结果
     const result: AgentExecutionResult = {
       success: true,
       summary: textContent || 'Agent completed with no text output.',
@@ -103,6 +131,7 @@ export async function executeRoutedAgent(
       status: 'completed',
     };
 
+    // 12. 完成任务（如果有）
     if (taskStore && taskId) {
       fireAndForget(() => {
         completeTask(taskStore, taskId, result.summary);

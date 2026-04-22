@@ -103,6 +103,11 @@ app.post('/', async (c) => {
     const userId = messageUserId || 'default'
 
     // 使用统一的 createChatAgent
+    // projectDir 应为项目根目录（packages/server 的父目录）
+    const projectDir = process.cwd().endsWith('packages/server')
+      ? require('path').resolve(process.cwd(), '../..')
+      : process.cwd()
+
     const { agent, sessionState, mcpRegistry, model } = await createChatAgent({
       conversationId,
       messages: compactedMessages,
@@ -123,6 +128,9 @@ app.post('/', async (c) => {
       enableMemory: true,
       enableConnector: true,
       writerRef,
+      sessionOptions: {
+        projectDir,
+      },
     })
 
     const abortController = new AbortController()

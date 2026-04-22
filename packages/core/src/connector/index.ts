@@ -54,3 +54,13 @@ export {
   type WechatWebhookConfig,
   type FeishuWebhookConfig,
 } from './webhook-config'
+
+// Connector Loader（YAML 加载）
+export {
+  loadConnectorYaml,
+  scanConnectorDirs,
+  clearConnectorCache,
+  getAvailableConnectors,
+  type ConnectorFrontmatter,
+  type ConnectorLoaderConfig,
+} from './loader'

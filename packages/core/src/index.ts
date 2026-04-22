@@ -32,6 +32,9 @@ export * from './session-state';
 // Skills
 export * from './skills';
 
+// Loading (共享加载基础设施)
+export * from './loading';
+
 // SubAgents
 export * from './subagents';
 

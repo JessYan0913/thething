@@ -4,7 +4,7 @@
 
 import { ToolLoopAgent, wrapLanguageModel } from 'ai'
 import { createSessionState } from '../session-state'
-import { createLanguageModel } from '../model-provider'
+import { createLanguageModel, createModelProvider } from '../model-provider'
 import { createAgentPipeline, createDefaultStopConditions } from '../agent-control'
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
 import { resolveActiveSkills, loadMemoryContext, buildAgentInstructions } from './context'
@@ -33,6 +33,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     compactThreshold: sessionOptions?.compactThreshold ?? 25_000,
     maxBudgetUsd: sessionOptions?.maxBudgetUsd ?? 5.0,
     model: modelConfig.modelName ?? sessionOptions?.model,
+    projectDir: sessionOptions?.projectDir,
   })
 
   let skillResolution: SkillResolution | null = null
@@ -58,6 +59,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const instructions = await buildAgentInstructions(skillResolution, memoryContext, conversationMeta)
 
   const modelInstance = createLanguageModel(modelConfig)
+  const provider = createModelProvider(modelConfig)
 
   const wrappedModel = wrapLanguageModel({
     model: modelInstance,
@@ -74,6 +76,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     enableConnector,
     writerRef,
     model: wrappedModel,
+    provider,
   })
 
   // ============================================================

@@ -1,124 +1,85 @@
-import fs from 'fs/promises';
-import matter from 'gray-matter';
-import path from 'path';
-import type { Skill, SkillFrontmatter, SkillLoaderConfig } from './types';
+import type { Skill, SkillLoaderConfig } from './types';
 import { DEFAULT_SKILL_LOADER_CONFIG, SkillFrontmatterSchema } from './types';
+import { parseFrontmatterFile, scanConfigDirs, getUserConfigDir, getProjectConfigDir } from '../loading';
 
 export async function loadSkill(skillPath: string): Promise<Skill> {
-  const content = await fs.readFile(skillPath, 'utf-8');
-  const { data, content: body } = matter(content);
-
-  const frontmatter = validateFrontmatter(data);
+  const result = await parseFrontmatterFile(skillPath, SkillFrontmatterSchema);
 
   return {
-    name: frontmatter.name,
-    description: frontmatter.description,
-    whenToUse: frontmatter.whenToUse,
-    allowedTools: frontmatter.allowedTools,
-    model: frontmatter.model,
-    effort: frontmatter.effort,
-    context: frontmatter.context,
-    paths: frontmatter.paths,
-    body: body.trim(),
-    sourcePath: path.resolve(skillPath),
+    name: result.data.name,
+    description: result.data.description,
+    whenToUse: result.data.whenToUse,
+    allowedTools: result.data.allowedTools,
+    model: result.data.model,
+    effort: result.data.effort,
+    context: result.data.context,
+    paths: result.data.paths,
+    body: result.body,
+    sourcePath: result.filePath,
   };
 }
 
-function validateFrontmatter(data: unknown): SkillFrontmatter {
-  const result = SkillFrontmatterSchema.safeParse(data);
-
-  if (!result.success) {
-    const errors = result.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
-    throw new Error(`Invalid skill frontmatter: ${errors}`);
-  }
-
-  return result.data;
-}
-
-export async function scanSkillsDirs(config?: Partial<SkillLoaderConfig>): Promise<Skill[]> {
+export async function scanSkillsDirs(cwd?: string, config?: Partial<SkillLoaderConfig>): Promise<Skill[]> {
   const resolvedConfig: SkillLoaderConfig = {
     ...DEFAULT_SKILL_LOADER_CONFIG,
     ...config,
   };
 
+  const effectiveCwd = cwd ?? process.cwd();
+
+  // 构建扫描目录列表
+  const dirs: string[] = [
+    getUserConfigDir('skills'),
+    getProjectConfigDir(effectiveCwd, 'skills'),
+  ];
+
+  // 使用 loading 模块的扫描器
+  const scanResults = await scanConfigDirs(effectiveCwd, {
+    dirs,
+    filePattern: 'SKILL.md',
+    dirPattern: '*',
+  });
+
   const skills: Skill[] = [];
   const seen = new Set<string>();
 
-  for (const scanDir of resolvedConfig.scanDirs) {
-    const absoluteDir = path.resolve(process.cwd(), scanDir);
+  for (const result of scanResults) {
+    if (seen.has(result.filePath)) continue;
+    seen.add(result.filePath);
 
     try {
-      const exists = await fs.stat(absoluteDir).catch(() => null);
-      if (!exists || !exists.isDirectory()) {
+      const skill = await loadSkill(result.filePath);
+
+      // 跳过重复名称
+      if (skills.some((s) => s.name === skill.name)) {
         continue;
       }
 
-      const skillFiles = await findSkillFiles(absoluteDir);
+      skills.push(skill);
 
-      for (const skillFile of skillFiles) {
-        if (seen.has(skillFile)) continue;
-        seen.add(skillFile);
-
-        try {
-          const skill = await loadSkill(skillFile);
-
-          const duplicate = skills.find((s) => s.name === skill.name);
-          if (duplicate) {
-            continue;
-          }
-
-          skills.push(skill);
-
-          if (resolvedConfig.maxSkills && skills.length >= resolvedConfig.maxSkills) {
-            return skills;
-          }
-        } catch (error) {
-          console.warn(`[SkillLoader] Failed to load skill from ${skillFile}: ${(error as Error).message}`);
-        }
+      if (resolvedConfig.maxSkills && skills.length >= resolvedConfig.maxSkills) {
+        break;
       }
     } catch (error) {
-      console.debug(`[SkillLoader] Scan directory not found: ${absoluteDir}`);
+      console.warn(`[SkillLoader] Failed to load skill from ${result.filePath}: ${(error as Error).message}`);
     }
   }
 
   return skills;
 }
 
-async function findSkillFiles(dir: string): Promise<string[]> {
-  const skillFiles: string[] = [];
-
-  async function recurse(currentDir: string) {
-    try {
-      const entries = await fs.readdir(currentDir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = path.join(currentDir, entry.name);
-
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
-          await recurse(fullPath);
-        } else if (entry.isFile() && entry.name === 'SKILL.md') {
-          skillFiles.push(fullPath);
-        }
-      }
-    } catch {}
-  }
-
-  await recurse(dir);
-  return skillFiles;
-}
-
 let skillsCache: Skill[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 60_000;
 
-export async function getAvailableSkills(config?: Partial<SkillLoaderConfig>): Promise<Skill[]> {
+export async function getAvailableSkills(cwd?: string, config?: Partial<SkillLoaderConfig>): Promise<Skill[]> {
   const now = Date.now();
 
   if (skillsCache && now - cacheTimestamp < CACHE_TTL_MS) {
     return skillsCache;
   }
 
-  skillsCache = await scanSkillsDirs(config);
+  skillsCache = await scanSkillsDirs(cwd, config);
   cacheTimestamp = now;
 
   return skillsCache;

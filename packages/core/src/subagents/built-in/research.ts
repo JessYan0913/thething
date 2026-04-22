@@ -1,13 +1,21 @@
-import type { AgentDefinition } from '../core/types';
+import type { AgentDefinition } from '../types';
 
+/**
+ * Research Agent - 深度研究分析
+ *
+ * 特点：
+ * - 使用智能模型（opus/max）
+ * - 只读访问，但可以使用 web_search
+ * - 适合深度分析和信息综合
+ */
 export const RESEARCH_AGENT: AgentDefinition = {
   agentType: 'research',
   displayName: 'Research Agent',
   description: 'Deep research on topics using web search, document analysis, and information synthesis.',
-  allowedTools: ['web_search', 'read_file', 'grep', 'glob', 'web_fetch'],
+  tools: ['web_search', 'read_file', 'grep', 'glob', 'web_fetch'],
   disallowedTools: ['write_file', 'edit_file', 'bash'],
   model: 'smart',
-  maxSteps: 25,
+  maxTurns: 25,
   includeParentContext: false,
   summarizeOutput: true,
   instructions: `You are a Research Agent specialized in thorough investigation and information synthesis.
@@ -43,4 +51,5 @@ What couldn't be verified? Gaps in information?
 
 ### Confidence Level
 Rate your confidence (High/Medium/Low) and explain why.`,
+  source: 'builtin',
 };

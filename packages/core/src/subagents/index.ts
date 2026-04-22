@@ -1,33 +1,76 @@
-export { createAgentTool } from './agent-tool';
-export type { AgentToolConfig, AgentToolResult, SubAgentTools } from './agent-tool';
+// ============================================================
+// Subagents Module - 统一导出
+// ============================================================
 
+// Agent 定义和类型
+export type {
+  AgentDefinition,
+  AgentExecutionContext,
+  AgentExecutionResult,
+  AgentToolInput,
+  AgentToolConfig,
+  AgentRouteDecision,
+  AgentFrontmatter,
+  AgentSource,
+  PermissionMode,
+  TokenUsageStats,
+  AgentExecutionStatus,
+  SubAgentStreamWriter,
+  LanguageModel,
+  ToolSet,
+  UIMessage,
+  StopCondition,
+} from './types';
+export { AgentFrontmatterSchema } from './types';
+
+// Agent 加载
+export { loadAgentMarkdown, scanAgentDirs, clearAgentCache, getAvailableAgents } from './loader';
+export type { AgentLoaderConfig } from './loader';
+
+// Agent 注册
+export { globalAgentRegistry } from './registry';
+
+// Agent 路由
+export { resolveAgentRoute } from './router';
+
+// Agent 执行
+export { executeRoutedAgent } from './executor';
+export { resolveToolsForAgent } from './tool-resolver';
+export { resolveModelForAgent } from './model-resolver';
+export { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
+
+// Agent Tool
+export { createAgentTool, formatAgentResult } from './agent-tool';
+
+// 内置 Agent
 export {
-  buildSubAgentPrompt,
+  registerBuiltinAgents,
+  getBuiltinAgent,
+  isBuiltinAgent,
+  BUILTIN_AGENTS,
+  EXPLORE_AGENT,
+  RESEARCH_AGENT,
+  PLAN_AGENT,
+  GENERAL_AGENT,
+} from './built-in';
+
+// 递归防护
+export { RecursionTracker, checkRecursionGuard, RECURSION_GUARD_CONFIG } from './recursion-guard';
+
+// 事件广播
+export { EventBroadcaster } from './event-broadcaster';
+export type { AgentEventType, AgentEvent } from './event-broadcaster';
+
+// 上下文（保留旧接口兼容）
+export {
+  buildSubAgentPrompt as buildSubAgentPromptFromOptions,
   createSubAgentContext,
   extractContextForSubAgent,
   finalizeSubAgentContext,
   getSubAgentDurationMs,
   wrapSubAgentResult,
 } from './context';
-export type { BuildSubAgentPromptOptions, ContextExtractionOptions, SubAgentContext, SubAgentResult } from './context';
+export type { SubAgentContext, SubAgentResult, BuildSubAgentPromptOptions, ContextExtractionOptions } from './context';
 
-export { RESEARCH_AGENT_DEFAULTS, createResearchAgent } from './presets';
-export type { ResearchPresetOptions } from './presets';
-
-export * from './core/types';
-export * from './core/router';
-export * from './core/registry';
-export { createAgentTool as createRoutedAgentTool, initializeAgentRegistry } from './core/agent-tool';
-export * from './execution/recursion-guard';
-export * from './execution/tool-resolver';
-export * from './execution/model-resolver';
-export * from './execution/context-builder';
-export * from './execution/executor';
-export * from './agents/research-agent';
-export * from './agents/analysis-agent';
-export * from './agents/writing-agent';
-export * from './agents/explore-agent';
-export * from './agents/context-agent';
-export * from './agents/general-agent';
-export * from './agents/code-agent';
-export * from './streaming/event-broadcaster';
+// 模块版本
+export const SUBAGENTS_MODULE_VERSION = '2.0.0';

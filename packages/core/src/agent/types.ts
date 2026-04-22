@@ -2,7 +2,7 @@
 // Agent Types - 统一的 Agent 创建类型定义
 // ============================================================
 
-import type { UIMessage, Tool, ToolSet } from 'ai'
+import type { UIMessage, Tool } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { SessionStateOptions, SessionState } from '../session-state'
 import type { ModelProviderConfig } from '../model-provider'
@@ -26,6 +26,8 @@ export interface LoadToolsConfig {
   enableConnector?: boolean
   writerRef?: { current: SubAgentStreamWriter | null }
   model: any // LanguageModelV3
+  /** Model provider for creating sub-agent models (fast/smart) */
+  provider?: (modelName: string) => any
 }
 
 export interface CreateAgentConfig {

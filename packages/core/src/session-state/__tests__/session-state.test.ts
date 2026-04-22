@@ -5,6 +5,24 @@ import { TokenBudgetTracker } from '../token-budget';
 import { CostTracker, PRICING } from '../cost';
 
 // ============================================================
+// Helper: Create valid LanguageModelUsage object
+// ============================================================
+function createUsage(options: {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+}): LanguageModelUsage {
+  return {
+    inputTokens: options.inputTokens ?? 0,
+    outputTokens: options.outputTokens ?? 0,
+    totalTokens: (options.inputTokens ?? 0) + (options.outputTokens ?? 0),
+    cachedInputTokens: options.cachedInputTokens ?? 0,
+    inputTokenDetails: {},
+    outputTokenDetails: {},
+  } as LanguageModelUsage;
+}
+
+// ============================================================
 // Token Budget Tracker Tests
 // ============================================================
 describe('token-budget', () => {
@@ -26,30 +44,26 @@ describe('token-budget', () => {
 
     describe('accumulate', () => {
       it('should accumulate input tokens', () => {
-        const usage: LanguageModelUsage = { inputTokens: 1000 };
-        tracker.accumulate(usage);
+        tracker.accumulate(createUsage({ inputTokens: 1000 }));
         expect(tracker.inputTokens).toBe(1000);
       });
 
       it('should accumulate output tokens', () => {
-        const usage: LanguageModelUsage = { outputTokens: 500 };
-        tracker.accumulate(usage);
+        tracker.accumulate(createUsage({ outputTokens: 500 }));
         expect(tracker.outputTokens).toBe(500);
       });
 
       it('should accumulate cached tokens', () => {
-        const usage: LanguageModelUsage = { cachedInputTokens: 200 };
-        tracker.accumulate(usage);
+        tracker.accumulate(createUsage({ cachedInputTokens: 200 }));
         expect(tracker.cachedReadTokens).toBe(200);
       });
 
       it('should accumulate all tokens together', () => {
-        const usage: LanguageModelUsage = {
+        tracker.accumulate(createUsage({
           inputTokens: 1000,
           outputTokens: 500,
           cachedInputTokens: 200,
-        };
-        tracker.accumulate(usage);
+        }));
         expect(tracker.inputTokens).toBe(1000);
         expect(tracker.outputTokens).toBe(500);
         expect(tracker.cachedReadTokens).toBe(200);
@@ -59,41 +73,41 @@ describe('token-budget', () => {
 
     describe('totalTokens', () => {
       it('should return sum of input and output tokens', () => {
-        tracker.accumulate({ inputTokens: 5000, outputTokens: 3000 });
+        tracker.accumulate(createUsage({ inputTokens: 5000, outputTokens: 3000 }));
         expect(tracker.totalTokens).toBe(8000);
       });
     });
 
     describe('remainingTokens', () => {
       it('should calculate remaining tokens', () => {
-        tracker.accumulate({ inputTokens: 5000, outputTokens: 3000 });
+        tracker.accumulate(createUsage({ inputTokens: 5000, outputTokens: 3000 }));
         expect(tracker.remainingTokens).toBe(128_000 - 8000);
       });
     });
 
     describe('usagePercentage', () => {
       it('should calculate usage percentage', () => {
-        tracker.accumulate({ inputTokens: 64000, outputTokens: 0 });
+        tracker.accumulate(createUsage({ inputTokens: 64000, outputTokens: 0 }));
         expect(tracker.usagePercentage).toBe(50);
       });
     });
 
     describe('shouldCompact', () => {
       it('should return false when under threshold', () => {
-        tracker.accumulate({ inputTokens: 10000, outputTokens: 5000 });
+        tracker.accumulate(createUsage({ inputTokens: 10000, outputTokens: 5000 }));
         expect(tracker.shouldCompact()).toBe(false);
       });
 
       it('should return true when approaching limit', () => {
         // 128_000 - 25_000 = 103_000 threshold
-        tracker.accumulate({ inputTokens: 110000, outputTokens: 0 });
+        tracker.accumulate(createUsage({ inputTokens: 110000, outputTokens: 0 }));
         expect(tracker.shouldCompact()).toBe(true);
       });
     });
 
     describe('reportCompaction', () => {
       it('should record tokens freed', () => {
-        tracker.accumulate({ inputTokens: 50000, outputTokens: 10000 });
+        tracker.accumulate(createUsage({ inputTokens: 50000, outputTokens: 10000 }));
         const result: CompactionResult = {
           messages: [],
           executed: true,
@@ -105,7 +119,7 @@ describe('token-budget', () => {
       });
 
       it('should not go below zero', () => {
-        tracker.accumulate({ inputTokens: 5000, outputTokens: 1000 });
+        tracker.accumulate(createUsage({ inputTokens: 5000, outputTokens: 1000 }));
         const result: CompactionResult = {
           messages: [],
           executed: true,
@@ -119,8 +133,8 @@ describe('token-budget', () => {
 
     describe('finalize', () => {
       it('should accumulate final usage', () => {
-        tracker.accumulate({ inputTokens: 5000 });
-        tracker.finalize({ inputTokens: 3000, outputTokens: 1000 });
+        tracker.accumulate(createUsage({ inputTokens: 5000 }));
+        tracker.finalize(createUsage({ inputTokens: 3000, outputTokens: 1000 }));
         expect(tracker.inputTokens).toBe(8000);
         expect(tracker.outputTokens).toBe(1000);
       });
@@ -128,7 +142,7 @@ describe('token-budget', () => {
 
     describe('getSummary', () => {
       it('should return complete summary', () => {
-        tracker.accumulate({ inputTokens: 50000, outputTokens: 10000, cachedInputTokens: 5000 });
+        tracker.accumulate(createUsage({ inputTokens: 50000, outputTokens: 10000, cachedInputTokens: 5000 }));
         const summary = tracker.getSummary();
         expect(summary.inputTokens).toBe(50000);
         expect(summary.outputTokens).toBe(10000);

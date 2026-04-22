@@ -112,7 +112,7 @@ describe('skills-types', () => {
 
   describe('constants', () => {
     it('should have correct default scan dirs', () => {
-      expect(DEFAULT_SKILL_SCAN_DIRS).toContain('.thething/skills/');
+      expect(DEFAULT_SKILL_SCAN_DIRS).toContain('.thething/skills');
     });
 
     it('should have correct default loader config', () => {
