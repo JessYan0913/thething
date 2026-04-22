@@ -3,10 +3,11 @@
 // ============================================================
 
 import type { UIMessage } from 'ai'
+import type { Skill } from '../skills/types'
+import type { PermissionRule } from '../permissions/types'
+import type { MemoryEntry } from '../loaders/memory'
+import type { LoadedProjectContext } from '../system-prompt/sections/project-context'
 import {
-  getAvailableSkillsMetadata,
-  loadFullSkill,
-  recordSkillUsage,
   determineActiveSkills,
 } from '../skills'
 import {
@@ -18,9 +19,16 @@ import {
 import { buildSystemPrompt } from '../system-prompt'
 import type { SkillResolution, MemoryContext } from './types'
 
-export async function resolveActiveSkills(messages: UIMessage[], cwd?: string): Promise<SkillResolution> {
-  const skillsMetadata = await getAvailableSkillsMetadata({ cwd })
-
+/**
+ * 解析激活的 Skills
+ *
+ * 改造说明：接收已加载的 skills 数据，不再需要 cwd
+ *
+ * @param messages 消息列表
+ * @param skills 已加载的 Skill 列表
+ * @returns SkillResolution
+ */
+export function resolveActiveSkills(messages: UIMessage[], skills: Skill[]): SkillResolution {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
   if (!lastUserMessage) {
     return {
@@ -36,7 +44,7 @@ export async function resolveActiveSkills(messages: UIMessage[], cwd?: string): 
     .map((p) => p.text)
     .join(' ')
 
-  const activeSkillNames = determineActiveSkills(skillsMetadata, userMessageText)
+  const activeSkillNames = determineActiveSkills(skills, userMessageText)
   if (activeSkillNames.size === 0) {
     return {
       activeSkillNames,
@@ -46,23 +54,19 @@ export async function resolveActiveSkills(messages: UIMessage[], cwd?: string): 
     }
   }
 
-  const activeSkills = await Promise.all(
-    Array.from(activeSkillNames).map(async (name) => {
-      const metadata = skillsMetadata.find((s) => s.name === name)
-      if (!metadata) return null
-      return loadFullSkill(metadata)
-    }),
-  )
-
-  const filteredActiveSkills = activeSkills.filter((s): s is NonNullable<typeof s> => s !== null)
-
-  for (const skill of filteredActiveSkills) {
-    recordSkillUsage(skill.name)
-  }
+  // 从传入的 skills 中获取激活的完整 Skill
+  const activeSkills = skills
+    .filter((s) => activeSkillNames.has(s.name))
+    .map((s) => ({
+      name: s.name,
+      body: s.body,
+      allowedTools: s.allowedTools,
+      model: s.model,
+    }))
 
   const allAllowedTools = new Set<string>()
   let modelOverride: string | null = null
-  for (const skill of filteredActiveSkills) {
+  for (const skill of activeSkills) {
     for (const tool of skill.allowedTools) {
       allAllowedTools.add(tool)
     }
@@ -73,12 +77,7 @@ export async function resolveActiveSkills(messages: UIMessage[], cwd?: string): 
 
   return {
     activeSkillNames,
-    activeSkills: filteredActiveSkills.map((s) => ({
-      name: s.name,
-      body: s.body,
-      allowedTools: s.allowedTools,
-      model: s.model,
-    })),
+    activeSkills,
     activeToolsWhitelist: allAllowedTools.size > 0 ? allAllowedTools : null,
     activeModelOverride: modelOverride,
   }
@@ -128,20 +127,39 @@ export async function loadMemoryContext(
   }
 }
 
-export async function buildAgentInstructions(
-  skillResolution: SkillResolution | null,
-  memoryContext: MemoryContext | null,
+/**
+ * 构建 Agent 指令
+ *
+ * 改造说明：接收已加载的数据，不再需要 cwd
+ *
+ * @param skillResolution 激活的技能解析结果
+ * @param memoryContext 记忆上下文
+ * @param options 构建选项（包含已加载的数据）
+ */
+export interface BuildInstructionsOptions {
+  skills?: Skill[]
+  permissions?: PermissionRule[]
+  memoryEntries?: MemoryEntry[]
+  projectContext?: LoadedProjectContext
   conversationMeta?: {
     messageCount: number
     isNewConversation: boolean
     conversationStartTime: number
-  },
-  cwd?: string,
+  }
+}
+
+export async function buildAgentInstructions(
+  skillResolution: SkillResolution | null,
+  memoryContext: MemoryContext | null,
+  options?: BuildInstructionsOptions,
 ): Promise<string> {
   const { prompt } = await buildSystemPrompt({
-    cwd,
+    skills: options?.skills,
+    permissions: options?.permissions,
+    memoryEntries: options?.memoryEntries,
+    projectContext: options?.projectContext,
     includeProjectContext: true,
-    conversationMeta: conversationMeta ?? undefined,
+    conversationMeta: options?.conversationMeta ?? undefined,
     memoryContext: memoryContext ?? undefined,
   })
 

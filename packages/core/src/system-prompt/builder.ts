@@ -20,7 +20,6 @@ import {
   createSystemContextSection,
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
-import { createProjectContextSection } from "./sections/project-context";
 import { createSkillsSection } from "./sections/skills";
 import { createMemorySection, createRecalledMemorySection } from "./sections/memory";
 
@@ -34,6 +33,11 @@ const DEFAULT_OPTIONS: BuildSystemPromptOptions = {
   userPreferences: null,
   includeProjectContext: true,
   conversationMeta: null,
+  skills: undefined,
+  agents: undefined,
+  permissions: undefined,
+  memoryEntries: undefined,
+  projectContext: undefined,
 };
 
 // ============================================================================
@@ -75,6 +79,7 @@ const STATIC_SECTION_FACTORIES: SectionFactory[] = [
 
 /**
  * Session-level section factories - content changes per session.
+ * 改造说明：使用传入的数据而非 cwd
  */
 const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   {
@@ -109,12 +114,28 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   },
   {
     name: "project-context",
-    create: (options) => createProjectContextSection(options.cwd),
+    create: (options) => {
+      // 使用传入的 projectContext，否则返回空 section
+      if (options.projectContext?.combinedContent) {
+        return {
+          name: 'project-context',
+          content: `【项目上下文】\n\n${options.projectContext.combinedContent}`,
+          cacheStrategy: 'session' as const,
+          priority: 10,
+        };
+      }
+      return {
+        name: 'project-context',
+        content: null,
+        cacheStrategy: 'session' as const,
+        priority: 10,
+      };
+    },
     cacheStrategy: "session",
   },
   {
     name: "skills",
-    create: (options) => createSkillsSection(options.cwd),
+    create: (options) => createSkillsSection(options.skills ?? []),
     cacheStrategy: "session",
   },
   {

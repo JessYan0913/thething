@@ -2,6 +2,12 @@
 // System Prompt Module - Types
 // ============================================================================
 
+import type { Skill, SkillMetadata } from '../skills/types';
+import type { AgentDefinition } from '../subagents/types';
+import type { PermissionRule } from '../permissions/types';
+import type { MemoryEntry } from '../loaders/memory';
+import type { LoadedContextFile, LoadedProjectContext } from './sections/project-context';
+
 /**
  * A section of the system prompt that can be dynamically assembled.
  * Each section has a name for identification and a cache strategy.
@@ -27,9 +33,25 @@ export interface SystemPromptSection {
 
 /**
  * Options for building the complete system prompt.
+ *
+ * 改造说明：
+ * - 移除 cwd 参数（配置加载用 AppContext）
+ * - 新增 skills, agents, permissions, memory 数据参数
+ * - projectContext 保留，用于 THING.md 等项目上下文文件
  */
 export interface BuildSystemPromptOptions {
-  cwd?: string;
+  // 【已移除】cwd?: string;  ← 不再需要，数据通过以下参数传入
+
+  // 【新增】已加载的配置数据
+  skills?: Skill[];
+  agents?: AgentDefinition[];
+  permissions?: PermissionRule[];
+  memoryEntries?: MemoryEntry[];
+
+  // 【新增】项目上下文（THING.md 等）
+  projectContext?: LoadedProjectContext;
+
+  // 保留原有选项
   override?: string | null;
   customInstructions?: string | null;
   userPreferences?: UserPreferences | null;

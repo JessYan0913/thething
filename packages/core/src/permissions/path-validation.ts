@@ -60,8 +60,8 @@ function isSensitivePath(filePath: string): boolean {
   }
 
   // 检查敏感扩展名
-  for (const ext of SENSITIVE_EXTENSIONS) {
-    if (ext === ext.toLowerCase()) {
+  for (const sensitiveExt of SENSITIVE_EXTENSIONS) {
+    if (ext === sensitiveExt) {
       return true;
     }
   }

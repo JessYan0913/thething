@@ -3,7 +3,7 @@
 // ============================================================
 
 import { parseFrontmatterFile } from '../parser';
-import { scanDirs, mergeByPriority, LoadingCache } from '../scanner';
+import { scanConfigDirs, mergeByPriority, LoadingCache } from '../scanner';
 import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../paths';
 import type { z } from 'zod';
 import type { Skill, SkillMetadata } from '../skills/types';
@@ -62,8 +62,14 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     dirs.push(getProjectConfigDir(cwd, 'skills'));
   }
 
-  // 扫描文件
-  const scanResults = await scanDirs(dirs, { pattern: '*.md' });
+  // 扫描目录 - 使用 scanConfigDirs 支持 dirPattern
+  // Skills 目录结构：{skillName}/SKILL.md
+  const scanResults = await scanConfigDirs(cwd, {
+    dirs,
+    filePattern: 'SKILL.md',
+    dirPattern: '*',
+    recursive: false,
+  });
 
   // 加载每个文件
   const skills: SkillWithSource[] = [];

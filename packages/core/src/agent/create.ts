@@ -11,6 +11,8 @@ import { resolveActiveSkills, loadMemoryContext, buildAgentInstructions } from '
 import { loadAllTools } from './tools'
 import { checkInitialBudget } from '../compaction/initial-budget-check'
 import { formatEstimationResult } from '../compaction/token-counter'
+import { loadAll } from '../loaders'
+import { loadProjectContext } from '../system-prompt/sections/project-context'
 import type { CreateAgentConfig, CreateAgentResult, SkillResolution, MemoryContext } from './types'
 
 export async function createChatAgent(config: CreateAgentConfig): Promise<CreateAgentResult> {
@@ -28,17 +30,21 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     writerRef,
   } = config
 
+  // 加载配置数据
+  const cwd = sessionOptions?.projectDir
+  const loadedData = await loadAll({ cwd })
+
   const sessionState = createSessionState(conversationId, {
     maxContextTokens: sessionOptions?.maxContextTokens ?? 128_000,
     compactThreshold: sessionOptions?.compactThreshold ?? 25_000,
     maxBudgetUsd: sessionOptions?.maxBudgetUsd ?? 5.0,
     model: modelConfig.modelName ?? sessionOptions?.model,
-    projectDir: sessionOptions?.projectDir,
+    projectDir: cwd,
   })
 
   let skillResolution: SkillResolution | null = null
   if (enableSkills && messages && messages.length > 0) {
-    skillResolution = await resolveActiveSkills(messages, sessionOptions?.projectDir)
+    skillResolution = resolveActiveSkills(messages, loadedData.skills)
     if (skillResolution?.activeModelOverride) {
       sessionState.model = skillResolution.activeModelOverride
     }
@@ -46,8 +52,6 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
       for (const name of skillResolution.activeSkillNames) {
         sessionState.activeSkills.add(name)
       }
-      // Note: sessionState.loadedSkills 需要完整的 Skill 对象
-      // 这里只记录名称，完整 Skill 对象在 pipeline 中按需加载
     }
   }
 
@@ -56,7 +60,16 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     memoryContext = await loadMemoryContext(messages, userId)
   }
 
-  const instructions = await buildAgentInstructions(skillResolution, memoryContext, conversationMeta, sessionOptions?.projectDir)
+  // 加载项目上下文（THING.md）
+  const projectContext = await loadProjectContext(cwd)
+
+  const instructions = await buildAgentInstructions(skillResolution, memoryContext, {
+    skills: loadedData.skills,
+    permissions: loadedData.permissions,
+    memoryEntries: loadedData.memory,
+    projectContext,
+    conversationMeta,
+  })
 
   const modelInstance = createLanguageModel(modelConfig)
   const provider = createModelProvider(modelConfig)

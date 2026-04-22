@@ -1,40 +1,30 @@
-import path from 'path';
-import { parseFrontmatterFile, parseToolsList } from '../parser';
-import { scanConfigDirs, mergeByPriority, LoadingCache } from '../scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../paths';
-import type { AgentDefinition, AgentFrontmatter, AgentSource } from './types';
-import { AgentFrontmatterSchema } from './types';
+// ============================================================
+// Subagents Loader - 统一加载器代理
+// ============================================================
+//
+// 改造说明：此文件代理到 loaders/agents.ts，保持 API 兼容
+// 实际加载逻辑在 loaders/agents.ts 中
+//
+
+import {
+  loadAgents,
+  loadAgentFile,
+  clearAgentsCache,
+} from '../loaders/agents';
+import type { AgentDefinition } from './types';
 
 // ============================================================
-// Agent 加载配置
+// Agent 加载配置（保留用于类型兼容）
 // ============================================================
 
 export interface AgentLoaderConfig {
-  /** 扫描目录（默认 ['user', 'project']） */
   sources?: ('user' | 'project')[];
-  /** 最大 Agent 数量 */
   maxAgents?: number;
-  /** 是否启用缓存 */
   enableCache?: boolean;
 }
 
-const DEFAULT_AGENT_LOADER_CONFIG: AgentLoaderConfig = {
-  sources: ['user', 'project'],
-  maxAgents: 50,
-  enableCache: true,
-};
-
 // ============================================================
-// Agent 加载缓存
-// ============================================================
-
-const agentCache = new LoadingCache<AgentDefinition[]>({
-  ttlMs: 60_000,
-  maxEntries: 10,
-});
-
-// ============================================================
-// Agent Markdown 加载
+// 代理函数（保持原有 API）
 // ============================================================
 
 /**
@@ -44,136 +34,35 @@ const agentCache = new LoadingCache<AgentDefinition[]>({
  * @returns Agent 定义
  */
 export async function loadAgentMarkdown(filePath: string): Promise<AgentDefinition> {
-  const result = await parseFrontmatterFile<AgentFrontmatter>(filePath, AgentFrontmatterSchema);
-
-  const source = determineSourceFromPath(result.filePath);
-
-  return {
-    agentType: result.data.name,
-    description: result.data.description,
-    tools: parseToolsList(result.data.tools),
-    disallowedTools: parseToolsList(result.data.disallowedTools),
-    model: result.data.model ?? 'inherit',
-    effort: result.data.effort,
-    maxTurns: result.data.maxTurns ?? 20,
-    permissionMode: result.data.permissionMode,
-    background: result.data.background,
-    initialPrompt: result.data.initialPrompt,
-    isolation: result.data.isolation,
-    memory: result.data.memory,
-    skills: typeof result.data.skills === 'string'
-      ? result.data.skills.split(',').map(s => s.trim())
-      : result.data.skills,
-    instructions: result.body,
-    includeParentContext: false,
-    summarizeOutput: true,
-    source,
-    filePath: result.filePath,
-  };
+  // 假设是项目级来源（因为路径是直接传入的）
+  return loadAgentFile(filePath, 'project');
 }
-
-/**
- * 根据文件路径确定来源
- */
-function determineSourceFromPath(filePath: string): AgentSource {
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
-  const userConfigDir = path.join(homeDir, '.thething');
-
-  if (filePath.startsWith(userConfigDir)) {
-    return 'user';
-  }
-
-  // 默认为项目级
-  return 'project';
-}
-
-// ============================================================
-// Agent 目录扫描
-// ============================================================
 
 /**
  * 扫描 Agent 目录
  *
- * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param cwd 当前工作目录
  * @param config 加载配置
  * @returns Agent 定义列表
  */
 export async function scanAgentDirs(
   cwd?: string,
-  config?: Partial<AgentLoaderConfig>,
+  _config?: Partial<AgentLoaderConfig>,
 ): Promise<AgentDefinition[]> {
-  const effectiveCwd = cwd ?? detectProjectDir();
-  const resolvedConfig = { ...DEFAULT_AGENT_LOADER_CONFIG, ...config };
-
-  // 检查缓存
-  const cacheKey = `agents:${effectiveCwd}`;
-  if (resolvedConfig.enableCache) {
-    const cached = agentCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-  }
-
-  const agents: AgentDefinition[] = [];
-  const dirs: string[] = [];
-
-  // 用户全局目录
-  if (resolvedConfig.sources?.includes('user')) {
-    dirs.push(getUserConfigDir('agents'));
-  }
-
-  // 项目级目录
-  if (resolvedConfig.sources?.includes('project')) {
-    dirs.push(getProjectConfigDir(effectiveCwd, 'agents'));
-  }
-
-  // 扫描目录
-  const scanResults = await scanConfigDirs(effectiveCwd, {
-    dirs,
-    filePattern: '*.md',
-    recursive: false,
-  });
-
-  // 加载每个文件
-  for (const result of scanResults) {
-    try {
-      const agent = await loadAgentMarkdown(result.filePath);
-      agents.push(agent);
-
-      if (resolvedConfig.maxAgents && agents.length >= resolvedConfig.maxAgents) {
-        break;
-      }
-    } catch (error) {
-      console.warn(`[AgentLoader] Failed to load ${result.filePath}: ${(error as Error).message}`);
-    }
-  }
-
-  // 按优先级合并（project > user）
-  const merged = mergeByPriority(
-    agents,
-    ['project', 'user'],
-    (agent) => agent.agentType,
-  );
-
-  // 更新缓存
-  if (resolvedConfig.enableCache) {
-    agentCache.set(cacheKey, merged);
-  }
-
-  return merged;
+  return loadAgents({ cwd });
 }
 
 /**
  * 清除 Agent 加载缓存
  */
 export function clearAgentCache(): void {
-  agentCache.clear();
+  clearAgentsCache();
 }
 
 /**
  * 获取所有可用 Agent（包括内置）
  *
- * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param cwd 当前工作目录
  * @param includeBuiltin 是否包含内置 Agent
  * @returns Agent 定义列表
  */
@@ -193,7 +82,7 @@ export async function getAvailableAgents(
 }
 
 // ============================================================
-// 默认导出
+// Module Version
 // ============================================================
 
 export const AGENT_LOADER_MODULE_VERSION = '1.0.0';

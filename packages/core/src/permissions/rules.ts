@@ -108,9 +108,12 @@ export async function clearRules(cwd?: string): Promise<void> {
 /**
  * 检查规则是否匹配工具调用
  *
+ * 改造说明：接收 rules 数组，不再需要 cwd 加载配置
+ * 如果 rules 未提供，则自动加载（向后兼容）
+ *
  * @param toolName 工具名称
  * @param input 工具输入
- * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param rules 权限规则列表（可选，未提供时自动加载）
  *
  * Bash 工具: pattern 匹配命令前缀（如 "git *" 匹配所有 git 契令）
  * 文件工具: pattern 匹配路径（如 "src/**" 匹配 src 下所有文件）
@@ -118,11 +121,12 @@ export async function clearRules(cwd?: string): Promise<void> {
 export function matchRule(
   toolName: string,
   input: Record<string, unknown>,
-  cwd?: string,
+  rules?: PermissionRule[],
 ): RuleMatchResult {
-  const config = loadRulesSync(cwd);
+  // 向后兼容：如果 rules 未提供，自动加载
+  const effectiveRules = rules ?? loadRulesSync().rules;
 
-  for (const rule of config.rules) {
+  for (const rule of effectiveRules) {
     if (rule.toolName !== toolName) {
       continue;
     }
@@ -184,15 +188,17 @@ export function matchRule(
  * 检查权限规则并返回行为
  * 用于 needsApproval 函数中
  *
+ * 改造说明：接收 rules 数组，如果未提供则自动加载（向后兼容）
+ *
  * @param toolName 工具名称
  * @param input 工具输入
- * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param rules 权限规则列表（可选）
  */
 export function checkPermissionRules(
   toolName: string,
   input: Record<string, unknown>,
-  cwd?: string,
+  rules?: PermissionRule[],
 ): PermissionRule | null {
-  const result = matchRule(toolName, input, cwd);
+  const result = matchRule(toolName, input, rules);
   return result.matched ? result.rule ?? null : null;
 }

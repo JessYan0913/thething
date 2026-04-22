@@ -1,93 +1,70 @@
+// ============================================================
+// Skills Loader - 统一加载器代理
+// ============================================================
+//
+// 改造说明：此文件代理到 loaders/skills.ts，保持 API 兼容
+// 实际加载逻辑在 loaders/skills.ts 中
+//
+
+import {
+  loadSkills,
+  loadSkillFile,
+  clearSkillsCache,
+} from '../loaders/skills';
 import type { Skill, SkillLoaderConfig } from './types';
-import { DEFAULT_SKILL_LOADER_CONFIG, SkillFrontmatterSchema } from './types';
-import { parseFrontmatterFile } from '../parser';
-import { scanConfigDirs } from '../scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../paths';
 
+// ============================================================
+// 代理函数（保持原有 API）
+// ============================================================
+
+/**
+ * 加载单个 Skill 文件
+ *
+ * @param skillPath Skill 文件路径
+ * @returns Skill 对象
+ */
 export async function loadSkill(skillPath: string): Promise<Skill> {
-  const result = await parseFrontmatterFile(skillPath, SkillFrontmatterSchema);
-
+  // 假设是项目级来源（因为路径是直接传入的）
+  const result = await loadSkillFile(skillPath, 'project');
   return {
-    name: result.data.name,
-    description: result.data.description,
-    whenToUse: result.data.whenToUse,
-    allowedTools: result.data.allowedTools,
-    model: result.data.model,
-    effort: result.data.effort,
-    context: result.data.context,
-    paths: result.data.paths,
+    name: result.name,
+    description: result.description,
+    whenToUse: result.whenToUse,
+    allowedTools: result.allowedTools,
+    model: result.model,
+    effort: result.effort,
+    context: result.context,
+    paths: result.paths,
     body: result.body,
-    sourcePath: result.filePath,
+    sourcePath: result.sourcePath,
   };
 }
 
-export async function scanSkillsDirs(cwd?: string, config?: Partial<SkillLoaderConfig>): Promise<Skill[]> {
-  const resolvedConfig: SkillLoaderConfig = {
-    ...DEFAULT_SKILL_LOADER_CONFIG,
-    ...config,
-  };
-
-  const effectiveCwd = cwd ?? resolvedConfig.cwd ?? detectProjectDir();
-
-  // 构建扫描目录列表
-  const dirs: string[] = [
-    getUserConfigDir('skills'),
-    getProjectConfigDir(effectiveCwd, 'skills'),
-  ];
-
-  // 使用 loading 模块的扫描器
-  const scanResults = await scanConfigDirs(effectiveCwd, {
-    dirs,
-    filePattern: 'SKILL.md',
-    dirPattern: '*',
-  });
-
-  const skills: Skill[] = [];
-  const seen = new Set<string>();
-
-  for (const result of scanResults) {
-    if (seen.has(result.filePath)) continue;
-    seen.add(result.filePath);
-
-    try {
-      const skill = await loadSkill(result.filePath);
-
-      // 跳过重复名称
-      if (skills.some((s) => s.name === skill.name)) {
-        continue;
-      }
-
-      skills.push(skill);
-
-      if (resolvedConfig.maxSkills && skills.length >= resolvedConfig.maxSkills) {
-        break;
-      }
-    } catch (error) {
-      console.warn(`[SkillLoader] Failed to load skill from ${result.filePath}: ${(error as Error).message}`);
-    }
-  }
-
-  return skills;
+/**
+ * 扫描 Skills 配置目录
+ *
+ * @param cwd 当前工作目录
+ * @returns Skill 列表
+ */
+export async function scanSkillsDirs(
+  cwd?: string,
+  _config?: Partial<SkillLoaderConfig>,
+): Promise<Skill[]> {
+  return loadSkills({ cwd });
 }
 
-let skillsCache: Skill[] | null = null;
-let cacheTimestamp = 0;
-const CACHE_TTL_MS = 60_000;
-
-export async function getAvailableSkills(cwd?: string, config?: Partial<SkillLoaderConfig>): Promise<Skill[]> {
-  const now = Date.now();
-
-  if (skillsCache && now - cacheTimestamp < CACHE_TTL_MS) {
-    return skillsCache;
-  }
-
-  skillsCache = await scanSkillsDirs(cwd, config);
-  cacheTimestamp = now;
-
-  return skillsCache;
+/**
+ * 获取所有可用 Skills
+ *
+ * @param cwd 当前工作目录
+ * @returns Skill 列表
+ */
+export async function getAvailableSkills(
+  cwd?: string,
+  _config?: Partial<SkillLoaderConfig>,
+): Promise<Skill[]> {
+  return scanSkillsDirs(cwd);
 }
 
-export function clearSkillsCache(): void {
-  skillsCache = null;
-  cacheTimestamp = 0;
-}
+// Re-export clearSkillsCache
+export { clearSkillsCache };

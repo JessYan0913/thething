@@ -8,7 +8,6 @@ export { McpRegistry, createMcpRegistry } from './registry';
 // Loader
 export {
   scanMcpDirs,
-  loadMcpConfig,
   clearMcpCache,
   getAvailableMcpServers,
   MCP_LOADER_MODULE_VERSION,
