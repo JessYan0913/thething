@@ -2,10 +2,10 @@
 // Init - 统一初始化入口
 // ============================================================
 
-import { configureDataStore } from './datastore';
-import { initPermissions } from './permissions';
-import { initConnectorGateway } from './connector';
-import { detectProjectDir } from './paths';
+import { configureDataStore } from './foundation/datastore';
+import { initPermissions } from './extensions/permissions';
+import { initConnectorGateway } from './extensions/connector';
+import { detectProjectDir } from './foundation/paths';
 import path from 'path';
 import type { InitConfig } from './config/types';
 

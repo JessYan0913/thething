@@ -11,23 +11,23 @@
 // ============================================================
 
 // 模型能力
-export type { ModelCapabilities } from '../model-capabilities/types';
+export type { ModelCapabilities } from '../foundation/model/capabilities-types';
 
 // 模型提供商配置
-export type { ModelProviderConfig } from '../model-provider/types';
+export type { ModelProviderConfig } from '../foundation/model/provider-types';
 
 // 压缩配置
 export type {
   SessionMemoryCompactConfig,
   MicroCompactConfig,
   PostCompactConfig,
-} from '../compaction/types';
+} from '../runtime/compaction/types';
 
 // 数据存储
-export type { SQLiteDataStoreConfig } from '../datastore/types';
+export type { SQLiteDataStoreConfig } from '../foundation/datastore/types';
 
 // Skills
-export type { SkillLoaderConfig } from '../skills/types';
+export type { SkillLoaderConfig } from '../extensions/skills/types';
 
 // Connector（从 connector/types.ts 重新导出，不包括 init.ts 的 ConnectorGatewayConfig）
 export type {
@@ -39,26 +39,26 @@ export type {
   SqlExecutorConfig,
   ScriptExecutorConfig,
   MockExecutorConfig,
-} from '../connector/types';
+} from '../extensions/connector/types';
 
 // Connector Gateway 配置（来自 init.ts）
-export type { ConnectorGatewayConfig } from '../connector/init';
+export type { ConnectorGatewayConfig } from '../extensions/connector/init';
 
 // Webhook 配置（来自 webhook-config.ts）
 export type {
   WebhookConfigLoaded,
   WechatWebhookConfig,
   FeishuWebhookConfig,
-} from '../connector/webhook-config';
+} from '../extensions/connector/webhook-config';
 
 // MCP
-export type { McpServerConfig } from '../mcp/types';
+export type { McpServerConfig } from '../extensions/mcp/types';
 
 // Permissions
-export type { PermissionConfig, PermissionRule } from '../permissions/types';
+export type { PermissionConfig, PermissionRule } from '../extensions/permissions/types';
 
 // Session State（来自 types.ts）
-export type { SessionStateOptions, SessionState } from '../session-state/types';
+export type { SessionStateOptions, SessionState } from '../runtime/session-state/types';
 
 // Agent Control（来自 agent-control）
 export type {
@@ -66,7 +66,7 @@ export type {
   DenialTrackerConfig,
   ModelProvider as ModelProviderInfo,
   ModelSwitchConfig,
-} from '../agent-control';
+} from '../runtime/agent-control';
 
 // Agent（来自 agent/types.ts）
 export type {
@@ -74,10 +74,10 @@ export type {
   LoadToolsConfig,
   CreateAgentConfig,
   CreateAgentResult,
-} from '../agent/types';
+} from '../runtime/agent/types';
 
 // Memory（来自 memory/paths.ts）
-export type { MemoryConfig } from '../memory/paths';
+export type { MemoryConfig } from '../extensions/memory/paths';
 
 // ============================================================
 // 仅在 config 中定义的类型（未被其他模块定义）
@@ -93,34 +93,12 @@ export interface InitConfig {
   /** 项目目录（可选，默认自动检测） */
   cwd?: string;
   /** 数据库配置 */
-  databaseConfig?: import('../datastore/types').SQLiteDataStoreConfig;
+  databaseConfig?: import('../foundation/datastore/types').SQLiteDataStoreConfig;
   /** Connector 配置 */
-  connectorConfig?: import('../connector/init').ConnectorGatewayConfig;
+  connectorConfig?: import('../extensions/connector/init').ConnectorGatewayConfig;
 }
 
-/**
- * 工具输出配置
- */
-export interface ToolOutputConfig {
-  /** 最大结果字符数 */
-  maxResultSizeChars: number;
-  /** 最大 Token 数 */
-  maxTokens: number;
-  /** 截断消息 */
-  truncationMessage: string;
-}
-
-/**
- * 工具输出覆盖配置
- */
-export interface ToolOutputOverrides {
-  /** 按工具名覆盖 */
-  byToolName?: Record<string, Partial<ToolOutputConfig>>;
-  /** 按工具前缀覆盖 */
-  byPrefix?: Record<string, Partial<ToolOutputConfig>>;
-  /** 全局覆盖 */
-  global?: Partial<ToolOutputConfig>;
-}
+// ToolOutputConfig 和 ToolOutputOverrides 从 runtime/budget 导出，此处不再定义
 
 /**
  * Agent 工具定义配置（用于定义 Agent 可用工具）

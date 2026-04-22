@@ -825,3 +825,229 @@ describe('checkInitialBudget', () => {
 | MicroCompact 时间衰减 | 已实现 | ✅ 保持 |
 | Session Memory Compact | 已实现 | ✅ 保持 |
 | PTL Degradation | 已实现 | ✅ 保持 |
+
+---
+
+## 10. 工具输出处理实现分析（2026-04-22）
+
+### 10.1 设计架构
+
+系统设计了三层工具输出处理机制：
+
+| 层级 | 机制 | 实现位置 | 核心逻辑 |
+|------|------|----------|----------|
+| 1️⃣ | 单工具阈值 | `tool-output-manager.ts` | 每工具有独立阈值，超限触发持久化或截断 |
+| 2️⃣ | 消息级预算 | `message-budget.ts` | 多工具总额超限时，按大小排序持久化最大的 |
+| 3️⃣ | 状态稳定性 | `ContentReplacementState` | seenIds 保证相同决策，确保 prompt cache 稳定 |
+
+### 10.2 处理链路现状
+
+**实际调用链路分析**：
+
+```
+工具执行
+    │
+    ├─► 内置工具 (bash/read_file/grep/glob/...)
+    │       ❌ 未集成 processToolOutput
+    │       直接返回原始输出
+    │       bash 仅设置 maxBuffer: 200KB (Node.js 级别限制)
+    │
+    ├─► MCP 工具 (mcp_*)
+    │       ❌ wrapper 存在但未使用
+    │       wrapMcpToolsWithOutputHandler() 直接返回原工具 (line 42)
+    │       processMcpToolResult() 函数存在但未被调用
+    │
+    ├─► Connector 工具 (connector_*)
+    │       ✅ 在 execute 内调用 processToolOutput
+    │       有 sessionContext 时触发持久化
+    │
+    ├─► Agent 子代理工具
+    │       ❌ 未集成输出处理
+    │       直接返回子代理结果
+    │
+    └─► 消息层兜底
+            ✅ pipeline.ts prepareStep() 调用 enforceToolResultBudget()
+            在工具结果进入消息历史后检查总额并持久化
+```
+
+### 10.3 各工具类型处理状态
+
+| 工具类型 | 单工具阈值检查 | 执行时持久化 | 消息层预算检查 | 状态 |
+|---------|---------------|-------------|---------------|------|
+| 内置工具 (bash/read_file/grep) | ❌ 无 | ❌ 无 | ✅ 消息层处理 | ⚠️ 依赖兜底 |
+| MCP 工具 (mcp_*) | ❌ wrapper 未使用 | ❌ 无 | ✅ 消息层处理 | ⚠️ 依赖兜底 |
+| Connector 工具 | ✅ execute 内 | ✅ execute 内 | ✅ 消息层处理 | ✅ 完整 |
+| Agent 工具 | ❌ 无 | ❌ 无 | ✅ 消息层处理 | ⚠️ 依赖兜底 |
+
+### 10.4 关键代码位置
+
+**内置工具无处理的问题**：
+
+```typescript
+// src/runtime/tools/bash.ts - line 217-222
+const { stdout, stderr } = await execWithAbort(command, {
+  encoding: 'utf-8',
+  timeout: timeoutMs,
+  maxBuffer: BASH_MAX_BUFFER,  // 仅 Node.js 级别限制，超出抛错
+  signal: options?.abortSignal,
+});
+// 直接返回，无 processToolOutput 调用
+return { stdout, stderr, exitCode: 0, command };
+```
+
+```typescript
+// src/runtime/tools/read.ts - line 54-66
+const content = await fs.readFile(absolutePath, 'utf-8');
+// 直接返回完整文件内容，无截断/持久化
+return {
+  path: filePath,
+  content: numberedLines,  // 带行号的完整内容
+  totalLines: lines.length,
+};
+```
+
+**MCP wrapper 空壳问题**：
+
+```typescript
+// src/extensions/mcp/tool-wrapper.ts - line 31-43
+export function wrapMcpToolWithOutputHandler(...): Tool {
+  // 由于 AI SDK Tool 类型不暴露 execute 函数直接修改
+  // 这里返回原始工具，输出处理在消息层进行
+  return tool  // ❌ 直接返回，无包装
+}
+```
+
+**消息层兜底处理**：
+
+```typescript
+// src/runtime/agent-control/pipeline.ts - line 106-121
+if (stepNumber > 0 && lastStep?.toolResults && lastStep.toolResults.length > 0) {
+  const budgetResult = await enforceToolResultBudget(
+    messages,
+    sessionState.contentReplacementState,
+    sessionState.conversationId,
+    sessionState.projectDir
+  );
+  
+  if (budgetResult.newlyPersisted.length > 0) {
+    // 替换消息中的 tool_result 内容
+    messages = budgetResult.messages;
+  }
+}
+```
+
+### 10.5 持久化文件结构
+
+```
+.thething/
+└── tool-results/
+    └── {sessionId}/
+        ├── {toolUseId}.txt      # 文本输出
+        └── {toolUseId}.json     # JSON 输出
+```
+
+持久化消息格式：
+
+```
+<persisted-output>
+Output too large (50KB).
+Full output saved to: .thething/tool-results/session-123/tool-456.txt
+
+Preview (first 1KB):
+...实际内容预览...
+...
+</persisted-output>
+```
+
+### 10.6 实际处理流程示例
+
+对于 bash 工具返回超大输出（>100KB）：
+
+```
+bash execute()
+    │
+    └─► 返回 { stdout: "100KB+...", stderr: "", exitCode: 0 }
+            │
+            └─► 进入 AI SDK 消息历史（完整内容）
+                    │
+                    └─► prepareStep() 检查 lastStep.toolResults
+                            │
+                            └─► enforceToolResultBudget()
+                                    │
+                                    ├─► 发现总额 > MAX_TOOL_RESULTS_PER_MESSAGE_CHARS
+                                    │
+                                    ├─► 按 size 降序排序候选
+                                    │
+                                    └─► persistToolResult()
+                                    │   写入 .thething/tool-results/{sessionId}/{toolUseId}.txt
+                                    │
+                                    └─► 替换消息内容为预览：
+                                        <persisted-output>
+                                        Output too large (100KB).
+                                        Full output saved to: ...
+                                        Preview (first 1KB): ...
+                                        </persisted-output>
+```
+
+### 10.7 存在的问题
+
+| 问题 | 影响 | 建议 |
+|------|------|------|
+| 内置工具无执行时处理 | 大输出首次进入消息是完整内容，浪费 Token | 在 execute 返回前调用 processToolOutput |
+| MCP wrapper 未生效 | 同上 | 需要找到合适的拦截点 |
+| 依赖消息层兜底 | 第一次进入时已经占用预算，然后才持久化 | 执行时处理更高效 |
+| bash maxBuffer 抛错 | 超出 200KB 直接失败，无法持久化 | 应持久化而非抛错 |
+
+### 10.8 工具输出配置表
+
+```typescript
+// src/runtime/budget/tool-output-manager.ts
+TOOL_OUTPUT_CONFIGS = {
+  'bash': { maxResultSizeChars: 100_000, shouldPersistToDisk: true },
+  'read_file': { maxResultSizeChars: 50_000, shouldPersistToDisk: true },
+  'write_file': { maxResultSizeChars: 10_000, shouldPersistToDisk: false },
+  'edit_file': { maxResultSizeChars: 10_000, shouldPersistToDisk: false },
+  'grep': { maxResultSizeChars: 30_000, shouldPersistToDisk: true },
+  'glob': { maxResultSizeChars: 20_000, shouldPersistToDisk: true },
+  'mcp_default': { maxResultSizeChars: 100_000, shouldPersistToDisk: true },
+  'connector_default': { maxResultSizeChars: 50_000, shouldPersistToDisk: true },
+}
+```
+
+### 10.9 改进建议
+
+**方案一：在工具 execute 内集成**
+
+```typescript
+// src/runtime/tools/bash.ts
+execute: async ({ command }) => {
+  const { stdout, stderr } = await execWithAbort(...);
+  
+  // ✅ 新增：执行时处理
+  if (sessionContext) {
+    const processed = await processToolOutput(
+      { stdout, stderr, exitCode: 0 },
+      'bash',
+      toolUseId,
+      sessionContext
+    );
+    return processed.content;
+  }
+  
+  return { stdout, stderr, exitCode: 0 };
+}
+```
+
+**方案二：在 Agent 层拦截工具结果**
+
+在 `ToolLoopAgent` 的 `onToolResult` 回调中统一处理所有工具输出。
+
+### 10.10 结论
+
+当前实现中，工具输出处理主要依赖**消息层兜底**机制：
+
+- ✅ **消息级预算检查有效**：最终会持久化超限的大输出
+- ⚠️ **执行时处理缺失**：内置工具和 MCP 工具未在 execute 内处理
+- ⚠️ **首次进入浪费 Token**：完整内容先进入消息，才被持久化替换
+
+**核心设计已实现**，但执行层集成不完整，建议后续完善。

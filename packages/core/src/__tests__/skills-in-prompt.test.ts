@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
-import { loadSkills, clearSkillsCache } from '../loaders/skills';
-import { buildSystemPrompt } from '../system-prompt/builder';
+import { loadSkills, clearSkillsCache } from '../api/loaders/skills';
+import { buildSystemPrompt } from '../extensions/system-prompt/builder';
 
 describe('Skills in System Prompt Integration', () => {
   beforeAll(async () => {

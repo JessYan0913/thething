@@ -11,7 +11,7 @@
 import path from 'path';
 import fs from 'fs';
 import module from 'module';
-import type { SqliteDatabase, SqliteDatabaseConstructor } from './datastore/types';
+import type { SqliteDatabase, SqliteDatabaseConstructor } from './foundation/datastore/types';
 
 // Re-export SQLite types for use across the codebase
 export type {
@@ -19,7 +19,7 @@ export type {
   SqliteDatabaseConstructor,
   SqliteDatabaseOptions,
   SqliteStatement,
-} from './datastore/types';
+} from './foundation/datastore/types';
 
 // Cache for loaded native modules
 const nativeModuleCache: Map<string, any> = new Map()

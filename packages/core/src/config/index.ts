@@ -35,7 +35,7 @@ export {
 } from './defaults';
 
 // Micro Compact 配置（Set 形式，从 compaction/types 导出）
-export { DEFAULT_MICRO_COMPACT_CONFIG } from '../compaction/types';
+export { DEFAULT_MICRO_COMPACT_CONFIG } from '../runtime/compaction/types';
 
 // 原始配置（数组形式，用于自定义转换）
 export { DEFAULT_MICRO_COMPACT_CONFIG_RAW } from './defaults';
@@ -110,7 +110,7 @@ export {
   getModelCapabilities,
   getEffectiveContextBudget,
   getAutoCompactThreshold,
-} from '../model-capabilities';
+} from '../foundation/model';
 
 // ============================================================
 // 类型导出（统一从 config/types.ts 导出）
@@ -151,9 +151,13 @@ export type {
 // 跨模块组合类型（仅在 config/types.ts 定义）
 export type {
   InitConfig,
-  ToolOutputConfig,
-  ToolOutputOverrides,
   AgentToolDefinitionConfig,
   TaskSchedulerConfig,
   TaskSyncConfig,
 } from './types';
+
+// 从 runtime/budget 导出的类型
+export type {
+  ToolOutputConfig,
+  ToolOutputOverrides,
+} from '../runtime/budget/tool-output-manager';
