@@ -1,52 +1,12 @@
 import { createMCPClient, type MCPClient } from '@ai-sdk/mcp';
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { ToolSet } from 'ai';
+import type { McpServerConfig, McpClientConnection, McpRegistrySnapshot } from './types';
 
 type McpTransport =
   | { type: 'sse'; url: string; headers?: Record<string, string> }
   | { type: 'http'; url: string; headers?: Record<string, string> }
   | StdioClientTransport;
-
-export type McpTransportType = 'sse' | 'http' | 'stdio';
-
-export interface McpServerConfig {
-  name: string;
-  transport:
-    | { type: 'sse'; url: string; headers?: Record<string, string> }
-    | { type: 'http'; url: string; headers?: Record<string, string> }
-    | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string> };
-  enabled?: boolean;
-  tools?: {
-    include?: string[];
-    exclude?: string[];
-  };
-  elicitation?: {
-    enabled: boolean;
-    handler?: (
-      message: string,
-      schema: unknown,
-    ) => Promise<{ action: 'accept' | 'decline' | 'cancel'; content?: Record<string, unknown> }>;
-  };
-}
-
-export interface McpClientConnection {
-  config: McpServerConfig;
-  client: MCPClient | null;
-  tools: ToolSet;
-  connectedAt: number;
-  error?: Error;
-}
-
-export interface McpRegistrySnapshot {
-  servers: Array<{
-    name: string;
-    enabled: boolean;
-    connected: boolean;
-    toolCount: number;
-    error?: string;
-  }>;
-  totalTools: number;
-}
 
 export class McpRegistry {
   private _connections = new Map<string, McpClientConnection>();
@@ -132,7 +92,7 @@ export class McpRegistry {
 
     if (connection.client) {
       try {
-        await connection.client.close();
+        await (connection.client as MCPClient).close();
       } catch {}
     }
 
@@ -148,13 +108,13 @@ export class McpRegistry {
   getAllTools(): ToolSet {
     let merged: ToolSet = {};
     for (const [, conn] of this._connections) {
-      merged = { ...merged, ...conn.tools };
+      merged = { ...merged, ...conn.tools as ToolSet };
     }
     return merged;
   }
 
   getServerTools(name: string): ToolSet {
-    return this._connections.get(name)?.tools ?? {};
+    return (this._connections.get(name)?.tools as ToolSet) ?? {};
   }
 
   snapshot(): McpRegistrySnapshot {

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { McpRegistry, createMcpRegistry, type McpServerConfig } from '../registry';
+import { McpRegistry, createMcpRegistry } from '../registry';
+import type { McpServerConfig } from '../types';
 
 // ============================================================
 // MCP Registry Tests

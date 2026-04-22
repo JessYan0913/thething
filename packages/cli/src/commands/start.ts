@@ -9,7 +9,7 @@ import net from 'net'
 import { getDataDirConfig, ensureDataDirSubdirs } from '../lib/data-dir'
 import { writeServerLock, isServerRunning, deleteServerLock } from '../lib/server-manager'
 import { startServer, configureStaticAssets, setupStaticAssets } from '@the-thing/server'
-import { configureDatabase, initPermissions, initConnectorGateway } from '@the-thing/core'
+import { configureDatabase, initPermissions, initConnectorGateway, getProjectDir } from '@the-thing/core'
 
 // 环境变量: THETHING_CONNECTORS_DIR
 // 允许用户自定义 connectors 配置目录
@@ -133,20 +133,21 @@ export default async function start(options: StartOptions): Promise<void> {
   configureDatabase({ dataDir: dataDirConfig.dataDir })
 
   // Initialize permissions and connector gateway
-  await initPermissions().catch(err => console.error(chalk.red('[Permissions] Init failed:', err)))
+  const projectDir = getProjectDir()
+  await initPermissions(projectDir).catch(err => console.error(chalk.red('[Permissions] Init failed:', err)))
 
   // Determine connectors directory:
   // 1. THETHING_CONNECTORS_DIR environment variable (highest priority)
-  // 2. connectors/ in current working directory (if exists)
+  // 2. connectors/ in project directory (if exists)
   // 3. connectors/ in data directory (fallback)
-  const cwdConnectorsDir = path.join(process.cwd(), 'connectors')
+  const projectConnectorsDir = path.join(projectDir, 'connectors')
   const dataConnectorsDir = path.join(dataDirConfig.dataDir, 'connectors')
 
   let connectorsDir: string
   if (DEFAULT_CONNECTORS_DIR) {
     connectorsDir = DEFAULT_CONNECTORS_DIR
-  } else if (fs.existsSync(cwdConnectorsDir)) {
-    connectorsDir = cwdConnectorsDir
+  } else if (fs.existsSync(projectConnectorsDir)) {
+    connectorsDir = projectConnectorsDir
   } else {
     connectorsDir = dataConnectorsDir
   }

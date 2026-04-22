@@ -6,8 +6,13 @@ import {
   mergeByPriority,
   LoadingCache,
 } from '../loading';
-import { McpServerConfigSchema, DEFAULT_MCP_LOADER_CONFIG, type McpLoaderConfig, type McpServerConfigSource } from './mcp-loader-types';
-import type { McpServerConfig } from './registry';
+import {
+  McpServerConfigSchema,
+  DEFAULT_MCP_LOADER_CONFIG,
+  type McpServerConfig,
+  type McpServerConfigSource,
+  type McpLoaderConfig,
+} from './types';
 
 // ============================================================
 // MCP 加载缓存
@@ -35,7 +40,6 @@ export async function loadMcpConfig(
 ): Promise<McpServerConfigSource> {
   const result = await parseJsonFile(filePath, McpServerConfigSchema);
 
-  // 类型断言：Zod schema 验证后的数据符合 McpServerConfigSource
   return {
     name: result.data.name,
     transport: result.data.transport as McpServerConfig['transport'],
@@ -50,18 +54,19 @@ export async function loadMcpConfig(
 /**
  * 扫描 MCP 配置目录
  *
- * @param cwd 当前工作目录
+ * @param cwd 当前工作目录（默认 process.cwd()）
  * @param config 加载配置
  * @returns MCP 服务器配置列表
  */
 export async function scanMcpDirs(
-  cwd: string,
+  cwd?: string,
   config?: Partial<McpLoaderConfig>,
 ): Promise<McpServerConfig[]> {
+  const effectiveCwd = cwd ?? process.cwd();
   const resolvedConfig = { ...DEFAULT_MCP_LOADER_CONFIG, ...config };
 
   // 检查缓存
-  const cacheKey = `mcps:${cwd}`;
+  const cacheKey = `mcps:${effectiveCwd}`;
   if (resolvedConfig.enableCache) {
     const cached = mcpCache.get(cacheKey);
     if (cached) {
@@ -79,11 +84,11 @@ export async function scanMcpDirs(
 
   // 项目级目录
   if (resolvedConfig.sources?.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'mcps'));
+    dirs.push(getProjectConfigDir(effectiveCwd, 'mcps'));
   }
 
   // 扫描目录
-  const scanResults = await scanConfigDirs(cwd, {
+  const scanResults = await scanConfigDirs(effectiveCwd, {
     dirs,
     filePattern: '*.json',
     recursive: false,
@@ -137,10 +142,10 @@ export function clearMcpCache(): void {
 /**
  * 获取所有可用 MCP 服务器配置
  *
- * @param cwd 当前工作目录
+ * @param cwd 当前工作目录（默认 process.cwd()）
  * @returns MCP 服务器配置列表
  */
-export async function getAvailableMcpServers(cwd: string): Promise<McpServerConfig[]> {
+export async function getAvailableMcpServers(cwd?: string): Promise<McpServerConfig[]> {
   return scanMcpDirs(cwd);
 }
 

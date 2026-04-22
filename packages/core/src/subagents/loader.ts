@@ -92,18 +92,19 @@ function determineSourceFromPath(filePath: string): AgentSource {
 /**
  * 扫描 Agent 目录
  *
- * @param cwd 当前工作目录
+ * @param cwd 当前工作目录（默认 process.cwd()）
  * @param config 加载配置
  * @returns Agent 定义列表
  */
 export async function scanAgentDirs(
-  cwd: string,
+  cwd?: string,
   config?: Partial<AgentLoaderConfig>,
 ): Promise<AgentDefinition[]> {
+  const effectiveCwd = cwd ?? process.cwd();
   const resolvedConfig = { ...DEFAULT_AGENT_LOADER_CONFIG, ...config };
 
   // 检查缓存
-  const cacheKey = `agents:${cwd}`;
+  const cacheKey = `agents:${effectiveCwd}`;
   if (resolvedConfig.enableCache) {
     const cached = agentCache.get(cacheKey);
     if (cached) {
@@ -121,11 +122,11 @@ export async function scanAgentDirs(
 
   // 项目级目录
   if (resolvedConfig.sources?.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'agents'));
+    dirs.push(getProjectConfigDir(effectiveCwd, 'agents'));
   }
 
   // 扫描目录
-  const scanResults = await scanConfigDirs(cwd, {
+  const scanResults = await scanConfigDirs(effectiveCwd, {
     dirs,
     filePattern: '*.md',
     recursive: false,
@@ -170,12 +171,12 @@ export function clearAgentCache(): void {
 /**
  * 获取所有可用 Agent（包括内置）
  *
- * @param cwd 当前工作目录
+ * @param cwd 当前工作目录（默认 process.cwd()）
  * @param includeBuiltin 是否包含内置 Agent
  * @returns Agent 定义列表
  */
 export async function getAvailableAgents(
-  cwd: string,
+  cwd?: string,
   includeBuiltin: boolean = true,
 ): Promise<AgentDefinition[]> {
   const customAgents = await scanAgentDirs(cwd);

@@ -1,8 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { McpServerConfig } from './registry';
-import { scanMcpDirs, clearMcpCache } from './mcp-loader';
-import type { McpServerConfigSource } from './mcp-loader-types';
+import type { McpServerConfig } from './types';
+import type { McpServerConfigSource } from './types';
+import { scanMcpDirs, clearMcpCache } from './loader';
 
 // ============================================================
 // MCP 配置目录
@@ -91,7 +91,7 @@ function fromSerializable(data: Record<string, unknown>, filePath: string): McpS
  * 获取所有 MCP 服务器配置（使用新加载器）
  */
 export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig[]> {
-  return scanMcpDirs(cwd ?? process.cwd());
+  return scanMcpDirs(cwd);
 }
 
 /**

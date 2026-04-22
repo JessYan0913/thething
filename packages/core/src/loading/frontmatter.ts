@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import matter from 'gray-matter';
+import yaml from 'js-yaml';
 import type { z } from 'zod';
 import path from 'path';
 
@@ -122,6 +123,39 @@ export async function parseJsonFile<T>(
     data = JSON.parse(content);
   } catch (e) {
     throw new Error(`Invalid JSON in ${absolutePath}: ${(e as Error).message}`);
+  }
+
+  const validated = schema.safeParse(data);
+
+  if (!validated.success) {
+    throw new FrontmatterParseError(absolutePath, validated.error);
+  }
+
+  return {
+    data: validated.data,
+    filePath: absolutePath,
+  };
+}
+
+/**
+ * 解析纯 YAML 文件（无 frontmatter）
+ *
+ * @param filePath 文件路径
+ * @param schema Zod schema 用于验证
+ * @returns 解析结果
+ */
+export async function parsePlainYamlFile<T>(
+  filePath: string,
+  schema: z.ZodSchema<T>,
+): Promise<{ data: T; filePath: string }> {
+  const absolutePath = path.resolve(filePath);
+  const content = await fs.readFile(absolutePath, 'utf-8');
+
+  let data: unknown;
+  try {
+    data = yaml.load(content);
+  } catch (e) {
+    throw new Error(`Invalid YAML in ${absolutePath}: ${(e as Error).message}`);
   }
 
   const validated = schema.safeParse(data);

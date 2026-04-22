@@ -1,8 +1,12 @@
-import fs from 'fs/promises';
-import yaml from 'js-yaml';
-import path from 'path';
 import { z } from 'zod';
-import { getUserConfigDir, getProjectConfigDir, LoadingCache } from '../loading';
+import {
+  parsePlainYamlFile,
+  scanConfigDirs,
+  getUserConfigDir,
+  getProjectConfigDir,
+  mergeByPriority,
+  LoadingCache,
+} from '../loading';
 
 // ============================================================
 // Connector Frontmatter Schema
@@ -70,7 +74,7 @@ const ConnectorFrontmatterSchema = z.object({
 export type ConnectorFrontmatter = z.infer<typeof ConnectorFrontmatterSchema>;
 
 // ============================================================
-// Connector Loader
+// Connector Loader Config
 // ============================================================
 
 export interface ConnectorLoaderConfig {
@@ -87,28 +91,47 @@ const DEFAULT_CONNECTOR_LOADER_CONFIG: Required<ConnectorLoaderConfig> = {
 
 const connectorCache = new LoadingCache<ConnectorFrontmatter[]>();
 
+// ============================================================
+// Connector Source (带来源信息)
+// ============================================================
+
+export interface ConnectorSource extends ConnectorFrontmatter {
+  source: 'user' | 'project';
+  filePath: string;
+}
+
+// ============================================================
+// Connector 加载
+// ============================================================
+
 /**
  * 从 YAML 文件加载 Connector 定义
+ *
+ * @param filePath YAML 文件路径
+ * @param source 来源标识
+ * @returns Connector 定义（带来源信息）
  */
-export async function loadConnectorYaml(filePath: string): Promise<ConnectorFrontmatter> {
-  const absolutePath = path.resolve(filePath);
-  const content = await fs.readFile(absolutePath, 'utf-8');
-
-  // 解析 YAML
-  const raw = yaml.load(content) as Record<string, unknown>;
+export async function loadConnectorYaml(
+  filePath: string,
+  source: 'user' | 'project',
+): Promise<ConnectorSource> {
+  const result = await parsePlainYamlFile(filePath, ConnectorFrontmatterSchema);
 
   // 替换环境变量
-  const processed = replaceEnvVars(raw);
+  const processed = replaceEnvVars(result.data as Record<string, unknown>);
 
-  // 验证 schema
+  // 再次验证（环境变量替换后）
   const validated = ConnectorFrontmatterSchema.safeParse(processed);
-
   if (!validated.success) {
     const issues = validated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');
-    throw new Error(`Invalid connector config in ${absolutePath}: ${issues}`);
+    throw new Error(`Invalid connector config after env replacement: ${issues}`);
   }
 
-  return validated.data;
+  return {
+    ...validated.data,
+    source,
+    filePath: result.filePath,
+  };
 }
 
 /**
@@ -160,15 +183,20 @@ function replaceEnvVarInString(str: string): string {
 
 /**
  * 扫描 Connector 配置目录
+ *
+ * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param config 加载配置
+ * @returns Connector 定义列表
  */
 export async function scanConnectorDirs(
-  cwd: string,
+  cwd?: string,
   config?: Partial<ConnectorLoaderConfig>,
 ): Promise<ConnectorFrontmatter[]> {
+  const effectiveCwd = cwd ?? process.cwd();
   const resolvedConfig = { ...DEFAULT_CONNECTOR_LOADER_CONFIG, ...config };
 
   // 检查缓存
-  const cacheKey = `connectors:${cwd}`;
+  const cacheKey = `connectors:${effectiveCwd}`;
   if (resolvedConfig.enableCache) {
     const cached = connectorCache.get(cacheKey);
     if (cached) {
@@ -185,59 +213,75 @@ export async function scanConnectorDirs(
 
   // 项目级目录
   if (resolvedConfig.sources.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'connectors'));
+    dirs.push(getProjectConfigDir(effectiveCwd, 'connectors'));
   }
 
-  // 扫描目录
-  const connectors: ConnectorFrontmatter[] = [];
-  const seen = new Set<string>();
+  // 使用 scanConfigDirs 扫描
+  const scanResults = await scanConfigDirs(effectiveCwd, {
+    dirs,
+    filePattern: '*.yaml',
+    recursive: false,
+  });
 
-  for (const dir of dirs) {
-    const absoluteDir = path.resolve(dir);
+  // 也扫描 .yml 文件
+  const ymlScanResults = await scanConfigDirs(effectiveCwd, {
+    dirs,
+    filePattern: '*.yml',
+    recursive: false,
+  });
+
+  const allResults = [...scanResults, ...ymlScanResults];
+  const connectors: ConnectorSource[] = [];
+  const seenPaths = new Set<string>();
+
+  // 加载每个文件
+  for (const result of allResults) {
+    if (seenPaths.has(result.filePath)) continue;
+    seenPaths.add(result.filePath);
 
     try {
-      const stat = await fs.stat(absoluteDir).catch(() => null);
-      if (!stat?.isDirectory()) {
-        continue;
-      }
+      const connector = await loadConnectorYaml(
+        result.filePath,
+        result.source as 'user' | 'project',
+      );
+      connectors.push(connector);
 
-      const files = await fs.readdir(absoluteDir);
-      const yamlFiles = files.filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
-
-      for (const file of yamlFiles) {
-        const filePath = path.join(absoluteDir, file);
-
-        if (seen.has(filePath)) continue;
-        seen.add(filePath);
-
-        try {
-          const connector = await loadConnectorYaml(filePath);
-
-          // 跳过重复 ID
-          if (connectors.some((c) => c.id === connector.id)) {
-            continue;
-          }
-
-          connectors.push(connector);
-
-          if (connectors.length >= resolvedConfig.maxConnectors) {
-            break;
-          }
-        } catch (error) {
-          console.warn(`[ConnectorLoader] Failed to load ${filePath}: ${(error as Error).message}`);
-        }
+      if (connectors.length >= resolvedConfig.maxConnectors) {
+        break;
       }
     } catch (error) {
-      console.debug(`[ConnectorLoader] Scan directory not found: ${absoluteDir}`);
+      console.warn(`[ConnectorLoader] Failed to load ${result.filePath}: ${(error as Error).message}`);
     }
   }
 
+  // 按优先级合并（project > user）
+  const merged = mergeByPriority(
+    connectors,
+    ['project', 'user'],
+    (c) => c.id,
+  );
+
+  // 去除来源元数据
+  const result: ConnectorFrontmatter[] = merged.map((c) => ({
+    id: c.id,
+    name: c.name,
+    version: c.version,
+    description: c.description,
+    enabled: c.enabled,
+    inbound: c.inbound,
+    auth: c.auth,
+    credentials: c.credentials,
+    custom_settings: c.custom_settings,
+    base_url: c.base_url,
+    tools: c.tools,
+  }));
+
   // 更新缓存
   if (resolvedConfig.enableCache) {
-    connectorCache.set(cacheKey, connectors);
+    connectorCache.set(cacheKey, result);
   }
 
-  return connectors;
+  return result;
 }
 
 /**
@@ -249,9 +293,11 @@ export function clearConnectorCache(): void {
 
 /**
  * 获取所有可用 Connectors
+ *
+ * @param cwd 当前工作目录（默认 process.cwd()）
  */
 export async function getAvailableConnectors(
-  cwd: string,
+  cwd?: string,
 ): Promise<ConnectorFrontmatter[]> {
   return scanConnectorDirs(cwd);
 }

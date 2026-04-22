@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { removeRule, saveRule, loadRules, type PermissionBehavior } from '@the-thing/core'
+import { removeRule, saveRule, loadRules, getProjectDir, type PermissionBehavior } from '@the-thing/core'
 
 const app = new Hono()
 
@@ -16,11 +16,12 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing toolName' }, 400)
     }
 
+    const projectDir = getProjectDir()
     const rule = await saveRule({
       toolName,
       pattern,
       behavior: behavior || 'allow',
-    })
+    }, projectDir)
 
     return c.json({ success: true, rule })
   } catch (error) {
@@ -37,7 +38,8 @@ app.delete('/', async (c) => {
       return c.json({ error: 'Missing id' }, 400)
     }
 
-    await removeRule(id)
+    const projectDir = getProjectDir()
+    await removeRule(id, projectDir)
     return c.json({ success: true })
   } catch (error) {
     console.error('[Permissions API] Error:', error)
@@ -47,7 +49,8 @@ app.delete('/', async (c) => {
 
 app.get('/', async (c) => {
   try {
-    const config = await loadRules()
+    const projectDir = getProjectDir()
+    const config = await loadRules(projectDir)
     return c.json({ rules: config.rules })
   } catch (error) {
     console.error('[Permissions API] Error:', error)

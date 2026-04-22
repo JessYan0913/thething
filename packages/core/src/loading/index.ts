@@ -1,6 +1,7 @@
 export {
   parseFrontmatterFile,
   parseYamlFile,
+  parsePlainYamlFile,
   parseJsonFile,
   parseToolsList,
   getUserConfigDir,

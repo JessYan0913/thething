@@ -13,6 +13,7 @@ import {
   extractMemoriesInBackground,
   type SubAgentStreamWriter,
   createModelProvider,
+  getProjectDir,
 } from '@the-thing/core'
 import { ENV_MODEL } from '../env-names'
 import {
@@ -102,11 +103,8 @@ app.post('/', async (c) => {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
     const userId = messageUserId || 'default'
 
-    // 使用统一的 createChatAgent
-    // projectDir 应为项目根目录（packages/server 的父目录）
-    const projectDir = process.cwd().endsWith('packages/server')
-      ? require('path').resolve(process.cwd(), '../..')
-      : process.cwd()
+    // 使用统一的 getProjectDir 获取项目根目录
+    const projectDir = getProjectDir()
 
     const { agent, sessionState, mcpRegistry, model } = await createChatAgent({
       conversationId,

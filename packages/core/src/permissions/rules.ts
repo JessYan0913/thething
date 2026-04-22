@@ -1,42 +1,17 @@
 /**
- * 权限规则加载器 + 持久化
- *
- * 配置文件路径:
- * - 用户全局: ~/.thething/permissions/permissions.json
- * - 项目级: 项目/.thething/permissions/permissions.json
- *
- * 优先级: 项目级 > 用户全局
+ * 权限规则管理 - 规则匹配与 CRUD
  */
 
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { nanoid } from 'nanoid';
-import { parseJsonFile, getUserConfigDir, getProjectConfigDir, LoadingCache } from '../loading';
-import { PERMISSIONS_FILENAME } from '../config/defaults';
+import { getProjectConfigDir } from '../loading';
 import type { PermissionConfig, PermissionRule, RuleMatchResult } from './types';
-import { PermissionConfigSchema } from './types';
-
-const CURRENT_VERSION = 1;
-
-let configuredBaseDir: string | null = null;
-
-/**
- * Configure the base directory for permissions file.
- * Defaults to process.cwd().
- */
-export function configurePermissionsBaseDir(dir: string): void {
-  configuredBaseDir = dir;
-}
-
-// 使用 LoadingCache 替代独立的缓存变量
-const permissionsCache = new LoadingCache<PermissionConfig>();
-
-/**
- * 获取配置文件的绝对路径
- */
-function getPermissionsFilePath(dir: string): string {
-  return path.join(dir, PERMISSIONS_FILENAME);
-}
+import {
+  loadRules,
+  loadRulesSync,
+  clearPermissionsCache,
+  getPermissionsFilePath,
+} from './loader';
 
 /**
  * 确保配置目录存在
@@ -50,129 +25,19 @@ async function ensurePermissionsDir(dir: string): Promise<void> {
 }
 
 /**
- * 创建空配置
+ * 加载权限配置（从 loader 导入）
  */
-function createEmptyConfig(): PermissionConfig {
-  return {
-    rules: [],
-    version: CURRENT_VERSION,
-  };
-}
-
-/**
- * 加载单个配置文件
- */
-async function loadConfigFile(filePath: string): Promise<PermissionConfig | null> {
-  try {
-    const result = await parseJsonFile(filePath, PermissionConfigSchema);
-    return result.data;
-  } catch {
-    // 文件不存在或解析失败
-    return null;
-  }
-}
-
-/**
- * 加载权限配置（支持多层级）
- *
- * 加载顺序：
- * 1. 用户全局配置 (~/.thething/permissions/permissions.json)
- * 2. 项目级配置 (项目/.thething/permissions/permissions.json)
- *
- * 合并规则：项目级优先级高于用户级
- */
-export async function loadRules(): Promise<PermissionConfig> {
-  const cwd = configuredBaseDir || process.cwd();
-  const cacheKey = `permissions:${cwd}`;
-
-  // 检查缓存
-  const cached = permissionsCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const userDir = getUserConfigDir('permissions');
-  const projectDir = getProjectConfigDir(cwd, 'permissions');
-
-  // 加载用户级配置
-  const userConfig = await loadConfigFile(getPermissionsFilePath(userDir));
-  const userRules = userConfig?.rules ?? [];
-
-  // 标记用户级规则的来源
-  for (const rule of userRules) {
-    rule.source = 'user';
-  }
-
-  // 加载项目级配置
-  const projectConfig = await loadConfigFile(getPermissionsFilePath(projectDir));
-  const projectRules = projectConfig?.rules ?? [];
-
-  // 标记项目级规则的来源
-  for (const rule of projectRules) {
-    rule.source = 'project';
-  }
-
-  // 合并规则：项目级覆盖同 id 的用户级规则
-  const mergedRules = mergeRules(userRules, projectRules);
-
-  const mergedConfig: PermissionConfig = {
-    rules: mergedRules,
-    version: CURRENT_VERSION,
-  };
-
-  // 更新缓存
-  permissionsCache.set(cacheKey, mergedConfig);
-
-  return mergedConfig;
-}
-
-/**
- * 合并规则（项目级优先）
- */
-function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[]): PermissionRule[] {
-  const ruleMap = new Map<string, PermissionRule>();
-
-  // 先添加用户级规则
-  for (const rule of userRules) {
-    ruleMap.set(rule.id, rule);
-  }
-
-  // 项目级规则覆盖同 id 的用户级规则
-  for (const rule of projectRules) {
-    ruleMap.set(rule.id, rule);
-  }
-
-  // 按来源排序：project 优先
-  return Array.from(ruleMap.values()).sort((a, b) => {
-    if (a.source === 'project' && b.source !== 'project') return -1;
-    if (a.source !== 'project' && b.source === 'project') return 1;
-    return a.createdAt - b.createdAt;
-  });
-}
-
-/**
- * 同步加载（用于 needsApproval 中，避免异步问题）
- * 需要先调用 loadRules() 进行初始化
- */
-export function loadRulesSync(): PermissionConfig {
-  const cwd = configuredBaseDir || process.cwd();
-  const cacheKey = `permissions:${cwd}`;
-
-  const cached = permissionsCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // 返回空配置，避免在 needsApproval 中出错
-  return createEmptyConfig();
-}
+export { loadRules, loadRulesSync, clearPermissionsCache, initPermissions } from './loader';
 
 /**
  * 保存配置到文件（项目级）
+ *
+ * @param config 配置对象
+ * @param cwd 当前工作目录（默认 process.cwd()）
  */
-async function saveConfig(config: PermissionConfig): Promise<void> {
-  const cwd = configuredBaseDir || process.cwd();
-  const projectDir = getProjectConfigDir(cwd, 'permissions');
+async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void> {
+  const effectiveCwd = cwd ?? process.cwd();
+  const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
 
   await ensurePermissionsDir(projectDir);
   const filePath = getPermissionsFilePath(projectDir);
@@ -182,21 +47,26 @@ async function saveConfig(config: PermissionConfig): Promise<void> {
 
   const configToSave: PermissionConfig = {
     rules: projectRules,
-    version: CURRENT_VERSION,
+    version: 1,
   };
 
   await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), 'utf-8');
 
-  // 更新缓存
-  const cacheKey = `permissions:${cwd}`;
-  permissionsCache.set(cacheKey, config);
+  // 清除缓存
+  clearPermissionsCache();
 }
 
 /**
  * 添加新规则（保存到项目级）
+ *
+ * @param rule 规则内容
+ * @param cwd 当前工作目录（默认 process.cwd()）
  */
-export async function saveRule(rule: Omit<PermissionRule, 'id' | 'createdAt' | 'source'>): Promise<PermissionRule> {
-  const config = await loadRules();
+export async function saveRule(
+  rule: Omit<PermissionRule, 'id' | 'createdAt' | 'source'>,
+  cwd?: string,
+): Promise<PermissionRule> {
+  const config = await loadRules(cwd);
 
   const newRule: PermissionRule = {
     ...rule,
@@ -206,41 +76,51 @@ export async function saveRule(rule: Omit<PermissionRule, 'id' | 'createdAt' | '
   };
 
   config.rules.push(newRule);
-  await saveConfig(config);
+  await saveConfig(config, cwd);
 
   return newRule;
 }
 
 /**
  * 删除规则
+ *
+ * @param id 规则 ID
+ * @param cwd 当前工作目录（默认 process.cwd()）
  */
-export async function removeRule(id: string): Promise<void> {
-  const config = await loadRules();
+export async function removeRule(id: string, cwd?: string): Promise<void> {
+  const config = await loadRules(cwd);
   config.rules = config.rules.filter(r => r.id !== id);
-  await saveConfig(config);
+  await saveConfig(config, cwd);
 }
 
 /**
  * 清除所有规则（仅清除项目级）
+ *
+ * @param cwd 当前工作目录（默认 process.cwd()）
  */
-export async function clearRules(): Promise<void> {
-  const config = await loadRules();
+export async function clearRules(cwd?: string): Promise<void> {
+  const config = await loadRules(cwd);
   // 只清除项目级规则，保留用户级
   config.rules = config.rules.filter(r => r.source === 'user');
-  await saveConfig(config);
+  await saveConfig(config, cwd);
 }
 
 /**
  * 检查规则是否匹配工具调用
  *
- * Bash 工具: pattern 匹配命令前缀（如 "git *" 匹配所有 git 命令）
+ * @param toolName 工具名称
+ * @param input 工具输入
+ * @param cwd 当前工作目录（默认 process.cwd()）
+ *
+ * Bash 工具: pattern 匹配命令前缀（如 "git *" 匹配所有 git 契令）
  * 文件工具: pattern 匹配路径（如 "src/**" 匹配 src 下所有文件）
  */
 export function matchRule(
   toolName: string,
   input: Record<string, unknown>,
+  cwd?: string,
 ): RuleMatchResult {
-  const config = loadRulesSync();
+  const config = loadRulesSync(cwd);
 
   for (const rule of config.rules) {
     if (rule.toolName !== toolName) {
@@ -303,26 +183,16 @@ export function matchRule(
 /**
  * 检查权限规则并返回行为
  * 用于 needsApproval 函数中
+ *
+ * @param toolName 工具名称
+ * @param input 工具输入
+ * @param cwd 当前工作目录（默认 process.cwd()）
  */
 export function checkPermissionRules(
   toolName: string,
   input: Record<string, unknown>,
+  cwd?: string,
 ): PermissionRule | null {
-  const result = matchRule(toolName, input);
+  const result = matchRule(toolName, input, cwd);
   return result.matched ? result.rule ?? null : null;
-}
-
-/**
- * 清除缓存
- */
-export function clearPermissionsCache(): void {
-  permissionsCache.clear();
-}
-
-/**
- * 初始化：加载规则到内存缓存
- * 应在应用启动时调用
- */
-export async function initPermissions(): Promise<void> {
-  await loadRules();
 }
