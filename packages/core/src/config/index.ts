@@ -4,8 +4,8 @@
 // 参考 Claude Code 的配置架构：集中导出，便于使用
 //
 // 设计原则：
-// 1. 默认值常量统一在此导出
-// 2. 类型定义在各模块中维护，config 仅重新导出常用类型
+// 1. 默认值常量统一在 defaults.ts 定义和导出
+// 2. 类型定义在各模块中维护，config/types.ts 仅重新导出
 // 3. 所有 core 包模块的配置常量都从这里导入
 // 4. 环境变量名由应用层（CLI/Server）定义，core 不导出
 // 5. 项目目录检测由 paths/ 模块提供（detectProjectDir）
@@ -113,14 +113,47 @@ export {
 } from '../model-capabilities';
 
 // ============================================================
-// 常用类型重新导出（从各模块导入，避免重复定义）
+// 类型导出（统一从 config/types.ts 导出）
 // ============================================================
-export type { ModelCapabilities } from '../model-capabilities';
+
+// 重新导出的模块类型
 export type {
+  ModelCapabilities,
+  ModelProviderConfig,
   SessionMemoryCompactConfig,
   MicroCompactConfig,
   PostCompactConfig,
-} from '../compaction/types';
-export type { SkillLoaderConfig } from '../skills/types';
-export type { SQLiteDataStoreConfig } from '../datastore/types';
-export type { InitConfig } from '../init';
+  SQLiteDataStoreConfig,
+  SkillLoaderConfig,
+  ConnectorDefinition,
+  AuthConfig,
+  ToolDefinition,
+  SchemaProperty,
+  HttpExecutorConfig,
+  SqlExecutorConfig,
+  ScriptExecutorConfig,
+  MockExecutorConfig,
+  ConnectorGatewayConfig,
+  WebhookConfigLoaded,
+  WechatWebhookConfig,
+  FeishuWebhookConfig,
+  McpServerConfig,
+  PermissionConfig,
+  PermissionRule,
+  SessionStateOptions,
+  SessionState,
+  AgentPipelineConfig,
+  DenialTrackerConfig,
+  ModelProviderInfo,
+  ModelSwitchConfig,
+} from './types';
+
+// 跨模块组合类型（仅在 config/types.ts 定义）
+export type {
+  InitConfig,
+  ToolOutputConfig,
+  ToolOutputOverrides,
+  AgentToolDefinitionConfig,
+  TaskSchedulerConfig,
+  TaskSyncConfig,
+} from './types';
