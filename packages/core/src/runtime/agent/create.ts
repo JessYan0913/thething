@@ -13,6 +13,11 @@ import { checkInitialBudget } from '../compaction/initial-budget-check'
 import { formatEstimationResult } from '../compaction/token-counter'
 import { loadAll } from '../../api/loaders'
 import { loadProjectContext } from '../../extensions/system-prompt/sections/project-context'
+import {
+  injectMessageAttachments,
+  extractUserInput,
+  clearMessageAttachmentState,
+} from '../../extensions/attachments'
 import type { CreateAgentConfig, CreateAgentResult, SkillResolution, MemoryContext } from './types'
 
 export async function createChatAgent(config: CreateAgentConfig): Promise<CreateAgentResult> {
@@ -30,9 +35,49 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     writerRef,
   } = config
 
+  // 判断是否是首次对话
+  const isTurnZero = conversationMeta?.isNewConversation ?? false
+
   // 加载配置数据
   const cwd = sessionOptions?.projectDir
   const loadedData = await loadAll({ cwd })
+
+  // ============================================================
+  // ✅ 技能附件注入（由 core 内部处理）
+  // ============================================================
+  // 如果是新对话，清除旧的附件状态
+  if (isTurnZero) {
+    clearMessageAttachmentState(conversationId)
+  }
+
+  // 注入技能附件
+  let messagesWithAttachments = messages || []
+  let attachmentInfo = { hasSkillListing: false, skillListingCount: 0, hasSkillDiscovery: false, skillDiscoveryCount: 0 }
+
+  if (enableSkills && messages && messages.length > 0) {
+    const userInput = extractUserInput(messages)
+    const attachmentResult = await injectMessageAttachments(messages, {
+      sessionKey: conversationId,
+      skills: loadedData.skills,
+      contextWindowTokens: sessionOptions?.maxContextTokens ?? 128_000,
+      isTurnZero,
+      userInput,
+    })
+    messagesWithAttachments = attachmentResult.messages
+    attachmentInfo = {
+      hasSkillListing: attachmentResult.hasSkillListing,
+      skillListingCount: attachmentResult.skillListingCount,
+      hasSkillDiscovery: attachmentResult.hasSkillDiscovery,
+      skillDiscoveryCount: attachmentResult.skillDiscoveryCount,
+    }
+
+    // 记录附件注入结果
+    if (attachmentResult.hasSkillListing || attachmentResult.hasSkillDiscovery) {
+      console.log(
+        `[Attachments] Injected: skill_listing=${attachmentResult.skillListingCount}, skill_discovery=${attachmentResult.skillDiscoveryCount}`,
+      )
+    }
+  }
 
   const sessionState = createSessionState(conversationId, {
     maxContextTokens: sessionOptions?.maxContextTokens ?? 128_000,
@@ -43,8 +88,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   })
 
   let skillResolution: SkillResolution | null = null
-  if (enableSkills && messages && messages.length > 0) {
-    skillResolution = resolveActiveSkills(messages, loadedData.skills)
+  if (enableSkills && messagesWithAttachments.length > 0) {
+    skillResolution = await resolveActiveSkills(messagesWithAttachments, loadedData.skills)
     if (skillResolution?.activeModelOverride) {
       sessionState.model = skillResolution.activeModelOverride
     }
@@ -56,8 +101,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   }
 
   let memoryContext: MemoryContext | null = null
-  if (enableMemory && messages && messages.length > 0) {
-    memoryContext = await loadMemoryContext(messages, userId)
+  if (enableMemory && messagesWithAttachments.length > 0) {
+    memoryContext = await loadMemoryContext(messagesWithAttachments, userId)
   }
 
   // 加载项目上下文（THING.md）
@@ -98,7 +143,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   // ============================================================
   const modelName = modelConfig.modelName || 'qwen-max'  // 默认模型名
   const budgetCheck = await checkInitialBudget(
-    messages || [],
+    messagesWithAttachments,
     instructions,
     tools,
     modelName,
@@ -124,8 +169,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   // 使用调整后的工具（如果有调整）
   const finalTools = budgetCheck.adjustedTools ?? tools
 
-  // 注意：消息在流式调用时传入，这里返回 adjustedMessages 供调用方使用
-  const adjustedMessages = budgetCheck.adjustedMessages
+  // 使用调整后的消息（如果有调整）
+  const finalMessages = budgetCheck.adjustedMessages ?? messagesWithAttachments
 
   type ChatToolsType = Record<string, any>
 
@@ -156,8 +201,10 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     mcpRegistry,
     tools: finalTools,
     instructions,
-    adjustedMessages,
+    adjustedMessages: finalMessages,
     budgetActions: budgetCheck.actions,
     model: modelInstance,
+    // 新增：附件注入信息
+    attachmentInfo,
   }
 }

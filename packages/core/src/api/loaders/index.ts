@@ -83,6 +83,9 @@ export interface LoadAllResult {
   memory: MemoryEntry[];
 }
 
+// 别名，供外部使用
+export type LoadedData = LoadAllResult;
+
 /**
  * 加载所有配置
  *

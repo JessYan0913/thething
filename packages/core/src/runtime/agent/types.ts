@@ -55,12 +55,19 @@ export interface CreateAgentResult {
   mcpRegistry?: McpRegistry
   tools: Record<string, Tool>
   instructions: string
-  /** 预算检查后调整的消息（如果有调整） */
+  /** 预算检查后调整的消息（包含注入的附件） */
   adjustedMessages?: UIMessage[]
   /** 预算检查执行的降级动作列表 */
   budgetActions?: string[]
   /** 模型实例（未包装 middleware），供后台任务使用 */
   model?: LanguageModelV3
+  /** 附件注入信息 */
+  attachmentInfo?: {
+    hasSkillListing: boolean
+    skillListingCount: number
+    hasSkillDiscovery: boolean
+    skillDiscoveryCount: number
+  }
 }
 
 export interface SkillResolution {

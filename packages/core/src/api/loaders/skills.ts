@@ -89,7 +89,7 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     (s) => s.name,
   );
 
-  // 去除 source 字段，返回纯 Skill
+  // 去除 source 字段，返回纯 Skill（保留 source 用于附件过滤）
   const result: Skill[] = merged.map((s) => ({
     name: s.name,
     description: s.description,
@@ -101,6 +101,7 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     paths: s.paths,
     sourcePath: s.sourcePath,
     body: s.body,
+    source: s.source, // 保留 source 字段用于附件过滤
   }));
 
   // 更新缓存

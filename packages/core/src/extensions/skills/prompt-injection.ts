@@ -1,55 +1,22 @@
-import type { Skill, SkillMetadata } from './types';
+/**
+ * Skill 提示词注入
+ *
+ * 注意：此文件中的旧函数已被消息附件系统替代。
+ * 新的技能注入方式：
+ * - skill_listing: 通过 getSkillListingAttachment 注入
+ * - skill_discovery: 通过 getTurnZeroSkillDiscovery 注入
+ *
+ * 参考：docs/skill-metadata-loading-refactoring-plan.md
+ */
 
-export function injectSkillsIntoPrompt(systemPrompt: string, skills: Skill[], activeSkillNames: Set<string>): string {
-  if (skills.length === 0 || activeSkillNames.size === 0) {
-    return systemPrompt;
-  }
+import type { Skill } from './types';
 
-  const activeSkills = skills.filter((s) => activeSkillNames.has(s.name));
-
-  if (activeSkills.length === 0) {
-    return systemPrompt;
-  }
-
-  const skillsSection = formatSkillsSection(activeSkills);
-
-  return `${systemPrompt}\n\n${skillsSection}`;
-}
-
-export function formatSkillMetadataOnly(skills: SkillMetadata[]): string {
-  if (skills.length === 0) return '';
-
-  const skillsList = skills
-    .map((skill) => formatSkillMetadataSingle(skill))
-    .join('\n\n');
-
-  return `## 可用技能
-
-当前已加载 ${skills.length} 个技能，使用时会自动加载完整指令：
-
-${skillsList}`;
-}
-
-function formatSkillMetadataSingle(skill: SkillMetadata): string {
-  const toolsText = skill.allowedTools.length > 0 ? ` | 可用工具: ${skill.allowedTools.join(', ')}` : '';
-  const modelText = skill.model ? ` | 推荐模型: ${skill.model}` : '';
-  const pathsText = skill.paths.length > 0 ? ` | 适用路径: ${skill.paths.join(', ')}` : '';
-  const whenToUseText = skill.whenToUse ? `\n  触发条件: ${skill.whenToUse}` : '';
-
-  return `- **${skill.name}**: ${skill.description}${whenToUseText}${toolsText}${modelText}${pathsText}`;
-}
-
-function formatSkillsSection(skills: Skill[]): string {
-  const skillsList = skills.map((skill) => formatSingleSkill(skill)).join('\n\n');
-
-  return `## 已激活技能
-
-以下技能已激活，完整指令如下：
-
-${skillsList}`;
-}
-
-function formatSingleSkill(skill: Skill): string {
+/**
+ * 格式化完整技能内容
+ *
+ * 用于技能激活后的完整指令注入（仍可用于子代理等场景）。
+ */
+export function formatFullSkillContent(skill: Skill): string {
   const toolsText = skill.allowedTools.length > 0 ? `\n  可用工具: ${skill.allowedTools.join(', ')}` : '';
 
   const modelText = skill.model ? `\n  推荐模型: ${skill.model}` : '';
@@ -68,112 +35,19 @@ ${skill.body}
 </技能指令>`;
 }
 
-export function determineActiveSkills(skills: SkillMetadata[], userMessage: string): Set<string> {
-  const active = new Set<string>();
-  const message = userMessage.toLowerCase();
+/**
+ * 格式化多个技能的完整内容
+ *
+ * 用于需要注入完整技能指令的场景（如子代理）。
+ */
+export function formatFullSkillsContent(skills: Skill[]): string {
+  if (skills.length === 0) return '';
 
-  for (const skill of skills) {
-    if (!skill.whenToUse) continue;
+  const skillsList = skills.map((skill) => formatFullSkillContent(skill)).join('\n\n');
 
-    const triggers = skill.whenToUse.toLowerCase();
+  return `## 已激活技能
 
-    const keywords = extractKeywords(triggers);
+以下技能已激活，完整指令如下：
 
-    for (const keyword of keywords) {
-      if (message.includes(keyword)) {
-        active.add(skill.name);
-        break;
-      }
-    }
-  }
-
-  return active;
-}
-
-function extractKeywords(text: string): string[] {
-  const stopWords = new Set([
-    '的',
-    '了',
-    '是',
-    '在',
-    '我',
-    '有',
-    '和',
-    '就',
-    '不',
-    '人',
-    '都',
-    '一',
-    '一个',
-    '上',
-    '也',
-    '很',
-    '到',
-    '说',
-    '要',
-    '去',
-    '你',
-    '会',
-    '着',
-    '没有',
-    '看',
-    '好',
-    '自己',
-    '这',
-    '那',
-    '啊',
-    '呢',
-    '吧',
-    '吗',
-    '可以',
-    '进行',
-    '提供',
-    '支持',
-    'the',
-    'a',
-    'an',
-    'is',
-    'are',
-    'was',
-    'were',
-    'be',
-    'been',
-    'being',
-    'have',
-    'has',
-    'had',
-    'do',
-    'does',
-    'did',
-    'will',
-    'would',
-    'could',
-    'should',
-    'to',
-    'of',
-    'in',
-    'for',
-    'on',
-    'with',
-    'at',
-    'by',
-    'from',
-    'as',
-    'into',
-    'and',
-    'or',
-    'but',
-    'if',
-    'then',
-    'than',
-    'so',
-    'that',
-    'this',
-    'these',
-    'those',
-  ]);
-
-  const raw = text.split(/[,，.。;；\s]+/);
-
-  return raw.map((w) => w.trim().toLowerCase()).filter((w) => w.length > 1 && !stopWords.has(w));
+${skillsList}`;
 }

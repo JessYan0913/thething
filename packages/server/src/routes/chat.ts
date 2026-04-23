@@ -81,7 +81,7 @@ app.post('/', async (c) => {
 
     const messages: UIMessage[] = [...existingMessages, message]
 
-    const { messages: compactedMessages, executed: compactionExecuted } = await compactMessagesIfNeeded(
+    const { messages: compactedMessages } = await compactMessagesIfNeeded(
       messages,
       conversationId,
     )
@@ -89,16 +89,6 @@ app.post('/', async (c) => {
     const preCompactionTokens = estimateMessagesTokens(messages)
     const postCompactionTokens = estimateMessagesTokens(compactedMessages)
     console.log(`[Tokens] Pre: ${preCompactionTokens}, Post: ${postCompactionTokens}`)
-    console.log(
-      `[LLM Input] ${compactedMessages.length} messages:\n` +
-        compactedMessages
-          .map((m, i) => {
-            const part = m.parts[0]
-            const text = part?.type === 'text' ? part.text : `[${part?.type}]`
-            return `  [${i}] ${m.role}: ${text.replace(/\n/g, ' ').slice(0, 60)}${text.length > 60 ? '…' : ''}`
-          })
-          .join('\n'),
-    )
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
     const userId = messageUserId || 'default'
@@ -106,7 +96,16 @@ app.post('/', async (c) => {
     // 使用统一的 detectProjectDir 获取项目根目录
     const projectDir = detectProjectDir()
 
-    const { agent, sessionState, mcpRegistry, model } = await createChatAgent({
+    // ============================================================
+    // 创建 Agent（core 内部处理技能附件注入）
+    // ============================================================
+    const {
+      agent,
+      sessionState,
+      mcpRegistry,
+      model,
+      adjustedMessages,
+    } = await createChatAgent({
       conversationId,
       messages: compactedMessages,
       userId,
@@ -131,6 +130,21 @@ app.post('/', async (c) => {
       },
     })
 
+    // 使用调整后的消息（包含注入的附件）
+    const messagesWithAttachments = adjustedMessages ?? compactedMessages
+
+    // 记录 LLM Input
+    console.log(
+      `[LLM Input] ${messagesWithAttachments.length} messages:\n` +
+        messagesWithAttachments
+          .map((m, i) => {
+            const part = m.parts[0]
+            const text = part?.type === 'text' ? part.text : `[${part?.type}]`
+            return `  [${i}] ${m.role}: ${text.replace(/\n/g, ' ').slice(0, 60)}${text.length > 60 ? '…' : ''}`
+          })
+          .join('\n'),
+    )
+
     const abortController = new AbortController()
 
     const stream = createUIMessageStream({
@@ -139,12 +153,14 @@ app.post('/', async (c) => {
 
         const agentStream = await createAgentUIStream({
           agent,
-          uiMessages: compactedMessages,
+          uiMessages: messagesWithAttachments,
           abortSignal: abortController.signal,
           sendReasoning: true,
           onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
-              const newAssistantMessages = completedMessages.slice(compactedMessages.length)
+              // 新消息：从注入后的消息数量开始
+              const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length)
+              // 保存原始消息 + 新消息（排除附件）
               const messagesToSave = [...messages, ...newAssistantMessages]
 
               console.log(

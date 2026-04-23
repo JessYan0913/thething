@@ -8,8 +8,11 @@ import type { PermissionRule } from '../../extensions/permissions/types'
 import type { MemoryEntry } from '../../api/loaders/memory'
 import type { LoadedProjectContext } from '../../extensions/system-prompt/sections/project-context'
 import {
-  determineActiveSkills,
-} from '../../extensions/skills'
+  searchSkills,
+  buildSkillIndex,
+  computeIdf,
+} from '../../extensions/skill-search'
+import { SKILL_DISCOVERY_CONFIG } from '../../extensions/attachments'
 import {
   findRelevantMemories,
   buildMemorySection,
@@ -22,15 +25,16 @@ import type { SkillResolution, MemoryContext } from './types'
 /**
  * 解析激活的 Skills
  *
- * 改造说明：接收已加载的 skills 数据，不再需要 cwd
+ * 使用 TF-IDF 搜索代替关键词匹配。
+ * 高置信度（score >= 0.30）的技能自动激活。
  *
  * @param messages 消息列表
  * @param skills 已加载的 Skill 列表
  * @returns SkillResolution
  */
-export function resolveActiveSkills(messages: UIMessage[], skills: Skill[]): SkillResolution {
+export async function resolveActiveSkills(messages: UIMessage[], skills: Skill[]): Promise<SkillResolution> {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
-  if (!lastUserMessage) {
+  if (!lastUserMessage || skills.length === 0) {
     return {
       activeSkillNames: new Set<string>(),
       activeSkills: [],
@@ -44,7 +48,24 @@ export function resolveActiveSkills(messages: UIMessage[], skills: Skill[]): Ski
     .map((p) => p.text)
     .join(' ')
 
-  const activeSkillNames = determineActiveSkills(skills, userMessageText)
+  if (!userMessageText.trim()) {
+    return {
+      activeSkillNames: new Set<string>(),
+      activeSkills: [],
+      activeToolsWhitelist: null,
+      activeModelOverride: null,
+    }
+  }
+
+  // 构建 TF-IDF 索引并搜索
+  const index = await buildSkillIndex(skills)
+  const idf = computeIdf(index)
+  const results = searchSkills(userMessageText, index, {
+    limit: SKILL_DISCOVERY_CONFIG.SEARCH_LIMIT,
+    minScore: SKILL_DISCOVERY_CONFIG.AUTO_LOAD_MIN_SCORE, // 0.30
+  })
+
+  const activeSkillNames = new Set(results.map(r => r.name))
   if (activeSkillNames.size === 0) {
     return {
       activeSkillNames,

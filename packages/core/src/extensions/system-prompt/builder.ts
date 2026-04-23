@@ -20,7 +20,8 @@ import {
   createSystemContextSection,
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
-import { createSkillsSection } from "./sections/skills";
+// Skills section 已移除 - 技能元数据现在通过消息附件注入
+// import { createSkillsSection } from "./sections/skills";
 import { createMemorySection, createRecalledMemorySection } from "./sections/memory";
 
 // ============================================================================
@@ -133,11 +134,8 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     },
     cacheStrategy: "session",
   },
-  {
-    name: "skills",
-    create: (options) => createSkillsSection(options.skills ?? []),
-    cacheStrategy: "session",
-  },
+  // Skills section 已移除 - 技能元数据现在通过消息附件注入
+  // 参考: docs/skill-metadata-loading-refactoring-plan.md
   {
     name: "memory-guidelines",
     create: async (options) => {

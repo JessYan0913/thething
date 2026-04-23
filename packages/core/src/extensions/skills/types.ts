@@ -32,6 +32,7 @@ export interface SkillMetadata {
   context: 'inline' | 'fork';
   paths: string[];
   sourcePath: string;
+  source?: string;  // 来源：bundled, mcp, project, user
 }
 
 export interface Skill extends SkillMetadata {
