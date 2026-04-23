@@ -42,7 +42,8 @@
       "Bash(npm run *)",
       "Bash(grep '\\\\.ts$')",
       "Bash(grep -E 'commands\\\\.\\(ts|js\\)$')",
-      "Bash(dir /B e:\\\\thething\\\\packages\\\\core\\\\src)"
+      "Bash(dir /B e:\\\\thething\\\\packages\\\\core\\\\src)",
+      "Bash(npm ls *)"
     ]
   }
 }
