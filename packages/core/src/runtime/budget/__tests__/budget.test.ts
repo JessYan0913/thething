@@ -46,7 +46,7 @@ describe('tool-output-manager', () => {
     it('should have config for bash tool', () => {
       expect(TOOL_OUTPUT_CONFIGS['bash']).toBeDefined();
       expect(TOOL_OUTPUT_CONFIGS['bash'].maxResultSizeChars).toBe(100_000);
-      expect(TOOL_OUTPUT_CONFIGS['bash'].shouldPersistToDisk).toBe(true);
+      // shouldPersistToDisk 现是可选字段，默认 true
     });
 
     it('should have config for read_file tool', () => {
@@ -69,12 +69,8 @@ describe('tool-output-manager', () => {
       expect(TOOL_OUTPUT_CONFIGS['default'].maxResultSizeChars).toBe(DEFAULT_MAX_RESULT_SIZE_CHARS);
     });
 
-    it('should have truncation message for each config', () => {
-      for (const [name, config] of Object.entries(TOOL_OUTPUT_CONFIGS)) {
-        expect(config.truncationMessage).toBeDefined();
-        expect(config.truncationMessage.length).toBeGreaterThan(0);
-      }
-    });
+    // ✅ 改进：移除 truncationMessage 测试，因为该字段已移除
+    // 所有工具的大输出现在都持久化而非截断
   });
 
   describe('matchesToolPrefix', () => {
@@ -104,13 +100,13 @@ describe('tool-output-manager', () => {
     it('should return mcp_default for mcp_ prefixed tools', () => {
       const config = getToolOutputConfig('mcp_custom_tool');
       expect(config.maxResultSizeChars).toBe(100_000);
-      expect(config.truncationMessage).toContain('MCP');
+      // truncationMessage 已移除
     });
 
     it('should return connector_default for connector_ prefixed tools', () => {
       const config = getToolOutputConfig('connector_api');
       expect(config.maxResultSizeChars).toBe(50_000);
-      expect(config.truncationMessage).toContain('Connector');
+      // truncationMessage 已移除
     });
 
     it('should return default config for unknown tools', () => {
@@ -283,12 +279,28 @@ describe('tool-output-manager', () => {
       expect(result.originalSize).toBe(smallContent.length);
     });
 
-    it('should truncate when over limit without persistence options', async () => {
+    // ✅ 改进：现在始终持久化，不再截断
+    it('should persist when over limit (even without sessionContext)', async () => {
       const largeContent = 'a'.repeat(150_000);
       const result = await processToolOutput(largeContent, 'bash', 'tool-1');
-      expect(result.persisted).toBe(false);
-      expect(result.content.length).toBeLessThanOrEqual(100_000 + 50); // limit + truncation message
-      expect(result.content).toContain('截断');
+      expect(result.persisted).toBe(true);
+      expect(result.content).toContain(PERSISTED_OUTPUT_TAG);
+      expect(result.content).toContain('Preview');
+      expect(result.filepath).toBeDefined();
+    });
+
+    it('should persist with sessionContext when over limit', async () => {
+      const largeContent = 'a'.repeat(150_000);
+      const state = createContentReplacementState();
+      const result = await processToolOutput(largeContent, 'bash', 'tool-1', {
+        sessionId: 'test-session',
+        projectDir: '/tmp',
+        state,
+      });
+      expect(result.persisted).toBe(true);
+      expect(result.content).toContain(PERSISTED_OUTPUT_TAG);
+      expect(result.filepath).toBeDefined();
+      expect(state.seenIds.has('tool-1')).toBe(true);
     });
 
     it('should add to seenIds when state provided', async () => {
@@ -416,6 +428,8 @@ describe('tool-result-storage', () => {
       expect(message).toContain('/path/to/file.txt');
       expect(message).toContain('preview content');
       expect(message).toContain('...');
+      // ✅ 改进：检查新格式中包含"可读取完整内容"提示
+      expect(message).toContain('read_file');
     });
 
     it('should not include ... when hasMore is false', () => {
@@ -438,6 +452,19 @@ describe('tool-result-storage', () => {
       };
       const message = buildPersistedOutputMessage(result);
       expect(message).toContain('KB');
+    });
+
+    // ✅ 新增：测试临时持久化消息
+    it('should include temporary note for isTemporary=true', () => {
+      const result: PersistedToolResult = {
+        filepath: '/path/to/file.txt',
+        originalSize: 50000,
+        preview: 'preview',
+        hasMore: true,
+      };
+      const message = buildPersistedOutputMessage(result, true);
+      expect(message).toContain('temporary');
+      expect(message).toContain('Copy');
     });
   });
 

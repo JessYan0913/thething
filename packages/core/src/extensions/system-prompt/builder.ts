@@ -166,7 +166,7 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
 const DYNAMIC_SECTION_FACTORIES: SectionFactory[] = [
   {
     name: "system-context",
-    create: () => createSystemContextSection(),
+    create: (options) => createSystemContextSection(options.cwd),
     cacheStrategy: "dynamic",
   },
   {

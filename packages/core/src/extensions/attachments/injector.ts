@@ -2,10 +2,9 @@
  * 消息附件注入器
  *
  * 在消息发送给 Agent 之前，注入技能附件：
- * - skill_listing: 技能摘要列表（bundled + mcp + project）
- * - skill_discovery: TF-IDF 搜索发现的相关技能
+ * - skill_listing: 技能摘要列表（供 Skill 工具使用）
  *
- * 注入方式：在消息列表开头添加 assistant 消息作为 system-reminder
+ * 注入方式：在消息列表开头添加 user 消息，内容包装为 system-reminder 标签
  */
 
 import type { UIMessage } from 'ai'
@@ -14,11 +13,6 @@ import {
   getSkillListingAttachment,
   formatSkillListingMessage,
 } from './skill-listing'
-import {
-  getTurnZeroSkillDiscovery,
-  formatSkillDiscoveryMessage,
-  clearDiscoveryState,
-} from './skill-discovery'
 import { clearSentSkills } from './sent-tracker'
 
 /**
@@ -31,10 +25,6 @@ export interface MessageAttachmentConfig {
   skills: Skill[]
   /** context window token 数量 */
   contextWindowTokens?: number
-  /** 是否是首次对话（Turn Zero） */
-  isTurnZero: boolean
-  /** 用户输入文本（用于 TF-IDF 搜索） */
-  userInput?: string
 }
 
 /**
@@ -45,28 +35,27 @@ export interface MessageAttachmentResult {
   messages: UIMessage[]
   /** 是否注入了 skill_listing */
   hasSkillListing: boolean
-  /** 是否注入了 skill_discovery */
-  hasSkillDiscovery: boolean
   /** skill_listing 的技能数量 */
   skillListingCount: number
-  /** skill_discovery 发现的技能数量 */
-  skillDiscoveryCount: number
 }
 
 /**
- * 创建 system-reminder 消息
+ * 创建 skill_listing 消息
+ *
+ * 使用 user 角色，内容包装为 system-reminder 标签
+ * 这样 Agent 会将其视为需要处理的信息
  *
  * @param content - system-reminder 内容
  * @returns UIMessage
  */
-function createSystemReminderMessage(content: string): UIMessage {
+function createSkillListingMessage(content: string): UIMessage {
   return {
-    id: `system-reminder-${Date.now()}`,
-    role: 'assistant',
+    id: `skill-listing-${Date.now()}`,
+    role: 'user',
     parts: [
       {
         type: 'text',
-        text: content,
+        text: `<system-reminder>\n${content}\n</system-reminder>`,
       },
     ],
   }
@@ -87,14 +76,10 @@ export async function injectMessageAttachments(
     sessionKey,
     skills,
     contextWindowTokens,
-    isTurnZero,
-    userInput,
   } = config
 
   let hasSkillListing = false
-  let hasSkillDiscovery = false
   let skillListingCount = 0
-  let skillDiscoveryCount = 0
 
   const attachmentMessages: UIMessage[] = []
 
@@ -109,47 +94,16 @@ export async function injectMessageAttachments(
     hasSkillListing = true
     skillListingCount = listingAttachment.skillCount
     const content = formatSkillListingMessage(listingAttachment)
-    attachmentMessages.push(createSystemReminderMessage(
-      `<system-reminder>\n${content}\n</system-reminder>`
-    ))
+    attachmentMessages.push(createSkillListingMessage(content))
   }
 
-  // 2. Turn Zero: 获取 skill_discovery 附件
-  if (isTurnZero && userInput) {
-    const discoveryAttachment = await getTurnZeroSkillDiscovery(
-      userInput,
-      skills,
-      sessionKey,
-      {
-        autoLoadBody: async (skillName) => {
-          const skill = skills.find(s => s.name === skillName)
-          if (skill?.body) {
-            return skill.body.slice(0, 12000)
-          }
-          return null
-        },
-      },
-    )
-
-    if (discoveryAttachment) {
-      hasSkillDiscovery = true
-      skillDiscoveryCount = discoveryAttachment.skills.length
-      const content = formatSkillDiscoveryMessage(discoveryAttachment)
-      attachmentMessages.push(createSystemReminderMessage(
-        `<system-reminder>\n${content}\n</system-reminder>`
-      ))
-    }
-  }
-
-  // 3. 将附件消息插入到消息列表开头
+  // 2. 将附件消息插入到消息列表开头
   const resultMessages: UIMessage[] = [...attachmentMessages, ...messages]
 
   return {
     messages: resultMessages,
     hasSkillListing,
-    hasSkillDiscovery,
     skillListingCount,
-    skillDiscoveryCount,
   }
 }
 
@@ -162,7 +116,6 @@ export async function injectMessageAttachments(
  */
 export function clearMessageAttachmentState(sessionKey: string): void {
   clearSentSkills(sessionKey)
-  clearDiscoveryState(sessionKey)
 }
 
 /**

@@ -15,7 +15,6 @@ import { loadAll } from '../../api/loaders'
 import { loadProjectContext } from '../../extensions/system-prompt/sections/project-context'
 import {
   injectMessageAttachments,
-  extractUserInput,
   clearMessageAttachmentState,
 } from '../../extensions/attachments'
 import type { CreateAgentConfig, CreateAgentResult, SkillResolution, MemoryContext } from './types'
@@ -52,29 +51,24 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   // 注入技能附件
   let messagesWithAttachments = messages || []
-  let attachmentInfo = { hasSkillListing: false, skillListingCount: 0, hasSkillDiscovery: false, skillDiscoveryCount: 0 }
+  let attachmentInfo = { hasSkillListing: false, skillListingCount: 0 }
 
   if (enableSkills && messages && messages.length > 0) {
-    const userInput = extractUserInput(messages)
     const attachmentResult = await injectMessageAttachments(messages, {
       sessionKey: conversationId,
       skills: loadedData.skills,
       contextWindowTokens: sessionOptions?.maxContextTokens ?? 128_000,
-      isTurnZero,
-      userInput,
     })
     messagesWithAttachments = attachmentResult.messages
     attachmentInfo = {
       hasSkillListing: attachmentResult.hasSkillListing,
       skillListingCount: attachmentResult.skillListingCount,
-      hasSkillDiscovery: attachmentResult.hasSkillDiscovery,
-      skillDiscoveryCount: attachmentResult.skillDiscoveryCount,
     }
 
     // 记录附件注入结果
-    if (attachmentResult.hasSkillListing || attachmentResult.hasSkillDiscovery) {
+    if (attachmentResult.hasSkillListing) {
       console.log(
-        `[Attachments] Injected: skill_listing=${attachmentResult.skillListingCount}, skill_discovery=${attachmentResult.skillDiscoveryCount}`,
+        `[Attachments] Injected: skill_listing=${attachmentResult.skillListingCount}`,
       )
     }
   }
@@ -109,6 +103,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const projectContext = await loadProjectContext(cwd)
 
   const instructions = await buildAgentInstructions(skillResolution, memoryContext, {
+    cwd,  // 传递工作目录给系统提示（让 Agent 知道正确的执行路径）
     skills: loadedData.skills,
     permissions: loadedData.permissions,
     memoryEntries: loadedData.memory,

@@ -146,11 +146,16 @@ export function generatePreview(
  * 构建持久化输出消息
  * 参考 Claude Code 格式
  */
-export function buildPersistedOutputMessage(result: PersistedToolResult): string {
+export function buildPersistedOutputMessage(result: PersistedToolResult, isTemporary: boolean = false): string {
   let message = `${PERSISTED_OUTPUT_TAG}\n`
-  message += `Output too large (${formatSize(result.originalSize)}).\n`
-  message += `Full output saved to: ${result.filepath}\n\n`
-  message += `Preview (first ${formatSize(PREVIEW_SIZE_CHARS)}):\n`
+  message += `Output size: ${formatSize(result.originalSize)}.\n`
+  message += `Full output saved to: ${result.filepath}\n`
+  if (isTemporary) {
+    message += `\nNote: This is a temporary file. Copy it if you need to keep it.\n`
+  } else {
+    message += `\nYou can read the complete output using the read_file tool.\n`
+  }
+  message += `\nPreview (first ${formatSize(PREVIEW_SIZE_CHARS)}):\n`
   message += result.preview
   if (result.hasMore) {
     message += '\n...\n'

@@ -43,7 +43,10 @@
       "Bash(grep '\\\\.ts$')",
       "Bash(grep -E 'commands\\\\.\\(ts|js\\)$')",
       "Bash(dir /B e:\\\\thething\\\\packages\\\\core\\\\src)",
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "Bash(powershell -Command \"Get-Content 'e:\\\\thething\\\\packages\\\\core\\\\src\\\\runtime\\\\budget\\\\tool-output-manager.ts' -Encoding UTF8 | Select-Object -Index 358\")",
+      "Bash(powershell -Command \"\\(Get-Content 'e:\\\\thething\\\\packages\\\\core\\\\src\\\\runtime\\\\budget\\\\tool-output-manager.ts' -Raw\\) -replace 'temp-\\\\$\\\\{Date\\\\.now\\\\\\(\\\\\\)\\\\\\)\\\\}', 'temp-\\\\$\\\\{Date.now\\(\\)\\\\}' | Set-Content 'e:\\\\thething\\\\packages\\\\core\\\\src\\\\runtime\\\\budget\\\\tool-output-manager.ts' -Encoding UTF8\")",
+      "Bash(powershell -Command ' *)"
     ]
   }
 }

@@ -13,10 +13,11 @@ import {
   readFileTool,
   writeFileTool,
   askUserQuestionTool,
+  skillTool,
 } from '../tools'
 import { createTaskToolsForConversation, getGlobalTaskStore } from '../tasks'
 import { registerBuiltinAgents, scanAgentDirs, createAgentTool, globalAgentRegistry } from '../../extensions/subagents'
-import { getMcpServerConfigs, createMcpRegistry, type McpRegistry } from '../../extensions/mcp'
+import { getMcpServerConfigs, createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../extensions/mcp'
 import { getConnectorRegistry, getAllConnectorTools } from '../../extensions/connector'
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
 import type { LoadToolsConfig } from './types'
@@ -47,6 +48,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     grep: grepTool,
     glob: globTool,
     ask_user_question: askUserQuestionTool,
+    skill: skillTool,
   })
 
   Object.assign(tools, createTaskToolsForConversation(getGlobalTaskStore(), config.conversationId))
@@ -84,10 +86,20 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         mcpRegistry = createMcpRegistry(mcpConfigs)
         await mcpRegistry.connectAll()
         const mcpTools = mcpRegistry.getAllTools()
-        for (const [toolName, toolDef] of Object.entries(mcpTools)) {
-          const prefixedName = `mcp_${toolName}`
-          if (!(prefixedName in tools)) {
-            tools[prefixedName] = toolDef as Tool
+
+        // ✅ 改进：使用包装器处理输出
+        const wrappedMcpTools = wrapMcpToolsWithOutputHandler(
+          mcpTools as Record<string, Tool>,
+          {
+            sessionId: config.conversationId,
+            projectDir: config.sessionState.projectDir,
+            contentReplacementState: config.sessionState.contentReplacementState,
+          }
+        )
+
+        for (const [toolName, toolDef] of Object.entries(wrappedMcpTools)) {
+          if (!(toolName in tools)) {
+            tools[toolName] = toolDef
           }
         }
         const mcpSnapshot = mcpRegistry.snapshot()

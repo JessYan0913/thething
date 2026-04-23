@@ -24,22 +24,44 @@ export interface McpToolWrapperOptions {
 /**
  * 包装单个 MCP 工具，添加输出处理
  *
- * 注意：AI SDK 的 Tool 类型不暴露 execute 函数
- * 这个 wrapper 主要用于消息层的拦截处理
- * 实际输出处理在 agent/tools.ts 的加载后处理
+ * ✅ 改进：实际包装工具，拦截 execute 函数进行输出处理
  */
 export function wrapMcpToolWithOutputHandler(
   tool: Tool,
   toolName: string,
   options: McpToolWrapperOptions
 ): Tool {
-  const config = getToolOutputConfig(toolName)
+  // 获取原工具的 execute 函数
+  const originalExecute = tool.execute
 
-  // 由于 AI SDK Tool 类型不暴露 execute 函数直接修改
-  // 这里返回原始工具，输出处理在消息层进行
-  // 实际处理逻辑见 agent/tools.ts 中的后处理
+  if (!originalExecute) {
+    // 如果没有 execute，直接返回原工具（可能是定义不完整）
+    return tool
+  }
 
-  return tool
+  // 创建包装后的工具
+  return {
+    ...tool,
+    execute: async (input: unknown, execOptions?: unknown) => {
+      // 执行原工具
+      const result = await originalExecute(input, execOptions)
+
+      // 处理输出
+      const toolUseId = `mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const processed = await processToolOutput(
+        result,
+        toolName,
+        toolUseId,
+        {
+          sessionId: options.sessionId,
+          projectDir: options.projectDir,
+          state: options.contentReplacementState,
+        }
+      )
+
+      return processed.content
+    },
+  }
 }
 
 /**

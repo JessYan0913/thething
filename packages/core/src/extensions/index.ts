@@ -10,7 +10,6 @@
 // - permissions: 权限管理
 // - system-prompt: 系统提示构建
 // - attachments: 消息附件注入
-// - skill-search: TF-IDF 技能搜索
 // ============================================================
 
 export * from './mcp';
@@ -21,4 +20,3 @@ export * from './memory';
 export * from './permissions';
 export * from './system-prompt';
 export * from './attachments';
-export * from './skill-search';

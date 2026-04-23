@@ -8,12 +8,6 @@ import type { PermissionRule } from '../../extensions/permissions/types'
 import type { MemoryEntry } from '../../api/loaders/memory'
 import type { LoadedProjectContext } from '../../extensions/system-prompt/sections/project-context'
 import {
-  searchSkills,
-  buildSkillIndex,
-  computeIdf,
-} from '../../extensions/skill-search'
-import { SKILL_DISCOVERY_CONFIG } from '../../extensions/attachments'
-import {
   findRelevantMemories,
   buildMemorySection,
   getUserMemoryDir,
@@ -25,97 +19,21 @@ import type { SkillResolution, MemoryContext } from './types'
 /**
  * 解析激活的 Skills
  *
- * 使用 TF-IDF 搜索代替关键词匹配。
- * 高置信度（score >= 0.30）的技能自动激活。
+ * 简化版：不再使用 TF-IDF 自动发现技能。
+ * Agent 通过 Skill 工具主动调用技能。
  *
  * @param messages 消息列表
  * @param skills 已加载的 Skill 列表
- * @returns SkillResolution
+ * @returns SkillResolution（空结果，技能通过工具调用）
  */
 export async function resolveActiveSkills(messages: UIMessage[], skills: Skill[]): Promise<SkillResolution> {
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
-  if (!lastUserMessage || skills.length === 0) {
-    return {
-      activeSkillNames: new Set<string>(),
-      activeSkills: [],
-      activeToolsWhitelist: null,
-      activeModelOverride: null,
-    }
-  }
-
-  const userMessageText = lastUserMessage.parts
-    .filter((p) => p.type === 'text')
-    .map((p) => p.text)
-    .join(' ')
-
-  if (!userMessageText.trim()) {
-    return {
-      activeSkillNames: new Set<string>(),
-      activeSkills: [],
-      activeToolsWhitelist: null,
-      activeModelOverride: null,
-    }
-  }
-
-  // 构建 TF-IDF 索引并搜索
-  const index = await buildSkillIndex(skills)
-  const idf = computeIdf(index)
-  const results = searchSkills(userMessageText, index, {
-    limit: SKILL_DISCOVERY_CONFIG.SEARCH_LIMIT,
-    minScore: SKILL_DISCOVERY_CONFIG.AUTO_LOAD_MIN_SCORE, // 0.30
-  })
-
-  const activeSkillNames = new Set(results.map(r => r.name))
-  if (activeSkillNames.size === 0) {
-    return {
-      activeSkillNames,
-      activeSkills: [],
-      activeToolsWhitelist: null,
-      activeModelOverride: null,
-    }
-  }
-
-  // 从传入的 skills 中获取激活的完整 Skill
-  const activeSkills = skills
-    .filter((s) => activeSkillNames.has(s.name))
-    .map((s) => ({
-      name: s.name,
-      body: s.body,
-      allowedTools: s.allowedTools,
-      model: s.model,
-    }))
-
-  const allAllowedTools = new Set<string>()
-  let modelOverride: string | null = null
-  for (const skill of activeSkills) {
-    for (const tool of skill.allowedTools) {
-      allAllowedTools.add(tool)
-    }
-    if (skill.model && !modelOverride) {
-      modelOverride = skill.model
-    }
-  }
-
+  // 技能现在通过 Skill 工具主动调用，不再自动激活
   return {
-    activeSkillNames,
-    activeSkills,
-    activeToolsWhitelist: allAllowedTools.size > 0 ? allAllowedTools : null,
-    activeModelOverride: modelOverride,
+    activeSkillNames: new Set<string>(),
+    activeSkills: [],
+    activeToolsWhitelist: null,
+    activeModelOverride: null,
   }
-}
-
-export function formatActiveSkillBodies(skillBodies: { name: string; body: string }[]): string {
-  if (skillBodies.length === 0) return ''
-
-  const sections = skillBodies
-    .map((s) => `<技能指令 name="${s.name}">\n${s.body}\n</技能指令>`)
-    .join('\n\n')
-
-  return `## 已激活技能完整指令
-
-以下技能已根据你的需求自动激活，请严格按照指令执行：
-
-${sections}`
 }
 
 export async function loadMemoryContext(
@@ -151,13 +69,14 @@ export async function loadMemoryContext(
 /**
  * 构建 Agent 指令
  *
- * 改造说明：接收已加载的数据，不再需要 cwd
+ * 简化版：技能指令现在通过 Skill 工具注入，不再拼接到系统提示词
  *
- * @param skillResolution 激活的技能解析结果
+ * @param skillResolution 激活的技能解析结果（现在总是空）
  * @param memoryContext 记忆上下文
  * @param options 构建选项（包含已加载的数据）
  */
 export interface BuildInstructionsOptions {
+  cwd?: string  // 工作目录，用于告诉 Agent 正确的执行路径
   skills?: Skill[]
   permissions?: PermissionRule[]
   memoryEntries?: MemoryEntry[]
@@ -175,6 +94,7 @@ export async function buildAgentInstructions(
   options?: BuildInstructionsOptions,
 ): Promise<string> {
   const { prompt } = await buildSystemPrompt({
+    cwd: options?.cwd,  // 传递工作目录给系统提示
     skills: options?.skills,
     permissions: options?.permissions,
     memoryEntries: options?.memoryEntries,
@@ -184,12 +104,6 @@ export async function buildAgentInstructions(
     memoryContext: memoryContext ?? undefined,
   })
 
-  const finalInstructions =
-    skillResolution?.activeSkills && skillResolution.activeSkills.length > 0
-      ? `${prompt}\n\n${formatActiveSkillBodies(
-          skillResolution.activeSkills.map((s) => ({ name: s.name, body: s.body })),
-        )}`
-      : prompt
-
-  return finalInstructions
+  // 技能指令现在通过 Skill 工具注入，不再拼接到系统提示词
+  return prompt
 }

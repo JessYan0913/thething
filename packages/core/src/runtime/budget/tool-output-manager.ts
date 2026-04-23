@@ -99,14 +99,13 @@ export function getMessageBudgetLimit(): number {
 
 /**
  * 工具输出配置
+ * 改进：所有工具的大输出都应该持久化，不再截断
  */
 export interface ToolOutputConfig {
   /** 最大字符数 */
   maxResultSizeChars: number
-  /** 是否持久化到磁盘 */
-  shouldPersistToDisk: boolean
-  /** 截断提示消息 */
-  truncationMessage: string
+  /** 是否持久化到磁盘（默认 true，现在可选） */
+  shouldPersistToDisk?: boolean
 }
 
 /**
@@ -146,62 +145,44 @@ export interface ContentReplacementRecord {
 /**
  * 工具输出配置表
  * 每工具自定义阈值
+ * 改进：所有工具的大输出都应该持久化，不再截断
  */
 export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
   // 内置工具
   'bash': {
     maxResultSizeChars: 100_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (输出被截断，超过 100,000 字符限制)',
+    // shouldPersistToDisk 默认 true
   },
   'read_file': {
     maxResultSizeChars: 50_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (文件内容被截断，超过 50,000 字符限制)',
   },
   'write_file': {
     maxResultSizeChars: 10_000,
-    shouldPersistToDisk: false,
-    truncationMessage: '\n... (写入结果被截断)',
   },
   'edit_file': {
     maxResultSizeChars: 10_000,
-    shouldPersistToDisk: false,
-    truncationMessage: '\n... (编辑结果被截断)',
   },
   'grep': {
     maxResultSizeChars: 30_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (搜索结果被截断，请缩小搜索范围)',
   },
   'glob': {
     maxResultSizeChars: 20_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (文件列表被截断)',
   },
   'exa_search': {
     maxResultSizeChars: 20_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (搜索结果被截断)',
   },
 
   // 外部工具默认配置
   'mcp_default': {
     maxResultSizeChars: 100_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (MCP 工具输出被截断)',
   },
   'connector_default': {
     maxResultSizeChars: 50_000,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (Connector 工具输出被截断)',
   },
 
   // 默认配置
   'default': {
     maxResultSizeChars: DEFAULT_MAX_RESULT_SIZE_CHARS,
-    shouldPersistToDisk: true,
-    truncationMessage: '\n... (结果被截断，超过限制)',
   },
 }
 
@@ -367,43 +348,38 @@ export async function processToolOutput(
 
   // 检查是否需要处理
   if (originalSize <= config.maxResultSizeChars) {
-    // 不需要截断，直接返回
+    // 不需要处理，直接返回
     if (options?.state) {
       options.state.seenIds.add(toolUseId)
     }
     return { content, persisted: false, originalSize }
   }
 
-  // 需要截断/持久化
-  if (config.shouldPersistToDisk && options?.sessionId && options?.projectDir) {
-    // 持久化到磁盘
-    const persisted = await persistToDisk(
-      content,
-      toolUseId,
-      options.sessionId,
-      options.projectDir,
-      config.maxResultSizeChars
-    )
+  // ✅ 改进：始终持久化，不再截断
+  // 如果没有 sessionContext，使用临时目录
+  const sessionId = options?.sessionId ?? `temp-${Date.now()}`
+  const projectDir = options?.projectDir ?? process.cwd()
 
-    if (options?.state) {
-      options.state.seenIds.add(toolUseId)
-      options.state.replacements.set(toolUseId, persisted.preview)
-    }
+  const persisted = await persistToDisk(
+    content,
+    toolUseId,
+    sessionId,
+    projectDir,
+    config.maxResultSizeChars,
+    !options?.sessionId  // isTemporary: 标记是否为临时持久化
+  )
 
-    return {
-      content: persisted.message,
-      persisted: true,
-      filepath: persisted.filepath,
-      originalSize,
-    }
-  }
-
-  // 简单截断
-  const truncated = content.slice(0, config.maxResultSizeChars) + config.truncationMessage
   if (options?.state) {
     options.state.seenIds.add(toolUseId)
+    options.state.replacements.set(toolUseId, persisted.preview)
   }
-  return { content: truncated, persisted: false, originalSize }
+
+  return {
+    content: persisted.message,
+    persisted: true,
+    filepath: persisted.filepath,
+    originalSize,
+  }
 }
 
 /**
@@ -415,13 +391,14 @@ async function persistToDisk(
   toolUseId: string,
   sessionId: string,
   projectDir: string,
-  maxSize: number
+  _maxSize: number,
+  isTemporary: boolean = false
 ): Promise<{ filepath: string; message: string; preview: string }> {
   // 动态导入避免循环依赖
   const { persistToolResult, buildPersistedOutputMessage } = await import('./tool-result-storage')
 
   const result = await persistToolResult(content, toolUseId, sessionId, projectDir)
-  const message = buildPersistedOutputMessage(result)
+  const message = buildPersistedOutputMessage(result, isTemporary)
 
   return {
     filepath: result.filepath,

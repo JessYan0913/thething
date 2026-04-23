@@ -35,12 +35,13 @@ export interface SystemPromptSection {
  * Options for building the complete system prompt.
  *
  * 改造说明：
- * - 移除 cwd 参数（配置加载用 AppContext）
+ * - cwd 恢复：用于告诉 Agent 正确的工作目录
  * - 新增 skills, agents, permissions, memory 数据参数
  * - projectContext 保留，用于 THING.md 等项目上下文文件
  */
 export interface BuildSystemPromptOptions {
-  // 【已移除】cwd?: string;  ← 不再需要，数据通过以下参数传入
+  // 【恢复】cwd：Agent 需要知道正确的工作目录来执行 bash 命令
+  cwd?: string;
 
   // 【新增】已加载的配置数据
   skills?: Skill[];

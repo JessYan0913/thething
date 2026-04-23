@@ -8,7 +8,6 @@ import type { ToolDefinition, SchemaProperty } from './types'
 import { ConnectorRegistry } from './registry'
 import {
   processToolOutput,
-  getToolOutputConfig,
 } from '../../runtime/budget/tool-output-manager'
 import type { ContentReplacementState } from '../../runtime/budget/tool-output-manager'
 
@@ -111,7 +110,6 @@ export function convertConnectorToolToAItool(
 ) {
   const inputSchema = buildZodSchemaFromToolDefinition(toolDef)
   const toolName = `${connectorId}_${toolDef.name}`
-  const outputConfig = getToolOutputConfig(toolName)
 
   return aiTool({
     description: `[Connector: ${connectorId}] ${toolDef.description}`,
@@ -127,8 +125,8 @@ export function convertConnectorToolToAItool(
         throw new Error(`Connector tool error: ${result.error}`)
       }
 
-      // ✅ 新增：统一输出处理（如果有 sessionContext）
-      if (options.sessionContext && outputConfig.shouldPersistToDisk) {
+      // ✅ 改进：始终处理输出，移除 shouldPersistToDisk 条件检查
+      if (options.sessionContext) {
         // 生成 toolUseId（AI SDK 内部会生成，这里用于预览）
         const toolUseId = `connector_${connectorId}_${toolDef.name}_${Date.now()}`
 

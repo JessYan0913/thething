@@ -6,3 +6,4 @@ export { grepTool } from './grep';
 export { readFileTool } from './read';
 export { writeFileTool } from './write';
 export { askUserQuestionTool } from './ask-user-question';
+export { skillTool } from './skill';

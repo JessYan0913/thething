@@ -7,12 +7,6 @@
 export type {
   Attachment,
   SkillListingAttachment,
-  SkillDiscoveryAttachment,
-  SkillDiscoveryResult,
-  DiscoverySignal,
-  SkillIndexEntry,
-  SkillVisibility,
-  SkillVisibilityConfig,
 } from './types';
 
 export {
@@ -36,16 +30,6 @@ export {
   shouldSendSkillListing,
 } from './skill-listing';
 
-export {
-  SKILL_DISCOVERY_CONFIG,
-  getTurnZeroSkillDiscovery,
-  startSkillDiscoveryPrefetch,
-  formatSkillDiscoveryMessage,
-  clearDiscoveryState,
-  clearAllDiscoveryState,
-  getDiscoveredCount,
-} from './skill-discovery';
-
 // 注入器
 export {
   injectMessageAttachments,
@@ -58,4 +42,4 @@ export type {
   MessageAttachmentResult,
 } from './injector';
 
-export const ATTACHMENTS_MODULE_VERSION = '1.0.0';
+export const ATTACHMENTS_MODULE_VERSION = '2.0.0';

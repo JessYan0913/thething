@@ -1,6 +1,5 @@
 import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage } from 'ai';
 import type { SessionState } from '../session-state/state';
-import { activateConditionalSkills, formatConditionalSkillActivation } from '../../extensions/skills/conditional-activation';
 import { enforceToolResultBudget } from '../budget/message-budget';
 
 function debugLog(...args: unknown[]): void {
@@ -35,33 +34,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       `[Agent] Step ${stepNumber + 1} | Tokens: ${budgetSummary.totalTokens.toLocaleString()} (${budgetSummary.usagePercentage.toFixed(1)}%) | Compact: ${budgetSummary.shouldCompact ? 'YES' : 'no'}`,
     );
 
-    if (stepNumber > 0 && lastStep?.toolResults && lastStep.toolResults.length > 0) {
-      const filePaths: string[] = [];
-      for (const tr of lastStep.toolResults) {
-        if (tr.toolName === 'read_file' || tr.toolName === 'edit_file' || tr.toolName === 'write_file') {
-          const input = tr.input as { filePath?: string } | undefined;
-          if (input?.filePath) {
-            filePaths.push(input.filePath);
-          }
-        }
-      }
-      if (filePaths.length > 0) {
-        const activationResult = await activateConditionalSkills(filePaths);
-        if (activationResult.activated.length > 0) {
-          for (const skill of activationResult.activated) {
-            sessionState.activeSkills.add(skill.name);
-            sessionState.loadedSkills.set(skill.name, skill);
-          }
-          const activationMessage = formatConditionalSkillActivation(activationResult.activated);
-          debugLog(`[Agent] Conditional skills activated: ${activationResult.activated.map((s) => s.name).join(', ')}`);
-          const systemMsg: ModelMessageType = {
-            role: 'system',
-            content: activationMessage,
-          };
-          messages = [...messages, systemMsg];
-        }
-      }
-    }
+    // 条件技能激活已移除，技能现在通过 Skill 工具主动调用
 
     if (sessionState.denialTracker.isThresholdExceeded()) {
       const injectMsg = sessionState.denialTracker.getInjectMessage();

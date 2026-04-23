@@ -109,6 +109,9 @@ export async function getSkillListingAttachment(
 /**
  * 格式化 skill_listing 附件为消息内容
  *
+ * 参考 Claude Code 的格式：
+ * "The following skills are available for use with the Skill tool:"
+ *
  * @param attachment - skill_listing 附件
  * @returns 格式化后的消息内容
  */
@@ -116,8 +119,8 @@ export function formatSkillListingMessage(
   attachment: SkillListingAttachment
 ): string {
   const header = attachment.isInitial
-    ? 'The following skills are available for use:'
-    : 'New skills are now available:';
+    ? 'The following skills are available for use with the Skill tool:'
+    : 'New skills are now available for use with the Skill tool:';
 
   return `${header}\n\n${attachment.content}`;
 }

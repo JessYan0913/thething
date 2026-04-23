@@ -31,16 +31,26 @@ export function createSessionGuidanceSection(
 }
 
 /**
- * Creates a system context section with current date/time.
- * Always injected so the model always knows what time it is.
+ * Creates a system context section with current date/time and working directory.
+ * Always injected so the model always knows what time it is and where to run commands.
  */
-export function createSystemContextSection(): SystemPromptSection {
+export function createSystemContextSection(cwd?: string): SystemPromptSection {
   const now = new Date();
   const iso = now.toISOString(); // Always UTC, e.g. "2026-04-07T12:02:00.000Z"
   const dateStr = iso.slice(0, 10);  // YYYY-MM-DD
   const timeStr = iso.slice(11, 16); // HH:mm
 
-  const content = `当前日期时间：${dateStr} ${timeStr} (UTC)`;
+  const parts: string[] = [
+    `当前日期时间：${dateStr} ${timeStr} (UTC)`,
+  ];
+
+  // 添加工作目录信息（关键：让 Agent 知道正确的执行路径）
+  if (cwd) {
+    parts.push(`Primary working directory: ${cwd}`);
+    parts.push(`IMPORTANT: Run all bash commands from this directory. Do NOT use /home/sandbox or other Linux paths.`);
+  }
+
+  const content = `【环境信息】\n\n${parts.join('\n')}`;
 
   return {
     name: 'system-context',

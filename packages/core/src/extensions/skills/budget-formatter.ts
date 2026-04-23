@@ -130,7 +130,10 @@ export function formatSkillsWithinBudget(
     return entries.map(e => {
       if (e.isAlwaysFull) return e.full;
       const sourcePath = e.skill.sourcePath ? ` (source: ${e.skill.sourcePath})` : '';
-      return `- ${e.skill.name}${sourcePath}`;
+      const pathsInfo = e.skill.paths && e.skill.paths.length > 0
+        ? ` (outputs: ${e.skill.paths.join(', ')})`
+        : '';
+      return `- ${e.skill.name}${sourcePath}${pathsInfo}`;
     }).join('\n');
   }
 
@@ -139,7 +142,10 @@ export function formatSkillsWithinBudget(
     if (e.isAlwaysFull) return e.full;
     const desc = getSkillDescription(e.skill);
     const sourcePath = e.skill.sourcePath ? ` (source: ${e.skill.sourcePath})` : '';
-    return `- ${e.skill.name}: ${truncateDescription(desc, maxDescLen)}${sourcePath}`;
+    const pathsInfo = e.skill.paths && e.skill.paths.length > 0
+      ? ` (outputs: ${e.skill.paths.join(', ')})`
+      : '';
+    return `- ${e.skill.name}: ${truncateDescription(desc, maxDescLen)}${sourcePath}${pathsInfo}`;
   }).join('\n');
 }
 
@@ -147,14 +153,18 @@ export function formatSkillsWithinBudget(
  * 格式化单条技能
  *
  * @param skill - 技能对象
- * @returns 格式化后的技能条目（包含源文件路径）
+ * @returns 格式化后的技能条目（包含源文件路径和输出目录）
  */
 function formatSkillEntry(skill: Skill): string {
   const desc = getSkillDescription(skill);
   const truncated = truncateDescription(desc, SKILL_BUDGET_CONFIG.MAX_DESC_CHARS);
   // 添加源文件路径，方便 Agent 直接读取完整内容
   const sourcePath = skill.sourcePath ? ` (source: ${skill.sourcePath})` : '';
-  return `- ${skill.name}: ${truncated}${sourcePath}`;
+  // 添加输出目录提示（如果有 paths 配置）
+  const pathsInfo = skill.paths && skill.paths.length > 0
+    ? ` (outputs: ${skill.paths.join(', ')})`
+    : '';
+  return `- ${skill.name}: ${truncated}${sourcePath}${pathsInfo}`;
 }
 
 /**

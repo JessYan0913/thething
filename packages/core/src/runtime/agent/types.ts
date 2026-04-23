@@ -65,8 +65,6 @@ export interface CreateAgentResult {
   attachmentInfo?: {
     hasSkillListing: boolean
     skillListingCount: number
-    hasSkillDiscovery: boolean
-    skillDiscoveryCount: number
   }
 }
 
