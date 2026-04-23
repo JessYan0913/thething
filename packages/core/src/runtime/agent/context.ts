@@ -39,8 +39,9 @@ export async function resolveActiveSkills(messages: UIMessage[], skills: Skill[]
 export async function loadMemoryContext(
   messages: UIMessage[],
   userId: string,
+  cwd?: string,
 ): Promise<MemoryContext> {
-  const userMemDir = getUserMemoryDir(userId)
+  const userMemDir = getUserMemoryDir(userId, cwd)
   await ensureMemoryDirExists(userMemDir)
 
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')

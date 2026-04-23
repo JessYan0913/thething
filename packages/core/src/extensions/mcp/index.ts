@@ -5,13 +5,17 @@
 // Registry
 export { McpRegistry, createMcpRegistry } from './registry';
 
-// Loader
+// Loader（直接从 api/loaders 导出，移除中间 loader 代理层）
 export {
+  loadMcpServers,
+  loadMcpFile,
   scanMcpDirs,
   clearMcpCache,
+  clearMcpsCache,
   getAvailableMcpServers,
   MCP_LOADER_MODULE_VERSION,
-} from './loader';
+  type LoadMcpsOptions,
+} from '../../api/loaders/mcps';
 
 // Config Store (CRUD)
 export {

@@ -13,8 +13,8 @@ import {
   extractMemoriesInBackground,
   type SubAgentStreamWriter,
   createModelProvider,
-  detectProjectDir,
 } from '@the-thing/core'
+import { getServerProjectDir } from '../config'
 import { ENV_MODEL } from '../env-names'
 import {
   createAgentUIStream,
@@ -93,8 +93,8 @@ app.post('/', async (c) => {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
     const userId = messageUserId || 'default'
 
-    // 使用统一的 detectProjectDir 获取项目根目录
-    const projectDir = detectProjectDir()
+    // 使用 server 自己的项目目录（而不是 detectProjectDir 的 monorepo 根）
+    const projectDir = getServerProjectDir()
 
     // ============================================================
     // 创建 Agent（core 内部处理技能附件注入）
@@ -181,6 +181,7 @@ app.post('/', async (c) => {
                 userId,
                 conversationId,
                 model,
+                projectDir,
               ).catch((err) => console.error('[Memory Extraction] Error:', err))
 
               if (isFirstMessage) {

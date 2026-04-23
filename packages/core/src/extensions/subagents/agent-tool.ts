@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { globalAgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
-import { scanAgentDirs } from './loader';
+import { scanAgentDirs } from '../../api/loaders/agents';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
 import { detectProjectDir } from '../../foundation/paths';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';

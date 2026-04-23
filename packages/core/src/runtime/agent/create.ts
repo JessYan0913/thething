@@ -96,7 +96,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   let memoryContext: MemoryContext | null = null
   if (enableMemory && messagesWithAttachments.length > 0) {
-    memoryContext = await loadMemoryContext(messagesWithAttachments, userId)
+    memoryContext = await loadMemoryContext(messagesWithAttachments, userId, cwd)
   }
 
   // 加载项目上下文（THING.md）

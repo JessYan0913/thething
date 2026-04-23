@@ -1,9 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { detectProjectDir } from '../../foundation/paths';
-import type { McpServerConfig } from './types';
-import type { McpServerConfigSource } from './types';
-import { scanMcpDirs, clearMcpCache } from './loader';
+import { scanMcpDirs, clearMcpCache } from '../../api/loaders/mcps';
+import type { McpServerConfig, McpServerConfigSource } from './types';
 
 // ============================================================
 // MCP 配置目录

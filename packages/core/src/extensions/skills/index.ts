@@ -5,11 +5,20 @@
  * 技能现在通过 Skill 工具主动调用。
  */
 
-export type { Skill, SkillFrontmatter, SkillMetadata } from './types';
+export type { Skill, SkillFrontmatter, SkillMetadata, SkillLoaderConfig } from './types';
 
 export { DEFAULT_SKILL_LOADER_CONFIG, DEFAULT_SKILL_SCAN_DIRS, SkillFrontmatterSchema } from './types';
 
-export { clearSkillsCache, getAvailableSkills, loadSkill, scanSkillsDirs } from './loader';
+// 直接从 api/loaders 导出（移除中间 loader 代理层）
+export {
+  loadSkills,
+  loadSkill,
+  loadSkillFile,
+  clearSkillsCache,
+  scanSkillsDirs,
+  getAvailableSkills,
+  type LoadSkillsOptions,
+} from '../../api/loaders/skills';
 
 export {
   SKILL_BUDGET_CONFIG,

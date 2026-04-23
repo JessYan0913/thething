@@ -139,6 +139,7 @@ export async function extractMemoriesFromConversation(
   userId: string,
   conversationId?: string,
   model?: LanguageModelV3,
+  cwd?: string,
 ): Promise<MemoryExtractionResult> {
   if (messages.length < 2) {
     return { memories: [], count: 0 };
@@ -148,7 +149,7 @@ export async function extractMemoriesFromConversation(
     const recentMessages = messages.slice(-20);
     const conversationText = formatConversationForPrompt(recentMessages);
 
-    const userDir = getUserMemoryDir(userId);
+    const userDir = getUserMemoryDir(userId, cwd);
     await ensureMemoryDirExists(userDir);
 
     // 获取现有记忆作为上下文
@@ -293,6 +294,7 @@ export async function extractMemoriesInBackground(
   userId: string,
   conversationId?: string,
   model?: LanguageModelV3,
+  cwd?: string,
 ): Promise<void> {
   setImmediate(async () => {
     try {
@@ -304,6 +306,7 @@ export async function extractMemoriesInBackground(
         userId,
         conversationId,
         model,
+        cwd,
       );
       if (result.count > 0) {
         console.log(

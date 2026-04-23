@@ -19,7 +19,15 @@ import type { SessionState, SessionStateOptions } from './types';
 
 export type { SessionState, SessionStateOptions };
 
-export function createSessionState(conversationId: string, options?: SessionStateOptions): SessionState {
+/**
+ * 创建会话状态
+ *
+ * 简化版：使用普通对象而非 getter/setter 闭包
+ */
+export function createSessionState(
+  conversationId: string,
+  options?: SessionStateOptions,
+): SessionState {
   const {
     maxContextTokens = 128_000,
     compactThreshold = 25_000,
@@ -36,7 +44,9 @@ export function createSessionState(conversationId: string, options?: SessionStat
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
   const costTracker = new CostTracker(conversationId, { model, maxBudgetUsd });
-  const denialTracker = new DenialTracker({ maxDenialsPerTool: options?.maxDenialsPerTool });
+  const denialTracker = new DenialTracker({
+    maxDenialsPerTool: options?.maxDenialsPerTool,
+  });
   const modelSwapper = new ModelSwapper({
     availableModels: [
       { id: 'qwen-max', name: 'Qwen Max', costMultiplier: 1.0, capabilityTier: 3 },
@@ -47,35 +57,21 @@ export function createSessionState(conversationId: string, options?: SessionStat
     autoDowngradeCostThreshold: 80,
     notifyOnSwitch: true,
   });
-  let turnCount = 0;
-  let aborted = false;
-  const activeSkills = new Set<string>();
-  const loadedSkills = new Map<string, Skill>();
-  const contentReplacementState = createContentReplacementState();
 
+  // 使用普通对象，简化状态管理
   const state: SessionState = {
     conversationId,
-    get turnCount() {
-      return turnCount;
-    },
-    set turnCount(value: number) {
-      turnCount = value;
-    },
+    turnCount: 0,
+    aborted: false,
+    model,
+    projectDir,
     tokenBudget,
     costTracker,
     denialTracker,
     modelSwapper,
-    activeSkills,
-    loadedSkills,
-    model,
-    projectDir,
-    contentReplacementState,
-    get aborted() {
-      return aborted;
-    },
-    set aborted(value: boolean) {
-      aborted = value;
-    },
+    activeSkills: new Set<string>(),
+    loadedSkills: new Map<string, Skill>(),
+    contentReplacementState: createContentReplacementState(),
 
     async compact(messages: UIMessage[]): Promise<CompactionResult> {
       const result = await compactMessagesIfNeeded(messages, conversationId);
@@ -90,7 +86,7 @@ export function createSessionState(conversationId: string, options?: SessionStat
     },
 
     abort() {
-      aborted = true;
+      state.aborted = true;
     },
 
     async cleanupToolResults(): Promise<void> {

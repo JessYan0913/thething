@@ -6,7 +6,7 @@ import { parseFrontmatterFile } from '../../foundation/parser';
 import { scanConfigDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
 import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { z } from 'zod';
-import type { Skill, SkillMetadata } from '../../extensions/skills/types';
+import type { Skill, SkillMetadata, SkillLoaderConfig } from '../../extensions/skills/types';
 import { SkillFrontmatterSchema } from '../../extensions/skills/types';
 
 // ============================================================
@@ -33,14 +33,11 @@ export interface LoadSkillsOptions {
 }
 
 // ============================================================
-// 加载函数
+// 核心加载函数
 // ============================================================
 
 /**
  * 加载 Skills 配置
- *
- * @param options 加载选项
- * @returns Skill 列表
  */
 export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> {
   const cwd = options?.cwd ?? detectProjectDir();
@@ -143,4 +140,58 @@ export async function loadSkillFile(
  */
 export function clearSkillsCache(): void {
   skillsCache.clear();
+}
+
+// ============================================================
+// 兼容接口（原 extensions/skills/loader.ts）
+// ============================================================
+
+/**
+ * 加载单个 Skill 文件（兼容接口）
+ *
+ * @param skillPath Skill 文件路径
+ * @returns Skill 对象
+ */
+export async function loadSkill(skillPath: string): Promise<Skill> {
+  const result = await loadSkillFile(skillPath, 'project');
+  return {
+    name: result.name,
+    description: result.description,
+    whenToUse: result.whenToUse,
+    allowedTools: result.allowedTools,
+    model: result.model,
+    effort: result.effort,
+    context: result.context,
+    paths: result.paths,
+    body: result.body,
+    sourcePath: result.sourcePath,
+  };
+}
+
+/**
+ * 扫描 Skills 配置目录（兼容接口）
+ *
+ * @param cwd 当前工作目录
+ * @param _config 加载配置（已弃用，保留签名兼容）
+ * @returns Skill 列表
+ */
+export async function scanSkillsDirs(
+  cwd?: string,
+  _config?: Partial<SkillLoaderConfig>,
+): Promise<Skill[]> {
+  return loadSkills({ cwd });
+}
+
+/**
+ * 获取所有可用 Skills（兼容接口）
+ *
+ * @param cwd 当前工作目录
+ * @param _config 加载配置（已弃用，保留签名兼容）
+ * @returns Skill 列表
+ */
+export async function getAvailableSkills(
+  cwd?: string,
+  _config?: Partial<SkillLoaderConfig>,
+): Promise<Skill[]> {
+  return scanSkillsDirs(cwd);
 }

@@ -23,9 +23,18 @@ export type {
 } from './types';
 export { AgentFrontmatterSchema } from './types';
 
-// Agent 加载
-export { loadAgentMarkdown, scanAgentDirs, clearAgentCache, getAvailableAgents } from './loader';
-export type { AgentLoaderConfig } from './loader';
+// Agent 加载（直接从 api/loaders 导出，移除中间 loader 代理层）
+export {
+  loadAgents,
+  loadAgentFile,
+  loadAgentMarkdown,
+  scanAgentDirs,
+  clearAgentCache,
+  clearAgentsCache,
+  getAvailableAgents,
+  type LoadAgentsOptions,
+  type AgentLoaderConfig,
+} from '../../api/loaders/agents';
 
 // Agent 注册
 export { globalAgentRegistry } from './registry';

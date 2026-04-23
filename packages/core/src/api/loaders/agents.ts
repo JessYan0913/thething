@@ -32,14 +32,11 @@ export interface LoadAgentsOptions {
 }
 
 // ============================================================
-// 加载函数
+// 核心加载函数
 // ============================================================
 
 /**
  * 加载 Agents 配置
- *
- * @param options 加载选项
- * @returns AgentDefinition 列表
  */
 export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefinition[]> {
   const cwd = options?.cwd ?? detectProjectDir();
@@ -152,4 +149,62 @@ export async function loadAgentFile(
  */
 export function clearAgentsCache(): void {
   agentsCache.clear();
+}
+
+// ============================================================
+// 兼容接口（原 extensions/subagents/loader.ts）
+// ============================================================
+
+/**
+ * Agent 加载配置（保留用于类型兼容）
+ */
+export interface AgentLoaderConfig {
+  sources?: ('user' | 'project')[];
+  maxAgents?: number;
+  enableCache?: boolean;
+}
+
+/**
+ * 从 Markdown 文件加载 Agent 定义（兼容接口）
+ *
+ * @param filePath Markdown 文件路径
+ * @returns Agent 定义
+ */
+export async function loadAgentMarkdown(filePath: string): Promise<AgentDefinition> {
+  return loadAgentFile(filePath, 'project');
+}
+
+/**
+ * 扫描 Agent 目录（兼容接口）
+ *
+ * @param cwd 当前工作目录
+ * @param _config 加载配置（已弃用，保留签名兼容）
+ * @returns Agent 定义列表
+ */
+export async function scanAgentDirs(
+  cwd?: string,
+  _config?: Partial<AgentLoaderConfig>,
+): Promise<AgentDefinition[]> {
+  return loadAgents({ cwd });
+}
+
+/**
+ * 清除 Agent 加载缓存（兼容接口）
+ */
+export function clearAgentCache(): void {
+  clearAgentsCache();
+}
+
+/**
+ * 获取所有可用 Agent（兼容接口）
+ *
+ * @param cwd 当前工作目录
+ * @param includeBuiltin 是否包含内置 Agent（已弃用，内置 Agent 由 registry 管理）
+ * @returns Agent 定义列表
+ */
+export async function getAvailableAgents(
+  cwd?: string,
+  includeBuiltin: boolean = true,
+): Promise<AgentDefinition[]> {
+  return scanAgentDirs(cwd);
 }

@@ -46,7 +46,13 @@
       "Bash(npm ls *)",
       "Bash(powershell -Command \"Get-Content 'e:\\\\thething\\\\packages\\\\core\\\\src\\\\runtime\\\\budget\\\\tool-output-manager.ts' -Encoding UTF8 | Select-Object -Index 358\")",
       "Bash(powershell -Command \"\\(Get-Content 'e:\\\\thething\\\\packages\\\\core\\\\src\\\\runtime\\\\budget\\\\tool-output-manager.ts' -Raw\\) -replace 'temp-\\\\$\\\\{Date\\\\.now\\\\\\(\\\\\\)\\\\\\)\\\\}', 'temp-\\\\$\\\\{Date.now\\(\\)\\\\}' | Set-Content 'e:\\\\thething\\\\packages\\\\core\\\\src\\\\runtime\\\\budget\\\\tool-output-manager.ts' -Encoding UTF8\")",
-      "Bash(powershell -Command ' *)"
+      "Bash(powershell -Command ' *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(npx tsx *)",
+      "Bash(cat)",
+      "Bash(rm test-dir.ts)",
+      "Bash(rm test-import-chain.ts)",
+      "Bash(rm test-fix.ts)"
     ]
   }
 }

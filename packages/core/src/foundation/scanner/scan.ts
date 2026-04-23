@@ -4,6 +4,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { minimatch } from 'minimatch';
 import { getUserConfigDir } from '../paths';
 import type { ScanOptions, ScanConfig, ScanResult } from './types';
 
@@ -226,16 +227,7 @@ async function scanRecursive(dir: string, pattern: string): Promise<string[]> {
 
 function matchesPattern(name: string, pattern: string): boolean {
   if (pattern === '*') return true;
-
-  // glob 模式
-  if (pattern.includes('*')) {
-    const regex = pattern
-      .replace(/\./g, '\\.')
-      .replace(/\*/g, '.*');
-    return new RegExp(`^${regex}$`).test(name);
-  }
-
-  return name === pattern;
+  return minimatch(name, pattern);
 }
 
 function determineSource(dir: string): 'user' | 'project' {

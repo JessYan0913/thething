@@ -21,6 +21,8 @@ export interface AgentHandlerConfig {
   userId?: string
   /** 模型实例（必须提供） */
   model: LanguageModelV3
+  /** 项目目录（可选） */
+  cwd?: string
 }
 
 /**
@@ -169,7 +171,7 @@ export class AgentInboundHandler implements InboundEventHandler {
    */
   private async getMemoryContext(userId: string, query: string): Promise<string> {
     try {
-      const userMemDir = getUserMemoryDir(userId)
+      const userMemDir = getUserMemoryDir(userId, this.config.cwd)
       await ensureMemoryDirExists(userMemDir)
 
       if (!query) return ''
