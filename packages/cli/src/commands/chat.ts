@@ -9,10 +9,11 @@ import { createRepl, startRepl } from '../interactive/repl'
 import { getDataDirConfig } from '../lib/data-dir'
 import { loadConfig, saveConfig, AppConfig } from '../lib/config-store'
 import {
-  initAll,
-  createChatAgent,
-  getGlobalDataStore,
+  bootstrap,
+  createContext,
+  createAgent,
   generateConversationTitle,
+  resolveProjectDir,
 } from '@the-thing/core'
 import { ENV_MODEL } from '../lib/env-names'
 import { createAgentUIStream, type UIMessage } from 'ai'
@@ -150,12 +151,26 @@ async function ensureConfig(): Promise<{ apiKey: string; baseURL: string; modelN
 }
 
 export default async function chat(options: ChatOptions): Promise<void> {
-  // Initialize all systems
+  // ============================================================
+  // Step 1: Bootstrap - 初始化基础设施
+  // ============================================================
   const dataDirConfig = getDataDirConfig()
-  await initAll({ dataDir: dataDirConfig.dataDir })
+  const cwd = resolveProjectDir({
+    monorepoPatterns: ['packages/server', 'packages/cli'],
+  })
 
-  // Get datastore
-  const store = getGlobalDataStore()
+  const runtime = await bootstrap({
+    dataDir: dataDirConfig.dataDir,
+    cwd,
+  })
+
+  // Get datastore from runtime
+  const store = runtime.dataStore
+
+  // ============================================================
+  // Step 2: CreateContext - 加载配置
+  // ============================================================
+  const context = await createContext({ runtime, cwd })
 
   // Get or create conversation
   let conversationId = options.conversation
@@ -179,6 +194,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
   // Load config file and merge with environment variables
   const configResult = await ensureConfig()
   if (!configResult) {
+    await runtime.dispose()
     return
   }
 
@@ -200,40 +216,37 @@ export default async function chat(options: ChatOptions): Promise<void> {
 
       messages = [...messages, userMessage]
 
-      // Create agent using unified createChatAgent
-      const { agent, sessionState, mcpRegistry, model } = await createChatAgent({
+      // ============================================================
+      // Step 3: CreateAgent - 使用新 API
+      // ============================================================
+      const { agent, sessionState, mcpRegistry, model, adjustedMessages } = await createAgent({
+        context,
         conversationId: conversationId!,
         messages,
-        modelConfig: {
+        model: {
           apiKey,
           baseURL,
           modelName,
           includeUsage: true,
           enableThinking,
         },
-        conversationMeta: {
-          messageCount: messages.length,
-          isNewConversation: messages.length === 1,
-          conversationStartTime: Date.now(),
-        },
-        enableMcp: true,
-        enableSkills: true,
-        enableMemory: true,
-        enableConnector: true,
       })
 
       // Stream response
       const abortController = new AbortController()
 
       try {
+        // 使用调整后的消息（包含注入的附件）
+        const messagesToStream = adjustedMessages ?? messages
+
         const agentStream = await createAgentUIStream({
           agent,
-          uiMessages: messages,
+          uiMessages: messagesToStream,
           abortSignal: abortController.signal,
           sendReasoning: true,
           onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             // Save messages
-            const newMessages = [...messages, ...completedMessages.slice(messages.length)]
+            const newMessages = [...messages, ...completedMessages.slice(messagesToStream.length)]
             store.messageStore.saveMessages(conversationId!, newMessages)
             messages = newMessages
 
@@ -302,6 +315,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
 
       if (cmd === '/exit' || cmd === '/quit') {
         console.log(chalk.yellow('Exiting chat...'))
+        await runtime.dispose()
         return false
       }
 

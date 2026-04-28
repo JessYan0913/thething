@@ -5,14 +5,28 @@
 // 本包提供三层 API：
 //
 // 1. 高层 API（推荐）— 直接 import
-//    - createAgent()    创建 Agent，一键启动对话
+//    - bootstrap()      显式初始化基础设施，返回 CoreRuntime
 //    - createContext()  加载所有配置（skills、mcp、connector 等）
-//    - initAll()        全局初始化
+//    - createAgent()    创建 Agent，消费 AppContext
+//    - initAll()        全局初始化（已废弃，使用 bootstrap 替代）
 //
-//    示例：
+//    示例（新 API）：
 //    ```typescript
-//    import { createAgent } from '@the-thing/core';
-//    const result = await createAgent({ cwd: '/path/to/project' });
+//    import { bootstrap, createContext, createAgent } from '@the-thing/core';
+//
+//    // 三步，每步的输入输出关系一目了然
+//    const runtime = await bootstrap({ dataDir: './data' });
+//    const context = await createContext({ runtime, cwd: process.cwd() });
+//    const { agent, adjustedMessages } = await createAgent({
+//      context,
+//      conversationId: 'conv-1',
+//      messages,
+//      model: {
+//        apiKey: process.env.API_KEY!,
+//        baseURL: process.env.BASE_URL!,
+//        modelName: 'qwen-max',
+//      },
+//    });
 //    ```
 //
 // 2. 中层 API — import from '@the-thing/core/api'
@@ -30,7 +44,7 @@
 // 3. 底层 API — import from '@the-thing/core/foundation'
 //    - parser/          文件解析（Frontmatter、YAML、JSON）
 //    - scanner/         目录扫描
-//    - paths/           路径计算
+//    - paths/           路径计算（纯函数 + 便捷版本）
 //    - datastore/       数据存储
 //    - model/           模型提供者和能力配置
 //
@@ -45,6 +59,7 @@
 // ============================================================
 // 高层 API（推荐入口）
 // ============================================================
+export { bootstrap, type CoreRuntime, type BootstrapOptions } from './bootstrap';
 export { createAgent, createContext } from './api/app';
 export { initAll } from './init';
 export type {
@@ -52,10 +67,13 @@ export type {
   CreateAgentOptions,
   CreateAgentResult,
   CreateContextOptions,
+  ModelConfig,
+  ReloadOptions,
   LoadEvent,
   LoadSourceInfo,
   LoadError,
 } from './api/app/types';
+export { type ConnectorRegistry } from './extensions/connector';
 
 // ============================================================
 // 配置（常量和类型）

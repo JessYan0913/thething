@@ -3,13 +3,18 @@
 // ============================================================
 
 export { createContext, getAppContext } from './context';
-export { createAgent, createChatAgent } from './create';
+export { createAgent } from './create';
+
+// 向后兼容：createChatAgent 从 runtime/agent 导出
+export { createChatAgent } from '../../runtime/agent/create';
 
 export type {
   AppContext,
   CreateContextOptions,
   CreateAgentOptions,
   CreateAgentResult,
+  ModelConfig,
+  ReloadOptions,
   LoadEvent,
   LoadSourceInfo,
   LoadError,

@@ -8,6 +8,12 @@ import type { SessionStateOptions, SessionState } from '../session-state'
 import type { ModelProviderConfig } from '../../foundation/model'
 import type { McpRegistry } from '../../extensions/mcp'
 import type { SubAgentStreamWriter } from '../../extensions/subagents'
+import type { Skill } from '../../extensions/skills/types'
+import type { AgentDefinition } from '../../extensions/subagents/types'
+import type { McpServerConfig } from '../../extensions/mcp/types'
+import type { ConnectorFrontmatter } from '../../extensions/connector/loader'
+import type { PermissionRule } from '../../extensions/permissions/types'
+import type { MemoryEntry } from '../../api/loaders/memory'
 
 export interface AgentContextConfig {
   userId?: string
@@ -30,6 +36,20 @@ export interface LoadToolsConfig {
   provider?: (modelName: string) => any
 }
 
+/**
+ * 预加载的数据（来自 AppContext）
+ * 用于避免 createChatAgent 内部重复调用 loadAll
+ */
+export interface PreloadedData {
+  cwd: string
+  skills: Skill[]
+  agents: AgentDefinition[]
+  mcps: McpServerConfig[]
+  connectors: ConnectorFrontmatter[]
+  permissions: PermissionRule[]
+  memory: MemoryEntry[]
+}
+
 export interface CreateAgentConfig {
   conversationId: string
   messages?: UIMessage[]
@@ -47,6 +67,8 @@ export interface CreateAgentConfig {
   enableMemory?: boolean
   enableConnector?: boolean
   writerRef?: { current: SubAgentStreamWriter | null }
+  /** 预加载的数据（来自 AppContext），优先使用，避免重复 loadAll */
+  preloadedData?: PreloadedData
 }
 
 export interface CreateAgentResult {

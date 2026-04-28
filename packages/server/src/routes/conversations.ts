@@ -3,17 +3,15 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import {
-  generateConversationTitle,
-  getGlobalDataStore,
-} from '@the-thing/core'
+import { generateConversationTitle } from '@the-thing/core'
+import { getServerDataStore } from '../runtime'
 
 const app = new Hono()
 
 // GET: List all conversations
-app.get('/', (c) => {
+app.get('/', async (c) => {
   try {
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     const conversations = store.conversationStore.listConversations()
     return c.json({ conversations })
   } catch (error) {
@@ -31,7 +29,7 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing conversation id' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     const conversation = store.conversationStore.createConversation(body.id, body.title)
     return c.json({ conversation })
   } catch (error) {
@@ -49,7 +47,7 @@ app.patch('/', async (c) => {
       return c.json({ error: 'Missing id or title' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     store.conversationStore.updateConversationTitle(body.id, body.title)
     return c.json({ success: true })
   } catch (error) {
@@ -59,7 +57,7 @@ app.patch('/', async (c) => {
 })
 
 // DELETE: Delete a conversation
-app.delete('/', (c) => {
+app.delete('/', async (c) => {
   try {
     const id = c.req.query('id')
 
@@ -67,7 +65,7 @@ app.delete('/', (c) => {
       return c.json({ error: 'Missing conversation id' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     store.summaryStore.deleteSummariesByConversation(id)
     store.conversationStore.deleteConversation(id)
     return c.json({ success: true })

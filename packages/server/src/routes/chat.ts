@@ -1,20 +1,18 @@
 // ============================================================
-// Chat API - 流式响应（使用统一的 createChatAgent）
+// Chat API - 流式响应（使用新 API）
 // ============================================================
 
 import { Hono } from 'hono'
 import {
-  createChatAgent,
+  createAgent,
   generateConversationTitle,
-  getGlobalDataStore,
   compactMessagesIfNeeded,
   estimateMessagesTokens,
   runCompactInBackground,
   extractMemoriesInBackground,
   type SubAgentStreamWriter,
-  createModelProvider,
 } from '@the-thing/core'
-import { getServerProjectDir } from '../config'
+import { getServerContext, getServerDataStore } from '../runtime'
 import { ENV_MODEL } from '../env-names'
 import {
   createAgentUIStream,
@@ -25,15 +23,8 @@ import {
 
 const app = new Hono()
 
-const dashscope = createModelProvider({
-  apiKey: process.env.DASHSCOPE_API_KEY!,
-  baseURL: process.env.DASHSCOPE_BASE_URL!,
-  modelName: process.env[ENV_MODEL]!,
-  includeUsage: true,
-})
-
 // GET: Load messages for a conversation
-app.get('/', (c) => {
+app.get('/', async (c) => {
   try {
     const conversationId = c.req.query('conversationId')
 
@@ -41,7 +32,7 @@ app.get('/', (c) => {
       return c.json({ error: 'Missing conversationId' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     const messages = store.messageStore.getMessagesByConversation(conversationId)
     return c.json({ messages })
   } catch (error) {
@@ -65,7 +56,12 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing conversationId' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    // ============================================================
+    // Step 1: 获取 Server Context（应用进程级别）
+    // ============================================================
+    const context = await getServerContext()
+    const store = context.runtime.dataStore
+
     let existingMessages = store.messageStore.getMessagesByConversation(conversationId)
     const isFirstMessage = existingMessages.length === 0
 
@@ -93,11 +89,8 @@ app.post('/', async (c) => {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
     const userId = messageUserId || 'default'
 
-    // 使用 server 自己的项目目录（而不是 detectProjectDir 的 monorepo 根）
-    const projectDir = getServerProjectDir()
-
     // ============================================================
-    // 创建 Agent（core 内部处理技能附件注入）
+    // Step 2: 创建 Agent（使用新 API）
     // ============================================================
     const {
       agent,
@@ -105,28 +98,16 @@ app.post('/', async (c) => {
       mcpRegistry,
       model,
       adjustedMessages,
-    } = await createChatAgent({
+    } = await createAgent({
+      context,
       conversationId,
       messages: compactedMessages,
       userId,
-      modelConfig: {
+      model: {
         apiKey: process.env.DASHSCOPE_API_KEY!,
         baseURL: process.env.DASHSCOPE_BASE_URL!,
         modelName: process.env[ENV_MODEL]!,
         includeUsage: true,
-      },
-      conversationMeta: {
-        messageCount: compactedMessages.length,
-        isNewConversation: isFirstMessage,
-        conversationStartTime: Date.now(),
-      },
-      enableMcp: true,
-      enableSkills: true,
-      enableMemory: true,
-      enableConnector: true,
-      writerRef,
-      sessionOptions: {
-        projectDir,
       },
     })
 
@@ -181,7 +162,7 @@ app.post('/', async (c) => {
                 userId,
                 conversationId,
                 model,
-                projectDir,
+                context.cwd,
               ).catch((err) => console.error('[Memory Extraction] Error:', err))
 
               if (isFirstMessage) {
@@ -225,7 +206,7 @@ app.patch('/', async (c) => {
       return c.json({ error: 'Missing conversationId or messages' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     store.messageStore.saveMessages(body.conversationId, body.messages)
 
     return c.json({ success: true })

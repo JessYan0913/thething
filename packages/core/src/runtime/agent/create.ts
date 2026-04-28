@@ -32,14 +32,15 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     enableMemory = true,
     enableConnector = true,
     writerRef,
+    preloadedData,
   } = config
 
   // 判断是否是首次对话
   const isTurnZero = conversationMeta?.isNewConversation ?? false
 
-  // 加载配置数据
-  const cwd = sessionOptions?.projectDir
-  const loadedData = await loadAll({ cwd })
+  // 加载配置数据：优先使用 preloadedData（来自 AppContext），避免重复 loadAll
+  const cwd = sessionOptions?.projectDir ?? preloadedData?.cwd
+  const loadedData = preloadedData ?? await loadAll({ cwd })
 
   // ============================================================
   // ✅ 技能附件注入（由 core 内部处理）

@@ -175,3 +175,11 @@ export type {
   ToolOutputConfig,
   ToolOutputOverrides,
 } from '../runtime/budget/tool-output-manager';
+
+// ============================================================
+// Resource Layout（资源目录配置）
+// ============================================================
+export {
+  buildDefaultResourceLayout,
+  type ResourceLayout,
+} from './layout';

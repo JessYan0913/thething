@@ -3,11 +3,12 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { estimateMessagesTokens, getGlobalDataStore, SQLiteDataStore } from '@the-thing/core'
+import { estimateMessagesTokens, SQLiteDataStore } from '@the-thing/core'
+import { getServerDataStore } from '../runtime'
 
 const app = new Hono()
 
-app.get('/compaction', (c) => {
+app.get('/compaction', async (c) => {
   try {
     const conversationId = c.req.query('conversationId')
 
@@ -15,7 +16,7 @@ app.get('/compaction', (c) => {
       return c.json({ error: 'Missing conversationId' }, 400)
     }
 
-    const store = getGlobalDataStore()
+    const store = await getServerDataStore()
     const messages = store.messageStore.getMessagesByConversation(conversationId)
     const tokenCount = estimateMessagesTokens(messages)
 
