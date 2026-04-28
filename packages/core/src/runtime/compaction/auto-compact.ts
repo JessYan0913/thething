@@ -105,11 +105,11 @@ function isCircuitBreakerTripped(conversationId: string): boolean {
  * 计算 token 使用量（考虑已释放的 token）
  * 参考指导文档：tokenCountWithEstimation(messages) - snipTokensFreed
  */
-function calculateTokenUsage(
+async function calculateTokenUsage(
   messages: UIMessage[],
   snipTokensFreed: number = 0,
-): number {
-  const totalTokens = estimateMessagesTokens(messages);
+): Promise<number> {
+  const totalTokens = await estimateMessagesTokens(messages);
   return totalTokens - snipTokensFreed;
 }
 
@@ -127,11 +127,11 @@ function calculateTokenUsage(
  * @param snipTokensFreed - 已释放的 token 数（可选）
  * @returns 是否应该触发自动压缩
  */
-export function shouldTriggerAutoCompact(
+export async function shouldTriggerAutoCompact(
   messages: UIMessage[],
   conversationId: string,
   snipTokensFreed: number = 0,
-): boolean {
+): Promise<boolean> {
   const config = getAutoCompactConfig();
 
   // 1. 检查电路断路器
@@ -143,7 +143,7 @@ export function shouldTriggerAutoCompact(
   }
 
   // 3. 计算当前 token 使用
-  const currentUsage = calculateTokenUsage(messages, snipTokensFreed);
+  const currentUsage = await calculateTokenUsage(messages, snipTokensFreed);
 
   // 4. 使用固定触发阈值
   const triggerThreshold = config.baseThreshold;
@@ -164,11 +164,11 @@ export function shouldTriggerAutoCompact(
 /**
  * 获取当前 token 使用状态（用于 UI 显示和警告）
  */
-export function getAutoCompactStatus(
+export async function getAutoCompactStatus(
   messages: UIMessage[],
   conversationId: string,
   snipTokensFreed: number = 0,
-): {
+): Promise<{
   currentUsage: number;
   triggerThreshold: number;
   warningThreshold: number;
@@ -177,9 +177,9 @@ export function getAutoCompactStatus(
   isError: boolean;
   shouldTrigger: boolean;
   circuitBreakerTripped: boolean;
-} {
+}> {
   const config = getAutoCompactConfig();
-  const currentUsage = calculateTokenUsage(messages, snipTokensFreed);
+  const currentUsage = await calculateTokenUsage(messages, snipTokensFreed);
   const circuitBreakerTripped = isCircuitBreakerTripped(conversationId);
 
   return {
@@ -189,7 +189,7 @@ export function getAutoCompactStatus(
     errorThreshold: config.errorThreshold,
     isWarning: currentUsage >= config.warningThreshold,
     isError: currentUsage >= config.errorThreshold,
-    shouldTrigger: shouldTriggerAutoCompact(
+    shouldTrigger: await shouldTriggerAutoCompact(
       messages,
       conversationId,
       snipTokensFreed,

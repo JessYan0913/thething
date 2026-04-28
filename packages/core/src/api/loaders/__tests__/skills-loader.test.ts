@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
 import { loadSkills, clearSkillsCache } from '../skills';
+import { PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
 
 describe('Skills Loader Integration', () => {
   beforeAll(async () => {
@@ -8,7 +9,7 @@ describe('Skills Loader Integration', () => {
     clearSkillsCache();
   });
 
-  it('should load skills from .thething/skills/ directory', async () => {
+  it(`should load skills from ${PROJECT_CONFIG_DIR_NAME}/skills/ directory`, async () => {
     // 使用 packages/core 目录，测试数据在此目录下
     const cwd = path.resolve(process.cwd());
     const skills = await loadSkills({ cwd });

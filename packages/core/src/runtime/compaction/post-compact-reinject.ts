@@ -27,11 +27,11 @@ export interface ReinjectContext {
  * Inserts a system message with recently read files and active skills
  * right after the summary message, before the boundary marker.
  */
-export function reinjectAfterCompact(
+export async function reinjectAfterCompact(
   messages: UIMessage[],
   context: ReinjectContext
-): UIMessage[] {
-  const currentTokens = estimateMessagesTokens(messages);
+): Promise<UIMessage[]> {
+  const currentTokens = await estimateMessagesTokens(messages);
   const remainingBudget = POST_COMPACT_CONFIG.totalBudget - currentTokens;
 
   if (remainingBudget <= 0) {
@@ -48,7 +48,7 @@ export function reinjectAfterCompact(
   const filesToRestore = context.recentlyReadFiles.slice(0, POST_COMPACT_CONFIG.maxFilesToRestore);
   for (const file of filesToRestore) {
     const truncated = truncateToTokens(file.content, POST_COMPACT_CONFIG.maxTokensPerFile);
-    const tokenCost = estimateTextTokens(truncated);
+    const tokenCost = await estimateTextTokens(truncated);
 
     if (usedTokens + tokenCost > remainingBudget) break;
 
@@ -69,7 +69,7 @@ export function reinjectAfterCompact(
 
     for (const skill of context.activeSkills) {
       const truncated = truncateToTokens(skill.instructions, Math.min(tokenPerSkill, POST_COMPACT_CONFIG.maxTokensPerSkill));
-      const tokenCost = estimateTextTokens(truncated);
+      const tokenCost = await estimateTextTokens(truncated);
 
       if (usedTokens + tokenCost > remainingBudget) break;
 
@@ -84,7 +84,7 @@ export function reinjectAfterCompact(
   // 3. Restore THING.md if available
   if (context.thingMdContent && usedTokens < remainingBudget) {
     const truncated = truncateToTokens(context.thingMdContent, POST_COMPACT_CONFIG.maxTokensPerFile);
-    const tokenCost = estimateTextTokens(truncated);
+    const tokenCost = await estimateTextTokens(truncated);
 
     if (usedTokens + tokenCost <= remainingBudget) {
       reinjectParts.push({

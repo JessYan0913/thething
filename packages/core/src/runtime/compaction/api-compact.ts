@@ -70,17 +70,17 @@ const COMPACT_SUMMARY_PROMPT = `你是一个对话摘要助手。请用简洁的
 
 请直接输出摘要，不要任何前缀或解释。`;
 
-function calculateMessagesToKeepIndex(
+async function calculateMessagesToKeepIndex(
   messages: UIMessage[],
   config = DEFAULT_SESSION_MEMORY_CONFIG
-): number {
+): Promise<number> {
   let totalTokens = 0;
   let textBlockMessageCount = 0;
   let startIndex = messages.length - 1;
 
   for (let i = messages.length - 2; i >= 1; i--) {
     const msg = messages[i];
-    totalTokens += estimateMessageTokens(msg);
+    totalTokens += await estimateMessageTokens(msg);
     if (hasTextBlocks(msg)) textBlockMessageCount++;
 
     startIndex = i;
@@ -248,12 +248,12 @@ export async function compactViaAPI(
   conversationId: string,
   model?: LanguageModelV3
 ): Promise<CompactionResult> {
-  const preCompactTokenCount = estimateMessagesTokens(messages);
+  const preCompactTokenCount = await estimateMessagesTokens(messages);
 
-  const microResult = microCompactMessages(messages);
+  const microResult = await microCompactMessages(messages);
   const messagesForCompact = microResult.messages;
 
-  const keepFromIndex = calculateMessagesToKeepIndex(messagesForCompact);
+  const keepFromIndex = await calculateMessagesToKeepIndex(messagesForCompact);
   const startIndex = preserveToolPairs(messagesForCompact, keepFromIndex);
 
   const messagesToSummarize = messagesForCompact.slice(0, startIndex);
@@ -363,7 +363,7 @@ export async function compactViaAPI(
   };
 
   const resultMessages = [summaryMessage, boundaryMessage, ...messagesToKeep];
-  const postCompactTokens = estimateMessagesTokens(resultMessages);
+  const postCompactTokens = await estimateMessagesTokens(resultMessages);
   const tokensFreed = preCompactTokenCount - postCompactTokens;
 
   // startIndex is the first message to keep; messages before it were summarized.
@@ -393,12 +393,12 @@ export async function compactWithCustomInstructions(
   customInstructions: string,
   model?: LanguageModelV3
 ): Promise<CompactionResult> {
-  const preCompactTokenCount = estimateMessagesTokens(messages);
+  const preCompactTokenCount = await estimateMessagesTokens(messages);
 
-  const microResult = microCompactMessages(messages);
+  const microResult = await microCompactMessages(messages);
   const messagesForCompact = microResult.messages;
 
-  const keepFromIndex = calculateMessagesToKeepIndex(messagesForCompact);
+  const keepFromIndex = await calculateMessagesToKeepIndex(messagesForCompact);
   const startIndex = preserveToolPairs(messagesForCompact, keepFromIndex);
 
   const messagesToSummarize = messagesForCompact.slice(0, startIndex);
@@ -493,7 +493,7 @@ export async function compactWithCustomInstructions(
   };
 
   const resultMessages = [summaryMessage, boundaryMessage, ...messagesToKeep];
-  const postCompactTokens = estimateMessagesTokens(resultMessages);
+  const postCompactTokens = await estimateMessagesTokens(resultMessages);
   const tokensFreed = preCompactTokenCount - postCompactTokens;
 
   const lastSummarizedOrder = startIndex - 1;

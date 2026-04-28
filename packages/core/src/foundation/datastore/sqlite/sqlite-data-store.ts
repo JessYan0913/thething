@@ -40,7 +40,7 @@ const getDefaultDataDir = () => path.join(process.cwd(), DEFAULT_DATA_DIR);
  * Provides sub-stores with a shared database connection.
  *
  * Note: Memory storage is handled by the file-based memory system
- * in .thething/memory/, not by this DataStore.
+ * in .siact/memory/, not by this DataStore.
  */
 export class SQLiteDataStore implements DataStore {
   private db: SqliteDatabase;

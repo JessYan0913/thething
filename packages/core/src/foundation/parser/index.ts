@@ -6,8 +6,10 @@ export type { ParseResult } from './types';
 
 export {
   parseFrontmatterFile,
+  parseFrontmatterContent,
   parseToolsList,
   ParseError,
+  type ContentParseResult,
 } from './frontmatter';
 
 export { parseYamlFile, parsePlainYamlFile } from './yaml';

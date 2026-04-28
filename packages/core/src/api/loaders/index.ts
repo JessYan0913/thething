@@ -12,6 +12,8 @@ export {
 export {
   loadAgents,
   loadAgentFile,
+  parseAgentMarkdown,
+  serializeAgentMarkdown,
   clearAgentsCache,
   type LoadAgentsOptions,
 } from './agents';

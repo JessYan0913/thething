@@ -247,7 +247,7 @@ export interface CostStore {
  * Unified data store interface - aggregates all sub-stores.
  *
  * Note: Memory storage is handled by the file-based memory system
- * in .thething/memory/, not by DataStore.
+ * in .siact/memory/, not by DataStore.
  *
  * Developers can:
  * 1. Replace entire DataStore with custom implementation

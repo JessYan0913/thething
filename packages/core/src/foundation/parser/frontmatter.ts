@@ -46,6 +46,26 @@ export class ParseError extends Error {
 // ============================================================
 
 /**
+ * 将 frontmatter 数据中的 null 值转换为 undefined
+ * gray-matter 会将 YAML 中的 `null` 解析为 JavaScript null，
+ * 而 Zod 的 .optional() 只接受 undefined。
+ */
+function nullToUndefined(data: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null) {
+      cleaned[key] = undefined;
+    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      // 递归处理嵌套对象（如 metadata）
+      cleaned[key] = nullToUndefined(value as Record<string, unknown>);
+    } else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+/**
  * 解析带有 YAML frontmatter 的 Markdown 文件
  *
  * @param filePath 文件绝对路径
@@ -61,7 +81,8 @@ export async function parseFrontmatterFile<T>(
 
   const { data, content: body } = matter(content);
 
-  const validated = schema.safeParse(data);
+  const cleaned = nullToUndefined(data);
+  const validated = schema.safeParse(cleaned);
 
   if (!validated.success) {
     throw new ParseError(absolutePath, validated.error);
@@ -95,4 +116,44 @@ export function parseToolsList(value: string | string[] | undefined): string[] |
     .split(',')
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
+}
+
+// ============================================================
+// 内容解析（不需要文件路径）
+// ============================================================
+
+/**
+ * 解析结果（内容解析，无文件路径）
+ */
+export interface ContentParseResult<T> {
+  /** 解析后的数据 */
+  data: T;
+  /** Markdown 正文内容 */
+  body: string;
+}
+
+/**
+ * 从字符串内容解析 frontmatter
+ *
+ * @param content Markdown 内容字符串
+ * @param schema Zod schema 用于验证
+ * @returns 解析结果
+ */
+export function parseFrontmatterContent<T>(
+  content: string,
+  schema: z.ZodSchema<T>,
+): ContentParseResult<T> {
+  const { data, content: body } = matter(content);
+
+  const cleaned = nullToUndefined(data);
+  const validated = schema.safeParse(cleaned);
+
+  if (!validated.success) {
+    throw new ParseError('content', validated.error);
+  }
+
+  return {
+    data: validated.data,
+    body: body.trim(),
+  };
 }

@@ -89,8 +89,8 @@ export async function checkInitialBudget(
   modelName: string,
   conversationId?: string
 ): Promise<InitialBudgetCheckResult> {
-  // 第一次估算
-  const initialEstimation = estimateFullRequest(messages, instructions, tools, modelName);
+  // 第一次估算（使用异步精确估算）
+  const initialEstimation = await estimateFullRequest(messages, instructions, tools, modelName);
   const actions: string[] = [];
 
   // 记录初始状态
@@ -119,12 +119,12 @@ export async function checkInitialBudget(
   // 策略 1: MicroCompact - 清除旧工具输出
   // ============================================================
   if (currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
-    const microResult = microCompactMessages(currentMessages);
+    const microResult = await microCompactMessages(currentMessages);
     if (microResult.executed && microResult.tokensFreed > 500) {
       currentMessages = microResult.messages;
       actions.push(`MicroCompact: freed ${microResult.tokensFreed} tokens`);
 
-      currentEstimation = estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
       console.log(`[Initial Budget] After MicroCompact: ${currentEstimation.totalTokens} tokens`);
 
       if (!currentEstimation.exceedsLimit) {
@@ -142,14 +142,14 @@ export async function checkInitialBudget(
   // 策略 2: 工具过滤 - 移除低优先级工具
   // ============================================================
   if (currentEstimation.toolsTokens > currentEstimation.modelLimit * TOOL_BUDGET_RATIO) {
-    const filteredTools = filterToolsByPriority(currentTools, currentEstimation);
+    const filteredTools = await filterToolsByPriority(currentTools, currentEstimation);
     const removedCount = Object.keys(currentTools).length - Object.keys(filteredTools).length;
 
     if (removedCount > 0) {
       currentTools = filteredTools;
       actions.push(`Tool filter: removed ${removedCount} optional tools`);
 
-      currentEstimation = estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
       console.log(`[Initial Budget] After tool filter: ${currentEstimation.totalTokens} tokens (${Object.keys(currentTools).length} tools)`);
 
       if (!currentEstimation.exceedsLimit) {
@@ -174,7 +174,7 @@ export async function checkInitialBudget(
         currentMessages = compactResult.messages;
         actions.push(`API Compact: freed ${compactResult.tokensFreed} tokens`);
 
-        currentEstimation = estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+        currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
         console.log(`[Initial Budget] After API Compact: ${currentEstimation.totalTokens} tokens`);
 
         if (!currentEstimation.exceedsLimit) {
@@ -196,10 +196,10 @@ export async function checkInitialBudget(
   // 策略 4: 紧急截断 - 直接丢弃最早的消息
   // ============================================================
   const targetMessagesBudget = currentEstimation.modelLimit * MESSAGE_BUDGET_RATIO;
-  const currentMessagesTokens = estimateMessagesTokens(currentMessages);
+  const currentMessagesTokens = await estimateMessagesTokens(currentMessages);
 
   if (currentMessagesTokens > targetMessagesBudget) {
-    const truncateResult = truncateMessagesToBudget(
+    const truncateResult = await truncateMessagesToBudget(
       currentMessages,
       targetMessagesBudget,
       currentEstimation.instructionsTokens + currentEstimation.toolsTokens + currentEstimation.outputReserve
@@ -212,7 +212,7 @@ export async function checkInitialBudget(
   }
 
   // 最终估算
-  const finalEstimation = estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+  const finalEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
 
   console.log(
     `[Initial Budget] Final: ${finalEstimation.totalTokens} tokens ` +
@@ -237,10 +237,10 @@ export async function checkInitialBudget(
  * 按优先级过滤工具
  * 保留核心工具，按优先级移除可选工具
  */
-function filterToolsByPriority(
+async function filterToolsByPriority(
   tools: Record<string, Tool>,
   estimation: FullRequestEstimation
-): Record<string, Tool> {
+): Promise<Record<string, Tool>> {
   const result: Record<string, Tool> = {};
   const targetToolTokens = estimation.modelLimit * TOOL_BUDGET_RATIO;
 
@@ -251,7 +251,7 @@ function filterToolsByPriority(
     }
   }
 
-  let currentTokens = estimateToolsTokens(result);
+  let currentTokens = await estimateToolsTokens(result);
 
   // 2. 按优先级添加可选工具（直到达到预算）
   for (const pattern of OPTIONAL_TOOL_PRIORITY) {
@@ -265,7 +265,7 @@ function filterToolsByPriority(
         : name === pattern;
 
       if (matches) {
-        const toolTokens = estimateToolTokens(tool);
+        const toolTokens = await estimateToolTokens(tool);
         if (currentTokens + toolTokens < targetToolTokens) {
           result[name] = tool;
           currentTokens += toolTokens;
@@ -279,7 +279,7 @@ function filterToolsByPriority(
     if (result[name]) continue;
     if (CORE_TOOLS.has(name)) continue;
 
-    const toolTokens = estimateToolTokens(tool);
+    const toolTokens = await estimateToolTokens(tool);
     if (currentTokens + toolTokens < targetToolTokens) {
       result[name] = tool;
       currentTokens += toolTokens;
@@ -293,22 +293,22 @@ function filterToolsByPriority(
  * 紧急截断消息到预算
  * 从最旧的消息开始移除，保留最近的消息
  */
-function truncateMessagesToBudget(
+async function truncateMessagesToBudget(
   messages: UIMessage[],
   targetMessagesBudget: number,
   fixedOverhead: number
-): { messages: UIMessage[]; messagesRemoved: number; tokensFreed: number } {
+): Promise<{ messages: UIMessage[]; messagesRemoved: number; tokensFreed: number }> {
   const modelLimit = getModelContextLimit('default');
   const maxAllowedTokens = modelLimit - fixedOverhead;
 
-  let currentTokens = estimateMessagesTokens(messages);
+  let currentTokens = await estimateMessagesTokens(messages);
   let startIndex = 0;
   let tokensFreed = 0;
 
   // 从最旧的消息开始移除（保留至少 3 条最新消息）
   while (currentTokens > Math.min(targetMessagesBudget, maxAllowedTokens) &&
          startIndex < messages.length - 3) {
-    const removedTokens = estimateMessageTokens(messages[startIndex]);
+    const removedTokens = await estimateMessageTokens(messages[startIndex]);
     currentTokens -= removedTokens;
     tokensFreed += removedTokens;
     startIndex++;
@@ -326,13 +326,13 @@ function truncateMessagesToBudget(
  * 快速检查是否可能超出预算（不执行降级）
  * 用于提前预警
  */
-export function quickBudgetCheck(
+export async function quickBudgetCheck(
   messages: UIMessage[],
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string
-): { likelyExceeds: boolean; estimation: FullRequestEstimation } {
-  const estimation = estimateFullRequest(messages, instructions, tools, modelName);
+): Promise<{ likelyExceeds: boolean; estimation: FullRequestEstimation }> {
+  const estimation = await estimateFullRequest(messages, instructions, tools, modelName);
 
   // 预留 10% 安全边际
   const safetyMargin = estimation.modelLimit * 0.10;

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import type { UIMessage, Tool } from 'ai';
 import {
   estimateTextTokens,
@@ -12,6 +12,7 @@ import {
   extractMessageText,
   hasTextBlocks,
   stripImagesFromMessages,
+  preloadTokenizer,
 } from '../token-counter';
 import {
   createCompactBoundaryMessage,
@@ -41,102 +42,111 @@ import { quickBudgetCheck } from '../initial-budget-check';
 // Token Counter Tests
 // ============================================================
 describe('token-counter', () => {
+  // 预加载 tokenizer
+  beforeAll(async () => {
+    await preloadTokenizer();
+  });
+
   describe('estimateTextTokens', () => {
-    it('should return 0 for empty string', () => {
-      expect(estimateTextTokens('')).toBe(0);
+    it('should return 0 for empty string', async () => {
+      expect(await estimateTextTokens('')).toBe(0);
     });
 
-    it('should estimate tokens based on CHARS_PER_TOKEN_AVG (3.5)', () => {
-      expect(estimateTextTokens('a'.repeat(35))).toBe(10);
+    it('should count tokens accurately using tokenizer', async () => {
+      // 使用真实 tokenizer 计算英文文本
+      const tokens = await estimateTextTokens('hello world');
+      expect(tokens).toBeGreaterThan(0);
+      expect(tokens).toBeLessThan(10);  // 简短文本
     });
 
-    it('should ceil the result', () => {
-      expect(estimateTextTokens('a'.repeat(10))).toBe(3);
+    it('should count Chinese text tokens', async () => {
+      const tokens = await estimateTextTokens('你好世界');
+      expect(tokens).toBeGreaterThan(0);
     });
   });
 
   describe('estimateMessageTokens', () => {
-    it('should return overhead for empty message', () => {
+    it('should return overhead for empty message', async () => {
       const message: UIMessage = { id: 'test', role: 'user', parts: [] };
-      expect(estimateMessageTokens(message)).toBe(4);
+      expect(await estimateMessageTokens(message)).toBeGreaterThan(0);
     });
 
-    it('should estimate text parts correctly', () => {
+    it('should estimate text parts correctly', async () => {
       const message: UIMessage = {
         id: 'test',
         role: 'user',
         parts: [{ type: 'text', text: 'hello world' }],
       };
-      expect(estimateMessageTokens(message)).toBeGreaterThan(4);
+      expect(await estimateMessageTokens(message)).toBeGreaterThan(0);
     });
 
-    it('should estimate reasoning parts', () => {
+    it('should estimate reasoning parts', async () => {
       const message: UIMessage = {
         id: 'test',
         role: 'assistant',
         parts: [{ type: 'reasoning', text: 'thinking...' }],
       };
-      expect(estimateMessageTokens(message)).toBeGreaterThan(4);
+      expect(await estimateMessageTokens(message)).toBeGreaterThan(0);
     });
 
-    it('should handle legacy content format', () => {
+    it('should handle legacy content format', async () => {
       const message = { id: 'test', role: 'user', content: 'hello' } as any;
-      expect(estimateMessageTokens(message)).toBeGreaterThan(4);
+      expect(await estimateMessageTokens(message)).toBeGreaterThan(0);
     });
   });
 
   describe('estimateMessagesTokens', () => {
-    it('should return 0 for empty array', () => {
-      expect(estimateMessagesTokens([])).toBe(0);
+    it('should return 0 for empty array', async () => {
+      expect(await estimateMessagesTokens([])).toBe(0);
     });
 
-    it('should sum all message tokens', () => {
+    it('should sum all message tokens', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
         { id: '2', role: 'assistant', parts: [{ type: 'text', text: 'hi there' }] },
       ];
-      expect(estimateMessagesTokens(messages)).toBeGreaterThan(8);
+      expect(await estimateMessagesTokens(messages)).toBeGreaterThan(0);
     });
   });
 
   describe('estimateToolTokens', () => {
-    it('should estimate a simple tool', () => {
+    it('should estimate a simple tool', async () => {
       const tool: Tool = {
         description: 'Execute bash commands',
         inputSchema: { type: 'object', properties: { command: { type: 'string' } } },
       } as any;
-      expect(estimateToolTokens(tool)).toBeGreaterThan(4);
+      expect(await estimateToolTokens(tool)).toBeGreaterThan(0);
     });
 
-    it('should handle tool without description', () => {
+    it('should handle tool without description', async () => {
       const tool: Tool = { description: '', inputSchema: { type: 'object' } } as any;
-      expect(estimateToolTokens(tool)).toBeGreaterThan(0);
+      expect(await estimateToolTokens(tool)).toBeGreaterThan(0);
     });
   });
 
   describe('estimateToolsTokens', () => {
-    it('should return 0 for empty object', () => {
-      expect(estimateToolsTokens({})).toBe(0);
+    it('should return 0 for empty object', async () => {
+      expect(await estimateToolsTokens({})).toBe(0);
     });
 
-    it('should estimate multiple tools', () => {
+    it('should estimate multiple tools', async () => {
       const tools: Record<string, Tool> = {
         bash: { description: 'Run bash', inputSchema: { type: 'object' } } as any,
         read: { description: 'Read file', inputSchema: { type: 'object' } } as any,
       };
-      expect(estimateToolsTokens(tools)).toBeGreaterThan(20);
+      expect(await estimateToolsTokens(tools)).toBeGreaterThan(0);
     });
   });
 
   describe('estimateFullRequest', () => {
-    it('should return complete estimation', () => {
+    it('should return complete estimation', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       ];
       const tools: Record<string, Tool> = {
         bash: { description: 'Run bash', inputSchema: {} } as any,
       };
-      const estimation = estimateFullRequest(messages, 'Be helpful.', tools, 'qwen-max');
+      const estimation = await estimateFullRequest(messages, 'Be helpful.', tools, 'qwen-max');
 
       expect(estimation.messagesTokens).toBeGreaterThan(0);
       expect(estimation.instructionsTokens).toBeGreaterThan(0);
@@ -147,15 +157,15 @@ describe('token-counter', () => {
       );
     });
 
-    it('should use default model limit for unknown model', () => {
-      const estimation = estimateFullRequest([], '', {}, 'unknown-model');
+    it('should use default model limit for unknown model', async () => {
+      const estimation = await estimateFullRequest([], '', {}, 'unknown-model');
       expect(estimation.modelLimit).toBe(128_000);
     });
   });
 
   describe('formatEstimationResult', () => {
-    it('should format result with OK status', () => {
-      const estimation = estimateFullRequest([], 'test', {}, 'qwen-max');
+    it('should format result with OK status', async () => {
+      const estimation = await estimateFullRequest([], 'test', {}, 'qwen-max');
       const formatted = formatEstimationResult(estimation);
       expect(formatted).toContain('OK');
       expect(formatted).toContain('Total:');
@@ -406,17 +416,17 @@ describe('micro-compact', () => {
   });
 
   describe('microCompactMessages', () => {
-    it('should return original messages if no tool parts', () => {
+    it('should return original messages if no tool parts', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
         { id: '2', role: 'assistant', parts: [{ type: 'text', text: 'hi' }] },
       ];
-      const result = microCompactMessages(messages);
+      const result = await microCompactMessages(messages);
       expect(result.executed).toBe(false);
       expect(result.messages.length).toBe(2);
     });
 
-    it('should clear large tool outputs', () => {
+    it('should clear large tool outputs', async () => {
       const largeOutput = 'a'.repeat(10_000);
       const messages: UIMessage[] = [
         {
@@ -427,7 +437,7 @@ describe('micro-compact', () => {
           ],
         },
       ];
-      const result = microCompactMessages(messages);
+      const result = await microCompactMessages(messages);
       // The result depends on whether output exceeds threshold
       expect(result.messages.length).toBe(1);
     });
@@ -455,22 +465,24 @@ describe('micro-compact', () => {
 // ============================================================
 describe('ptl-degradation', () => {
   describe('tryPtlDegradation', () => {
-    it('should not execute for small messages', () => {
+    it('should not execute for small messages', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       ];
-      const result = tryPtlDegradation(messages);
+      const result = await tryPtlDegradation(messages);
       expect(result.executed).toBe(false);
     });
 
-    it('should execute for large messages', () => {
+    it('should execute for large messages', async () => {
       // Create messages that exceed PTL_RETRY_THRESHOLD (30_000 tokens)
-      const largeText = 'a'.repeat(105_000); // ~30_000 tokens
+      // With accurate tokenizer, need ~180,000 chars of diverse text for ~33,000 tokens
+      const diverseText = 'This is a sample text with various words and patterns that should produce more tokens. ';
+      const largeText = diverseText.repeat(2040); // ~179,000 chars -> ~33,000 tokens
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: largeText }] },
         { id: '2', role: 'assistant', parts: [{ type: 'text', text: largeText }] },
       ];
-      const result = tryPtlDegradation(messages);
+      const result = await tryPtlDegradation(messages);
       expect(result.executed).toBe(true);
     });
   });
@@ -481,34 +493,37 @@ describe('ptl-degradation', () => {
 // ============================================================
 describe('auto-compact', () => {
   describe('shouldTriggerAutoCompact', () => {
-    it('should return false for small messages', () => {
+    it('should return false for small messages', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       ];
-      expect(shouldTriggerAutoCompact(messages, 'test-conv-1')).toBe(false);
+      expect(await shouldTriggerAutoCompact(messages, 'test-conv-1')).toBe(false);
     });
 
-    it('should return true for large messages', () => {
-      // Create messages that exceed threshold
-      const largeText = 'a'.repeat(87_500); // ~25_000 tokens
+    it('should return true for large messages', async () => {
+      // Create messages that exceed COMPACT_TOKEN_THRESHOLD (25_000 tokens)
+      // With accurate tokenizer, need ~140,000 chars of diverse text for ~26,000 tokens
+      const diverseText = 'This is a sample text with various words and patterns that should produce more tokens. ';
+      const largeText = diverseText.repeat(1590); // ~138,000 chars -> ~26,000 tokens
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: largeText }] },
       ];
-      expect(shouldTriggerAutoCompact(messages, 'test-conv-2')).toBe(true);
+      expect(await shouldTriggerAutoCompact(messages, 'test-conv-2')).toBe(true);
     });
 
-    it('should return false after circuit breaker trips', () => {
+    it('should return false after circuit breaker trips', async () => {
       const convId = 'test-conv-circuit';
       // Record 3 failures to trip circuit breaker
       recordCompactFailure(convId);
       recordCompactFailure(convId);
       recordCompactFailure(convId);
 
-      const largeText = 'a'.repeat(87_500);
+      const diverseText = 'This is a sample text with various words and patterns that should produce more tokens. ';
+      const largeText = diverseText.repeat(1590);
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: largeText }] },
       ];
-      expect(shouldTriggerAutoCompact(messages, convId)).toBe(false);
+      expect(await shouldTriggerAutoCompact(messages, convId)).toBe(false);
 
       // Reset after test
       recordCompactSuccess(convId);
@@ -516,27 +531,28 @@ describe('auto-compact', () => {
   });
 
   describe('recordCompactSuccess', () => {
-    it('should reset circuit breaker', () => {
+    it('should reset circuit breaker', async () => {
       const convId = 'test-conv-reset';
       recordCompactFailure(convId);
       recordCompactFailure(convId);
       recordCompactSuccess(convId);
 
       // Circuit breaker should be reset
-      const largeText = 'a'.repeat(87_500);
+      const diverseText = 'This is a sample text with various words and patterns that should produce more tokens. ';
+      const largeText = diverseText.repeat(1590);
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: largeText }] },
       ];
-      expect(shouldTriggerAutoCompact(messages, convId)).toBe(true);
+      expect(await shouldTriggerAutoCompact(messages, convId)).toBe(true);
     });
   });
 
   describe('getAutoCompactStatus', () => {
-    it('should return complete status', () => {
+    it('should return complete status', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       ];
-      const status = getAutoCompactStatus(messages, 'test-conv-status');
+      const status = await getAutoCompactStatus(messages, 'test-conv-status');
       expect(status.currentUsage).toBeGreaterThan(0);
       expect(status.triggerThreshold).toBeDefined();
       expect(status.shouldTrigger).toBeDefined();
@@ -581,14 +597,14 @@ describe('compaction-types', () => {
 // ============================================================
 describe('initial-budget-check', () => {
   describe('quickBudgetCheck', () => {
-    it('should return estimation for small request', () => {
+    it('should return estimation for small request', async () => {
       const messages: UIMessage[] = [
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       ];
       const tools: Record<string, Tool> = {
         bash: { description: 'Run bash', inputSchema: {} } as any,
       };
-      const result = quickBudgetCheck(messages, 'Be helpful.', tools, 'qwen-max');
+      const result = await quickBudgetCheck(messages, 'Be helpful.', tools, 'qwen-max');
 
       expect(result.estimation.totalTokens).toBeGreaterThan(0);
       expect(result.likelyExceeds).toBe(false);

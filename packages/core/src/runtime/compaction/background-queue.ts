@@ -21,7 +21,7 @@ export function runCompactInBackground(
 
   const promise = (async () => {
     try {
-      const tokenCount = estimateMessagesTokens(messages);
+      const tokenCount = await estimateMessagesTokens(messages);
       if (tokenCount < 15_000) {
         console.log(`[Background Compact] Skipping ${conversationId} (${tokenCount} tokens, below threshold)`);
         return;

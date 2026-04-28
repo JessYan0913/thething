@@ -19,14 +19,14 @@ export async function compactMessagesIfNeeded(
     return { messages, executed: false, tokensFreed: 0 };
   }
 
-  const tokenCount = estimateMessagesTokens(messages);
+  const tokenCount = await estimateMessagesTokens(messages);
 
   if (tokenCount < COMPACT_TOKEN_THRESHOLD) {
     return { messages, executed: false, tokensFreed: 0 };
   }
 
   const messagesAfterBoundary = getMessagesAfterCompactBoundary(messages);
-  const tokensAfterBoundary = estimateMessagesTokens(messagesAfterBoundary);
+  const tokensAfterBoundary = await estimateMessagesTokens(messagesAfterBoundary);
 
   if (tokensAfterBoundary < COMPACT_TOKEN_THRESHOLD * 0.5) {
     const summaryMessage = messages.find(
@@ -71,10 +71,10 @@ export async function compactMessagesIfNeeded(
   }
 
   // Fast path 2: micro-compact (no LLM call)
-  const microResult = microCompactMessages(messagesAfterBoundary);
+  const microResult = await microCompactMessages(messagesAfterBoundary);
 
   if (microResult.executed) {
-    const tokensAfterMicro = estimateMessagesTokens(microResult.messages);
+    const tokensAfterMicro = await estimateMessagesTokens(microResult.messages);
     console.log(
       `[Compaction] MicroCompact: freed ${microResult.tokensFreed} tokens, remaining: ${tokensAfterMicro}`,
     );
@@ -90,7 +90,7 @@ export async function compactMessagesIfNeeded(
   }
 
   // Fast path 3: PTL emergency hard-truncation (no LLM call)
-  const ptlResult = tryPtlDegradation(microResult.messages);
+  const ptlResult = await tryPtlDegradation(microResult.messages);
   if (ptlResult.executed) {
     console.log(
       `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
@@ -156,6 +156,8 @@ export {
   estimateToolsTokens,
   estimateInstructionsTokens,
   estimateFullRequest,
+  preloadTokenizer,
+  setTokenizerDir,
   formatEstimationResult,
   type FullRequestEstimation,
 } from "./token-counter";

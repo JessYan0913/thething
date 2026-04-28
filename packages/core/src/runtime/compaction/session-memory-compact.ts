@@ -97,11 +97,11 @@ function preserveToolPairs(
   return adjustedStart;
 }
 
-function calculateMessagesToKeepIndex(
+async function calculateMessagesToKeepIndex(
   messages: UIMessage[],
   lastSummarizedIndex: number,
   config: SessionMemoryCompactConfig = DEFAULT_SESSION_MEMORY_CONFIG
-): number {
+): Promise<number> {
   let startIndex = lastSummarizedIndex + 1;
   let totalTokens = 0;
   let textBlockMessageCount = 0;
@@ -110,7 +110,7 @@ function calculateMessagesToKeepIndex(
 
   for (let i = startIndex - 1; i >= floor; i--) {
     const msg = messages[i];
-    totalTokens += estimateMessageTokens(msg);
+    totalTokens += await estimateMessageTokens(msg);
     if (hasTextBlocks(msg)) textBlockMessageCount++;
 
     startIndex = i;
@@ -155,7 +155,7 @@ export async function trySessionMemoryCompact(
 
   if (lastSummarizedIndex < 0 || lastSummarizedIndex >= messages.length - 1) return null;
 
-  const keepFromIndex = calculateMessagesToKeepIndex(
+  const keepFromIndex = await calculateMessagesToKeepIndex(
     messages,
     lastSummarizedIndex,
     resolvedConfig
@@ -163,7 +163,7 @@ export async function trySessionMemoryCompact(
 
   if (keepFromIndex >= messages.length - 2) return null;
 
-  const preCompactTokens = estimateMessagesTokens(messages);
+  const preCompactTokens = await estimateMessagesTokens(messages);
 
   const preservedMessages = messages.slice(keepFromIndex);
 
@@ -178,7 +178,8 @@ export async function trySessionMemoryCompact(
     ],
   };
 
-  const tokensFreed = preCompactTokens - estimateMessagesTokens(preservedMessages);
+  const postCompactTokens = await estimateMessagesTokens(preservedMessages);
+  const tokensFreed = preCompactTokens - postCompactTokens;
 
   const minEffectiveTokensFreed = Math.floor(preCompactTokens * 0.1);
   if (tokensFreed < minEffectiveTokensFreed) {

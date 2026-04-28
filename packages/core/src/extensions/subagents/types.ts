@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
 import type { TaskStore } from '../../runtime/tasks';
+import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // Agent Frontmatter Schema（用于解析 .md 文件）
@@ -10,8 +11,12 @@ import type { TaskStore } from '../../runtime/tasks';
  * Agent Markdown 文件的 Frontmatter Schema
  */
 export const AgentFrontmatterSchema = z.object({
-  // 必需字段
-  name: z.string().min(1).max(50).describe('Agent 标识（agentType）'),
+  // 标识（支持 name 或 agentType）
+  name: z.string().min(1).max(50).describe('Agent 标识（agentType）').optional(),
+  agentType: z.string().min(1).max(50).describe('Agent 标识').optional(),
+  displayName: z.string().describe('显示名称').optional(),
+
+  // 描述（必填）
   description: z.string().min(1).describe('Agent 描述'),
 
   // 工具控制
@@ -34,6 +39,15 @@ export const AgentFrontmatterSchema = z.object({
 
   // Skills
   skills: z.union([z.string(), z.array(z.string())]).optional().describe('预加载 Skills'),
+
+  // 来源与上下文
+  source: z.enum(['builtin', 'user', 'project', 'plugin']).optional().describe('来源'),
+  includeParentContext: z.boolean().optional().describe('是否继承父 Agent 上下文'),
+  maxParentMessages: z.number().int().min(1).optional().describe('父消息最大数量'),
+  summarizeOutput: z.boolean().optional().describe('是否输出摘要'),
+
+  // 元数据（扩展字段容器）
+  metadata: z.record(z.string(), z.unknown()).optional().describe('元数据'),
 });
 
 export type AgentFrontmatter = z.infer<typeof AgentFrontmatterSchema>;
@@ -51,8 +65,8 @@ export type AgentSource = 'builtin' | 'user' | 'project' | 'plugin';
  *
  * 来源：
  * - builtin: 硬编码 TypeScript（built-in/*.ts）
- * - user: 用户全局目录（~/.thething/agents/*.md）
- * - project: 项目目录（.thething/agents/*.md）
+ * - user: 用户全局目录（~/${PROJECT_CONFIG_DIR_NAME}/agents/*.md）
+ * - project: 项目目录（${PROJECT_CONFIG_DIR_NAME}/agents/*.md）
  * - plugin: 插件系统注册
  */
 export interface AgentDefinition {

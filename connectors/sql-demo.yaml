@@ -1,0 +1,335 @@
+# ============================================================
+# SQL 数据库直连 Connector 配置示例
+# ============================================================
+#
+# 本示例展示如何配置直接连接 SQL 数据库的 Connector。
+# 适用场景：目标系统没有 REST API，只能通过数据库查询获取数据。
+#
+# 安全提示：
+# - SQL Executor 使用参数化查询，防止 SQL 注入
+# - allow_write: false 强制只读模式
+# - max_rows 限制返回行数，防止 context 爆炸
+# ============================================================
+
+id: sql-demo
+name: SQL 数据库示例
+version: "1.0.0"
+description: 示例 SQL 数据库直连 Connector，展示查询配置模式
+enabled: true
+
+# 认证配置
+# SQL 连接的认证信息存储在 credentials 中
+# 实际使用时通过环境变量或加密存储注入
+auth:
+  type: database
+  config:
+    # 支持的数据库类型：postgresql, mysql, sqlite, clickhouse
+    db_type: postgresql
+    # 连接池配置
+    pool_size: 5
+    # 连接超时（毫秒）
+    connection_timeout_ms: 5000
+
+# 数据库连接凭证（通过环境变量注入，加密存储）
+credentials:
+  # PostgreSQL 连接串格式
+  # host:port/database?sslmode=require
+  connection_string: "${DB_CONNECTION_STRING}"
+  # 或分开配置（推荐）
+  host: "${DB_HOST}"
+  port: "${DB_PORT}"
+  database: "${DB_NAME}"
+  username: "${DB_USER}"
+  password: "${DB_PASSWORD}"
+  ssl_mode: "require"
+
+# 工具定义
+tools:
+  # --------------------------------------------------------
+  # 查询示例 1：简单查询
+  # --------------------------------------------------------
+  - name: query_users
+    description: 查询用户列表，支持分页和筛选
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["active", "inactive", "all"]
+          default: "active"
+          description: 用户状态筛选
+        limit:
+          type: integer
+          default: 20
+          maximum: 100
+          description: 返回行数限制
+        offset:
+          type: integer
+          default: 0
+          description: 分页偏移量
+      required: []
+    retryable: true
+    timeout_ms: 10000
+    executor: sql
+    executor_config:
+      # 指定数据库连接
+      connection_id: "${credentials.connection_string}"
+      # 强制只读模式，禁止 INSERT/UPDATE/DELETE/DROP 等操作
+      allow_write: false
+      # 最大返回行数（防止 context 爆炸）
+      max_rows: 100
+      # SQL 查询模板，使用 :param_name 格式的参数化查询
+      # 参数名与 input_schema properties 对应
+      query_template: |
+        SELECT
+          id,
+          username,
+          email,
+          status,
+          created_at,
+          last_login_at
+        FROM users
+        WHERE
+          CASE
+            WHEN :status = 'all' THEN TRUE
+            ELSE status = :status
+          END
+        ORDER BY created_at DESC
+        LIMIT :limit
+        OFFSET :offset
+
+  # --------------------------------------------------------
+  # 查询示例 2：带时间范围的条件查询
+  # --------------------------------------------------------
+  - name: query_orders
+    description: 查询订单数据，支持时间范围和状态筛选
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          format: date
+          description: 开始日期 (YYYY-MM-DD)
+        end_date:
+          type: string
+          format: date
+          description: 结束日期 (YYYY-MM-DD)
+        customer_id:
+          type: string
+          description: 客户 ID（可选）
+        order_status:
+          type: string
+          enum: ["pending", "processing", "completed", "cancelled", "all"]
+          default: "all"
+      required: ["start_date", "end_date"]
+    retryable: true
+    timeout_ms: 15000
+    executor: sql
+    executor_config:
+      connection_id: "${credentials.connection_string}"
+      allow_write: false
+      max_rows: 500
+      query_template: |
+        SELECT
+          o.id AS order_id,
+          o.order_number,
+          o.customer_id,
+          c.name AS customer_name,
+          o.status,
+          o.total_amount,
+          o.currency,
+          o.created_at AS order_date,
+          o.updated_at
+        FROM orders o
+        LEFT JOIN customers c ON o.customer_id = c.id
+        WHERE
+          o.created_at >= :start_date::date
+          AND o.created_at <= :end_date::date
+          AND (:customer_id IS NULL OR o.customer_id = :customer_id)
+          AND (:order_status = 'all' OR o.status = :order_status)
+        ORDER BY o.created_at DESC
+        LIMIT :max_rows
+
+  # --------------------------------------------------------
+  # 查询示例 3：聚合查询
+  # --------------------------------------------------------
+  - name: query_sales_summary
+    description: 查询销售汇总统计
+    input_schema:
+      type: object
+      properties:
+        group_by:
+          type: string
+          enum: ["day", "week", "month", "product"]
+          default: "day"
+          description: 分组维度
+        start_date:
+          type: string
+          format: date
+          description: 开始日期
+        end_date:
+          type: string
+          format: date
+          description: 结束日期
+      required: ["start_date", "end_date"]
+    retryable: true
+    timeout_ms: 20000
+    executor: sql
+    executor_config:
+      connection_id: "${credentials.connection_string}"
+      allow_write: false
+      max_rows: 200
+      query_template: |
+        SELECT
+          CASE
+            WHEN :group_by = 'day' THEN date_trunc('day', created_at)::date::text
+            WHEN :group_by = 'week' THEN date_trunc('week', created_at)::date::text
+            WHEN :group_by = 'month' THEN date_trunc('month', created_at)::date::text
+            WHEN :group_by = 'product' THEN product_id::text
+          END AS period,
+          COUNT(*) AS order_count,
+          SUM(total_amount) AS total_sales,
+          AVG(total_amount) AS avg_order_value,
+          COUNT(DISTINCT customer_id) AS unique_customers
+        FROM orders
+        WHERE
+          created_at >= :start_date::date
+          AND created_at <= :end_date::date
+          AND status = 'completed'
+        GROUP BY
+          CASE
+            WHEN :group_by = 'day' THEN date_trunc('day', created_at)::date
+            WHEN :group_by = 'week' THEN date_trunc('week', created_at)::date
+            WHEN :group_by = 'month' THEN date_trunc('month', created_at)::date
+            WHEN :group_by = 'product' THEN product_id
+          END
+        ORDER BY period DESC
+        LIMIT :max_rows
+
+  # --------------------------------------------------------
+  # 查询示例 4：多表关联查询
+  # --------------------------------------------------------
+  - name: query_product_inventory
+    description: 查询产品库存信息，包含库存预警
+    input_schema:
+      type: object
+      properties:
+        category_id:
+          type: string
+          description: 产品分类 ID（可选）
+        low_stock_only:
+          type: boolean
+          default: false
+          description: 仅返回低库存产品
+        threshold:
+          type: integer
+          default: 10
+          description: 低库存阈值
+      required: []
+    retryable: true
+    timeout_ms: 10000
+    executor: sql
+    executor_config:
+      connection_id: "${credentials.connection_string}"
+      allow_write: false
+      max_rows: 100
+      query_template: |
+        SELECT
+          p.id AS product_id,
+          p.product_name,
+          p.sku,
+          c.name AS category_name,
+          i.quantity_on_hand,
+          i.quantity_reserved,
+          i.quantity_available,
+          i.reorder_point,
+          CASE
+            WHEN i.quantity_available <= i.reorder_point THEN 'LOW'
+            WHEN i.quantity_available <= 0 THEN 'OUT'
+            ELSE 'OK'
+          END AS stock_status,
+          p.unit_price
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN inventory i ON p.id = i.product_id
+        WHERE
+          (:category_id IS NULL OR p.category_id = :category_id)
+          AND (:low_stock_only = FALSE OR i.quantity_available <= :threshold)
+        ORDER BY
+          CASE
+            WHEN i.quantity_available <= 0 THEN 1
+            WHEN i.quantity_available <= i.reorder_point THEN 2
+            ELSE 3
+          END,
+          p.product_name
+        LIMIT :max_rows
+
+  # --------------------------------------------------------
+  # 查询示例 5：数组参数查询
+  # --------------------------------------------------------
+  - name: query_devices_by_ids
+    description: 根据 ID 列表批量查询设备信息
+    input_schema:
+      type: object
+      properties:
+        device_ids:
+          type: array
+          items:
+            type: string
+          description: 设备 ID 列表
+          minItems: 1
+          maxItems: 50
+      required: ["device_ids"]
+    retryable: true
+    timeout_ms: 8000
+    executor: sql
+    executor_config:
+      connection_id: "${credentials.connection_string}"
+      allow_write: false
+      max_rows: 50
+      # 数组参数使用 ANY(:param_name) 语法
+      query_template: |
+        SELECT
+          device_id,
+          device_name,
+          device_type,
+          location,
+          status,
+          last_reading,
+          last_updated_at
+        FROM devices
+        WHERE device_id = ANY(:device_ids)
+        ORDER BY device_name
+
+# ============================================================
+# 使用说明
+# ============================================================
+#
+# 1. 参数化查询语法：
+#    - 使用 :param_name 格式定义参数
+#    - 参数名必须与 input_schema 中的 properties 名称对应
+#    - SQL Executor 自动进行参数绑定，防止注入攻击
+#
+# 2. 数据库类型适配：
+#    - PostgreSQL: 使用 ::date, ::text 等类型转换
+#    - MySQL: 参数格式为 ? 而不是 :param_name
+#    - SQLite: 参数格式为 ? 或 $param_name
+#    - ClickHouse: 参数格式为 {param_name}
+#
+# 3. 安全配置：
+#    - allow_write: false 是强制只读的关键配置
+#    - max_rows 防止返回过多数据导致 context 爆炸
+#    - 凭证信息必须加密存储，通过环境变量注入
+#
+# 4. 调用示例：
+#    Agent 调用 query_users 工具时：
+#    {
+#      "tool_name": "query_users",
+#      "input": {
+#        "status": "active",
+#        "limit": 50,
+#        "offset": 0
+#      }
+#    }
+#
+# ============================================================

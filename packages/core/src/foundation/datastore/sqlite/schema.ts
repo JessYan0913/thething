@@ -2,7 +2,7 @@
 // SQLite Schema Initialization
 // ============================================================
 // Database schema for conversations, messages, summaries, and costs.
-// Memory is stored in file system (.thething/memory/), not in database.
+// Memory is stored in file system (.siact/memory/), not in database.
 
 import type { SqliteDatabase } from '../types';
 

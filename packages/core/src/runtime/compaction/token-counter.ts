@@ -1,56 +1,114 @@
 import type { UIMessage, Tool } from "ai";
 import { getModelCapabilities } from "../../foundation/model";
+import {
+  countTokens,
+  countTokensBatch,
+  preloadTokenizer,
+  setTokenizerDir,
+  tryCountTokensSync,
+} from "./tokenizer";
 
-const CHARS_PER_TOKEN_AVG = 3.5;
-const MESSAGE_OVERHEAD_TOKENS = 4;
+// ============================================================
+// 常量
+// ============================================================
 
-// 工具 Schema 相关常量
-const TOOL_NAME_TOKENS = 4;  // 工具名通常很短
-const TOOL_SCHEMA_OVERHEAD = 50;  // 每个 tool_use 的结构开销
-const TOOL_ARRAY_OVERHEAD = 20;  // tool_choice + tools 数组结构
+/** 消息结构开销 tokens（role 标记、格式等） */
+const MESSAGE_OVERHEAD_TOKENS = 10;
 
-export function estimateTextTokens(text: string): number {
-  if (!text) return 0;
-  return Math.ceil(text.length / CHARS_PER_TOKEN_AVG);
+/** 工具 Schema 相关常量 */
+const TOOL_NAME_TOKENS = 4;
+const TOOL_SCHEMA_OVERHEAD = 50;
+const TOOL_ARRAY_OVERHEAD = 20;
+
+// ============================================================
+// 同步估算（仅当 tokenizer 已加载时可用）
+// ============================================================
+
+/**
+ * 同步估算文本 tokens
+ * 仅当 tokenizer 已加载时可用，否则返回 null
+ *
+ * @param text 要估算的文本
+ * @param modelName 可选的模型名称，用于选择对应 tokenizer
+ */
+export function estimateTextTokensSync(text: string, modelName?: string): number | null {
+  return tryCountTokensSync(text, modelName);
 }
 
-export function estimateMessageTokens(message: UIMessage): number {
+// ============================================================
+// 异步精确估算（主要使用的方法）
+// ============================================================
+
+/**
+ * 估算文本的 token 数量（异步，精确）
+ *
+ * @param text 要估算的文本
+ * @param modelName 可选的模型名称，用于选择对应 tokenizer
+ */
+export async function estimateTextTokens(text: string, modelName?: string): Promise<number> {
+  return countTokens(text, modelName);
+}
+
+/**
+ * 估算单条消息的 token 数量（异步）
+ *
+ * @param message 消息对象
+ * @param modelName 可选的模型名称
+ */
+export async function estimateMessageTokens(message: UIMessage, modelName?: string): Promise<number> {
   let tokens = MESSAGE_OVERHEAD_TOKENS;
 
   if (!message.parts || !Array.isArray(message.parts)) {
     const content = (message as unknown as Record<string, unknown>).content;
     if (typeof content === 'string') {
-      tokens += estimateTextTokens(content);
+      tokens += await estimateTextTokens(content, modelName);
     }
     return tokens;
   }
 
+  // 提取所有文本内容
+  const textParts: string[] = [];
   for (const part of message.parts) {
     if (part.type === "text") {
-      tokens += estimateTextTokens(part.text);
+      textParts.push(part.text);
     } else if (part.type === "reasoning") {
-      tokens += estimateTextTokens(part.text);
+      textParts.push(part.text);
     } else if (part.type?.startsWith("tool-") || part.type === "dynamic-tool") {
       const toolPart = part as Record<string, unknown>;
       const output = toolPart.output as Record<string, unknown> | undefined;
       if (output) {
-        const outputJson = JSON.stringify(output);
-        tokens += estimateTextTokens(outputJson);
+        textParts.push(JSON.stringify(output));
       }
       const input = toolPart.input as Record<string, unknown> | undefined;
       if (input) {
-        const inputJson = JSON.stringify(input);
-        tokens += estimateTextTokens(inputJson);
+        textParts.push(JSON.stringify(input));
       }
     }
   }
 
+  // 批量计算（效率更高）
+  const tokenCounts = await countTokensBatch(textParts, modelName);
+  tokens += tokenCounts.reduce((sum: number, t: number) => sum + t, 0);
+
   return tokens;
 }
 
-export function estimateMessagesTokens(messages: UIMessage[]): number {
-  return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
+/**
+ * 估算多条消息的 token 数量（异步）
+ *
+ * @param messages 消息数组
+ * @param modelName 可选的模型名称
+ */
+export async function estimateMessagesTokens(messages: UIMessage[], modelName?: string): Promise<number> {
+  const counts = await Promise.all(
+    messages.map(msg => estimateMessageTokens(msg, modelName))
+  );
+  return counts.reduce((sum: number, t: number) => sum + t, 0);
 }
+
+// ============================================================
+// 辅助函数
+// ============================================================
 
 export function extractMessageText(message: UIMessage): string {
   if (!message.parts || !Array.isArray(message.parts)) {
@@ -85,31 +143,26 @@ export function stripImagesFromMessages(messages: UIMessage[]): UIMessage[] {
 
 // ============================================================
 // 工具 Token 估算
-// 参考 ClaudeCode: tool_use 序列化 name + JSON.stringify(input) 后 / 4
 // ============================================================
 
 /**
- * 估算单个工具定义的 Token 数量
+ * 估算单个工具定义的 Token 数量（异步）
+ *
+ * @param tool 工具定义
+ * @param modelName 可选的模型名称
  */
-export function estimateToolTokens(tool: Tool): number {
-  // 1. 工具名称
+export async function estimateToolTokens(tool: Tool, modelName?: string): Promise<number> {
   const nameTokens = TOOL_NAME_TOKENS;
+  const descTokens = await estimateTextTokens(tool.description || '', modelName);
 
-  // 2. 工具描述（description 字段）
-  const descTokens = estimateTextTokens(tool.description || '');
-
-  // 3. Input Schema (JSON Schema → JSON string → tokens)
   let schemaTokens = TOOL_SCHEMA_OVERHEAD;
   try {
     const schema = tool.inputSchema;
     if (schema) {
-      // Zod schema 或 JSON Schema，序列化后估算
       const schemaJson = JSON.stringify(schema);
-      // JSON 密集格式（大量 {, :, , 符号），每 token 仅 1-2 字符
-      schemaTokens = Math.ceil(schemaJson.length / 2);
+      schemaTokens = await estimateTextTokens(schemaJson, modelName);
     }
   } catch {
-    // 序列化失败时使用保守估计
     schemaTokens = 200;
   }
 
@@ -117,35 +170,38 @@ export function estimateToolTokens(tool: Tool): number {
 }
 
 /**
- * 估算所有工具定义的 Token 数量
- * 包括工具数组结构和 tool_choice 的开销
+ * 估算所有工具定义的 Token 数量（异步）
+ *
+ * @param tools 工具字典
+ * @param modelName 可选的模型名称
  */
-export function estimateToolsTokens(tools: Record<string, Tool>): number {
+export async function estimateToolsTokens(tools: Record<string, Tool>, modelName?: string): Promise<number> {
   if (!tools || Object.keys(tools).length === 0) {
     return 0;
   }
 
-  let total = 0;
+  const toolTokens = await Promise.all(
+    Object.entries(tools).map(([_, tool]) => estimateToolTokens(tool, modelName))
+  );
 
-  // 估算每个工具
-  for (const [toolName, tool] of Object.entries(tools)) {
-    total += estimateToolTokens(tool);
-  }
+  let total = toolTokens.reduce((sum: number, t: number) => sum + t, 0);
 
-  // 加上工具名数组（发送给 API 的工具列表）
   const toolNamesJson = JSON.stringify(Object.keys(tools));
-  const arrayOverhead = Math.ceil(toolNamesJson.length / 4);
+  total += await estimateTextTokens(toolNamesJson, modelName);
+  total += TOOL_ARRAY_OVERHEAD;
 
-  // 加上 tool_choice 和 tools 数组的 JSON 结构开销
-  return total + arrayOverhead + TOOL_ARRAY_OVERHEAD;
+  return total;
 }
 
 /**
- * 估算系统提示词的 Token 数量
+ * 估算系统提示词的 Token 数量（异步）
+ *
+ * @param instructions 系统提示词
+ * @param modelName 可选的模型名称
  */
-export function estimateInstructionsTokens(instructions: string): number {
+export async function estimateInstructionsTokens(instructions: string, modelName?: string): Promise<number> {
   if (!instructions) return 0;
-  return estimateTextTokens(instructions);
+  return estimateTextTokens(instructions, modelName);
 }
 
 // ============================================================
@@ -156,50 +212,51 @@ export function estimateInstructionsTokens(instructions: string): number {
  * 完整请求估算结果
  */
 export interface FullRequestEstimation {
-  /** 总 Token 数 */
   totalTokens: number;
-  /** 消息 Token 数 */
   messagesTokens: number;
-  /** 系统提示词 Token 数 */
   instructionsTokens: number;
-  /** 工具定义 Token 数 */
   toolsTokens: number;
-  /** 输出预留 Token 数 */
   outputReserve: number;
-  /** 可用预算（剩余空间） */
   availableBudget: number;
-  /** 模型上下文限制 */
   modelLimit: number;
-  /** 是否超出限制 */
   exceedsLimit: boolean;
-  /** 使用率百分比 */
   utilizationPercent: number;
+  tokenizerVersion: string; // 使用的 tokenizer 版本
 }
 
 /**
- * 估算完整请求的 Token 数量
+ * 估算完整请求的 Token 数量（异步，精确）
  * 这是预算检查的核心函数
+ *
+ * @param messages 消息数组
+ * @param instructions 系统提示词
+ * @param tools 工具字典
+ * @param modelName 模型名称（用于选择正确的 tokenizer）
  */
-export function estimateFullRequest(
+export async function estimateFullRequest(
   messages: UIMessage[],
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string
-): FullRequestEstimation {
+): Promise<FullRequestEstimation> {
   const caps = getModelCapabilities(modelName);
 
-  // 计算各部分 token
-  const messagesTokens = estimateMessagesTokens(messages);
-  const instructionsTokens = estimateInstructionsTokens(instructions);
-  const toolsTokens = estimateToolsTokens(tools);
-  const outputReserve = caps.defaultOutputTokens;
+  // 并行计算各部分（使用正确的 tokenizer）
+  const [messagesTokens, instructionsTokens, toolsTokens] = await Promise.all([
+    estimateMessagesTokens(messages, modelName),
+    estimateInstructionsTokens(instructions, modelName),
+    estimateToolsTokens(tools, modelName),
+  ]);
 
-  // 总计
+  const outputReserve = caps.defaultOutputTokens;
   const totalTokens = messagesTokens + instructionsTokens + toolsTokens + outputReserve;
   const modelLimit = caps.contextLimit;
   const availableBudget = modelLimit - totalTokens;
   const exceedsLimit = totalTokens > modelLimit;
   const utilizationPercent = (totalTokens / modelLimit) * 100;
+
+  // 推断使用的 tokenizer 版本
+  const tokenizerVersion = inferTokenizerVersion(modelName);
 
   return {
     totalTokens,
@@ -211,7 +268,19 @@ export function estimateFullRequest(
     modelLimit,
     exceedsLimit,
     utilizationPercent,
+    tokenizerVersion,
   };
+}
+
+/**
+ * 从模型名称推断 tokenizer 版本
+ */
+function inferTokenizerVersion(modelName: string): string {
+  const normalized = modelName.toLowerCase();
+  if (normalized.startsWith("qwen3.5") || normalized.includes("qwen-max") || normalized.includes("qwen3")) {
+    return "qwen3.5";
+  }
+  return "qwen2.5";
 }
 
 /**
@@ -225,5 +294,12 @@ export function formatEstimationResult(estimation: FullRequestEstimation): strin
     `Tools: ${estimation.toolsTokens} | ` +
     `Output: ${estimation.outputReserve} | ` +
     `Limit: ${estimation.modelLimit} | ` +
+    `Tokenizer: ${estimation.tokenizerVersion} | ` +
     `Utilization: ${estimation.utilizationPercent.toFixed(1)}%`;
 }
+
+/**
+ * 预加载 tokenizer（应用启动时调用）
+ * 可指定模型名称，或加载默认版本
+ */
+export { preloadTokenizer, setTokenizerDir };

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { detectProjectDir } from '../../foundation/paths';
 import { scanMcpDirs, clearMcpCache } from '../../api/loaders/mcps';
+import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { McpServerConfig, McpServerConfigSource } from './types';
 
 // ============================================================
@@ -13,14 +14,14 @@ import type { McpServerConfig, McpServerConfigSource } from './types';
  */
 export function getUserMcpConfigDir(): string {
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
-  return path.join(homeDir, '.thething', 'mcps');
+  return path.join(homeDir, PROJECT_CONFIG_DIR_NAME, 'mcps');
 }
 
 /**
  * 获取项目级 MCP 配置目录
  */
 export function getProjectMcpConfigDir(cwd: string): string {
-  return path.join(cwd, '.thething', 'mcps');
+  return path.join(cwd, PROJECT_CONFIG_DIR_NAME, 'mcps');
 }
 
 /**
@@ -72,7 +73,7 @@ function toSerializable(config: McpServerConfig): Record<string, unknown> {
  */
 function fromSerializable(data: Record<string, unknown>, filePath: string): McpServerConfigSource {
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
-  const userConfigDir = path.join(homeDir, '.thething', 'mcps');
+  const userConfigDir = path.join(homeDir, PROJECT_CONFIG_DIR_NAME, 'mcps');
 
   const source = filePath.startsWith(userConfigDir) ? 'user' : 'project';
 

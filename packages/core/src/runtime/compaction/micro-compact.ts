@@ -44,23 +44,23 @@ function getToolOutputSize(part: UIMessage["parts"][number]): number {
   return 0;
 }
 
-export function microCompactMessages(
+export async function microCompactMessages(
   messages: UIMessage[],
   _config: Partial<MicroCompactConfig> = {}
-): { messages: UIMessage[]; executed: boolean; tokensFreed: number } {
+): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
   const resolvedConfig = { ...DEFAULT_MICRO_COMPACT_CONFIG, ..._config };
-  
+
   // Try time-based microcompact first
-  const timeBasedResult = maybeTimeBasedMicrocompact(messages, resolvedConfig);
+  const timeBasedResult = await maybeTimeBasedMicrocompact(messages, resolvedConfig);
   if (timeBasedResult) {
     return timeBasedResult;
   }
-  
+
   // Fall through to legacy logic
   let tokensFreed = 0;
   let executed = false;
 
-  const compactedMessages = messages.map((message) => {
+  const compactedMessages = messages.map(async (message) => {
     const newParts: UIMessage["parts"] = [];
     let messageChanged = false;
 
@@ -74,7 +74,7 @@ export function microCompactMessages(
       const outputTokens = Math.ceil(outputSize / 3.5);
 
       if (outputTokens > resolvedConfig.imageMaxTokenSize) {
-        const oldTokens = estimateMessageTokens({
+        const oldTokens = await estimateMessageTokens({
           ...message,
           parts: [part],
         } as unknown as UIMessage);
@@ -95,17 +95,19 @@ export function microCompactMessages(
     return message;
   });
 
+  const resolvedMessages = await Promise.all(compactedMessages);
+
   return {
-    messages: compactedMessages,
+    messages: resolvedMessages,
     executed,
     tokensFreed,
   };
 }
 
-function maybeTimeBasedMicrocompact(
+async function maybeTimeBasedMicrocompact(
   messages: UIMessage[],
   config: MicroCompactConfig
-): { messages: UIMessage[]; executed: boolean; tokensFreed: number } | null {
+): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number } | null> {
   const trigger = evaluateTimeBasedTrigger(messages, config);
   if (!trigger) {
     return null;
@@ -123,29 +125,30 @@ function maybeTimeBasedMicrocompact(
   }
 
   let tokensSaved = 0;
-  const result: UIMessage[] = messages.map((message) => {
+  const result: UIMessage[] = await Promise.all(messages.map(async (message) => {
     if (message.role !== "user" || !Array.isArray(message.parts)) {
       return message;
     }
 
     let touched = false;
-    const newParts = message.parts.map((part) => {
+    const newParts = message.parts.map(async (part) => {
       const p = part as unknown as Record<string, unknown>;
       if (
         p.type === "tool_result" &&
         clearSet.has((p.tool_use_id as string) || "") &&
         getToolOutputText(part) !== CLEARED_MARKER
       ) {
-        tokensSaved += estimateMessageTokens({ ...message, parts: [part] } as unknown as UIMessage);
+        tokensSaved += await estimateMessageTokens({ ...message, parts: [part] } as unknown as UIMessage);
         touched = true;
         return { ...part, content: CLEARED_MARKER } as unknown as UIMessage["parts"][number];
       }
       return part;
     });
 
+    const resolvedParts = await Promise.all(newParts);
     if (!touched) return message;
-    return { ...message, parts: newParts };
-  });
+    return { ...message, parts: resolvedParts };
+  }));
 
   if (tokensSaved === 0) {
     return null;

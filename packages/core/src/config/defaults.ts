@@ -87,12 +87,23 @@ export const DEFAULT_MAX_OUTPUT_CHARS = 50_000;
 export const DEFAULT_MAX_OUTPUT_TOKENS = 15_000;
 
 // ============================================================
+// 项目配置目录名称
+// ============================================================
+
+/**
+ * 项目配置目录名称
+ * 可通过环境变量 THING_PROJECT_DIR_NAME 配置
+ * 默认值为 '.siact'（原 '.thething' 已废弃）
+ */
+export const PROJECT_CONFIG_DIR_NAME = process.env.THING_PROJECT_DIR_NAME || '.siact';
+
+// ============================================================
 // Skills 配置默认值
 // ============================================================
 
 /** 默认 Skills 扫描目录 */
 export const DEFAULT_SKILL_SCAN_DIRS = [
-  '.thething/skills',
+  `${PROJECT_CONFIG_DIR_NAME}/skills`,
 ];
 
 /** 默认 Skills 加载配置 */
@@ -108,14 +119,14 @@ export const DEFAULT_SKILL_LOADER_CONFIG = {
 // ============================================================
 
 /** 默认 MCP 配置目录 */
-export const DEFAULT_MCP_CONFIG_DIR = '.thething/mcps';
+export const DEFAULT_MCP_CONFIG_DIR = `${PROJECT_CONFIG_DIR_NAME}/mcps`;
 
 // ============================================================
 // Permissions 配置默认值
 // ============================================================
 
 /** 默认 Permissions 配置目录 */
-export const DEFAULT_PERMISSIONS_DIR = '.thething/permissions';
+export const DEFAULT_PERMISSIONS_DIR = `${PROJECT_CONFIG_DIR_NAME}/permissions`;
 
 /** Permissions 配置文件名 */
 export const PERMISSIONS_FILENAME = 'permissions.json';
@@ -125,7 +136,7 @@ export const PERMISSIONS_FILENAME = 'permissions.json';
 // ============================================================
 
 /** 默认 Connector 配置目录 */
-export const DEFAULT_CONNECTORS_DIR = '.thething/connectors';
+export const DEFAULT_CONNECTORS_DIR = `${PROJECT_CONFIG_DIR_NAME}/connectors`;
 
 /** 电路断路器阈值 */
 export const CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -139,7 +150,7 @@ export const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** Agent 扫描目录 */
 export const DEFAULT_AGENT_SCAN_DIRS = [
-  '.thething/agents',
+  `${PROJECT_CONFIG_DIR_NAME}/agents`,
 ];
 
 /** Agent 加载默认配置 */

@@ -6,7 +6,7 @@
 // summaries, and costs.
 //
 // Note: Memory storage is handled by the file-based memory system
-// in .thething/memory/, not by DataStore.
+// in ${PROJECT_CONFIG_DIR_NAME}/memory/, not by DataStore.
 //
 // @example Basic usage (default SQLite)
 // ```typescript

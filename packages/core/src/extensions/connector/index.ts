@@ -60,6 +60,7 @@ export {
   scanConnectorDirs,
   clearConnectorCache,
   getAvailableConnectors,
+  ConnectorFrontmatterSchema,
   type ConnectorFrontmatter,
   type ConnectorLoaderConfig,
 } from './loader'

@@ -8,6 +8,7 @@ import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
 import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
 import { getProjectConfigDir } from '../../foundation/paths'
+import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 import { debugLog, debugWarn } from './debug'
 
 // ============================================================================
@@ -19,7 +20,7 @@ export interface ConnectorGatewayConfig {
   cwd?: string;
   /** Directory containing connector YAML configs. */
   configDir?: string;
-  /** Path to idempotency database. Defaults to ~/.thething/data/.connector-idempotency.db */
+  /** Path to idempotency database. Defaults to ~/${PROJECT_CONFIG_DIR_NAME}/data/.connector-idempotency.db */
   idempotencyDbPath?: string;
   userId?: string;
   /** 模型实例（必须提供，用于 Inbound Processor） */

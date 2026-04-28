@@ -454,10 +454,17 @@ created: 2026-04-20
 ### 自动提取
 
 ```typescript
-import { extractMemoriesInBackground } from '@the-thing/core';
+import { extractMemoriesInBackground, createLanguageModel } from '@the-thing/core';
+
+// 创建模型实例（记忆提取需要 LLM）
+const model = createLanguageModel({
+  apiKey: process.env.DASHSCOPE_API_KEY,
+  baseURL: process.env.DASHSCOPE_BASE_URL,
+  modelName: 'qwen-max',
+});
 
 // 后台提取记忆（不阻塞主流程）
-extractMemoriesInBackground(messages, userId, conversationId);
+extractMemoriesInBackground(messages, userId, conversationId, model);
 ```
 
 ### 查找相关记忆

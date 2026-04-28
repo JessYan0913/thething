@@ -15,10 +15,10 @@ import { microCompactMessages } from "./micro-compact";
 const PTL_RETRY_THRESHOLD = 30_000;
 const PTL_HARD_TRUNCATE_TARGET = 20_000;
 
-export function tryPtlDegradation(
+export async function tryPtlDegradation(
   messages: UIMessage[]
-): { messages: UIMessage[]; executed: boolean; tokensFreed: number } {
-  const currentTokens = estimateMessagesTokens(messages);
+): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  const currentTokens = await estimateMessagesTokens(messages);
 
   if (currentTokens < PTL_RETRY_THRESHOLD) {
     return { messages, executed: false, tokensFreed: 0 };
@@ -29,8 +29,8 @@ export function tryPtlDegradation(
   );
 
   // Step 1: Try micro-compact first (fast, no API call)
-  const microResult = microCompactMessages(messages);
-  const afterMicro = estimateMessagesTokens(microResult.messages);
+  const microResult = await microCompactMessages(messages);
+  const afterMicro = await estimateMessagesTokens(microResult.messages);
 
   if (afterMicro < PTL_RETRY_THRESHOLD) {
     console.log(
@@ -50,11 +50,11 @@ export function tryPtlDegradation(
  * Hard truncate messages from the head, preserving the most recent context.
  * Always preserves the first system message and the last user message pair.
  */
-function hardTruncateToTarget(
+async function hardTruncateToTarget(
   messages: UIMessage[],
   targetTokens: number
-): { messages: UIMessage[]; executed: boolean; tokensFreed: number } {
-  const preTokens = estimateMessagesTokens(messages);
+): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  const preTokens = await estimateMessagesTokens(messages);
 
   // Always preserve the first system instruction message
   const firstSystemMsg = messages.find((m) => m.role === "system" && m.parts.some((p) => p.type === "text" && !isBoundaryText(p.text)));
@@ -65,7 +65,7 @@ function hardTruncateToTarget(
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    const msgTokens = estimateMessageTokens(msg);
+    const msgTokens = await estimateMessageTokens(msg);
     totalTokens += msgTokens;
 
     if (totalTokens >= targetTokens) {
@@ -89,10 +89,11 @@ function hardTruncateToTarget(
   }
 
   const truncated = messages.slice(startIndex);
-  const tokensFreed = preTokens - estimateMessagesTokens(truncated);
+  const postTokens = await estimateMessagesTokens(truncated);
+  const tokensFreed = preTokens - postTokens;
 
   console.log(
-    `[PTL Hard Truncate] ${messages.length} → ${truncated.length} messages, freed ${tokensFreed} tokens, remaining: ${estimateMessagesTokens(truncated)}`
+    `[PTL Hard Truncate] ${messages.length} → ${truncated.length} messages, freed ${tokensFreed} tokens, remaining: ${postTokens}`
   );
 
   return { messages: truncated, executed: true, tokensFreed };
@@ -106,4 +107,3 @@ function isBoundaryText(text: string): boolean {
     return false;
   }
 }
-

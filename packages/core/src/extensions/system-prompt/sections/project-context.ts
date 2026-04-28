@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
 import type { SystemPromptSection } from '../types';
 
 // ============================================================================
@@ -102,7 +103,7 @@ async function searchContextFilesInDir(dir: string, cwd: string): Promise<Loaded
  * Stops at the home directory or filesystem root.
  *
  * Multi-level context merging strategy:
- * - User level: ~/.thething/THING.md (personal preferences)
+ * - User level: ~/${PROJECT_CONFIG_DIR_NAME}/THING.md (personal preferences)
  * - Project level: /project/THING.md (team shared)
  * - Module level: /project/src/THING.md (module specific)
  */
@@ -115,7 +116,7 @@ export async function loadProjectContext(
   }
 
   const userHome = process.env.HOME || process.env.USERPROFILE || '/';
-  const userContextDir = path.join(userHome, '.thething');
+  const userContextDir = path.join(userHome, PROJECT_CONFIG_DIR_NAME);
 
   const userLevel: LoadedContextFile[] = [];
   const projectLevel: LoadedContextFile[] = [];
@@ -125,7 +126,7 @@ export async function loadProjectContext(
   let reachedRoot = false;
 
   while (!reachedRoot && currentDir !== '/') {
-    // Check for user-level context (in ~/.thething directory)
+    // Check for user-level context (in ~/${PROJECT_CONFIG_DIR_NAME} directory)
     if (currentDir === userHome || currentDir === userContextDir) {
       const userContextPath = path.join(userContextDir, 'THING.md');
       const loaded = await loadContextFile(userContextPath, cwd, 'THING.md');

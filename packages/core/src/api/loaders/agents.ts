@@ -2,11 +2,12 @@
 // Agents Loader (Subagents)
 // ============================================================
 
-import { parseFrontmatterFile, parseToolsList } from '../../foundation/parser';
+import { parseFrontmatterFile, parseFrontmatterContent, parseToolsList } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
 import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
-import type { AgentDefinition } from '../../extensions/subagents/types';
+import type { AgentDefinition, AgentSource } from '../../extensions/subagents/types';
 import { AgentFrontmatterSchema } from '../../extensions/subagents/types';
+import yaml from 'js-yaml';
 
 // ============================================================
 // 扩展类型
@@ -29,6 +30,35 @@ const agentsCache = new LoadingCache<AgentDefinition[]>();
 export interface LoadAgentsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
+}
+
+// ============================================================
+// 辅助函数
+// ============================================================
+
+/**
+ * 从 frontmatter 数据中提取 agentType
+ * 支持 name 和 agentType 两种字段名
+ */
+function extractAgentType(data: { name?: string; agentType?: string; displayName?: string }, filePath?: string): string {
+  if (data.agentType) return data.agentType;
+  if (data.name) return data.name;
+  if (data.displayName) {
+    // 从 displayName 生成 kebab-case agentType
+    const kebab = data.displayName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (kebab) return kebab;
+  }
+  // 回退到文件名
+  if (filePath) {
+    const base = filePath.split('/').pop()?.split('\\').pop() || 'agent';
+    return base.replace('.md', '');
+  }
+  return `agent-${Date.now().toString(36)}`;
 }
 
 // ============================================================
@@ -79,32 +109,10 @@ export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefi
     (a) => a.agentType,
   );
 
-  // 去除 source 字段，但 AgentDefinition 需要 source，所以保留
-  const result: AgentDefinition[] = merged.map((a) => ({
-    agentType: a.agentType,
-    description: a.description,
-    tools: a.tools,
-    disallowedTools: a.disallowedTools,
-    model: a.model,
-    effort: a.effort,
-    maxTurns: a.maxTurns,
-    permissionMode: a.permissionMode,
-    background: a.background,
-    initialPrompt: a.initialPrompt,
-    isolation: a.isolation,
-    memory: a.memory,
-    skills: a.skills,
-    instructions: a.instructions,
-    includeParentContext: a.includeParentContext,
-    summarizeOutput: a.summarizeOutput,
-    source: a.source as 'user' | 'project',
-    filePath: a.filePath,
-  }));
-
   // 更新缓存
-  agentsCache.set(cacheKey, result);
+  agentsCache.set(cacheKey, merged);
 
-  return result;
+  return merged;
 }
 
 /**
@@ -121,7 +129,8 @@ export async function loadAgentFile(
   const result = await parseFrontmatterFile(filePath, AgentFrontmatterSchema);
 
   return {
-    agentType: result.data.name,
+    agentType: extractAgentType(result.data, result.filePath),
+    displayName: result.data.displayName,
     description: result.data.description,
     tools: parseToolsList(result.data.tools),
     disallowedTools: parseToolsList(result.data.disallowedTools),
@@ -133,15 +142,94 @@ export async function loadAgentFile(
     initialPrompt: result.data.initialPrompt,
     isolation: result.data.isolation,
     memory: result.data.memory,
-    skills: typeof result.data.skills === 'string'
-      ? result.data.skills.split(',').map(s => s.trim())
-      : result.data.skills,
+    skills: parseToolsList(result.data.skills),
     instructions: result.body,
-    includeParentContext: false,
-    summarizeOutput: true,
-    filePath: result.filePath,  // ParseResult.filePath 是 string
+    includeParentContext: result.data.includeParentContext ?? false,
+    maxParentMessages: result.data.maxParentMessages,
+    summarizeOutput: result.data.summarizeOutput ?? true,
+    metadata: result.data.metadata,
+    filePath: result.filePath,
     source,
   };
+}
+
+/**
+ * 解析 Agent Markdown 内容
+ *
+ * 直接从 Markdown 字符串内容转换为 AgentDefinition，不需要文件路径。
+ *
+ * @param content Markdown 内容字符串（包含 YAML frontmatter）
+ * @param source 来源标识（默认 'project'）
+ * @returns AgentDefinition
+ */
+export function parseAgentMarkdown(
+  content: string,
+  source: AgentSource = 'project',
+): AgentDefinition {
+  const result = parseFrontmatterContent(content, AgentFrontmatterSchema);
+
+  return {
+    agentType: extractAgentType(result.data),
+    displayName: result.data.displayName,
+    description: result.data.description,
+    tools: parseToolsList(result.data.tools),
+    disallowedTools: parseToolsList(result.data.disallowedTools),
+    model: result.data.model ?? 'inherit',
+    effort: result.data.effort,
+    maxTurns: result.data.maxTurns ?? 20,
+    permissionMode: result.data.permissionMode,
+    background: result.data.background,
+    initialPrompt: result.data.initialPrompt,
+    isolation: result.data.isolation,
+    memory: result.data.memory,
+    skills: parseToolsList(result.data.skills),
+    instructions: result.body,
+    includeParentContext: result.data.includeParentContext ?? false,
+    maxParentMessages: result.data.maxParentMessages,
+    summarizeOutput: result.data.summarizeOutput ?? true,
+    metadata: result.data.metadata,
+    source,
+  };
+}
+
+/**
+ * 将 AgentDefinition 序列化为 Markdown 文件内容
+ *
+ * @param def Agent 定义
+ * @returns Markdown 字符串（包含 YAML frontmatter）
+ */
+export function serializeAgentMarkdown(def: AgentDefinition): string {
+  const frontmatter: Record<string, unknown> = {
+    agentType: def.agentType,
+    displayName: def.displayName,
+    description: def.description,
+    tools: def.tools ?? [],
+    disallowedTools: def.disallowedTools ?? [],
+    model: def.model ?? 'inherit',
+    effort: def.effort,
+    maxTurns: def.maxTurns ?? 20,
+    permissionMode: def.permissionMode,
+    background: def.background ?? false,
+    initialPrompt: def.initialPrompt,
+    isolation: def.isolation,
+    memory: def.memory,
+    skills: def.skills ?? [],
+    includeParentContext: def.includeParentContext ?? false,
+    maxParentMessages: def.maxParentMessages,
+    summarizeOutput: def.summarizeOutput ?? true,
+    source: def.source ?? 'user',
+    metadata: def.metadata ?? {},
+  };
+
+  const yamlContent = yaml.dump(frontmatter, {
+    lineWidth: -1,
+    noRefs: true,
+    skipInvalid: true,
+    quotingType: '"',
+    forceQuotes: false,
+  });
+
+  return `---\n${yamlContent}---\n${def.instructions ?? ''}\n`;
 }
 
 /**
