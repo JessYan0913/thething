@@ -10,4 +10,5 @@ export {
   getUserDataDir,
   getProjectDataDir,
   getDefaultDataDir,
+  getUserTokenizerCacheDir,
 } from './compute';

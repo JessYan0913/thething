@@ -4,7 +4,7 @@
 
 import path from 'path';
 import os from 'os';
-import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // 项目目录检测
@@ -121,4 +121,23 @@ export function getDefaultDataDir(): string {
   // 如果项目数据目录存在，使用项目级
   // 否则使用用户级
   return projectDataDir;
+}
+
+// ============================================================
+// Tokenizer 缓存目录
+// ============================================================
+
+/**
+ * 获取用户全局 Tokenizer 缓存目录
+ *
+ * @param subdir 子目录名（如版本号或 repo 名）
+ * @returns 目录绝对路径
+ */
+export function getUserTokenizerCacheDir(subdir?: string): string {
+  const homeDir = os.homedir();
+  const cacheBase = path.join(homeDir, '.cache', 'thething', TOKENIZER_CACHE_DIR_NAME);
+  if (subdir) {
+    return path.join(cacheBase, subdir);
+  }
+  return cacheBase;
 }

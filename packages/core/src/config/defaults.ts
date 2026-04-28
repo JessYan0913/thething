@@ -232,3 +232,53 @@ export const MODEL_MAPPING = {
   smart: 'qwen-max',
   default: 'qwen-plus',
 };
+
+// ============================================================
+// Tokenizer 远程加载配置
+// ============================================================
+
+/** Tokenizer 缓存目录名称 */
+export const TOKENIZER_CACHE_DIR_NAME = 'tokenizers';
+
+/** HuggingFace 镜像基础地址（国内） */
+export const HF_MIRROR_BASE_URL = 'https://hf-mirror.com';
+
+/** HuggingFace 官方地址 */
+export const HF_OFFICIAL_BASE_URL = 'https://huggingface.co';
+
+/**
+ * 模型名称到 HuggingFace repo 的映射
+ *
+ * 格式: { modelNamePattern: { org, repo, variant } }
+ * - modelNamePattern: 模型名称匹配模式（小写）
+ * - org: HuggingFace 组织名
+ * - repo: 仓库基础名称
+ * - variant: 变体后缀（如 -Instruct）
+ */
+export const MODEL_TO_HF_REPO_MAPPING: Record<string, { org: string; repo: string; variant?: string }> = {
+  // Qwen 系列
+  'qwen2.5': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'qwen3': { org: 'Qwen', repo: 'Qwen3-7B', variant: 'Instruct' },
+  'qwen3.5': { org: 'Qwen', repo: 'Qwen3-7B', variant: 'Instruct' },
+  'qwen-max': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'qwen-plus': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'qwen-turbo': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+
+  // GLM 系列 - 使用 Qwen tokenizer 作为近似（GLM tokenizer 格式不兼容）
+  'glm': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'glm-4': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'glm-5': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'chatglm': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+  'chatglm3': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
+
+  // DeepSeek 系列
+  'deepseek': { org: 'deepseek-ai', repo: 'deepseek-llm-7b', variant: 'chat' },
+  'deepseek-v3': { org: 'deepseek-ai', repo: 'DeepSeek-V3' },
+
+  // Llama 系列
+  'llama': { org: 'meta-llama', repo: 'Llama-2-7b', variant: 'chat-hf' },
+  'llama3': { org: 'meta-llama', repo: 'Llama-3.1-8B', variant: 'Instruct' },
+};
+
+/** 默认 tokenizer repo（未知模型时使用） */
+export const DEFAULT_TOKENIZER_REPO = { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' };

@@ -182,6 +182,7 @@ describe('token-counter', () => {
         modelLimit: 128_000,
         exceedsLimit: true,
         utilizationPercent: 156.25,
+        tokenizerVersion: 'qwen3.5',
       };
       const formatted = formatEstimationResult(estimation);
       expect(formatted).toContain('EXCEEDS');

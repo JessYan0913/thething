@@ -1,73 +1,100 @@
 // ============================================================
-// Tokenizer - 使用 @huggingface/tokenizers 进行精确 Token 计算
+// Tokenizer - 远程加载 + 本地缓存 + 降级机制
 // ============================================================
 // 支持根据模型名称动态选择对应版本的 tokenizer
-// 需要本地 tokenizer.json 和 tokenizer_config.json 文件
+// 首次使用时从远程下载到 ~/.cache/thething/tokenizers/
+// 后续启动直接使用本地缓存
+// 下载失败时自动降级到已缓存的默认 tokenizer
 //
 // 配置模式：
-// 1. 基础目录模式（推荐）: setTokenizerBaseDir(".../assets/models")
-//    - 目录包含多个版本子目录：qwen2.5/, qwen3.5/
-//    - 根据模型名称自动选择版本
+// 1. 自动缓存模式（默认）: 根据模型名称自动下载并缓存
+//    - 缓存目录：~/.cache/thething/tokenizers/{org}_{repo}/
 //
-// 2. 特定版本模式: setTokenizerVersionDir(".../assets/models/qwen2.5")
-//    - 目录直接包含 tokenizer.json
-//    - 强制使用该版本，忽略模型名称选择
+// 2. 特定目录模式: setTokenizerDir("...")
+//    - 用户手动配置 tokenizer 目录
+//    - 跳过自动下载逻辑
 
 import { Tokenizer } from "@huggingface/tokenizers";
 import * as path from "path";
-import * as fs from "fs";
+import * as fs from "fs/promises";
+import { getUserTokenizerCacheDir } from "../../foundation/paths";
+import {
+  HF_MIRROR_BASE_URL,
+  MODEL_TO_HF_REPO_MAPPING,
+  DEFAULT_TOKENIZER_REPO,
+} from "../../config/defaults";
 
 // ============================================================
 // 配置
 // ============================================================
 
-/** Tokenizer 基础目录（包含多版本子目录） */
-let tokenizerBaseDir: string | null = null;
+/** 用户指定的 tokenizer 目录（手动配置模式） */
+let userTokenizerDir: string | null = null;
 
-/** 用户指定的特定版本目录（直接包含 tokenizer.json） */
-let userVersionDir: string | null = null;
+/** 是否禁用自动下载（用于测试或特殊场景） */
+let disableAutoDownload = false;
 
-/** 默认 tokenizer 版本（当无法推断模型版本时使用） */
-const DEFAULT_TOKENIZER_VERSION = "qwen2.5";
-
-/** 支持的 tokenizer 版本列表 */
-const SUPPORTED_VERSIONS = ["qwen2.5", "qwen3.5"];
+/** 已警告过的未知模型（避免重复日志） */
+const warnedModels = new Set<string>();
 
 // ============================================================
-// 模型名称 -> Tokenizer 版本映射
+// 模型名称 -> HuggingFace Repo 映射
 // ============================================================
+
+interface HfRepoInfo {
+  org: string;
+  repo: string;
+  variant?: string;
+}
 
 /**
- * 从模型名称推断 tokenizer 版本
- *
- * @example
- *   "qwen3.5-397b-a17b" -> "qwen3.5"
- *   "qwen2.5-7b-instruct" -> "qwen2.5"
- *   "qwen-max" -> "qwen3.5" (使用最新版本)
- *   "qwen-plus" -> "qwen2.5"
+ * 从模型名称推断 HuggingFace repo 信息
  */
-function inferTokenizerVersion(modelName: string): string {
+function inferHfRepo(modelName: string): HfRepoInfo {
   const normalized = modelName.toLowerCase();
 
-  // 直接匹配版本号
-  for (const version of SUPPORTED_VERSIONS) {
-    if (normalized.startsWith(version)) {
-      return version;
+  // 查找匹配的映射
+  for (const [pattern, repoInfo] of Object.entries(MODEL_TO_HF_REPO_MAPPING)) {
+    if (normalized.startsWith(pattern) || normalized.includes(pattern)) {
+      return repoInfo;
     }
   }
 
-  // 特殊模型映射
-  if (normalized.includes("qwen-max") || normalized.includes("qwen3")) {
-    return "qwen3.5"; // 高端模型使用最新 tokenizer
+  // 未知模型，使用默认（只警告一次）
+  if (!warnedModels.has(modelName)) {
+    warnedModels.add(modelName);
+    console.warn(`[Tokenizer] 未知模型 "${modelName}", 使用默认 tokenizer (${DEFAULT_TOKENIZER_REPO.org}/${DEFAULT_TOKENIZER_REPO.repo})`);
   }
 
-  if (normalized.includes("qwen-plus") || normalized.includes("qwen-turbo")) {
-    return "qwen2.5"; // 中端模型使用稳定版本
-  }
+  return DEFAULT_TOKENIZER_REPO;
+}
 
-  // 未知模型，使用默认版本
-  console.warn(`[Tokenizer] 未知模型 "${modelName}", 使用默认版本 ${DEFAULT_TOKENIZER_VERSION}`);
-  return DEFAULT_TOKENIZER_VERSION;
+/**
+ * 构建 HuggingFace 下载 URL
+ */
+function buildHfUrls(repoInfo: HfRepoInfo): { tokenizer: string; config: string } {
+  const repoName = repoInfo.variant
+    ? `${repoInfo.repo}-${repoInfo.variant}`
+    : repoInfo.repo;
+
+  const baseUrl = `${HF_MIRROR_BASE_URL}/${repoInfo.org}/${repoName}/resolve/main`;
+
+  return {
+    tokenizer: `${baseUrl}/tokenizer.json`,
+    config: `${baseUrl}/tokenizer_config.json`,
+  };
+}
+
+/**
+ * 构建缓存目录名（基于 repo 信息）
+ */
+function buildCacheDirName(repoInfo: HfRepoInfo): string {
+  const repoName = repoInfo.variant
+    ? `${repoInfo.repo}-${repoInfo.variant}`
+    : repoInfo.repo;
+
+  // 使用 org_repo 格式作为缓存目录名
+  return `${repoInfo.org}_${repoName.replace(/-/g, '_')}`;
 }
 
 // ============================================================
@@ -75,158 +102,245 @@ function inferTokenizerVersion(modelName: string): string {
 // ============================================================
 
 /**
- * 自动检测 tokenizer 基础目录
+ * 获取 tokenizer 缓存目录
  */
-function autoDetectBaseDir(): string | null {
-  const possiblePaths = [
-    // 开发环境: 相对于编译后的 dist 目录
-    path.join(__dirname, "..", "..", "..", "assets", "models"),
-    // 源码环境: 直接相对于源码目录
-    path.join(__dirname, "..", "..", "assets", "models"),
-    // Next.js 打包环境: 相对于项目根目录
-    path.join(process.cwd(), "packages", "core", "assets", "models"),
-    // Monorepo 子应用环境（如 apps/sime-agent）
-    path.join(process.cwd(), "..", "..", "packages", "core", "assets", "models"),
-  ];
-
-  for (const dir of possiblePaths) {
-    if (fs.existsSync(dir)) {
-      return dir;
-    }
+function getTokenizerDir(repoInfo: HfRepoInfo): string {
+  // 如果用户手动配置了目录，直接使用
+  if (userTokenizerDir) {
+    return userTokenizerDir;
   }
 
-  return null;
+  // 使用缓存目录
+  const cacheName = buildCacheDirName(repoInfo);
+  return getUserTokenizerCacheDir(cacheName);
 }
 
 /**
- * 检测目录是基础目录还是特定版本目录
- * @returns "base" | "version" | null
+ * 检查 tokenizer 文件是否存在
  */
-function detectDirType(dir: string): "base" | "version" | null {
-  // 如果直接包含 tokenizer.json，是特定版本目录
-  if (fs.existsSync(path.join(dir, "tokenizer.json"))) {
-    return "version";
+async function checkTokenizerFilesExist(dir: string): Promise<boolean> {
+  const tokenizerPath = path.join(dir, "tokenizer.json");
+  try {
+    await fs.access(tokenizerPath);
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  // 如果包含版本子目录（如 qwen2.5/tokenizer.json），是基础目录
-  for (const version of SUPPORTED_VERSIONS) {
-    if (fs.existsSync(path.join(dir, version, "tokenizer.json"))) {
-      return "base";
-    }
+// ============================================================
+// 远程下载
+// ============================================================
+
+/**
+ * 从远程下载 tokenizer 文件
+ */
+async function downloadTokenizerFiles(repoInfo: HfRepoInfo, destDir: string): Promise<void> {
+  const urls = buildHfUrls(repoInfo);
+
+  // 确保目标目录存在
+  await fs.mkdir(destDir, { recursive: true });
+
+  const repoName = repoInfo.variant
+    ? `${repoInfo.repo}-${repoInfo.variant}`
+    : repoInfo.repo;
+
+  console.log(`[Tokenizer] 开始下载 ${repoInfo.org}/${repoName} tokenizer...`);
+
+  // 下载 tokenizer.json
+  const tokenizerDest = path.join(destDir, "tokenizer.json");
+  await downloadFile(urls.tokenizer, tokenizerDest);
+  console.log(`[Tokenizer] ✅ tokenizer.json 已下载`);
+
+  // 下载 tokenizer_config.json（可选）
+  const configDest = path.join(destDir, "tokenizer_config.json");
+  try {
+    await downloadFile(urls.config, configDest);
+    console.log(`[Tokenizer] ✅ tokenizer_config.json 已下载`);
+  } catch {
+    // config 文件可选，忽略错误
+    console.log(`[Tokenizer] ⚠️ tokenizer_config.json 不存在，跳过`);
   }
-
-  return null;
 }
 
 /**
- * 获取指定版本的 tokenizer 目录
- *
- * 优先级：
- * 1. 用户指定的特定版本目录（忽略版本参数）
- * 2. 用户指定的基础目录 + 版本子目录
- * 3. 自动检测的基础目录 + 版本子目录
+ * 下载单个文件（带超时和错误处理）
  */
-function getTokenizerDir(version: string): string | null {
-  // 如果用户指定了特定版本目录，直接使用（忽略版本选择）
-  if (userVersionDir) {
-    return userVersionDir;
+async function downloadFile(url: string, destPath: string): Promise<void> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(60000), // 60秒超时
+    });
+
+    if (!response.ok) {
+      throw new Error(`状态码 ${response.status}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    await fs.writeFile(destPath, Buffer.from(buffer));
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error(`下载超时`);
+    }
+    throw error;
   }
-
-  // 获取基础目录
-  const baseDir = tokenizerBaseDir || autoDetectBaseDir();
-  if (!baseDir) return null;
-
-  // 在基础目录下查找版本子目录
-  const versionDir = path.join(baseDir, version);
-  if (fs.existsSync(path.join(versionDir, "tokenizer.json"))) {
-    return versionDir;
-  }
-
-  return null;
 }
 
 // ============================================================
 // Tokenizer 实例缓存
 // ============================================================
 
-/** Tokenizer 实例缓存（按版本） */
+/** Tokenizer 实例缓存 */
 const tokenizerCache: Map<string, Tokenizer> = new Map();
 
-/** 加载错误缓存（按版本） */
+/** 默认 tokenizer 实例（用于降级） */
+let defaultTokenizer: Tokenizer | null = null;
+
+/** 加载错误缓存 */
 const loadErrorCache: Map<string, Error> = new Map();
 
+/** 正在下载的任务（避免重复下载） */
+const downloadingTasks: Map<string, Promise<void>> = new Map();
+
 /**
- * 加载指定版本的 tokenizer
+ * 加载 tokenizer（自动下载，失败时降级）
  */
-function loadTokenizerByVersion(version: string): Tokenizer {
-  // 如果用户指定了特定版本目录，使用统一的缓存 key
-  const cacheKey = userVersionDir ? "user-version" : version;
+async function loadTokenizer(modelName: string): Promise<Tokenizer> {
+  const repoInfo = inferHfRepo(modelName);
+  const cacheKey = userTokenizerDir ? "user-dir" : buildCacheDirName(repoInfo);
 
   // 检查缓存
   const cached = tokenizerCache.get(cacheKey);
   if (cached) return cached;
 
-  // 检查已记录的错误
-  const cachedError = loadErrorCache.get(cacheKey);
-  if (cachedError) throw cachedError;
+  const tokenizerDir = getTokenizerDir(repoInfo);
 
-  // 查找 tokenizer 目录
-  const tokenizerDir = getTokenizerDir(version);
-  if (!tokenizerDir) {
-    const error = createNotFoundError(version);
-    loadErrorCache.set(cacheKey, error);
-    throw error;
+  // 检查文件是否存在
+  const filesExist = await checkTokenizerFilesExist(tokenizerDir);
+
+  // 如果文件不存在且未禁用自动下载
+  if (!filesExist && !disableAutoDownload && !userTokenizerDir) {
+    // 检查是否正在下载（避免重复下载）
+    const existingTask = downloadingTasks.get(cacheKey);
+    if (existingTask) {
+      try {
+        await existingTask;
+      } catch {
+        // 下载失败，后续会降级
+      }
+    } else {
+      // 开始下载
+      const downloadPromise = downloadTokenizerFiles(repoInfo, tokenizerDir)
+        .catch((downloadError) => {
+          console.error(`[Tokenizer] ❌ 下载失败: ${downloadError instanceof Error ? downloadError.message : downloadError}`);
+          throw downloadError;
+        });
+
+      downloadingTasks.set(cacheKey, downloadPromise);
+
+      try {
+        await downloadPromise;
+      } catch {
+        downloadingTasks.delete(cacheKey);
+        // 下载失败，将使用降级机制
+      }
+    }
   }
 
+  // 尝试加载 tokenizer
   const tokenizerJsonPath = path.join(tokenizerDir, "tokenizer.json");
   const tokenizerConfigPath = path.join(tokenizerDir, "tokenizer_config.json");
 
   try {
-    const tokenizerJson = JSON.parse(fs.readFileSync(tokenizerJsonPath, "utf-8"));
+    const tokenizerJsonContent = await fs.readFile(tokenizerJsonPath, "utf-8");
+    const tokenizerJson = JSON.parse(tokenizerJsonContent);
+
     let tokenizerConfig = {};
-    if (fs.existsSync(tokenizerConfigPath)) {
-      tokenizerConfig = JSON.parse(fs.readFileSync(tokenizerConfigPath, "utf-8"));
+    try {
+      const configContent = await fs.readFile(tokenizerConfigPath, "utf-8");
+      tokenizerConfig = JSON.parse(configContent);
+    } catch {
+      // config 文件可选
     }
 
     const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
     tokenizerCache.set(cacheKey, tokenizer);
 
-    const versionInfo = userVersionDir
+    const sourceInfo = userTokenizerDir
       ? `用户配置目录`
-      : `版本 ${version}`;
-    console.log(`[Tokenizer] ✅ 已加载 ${versionInfo}: ${tokenizerJsonPath}`);
+      : `缓存目录`;
+
+    console.log(`[Tokenizer] ✅ 已加载 ${modelName} (${sourceInfo}: ${tokenizerDir})`);
     return tokenizer;
-  } catch (error) {
-    const loadError = new Error(`Tokenizer 加载失败: ${error}`);
-    loadErrorCache.set(cacheKey, loadError);
-    throw loadError;
+  } catch {
+    // 加载失败，尝试使用默认 tokenizer 降级
+    return fallbackToDefaultTokenizer(modelName, repoInfo);
   }
 }
 
 /**
- * 创建"未找到"错误
+ * 降级到默认 tokenizer
  */
-function createNotFoundError(requestedVersion: string): Error {
-  const baseDir = tokenizerBaseDir || autoDetectBaseDir();
-  const searchedPaths = baseDir
-    ? [path.join(baseDir, requestedVersion, "tokenizer.json")]
-    : [
-      path.join(__dirname, "..", "..", "..", "assets", "models", requestedVersion, "tokenizer.json"),
-      path.join(__dirname, "..", "..", "assets", "models", requestedVersion, "tokenizer.json"),
-      path.join(process.cwd(), "packages", "core", "assets", "models", requestedVersion, "tokenizer.json"),
-    ];
+async function fallbackToDefaultTokenizer(modelName: string, failedRepoInfo: HfRepoInfo): Promise<Tokenizer> {
+  // 如果已有默认 tokenizer 实例，直接使用
+  if (defaultTokenizer) {
+    console.log(`[Tokenizer] ⚠️ ${modelName} tokenizer 加载失败，降级使用默认 tokenizer`);
+    return defaultTokenizer;
+  }
 
-  return new Error(
-    `tokenizer 不存在 (版本: ${requestedVersion})\n` +
-    `解决方案:\n` +
-    `  1. 调用 setTokenizerBaseDir('/path/to/assets/models') 配置基础目录\n` +
-    `     （支持根据模型名称自动选择版本）\n` +
-    `  2. 或调用 setTokenizerVersionDir('/path/to/qwen2.5') 配置特定版本\n` +
-    `     （强制使用指定版本）\n` +
-    `  3. 或下载 tokenizer 到 packages/core/assets/models/${requestedVersion}/\n` +
-    `     https://huggingface.co/Qwen/${requestedVersion}-7B-Instruct\n` +
-    `已搜索路径:\n${searchedPaths.map(p => `  - ${p}`).join("\n")}`
-  );
+  // 尝试加载默认 tokenizer
+  const defaultDir = getTokenizerDir(DEFAULT_TOKENIZER_REPO);
+  const defaultCacheKey = buildCacheDirName(DEFAULT_TOKENIZER_REPO);
+
+  // 检查默认 tokenizer 是否已缓存
+  const defaultExists = await checkTokenizerFilesExist(defaultDir);
+
+  if (!defaultExists && !disableAutoDownload) {
+    // 尝试下载默认 tokenizer
+    try {
+      await downloadTokenizerFiles(DEFAULT_TOKENIZER_REPO, defaultDir);
+    } catch (downloadError) {
+      console.error(`[Tokenizer] ❌ 默认 tokenizer 下载也失败: ${downloadError instanceof Error ? downloadError.message : downloadError}`);
+      throw new Error(
+        `Tokenizer 加载失败，无法降级\n` +
+        `原始模型: ${modelName} (${failedRepoInfo.org}/${failedRepoInfo.repo})\n` +
+        `默认模型: ${DEFAULT_TOKENIZER_REPO.org}/${DEFAULT_TOKENIZER_REPO.repo}\n` +
+        `解决方案:\n` +
+        `  1. 检查网络连接\n` +
+        `  2. 手动下载 tokenizer 到 ~/.cache/thething/tokenizers/${buildCacheDirName(DEFAULT_TOKENIZER_REPO)}/\n` +
+        `  3. 或调用 setTokenizerDir('/path/to/dir') 配置本地目录`
+      );
+    }
+  }
+
+  // 加载默认 tokenizer
+  const defaultTokenizerPath = path.join(defaultDir, "tokenizer.json");
+  const defaultConfigPath = path.join(defaultDir, "tokenizer_config.json");
+
+  try {
+    const tokenizerJsonContent = await fs.readFile(defaultTokenizerPath, "utf-8");
+    const tokenizerJson = JSON.parse(tokenizerJsonContent);
+
+    let tokenizerConfig = {};
+    try {
+      const configContent = await fs.readFile(defaultConfigPath, "utf-8");
+      tokenizerConfig = JSON.parse(configContent);
+    } catch {
+      // config 文件可选
+    }
+
+    defaultTokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
+    tokenizerCache.set(defaultCacheKey, defaultTokenizer);
+
+    console.log(`[Tokenizer] ⚠️ ${modelName} tokenizer 加载失败，降级使用 ${DEFAULT_TOKENIZER_REPO.org}/${DEFAULT_TOKENIZER_REPO.repo}`);
+    return defaultTokenizer;
+  } catch (loadError) {
+    throw new Error(
+      `Tokenizer 加载失败\n` +
+      `原始模型: ${modelName}\n` +
+      `默认模型也无法加载: ${loadError instanceof Error ? loadError.message : loadError}`
+    );
+  }
 }
 
 // ============================================================
@@ -234,58 +348,28 @@ function createNotFoundError(requestedVersion: string): Error {
 // ============================================================
 
 /**
- * 设置 tokenizer 目录（自动检测类型）
- *
- * 自动检测逻辑：
- * - 如果目录直接包含 tokenizer.json → 特定版本模式（强制使用该版本）
- * - 如果目录包含版本子目录（qwen2.5/、qwen3.5/）→ 基础目录模式（支持动态选择）
- *
- * @example
- * // 基础目录模式（支持动态选择）
- * setTokenizerDir("E:/ai-chatbot/packages/core/assets/models")
- *
- * // 特定版本模式（强制使用该版本）
- * setTokenizerDir("E:/ai-chatbot/packages/core/assets/models/qwen2.5")
+ * 设置 tokenizer 目录（手动配置模式）
  */
 export function setTokenizerDir(dir: string): void {
-  const dirType = detectDirType(dir);
-
-  if (dirType === "version") {
-    // 特定版本目录：强制使用该版本
-    userVersionDir = dir;
-    tokenizerBaseDir = path.dirname(dir);
-    console.log(`[Tokenizer] 配置特定版本目录: ${dir}（强制使用）`);
-  } else if (dirType === "base") {
-    // 基础目录：支持动态选择
-    tokenizerBaseDir = dir;
-    userVersionDir = null;
-    console.log(`[Tokenizer] 配置基础目录: ${dir}（支持动态选择）`);
-  } else {
-    // 目录无效，记录配置（可能在后续下载后生效）
-    tokenizerBaseDir = dir;
-    userVersionDir = null;
-    console.warn(`[Tokenizer] 目录无效: ${dir}（未找到 tokenizer 文件）`);
-  }
+  userTokenizerDir = dir;
+  console.log(`[Tokenizer] 配置手动目录: ${dir}（跳过自动下载）`);
 
   // 重置缓存
   tokenizerCache.clear();
   loadErrorCache.clear();
+  warnedModels.clear();
+  defaultTokenizer = null;
 }
 
 /**
  * 预加载 tokenizer（应用启动时调用）
- * 可指定模型名称，或加载默认版本
- *
- * @param modelName 模型名称，用于推断版本
  */
 export async function preloadTokenizer(modelName?: string): Promise<void> {
-  const version = modelName
-    ? inferTokenizerVersion(modelName)
-    : DEFAULT_TOKENIZER_VERSION;
+  const model = modelName || "qwen-plus";
 
   try {
-    loadTokenizerByVersion(version);
-    console.log(`[Tokenizer] 预加载完成 (${userVersionDir ? '用户配置' : version})`);
+    await loadTokenizer(model);
+    console.log(`[Tokenizer] 预加载完成 (${model})`);
   } catch (error) {
     console.error("[Tokenizer] 预加载失败:", error instanceof Error ? error.message : error);
   }
@@ -294,34 +378,135 @@ export async function preloadTokenizer(modelName?: string): Promise<void> {
 /**
  * 检查 tokenizer 是否已加载
  */
-export function isTokenizerReady(version?: string): boolean {
-  const cacheKey = userVersionDir ? "user-version" : (version || DEFAULT_TOKENIZER_VERSION);
-  return tokenizerCache.has(cacheKey);
+export function isTokenizerReady(modelName?: string): boolean {
+  const repoInfo = inferHfRepo(modelName || "qwen-plus");
+  const cacheKey = userTokenizerDir ? "user-dir" : buildCacheDirName(repoInfo);
+  return tokenizerCache.has(cacheKey) || defaultTokenizer !== null;
 }
 
 /**
- * 检查 tokenizer 文件是否存在
+ * 检查 tokenizer 缓存文件是否存在
  */
-export function hasTokenizerFile(version?: string): boolean {
-  const v = version || DEFAULT_TOKENIZER_VERSION;
-  return getTokenizerDir(v) !== null;
+export async function hasTokenizerFile(modelName?: string): Promise<boolean> {
+  const repoInfo = inferHfRepo(modelName || "qwen-plus");
+  const dir = getTokenizerDir(repoInfo);
+  return checkTokenizerFilesExist(dir);
+}
+
+/**
+ * 确保 tokenizer 可用（检查缓存或下载）
+ */
+export async function ensureTokenizerAvailable(modelName: string): Promise<boolean> {
+  const repoInfo = inferHfRepo(modelName);
+  const dir = getTokenizerDir(repoInfo);
+
+  if (userTokenizerDir) {
+    return checkTokenizerFilesExist(dir);
+  }
+
+  const cached = await checkTokenizerFilesExist(dir);
+  if (cached) return true;
+
+  if (!disableAutoDownload) {
+    try {
+      await downloadTokenizerFiles(repoInfo, dir);
+      return true;
+    } catch {
+      // 尝试默认 tokenizer
+      const defaultDir = getTokenizerDir(DEFAULT_TOKENIZER_REPO);
+      const defaultExists = await checkTokenizerFilesExist(defaultDir);
+      if (defaultExists) return true;
+
+      try {
+        await downloadTokenizerFiles(DEFAULT_TOKENIZER_REPO, defaultDir);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 强制重新下载 tokenizer（更新缓存）
+ */
+export async function refreshTokenizer(modelName: string): Promise<void> {
+  const repoInfo = inferHfRepo(modelName);
+  const cacheKey = userTokenizerDir ? "user-dir" : buildCacheDirName(repoInfo);
+  const dir = getTokenizerDir(repoInfo);
+
+  // 清除缓存
+  tokenizerCache.delete(cacheKey);
+  loadErrorCache.delete(cacheKey);
+
+  // 重新下载
+  await downloadTokenizerFiles(repoInfo, dir);
+
+  console.log(`[Tokenizer] ✅ 已刷新 ${modelName} tokenizer`);
+}
+
+/**
+ * 获取 tokenizer 缓存状态
+ */
+export async function getTokenizerCacheStatus(modelName: string): Promise<{
+  cached: boolean;
+  cachePath: string | null;
+  size: number | null;
+}> {
+  const repoInfo = inferHfRepo(modelName);
+  const dir = getTokenizerDir(repoInfo);
+
+  try {
+    const tokenizerStats = await fs.stat(path.join(dir, "tokenizer.json"));
+    let totalSize = tokenizerStats.size;
+
+    try {
+      const configStats = await fs.stat(path.join(dir, "tokenizer_config.json"));
+      totalSize += configStats.size;
+    } catch {
+      // config 文件可选
+    }
+
+    return {
+      cached: true,
+      cachePath: dir,
+      size: totalSize,
+    };
+  } catch {
+    return {
+      cached: false,
+      cachePath: dir,
+      size: null,
+    };
+  }
 }
 
 /**
  * 获取当前配置信息（用于调试）
  */
 export function getTokenizerConfig(): {
-  baseDir: string | null;
-  versionDir: string | null;
-  loadedVersions: string[];
-  isDynamicSelection: boolean;
+  userDir: string | null;
+  cacheDir: string;
+  loadedModels: string[];
+  isAutoDownloadEnabled: boolean;
+  hasFallback: boolean;
 } {
   return {
-    baseDir: tokenizerBaseDir || autoDetectBaseDir(),
-    versionDir: userVersionDir,
-    loadedVersions: Array.from(tokenizerCache.keys()),
-    isDynamicSelection: !userVersionDir, // 有特定版本目录时禁用动态选择
+    userDir: userTokenizerDir,
+    cacheDir: getUserTokenizerCacheDir(),
+    loadedModels: Array.from(tokenizerCache.keys()),
+    isAutoDownloadEnabled: !disableAutoDownload,
+    hasFallback: defaultTokenizer !== null,
   };
+}
+
+/**
+ * 禁用/启用自动下载（用于测试）
+ */
+export function setAutoDownload(enabled: boolean): void {
+  disableAutoDownload = !enabled;
 }
 
 // ============================================================
@@ -329,33 +514,22 @@ export function getTokenizerConfig(): {
 // ============================================================
 
 /**
- * 计算文本的 token 数量（支持指定模型）
- *
- * @param text 要计算的文本
- * @param modelName 模型名称，用于推断 tokenizer 版本
+ * 计算文本的 token 数量
  */
 export async function countTokens(text: string, modelName?: string): Promise<number> {
   if (!text) return 0;
 
-  const version = modelName
-    ? inferTokenizerVersion(modelName)
-    : DEFAULT_TOKENIZER_VERSION;
-
-  const tokenizer = loadTokenizerByVersion(version);
+  const tokenizer = await loadTokenizer(modelName || "qwen-plus");
   return tokenizer.encode(text).ids.length;
 }
 
 /**
- * 批量计算 token 数量（支持指定模型）
+ * 批量计算 token 数量
  */
 export async function countTokensBatch(texts: string[], modelName?: string): Promise<number[]> {
   if (!texts || texts.length === 0) return [];
 
-  const version = modelName
-    ? inferTokenizerVersion(modelName)
-    : DEFAULT_TOKENIZER_VERSION;
-
-  const tokenizer = loadTokenizerByVersion(version);
+  const tokenizer = await loadTokenizer(modelName || "qwen-plus");
   return texts.map((text) => {
     if (!text) return 0;
     return tokenizer.encode(text).ids.length;
@@ -365,12 +539,13 @@ export async function countTokensBatch(texts: string[], modelName?: string): Pro
 /**
  * 同步计算 token 数量（使用已加载的 tokenizer）
  */
-export function countTokensSync(text: string, version?: string): number {
+export function countTokensSync(text: string, modelName?: string): number {
   if (!text) return 0;
 
-  const cacheKey = userVersionDir ? "user-version" : (version || DEFAULT_TOKENIZER_VERSION);
-  const tokenizer = tokenizerCache.get(cacheKey);
+  const repoInfo = inferHfRepo(modelName || "qwen-plus");
+  const cacheKey = userTokenizerDir ? "user-dir" : buildCacheDirName(repoInfo);
 
+  const tokenizer = tokenizerCache.get(cacheKey) || defaultTokenizer;
   if (!tokenizer) {
     throw new Error(`Tokenizer 未加载，请先调用 preloadTokenizer()`);
   }
@@ -381,12 +556,17 @@ export function countTokensSync(text: string, version?: string): number {
 /**
  * 尝试同步计算（如果已加载）
  */
-export function tryCountTokensSync(text: string, version?: string): number | null {
+export function tryCountTokensSync(text: string, modelName?: string): number | null {
   if (!text) return 0;
 
-  const cacheKey = userVersionDir ? "user-version" : (version || DEFAULT_TOKENIZER_VERSION);
-  const tokenizer = tokenizerCache.get(cacheKey);
+  const repoInfo = inferHfRepo(modelName || "qwen-plus");
+  const cacheKey = userTokenizerDir ? "user-dir" : buildCacheDirName(repoInfo);
 
+  const tokenizer = tokenizerCache.get(cacheKey) || defaultTokenizer;
   if (!tokenizer) return null;
+
   return tokenizer.encode(text).ids.length;
 }
+
+// 导出 inferHfRepo 用于 token-counter.ts
+export { inferHfRepo, buildHfUrls };

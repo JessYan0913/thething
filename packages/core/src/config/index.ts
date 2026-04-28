@@ -106,6 +106,15 @@ export {
   PROJECT_CONFIG_DIR_NAME,
 } from './defaults';
 
+// Tokenizer 远程加载
+export {
+  TOKENIZER_CACHE_DIR_NAME,
+  HF_MIRROR_BASE_URL,
+  HF_OFFICIAL_BASE_URL,
+  MODEL_TO_HF_REPO_MAPPING,
+  DEFAULT_TOKENIZER_REPO,
+} from './defaults';
+
 // ============================================================
 // 从原有模块导出的函数（保持兼容）
 // ============================================================

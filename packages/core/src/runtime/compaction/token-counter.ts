@@ -6,6 +6,7 @@ import {
   preloadTokenizer,
   setTokenizerDir,
   tryCountTokensSync,
+  inferHfRepo,
 } from "./tokenizer";
 
 // ============================================================
@@ -273,14 +274,14 @@ export async function estimateFullRequest(
 }
 
 /**
- * 从模型名称推断 tokenizer 版本
+ * 从模型名称推断 tokenizer repo 信息（用于日志）
  */
 function inferTokenizerVersion(modelName: string): string {
-  const normalized = modelName.toLowerCase();
-  if (normalized.startsWith("qwen3.5") || normalized.includes("qwen-max") || normalized.includes("qwen3")) {
-    return "qwen3.5";
-  }
-  return "qwen2.5";
+  const repoInfo = inferHfRepo(modelName);
+  const repoName = repoInfo.variant
+    ? `${repoInfo.repo}-${repoInfo.variant}`
+    : repoInfo.repo;
+  return `${repoInfo.org}/${repoName}`;
 }
 
 /**
