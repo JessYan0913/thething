@@ -1,5 +1,7 @@
 import { generateText, type UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { DataStore } from "../../foundation/datastore";
+import { getGlobalDataStore } from "../../foundation/datastore";
 import { DEFAULT_SESSION_MEMORY_CONFIG } from "../../config/defaults";
 import {
   type CompactBoundaryMessage,
@@ -14,7 +16,6 @@ import {
   stripImagesFromMessages,
 } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
-import { getGlobalDataStore } from "../../foundation/datastore";
 
 // 检查 model 参数是否提供
 function requireModel(model?: LanguageModelV3): LanguageModelV3 {
@@ -28,10 +29,11 @@ async function saveSummarySafe(
   conversationId: string,
   summary: string,
   lastOrder: number,
-  tokenCount: number
+  tokenCount: number,
+  dataStore: DataStore
 ) {
   try {
-    getGlobalDataStore().summaryStore.saveSummary(conversationId, summary, lastOrder, tokenCount);
+    dataStore.summaryStore.saveSummary(conversationId, summary, lastOrder, tokenCount);
   } catch {
     console.error("[Compaction] Failed to save summary (store not ready)");
   }
@@ -234,9 +236,9 @@ function validateSummaryQuality(summary: string, messagesToSummarize: UIMessage[
   return matchCount >= 1 || summaryLower.includes("topic") || summaryLower.includes("then") || summaryLower.includes("later");
 }
 
-async function getExistingSummarySafe(conversationId: string): Promise<string | null> {
+async function getExistingSummarySafe(conversationId: string, dataStore: DataStore): Promise<string | null> {
   try {
-    const summary = getGlobalDataStore().summaryStore.getSummaryByConversation(conversationId);
+    const summary = dataStore.summaryStore.getSummaryByConversation(conversationId);
     return summary?.summary || null;
   } catch {
     return null;
@@ -246,8 +248,10 @@ async function getExistingSummarySafe(conversationId: string): Promise<string | 
 export async function compactViaAPI(
   messages: UIMessage[],
   conversationId: string,
-  model?: LanguageModelV3
+  model?: LanguageModelV3,
+  dataStore?: DataStore,
 ): Promise<CompactionResult> {
+  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
   const microResult = await microCompactMessages(messages);
@@ -283,7 +287,7 @@ export async function compactViaAPI(
     : "";
 
   // 获取已有摘要，实现增量更新
-  const existingSummary = await getExistingSummarySafe(conversationId);
+  const existingSummary = await getExistingSummarySafe(conversationId, effectiveDataStore);
 
   let promptWithContext: string;
   if (existingSummary) {
@@ -372,7 +376,7 @@ export async function compactViaAPI(
   const lastSummarizedOrder = startIndex - 1;
 
   try {
-    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount);
+    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount, effectiveDataStore);
   } catch (error) {
     console.error("[Compaction] Failed to save summary:", error);
   }
@@ -391,8 +395,10 @@ export async function compactWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
   customInstructions: string,
-  model?: LanguageModelV3
+  model?: LanguageModelV3,
+  dataStore?: DataStore,
 ): Promise<CompactionResult> {
+  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
   const microResult = await microCompactMessages(messages);
@@ -499,7 +505,7 @@ export async function compactWithCustomInstructions(
   const lastSummarizedOrder = startIndex - 1;
 
   try {
-    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount);
+    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount, effectiveDataStore);
   } catch (error) {
     console.error("[Compaction] Failed to save summary:", error);
   }

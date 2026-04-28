@@ -14,6 +14,7 @@ import type { McpServerConfig } from '../../extensions/mcp/types'
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader'
 import type { PermissionRule } from '../../extensions/permissions/types'
 import type { MemoryEntry } from '../../api/loaders/memory'
+import type { DataStore } from '../../foundation/datastore'
 
 export interface AgentContextConfig {
   userId?: string
@@ -48,6 +49,8 @@ export interface PreloadedData {
   connectors: ConnectorFrontmatter[]
   permissions: PermissionRule[]
   memory: MemoryEntry[]
+  /** DataStore 实例（来自 CoreRuntime） */
+  dataStore?: DataStore
 }
 
 export interface CreateAgentConfig {

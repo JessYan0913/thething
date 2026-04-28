@@ -8,7 +8,6 @@
 //    - bootstrap()      显式初始化基础设施，返回 CoreRuntime
 //    - createContext()  加载所有配置（skills、mcp、connector 等）
 //    - createAgent()    创建 Agent，消费 AppContext
-//    - initAll()        全局初始化（已废弃，使用 bootstrap 替代）
 //
 //    示例（新 API）：
 //    ```typescript
@@ -61,7 +60,6 @@
 // ============================================================
 export { bootstrap, type CoreRuntime, type BootstrapOptions } from './bootstrap';
 export { createAgent, createContext } from './api/app';
-export { initAll } from './init';
 export type {
   AppContext,
   CreateAgentOptions,

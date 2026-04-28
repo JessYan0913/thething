@@ -2,7 +2,7 @@
 // App Context - 配置上下文创建
 // ============================================================
 
-import { resolveHomeDir, resolveProjectDir, computeUserConfigDir, computeProjectConfigDir } from '../../foundation/paths';
+import { resolveHomeDir, computeUserConfigDir, computeProjectConfigDir } from '../../foundation/paths';
 import { loadAll, type LoadAllOptions } from '../loaders';
 import type { AppContext, CreateContextOptions, ReloadOptions, LoadSourceInfo } from './types';
 
@@ -123,19 +123,4 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
 // ============================================================
 // 便捷函数（向后兼容）
 // ============================================================
-
-/**
- * 获取当前 AppContext（从默认 cwd）
- *
- * @deprecated 此函数需要 runtime 参数，请使用 bootstrap() + createContext() 替代。
- * 保留向后兼容，内部自动创建 runtime（但不推荐）。
- */
-export async function getAppContext(): Promise<AppContext> {
-  // 向后兼容：自动创建 runtime
-  // 但这违反了显式依赖原则，不推荐使用
-  const { bootstrap } = await import('../../bootstrap');
-  const cwd = resolveProjectDir();
-  const runtime = await bootstrap({ dataDir: cwd }); // 使用临时 runtime
-
-  return createContext({ runtime, cwd });
-}
+// 注意：这些函数已被移除，请使用 bootstrap() + createContext() 替代

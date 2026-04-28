@@ -6,7 +6,7 @@
 // 所有后续操作（createContext、createAgent）都以此为入参，
 // 确保依赖显式、顺序可推断。
 
-import { createSQLiteDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
+import { createSQLiteDataStore, setGlobalDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
 import { getConnectorRegistry, shutdownConnectorGateway, initConnectorGateway, type ConnectorGatewayConfig, type ConnectorRegistry } from './extensions/connector';
 import { initPermissions } from './extensions/permissions';
 import { resolveProjectDir } from './foundation/paths';
@@ -65,6 +65,10 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     dataDir: options.dataDir,
     ...options.databaseConfig,
   });
+
+  // 设置全局 DataStore（兼容旧代码）
+  // 后续重构应移除对全局状态的依赖
+  setGlobalDataStore(dataStore);
 
   // 初始化权限系统
   await initPermissions(cwd).catch((err) => {

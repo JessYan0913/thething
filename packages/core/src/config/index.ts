@@ -8,7 +8,7 @@
 // 2. 类型定义在各模块中维护，config/types.ts 仅重新导出
 // 3. 所有 core 包模块的配置常量都从这里导入
 // 4. 环境变量名由应用层（CLI/Server）定义，core 不导出
-// 5. 项目目录检测由 paths/ 模块提供（detectProjectDir）
+// 5. 项目目录检测由 paths/ 模块提供（resolveProjectDir）
 
 // ============================================================
 // 默认值常量（统一导出）
@@ -164,7 +164,6 @@ export type {
 
 // 跨模块组合类型（仅在 config/types.ts 定义）
 export type {
-  InitConfig,
   AgentToolDefinitionConfig,
   TaskSchedulerConfig,
   TaskSyncConfig,

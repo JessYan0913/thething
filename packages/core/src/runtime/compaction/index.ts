@@ -1,5 +1,7 @@
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { DataStore } from "../../foundation/datastore";
+import { getGlobalDataStore } from "../../foundation/datastore";
 import { COMPACT_TOKEN_THRESHOLD, type CompactionResult } from "./types";
 import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
@@ -7,12 +9,13 @@ import { trySessionMemoryCompact } from "./session-memory-compact";
 import { getMessagesAfterCompactBoundary } from "./boundary";
 import { tryPtlDegradation } from "./ptl-degradation";
 import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
-import { getGlobalDataStore } from "../../foundation/datastore";
 
 export async function compactMessagesIfNeeded(
   messages: UIMessage[],
   conversationId: string,
+  dataStore?: DataStore,
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   // 检查是否需要自动压缩
   const shouldAutoCompact = await autoCompactIfNeeded(messages, conversationId);
   if (!shouldAutoCompact) {
@@ -53,6 +56,8 @@ export async function compactMessagesIfNeeded(
     const sessionMemoryResult = await trySessionMemoryCompact(
       messagesAfterBoundary,
       conversationId,
+      {},
+      effectiveDataStore,
     );
 
     if (sessionMemoryResult) {
@@ -96,7 +101,7 @@ export async function compactMessagesIfNeeded(
       `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
     );
     // Inject existing DB summary to restore context lost by truncation
-    const storedSummary = getGlobalDataStore().summaryStore.getSummaryByConversation(conversationId);
+    const storedSummary = effectiveDataStore.summaryStore.getSummaryByConversation(conversationId);
     if (storedSummary) {
       const summaryMessage: UIMessage = {
         id: `summary-${Date.now()}`,
@@ -138,7 +143,8 @@ export async function compactMessagesWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
   customInstructions: string,
-  model?: LanguageModelV3
+  model?: LanguageModelV3,
+  dataStore?: DataStore,
 ): Promise<CompactionResult> {
   const { compactWithCustomInstructions } = await import("./api-compact");
   return compactWithCustomInstructions(
@@ -146,6 +152,7 @@ export async function compactMessagesWithCustomInstructions(
     conversationId,
     customInstructions,
     model,
+    dataStore,
   );
 }
 

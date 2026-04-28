@@ -49,7 +49,7 @@ export {
 // 统一加载
 // ============================================================
 
-import { detectProjectDir, getUserDataDir } from '../../foundation/paths';
+import { getUserDataDir } from '../../foundation/paths';
 import type { Skill } from '../../extensions/skills/types';
 import type { AgentDefinition } from '../../extensions/subagents/types';
 import type { McpServerConfig } from '../../extensions/mcp/types';
@@ -95,7 +95,7 @@ export type LoadedData = LoadAllResult;
  * @returns 所有配置
  */
 export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
   const dataDir = options?.dataDir ?? getUserDataDir();
 
   // 并行加载所有模块

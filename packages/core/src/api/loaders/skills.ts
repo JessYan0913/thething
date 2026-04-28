@@ -4,7 +4,7 @@
 
 import { parseFrontmatterFile } from '../../foundation/parser';
 import { scanConfigDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { z } from 'zod';
 import type { Skill, SkillMetadata, SkillLoaderConfig } from '../../extensions/skills/types';
 import { SkillFrontmatterSchema } from '../../extensions/skills/types';
@@ -40,7 +40,7 @@ export interface LoadSkillsOptions {
  * 加载 Skills 配置
  */
 export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
 
   // 检查缓存

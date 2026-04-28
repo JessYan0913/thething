@@ -60,6 +60,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       connectors: [...context.connectors],
       permissions: [...permissions],
       memory: [...memory],
+      dataStore: context.runtime.dataStore,
     },
   });
 

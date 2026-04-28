@@ -4,26 +4,7 @@
 
 import path from 'path';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/defaults';
-import { resolveProjectDir, resolveHomeDir } from './resolve';
-
-// ============================================================
-// 项目目录检测
-// ============================================================
-
-/**
- * 检测项目根目录
- *
- * @deprecated 使用 resolveProjectDir({ monorepoPatterns: [...] }) 替代。
- * 此函数保留向后兼容，默认使用 core 包内部的 monorepo patterns。
- *
- * 在 monorepo 开发模式下（从 packages/server 或 packages/cli 运行），
- * 返回 monorepo 根目录，而不是 packages 目录。
- */
-export function detectProjectDir(): string {
-  return resolveProjectDir({
-    monorepoPatterns: ['packages/server', 'packages/cli'],
-  });
-}
+import { resolveHomeDir } from './resolve';
 
 // ============================================================
 // 配置目录路径（纯函数版本 - compute 前缀）
@@ -161,7 +142,7 @@ export function getProjectDataDir(cwd: string): string {
  * 优先使用项目级，不存在则使用用户级
  */
 export function getDefaultDataDir(): string {
-  const cwd = detectProjectDir();
+  const cwd = process.cwd();
   return getProjectDataDir(cwd);
 }
 

@@ -4,7 +4,7 @@
 
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import { PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from '../../extensions/permissions/types';
 import { PermissionConfigSchema } from '../../extensions/permissions/types';
@@ -42,7 +42,7 @@ export interface LoadPermissionsOptions {
  * @returns PermissionRule 列表
  */
 export async function loadPermissions(options?: LoadPermissionsOptions): Promise<PermissionRule[]> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
 
   // 检查缓存
   const cacheKey = `permissions:${cwd}`;

@@ -2,7 +2,7 @@
 // Config Types - 跨模块共享的配置接口
 // ============================================================
 // 设计原则：
-// 1. 只定义跨模块组合的配置类型（如 InitConfig、ToolOutputConfig）
+// 1. 只定义跨模块组合的配置类型
 // 2. 模块专用类型在各模块中定义，此处重新导出
 // 3. 避免重复定义，避免字段不一致
 
@@ -82,23 +82,6 @@ export type { MemoryConfig } from '../extensions/memory/paths';
 // ============================================================
 // 仅在 config 中定义的类型（未被其他模块定义）
 // ============================================================
-
-/**
- * 全局初始化配置
- * 组合多个模块的配置，用于 initAll() 函数
- */
-export interface InitConfig {
-  /** 数据目录 */
-  dataDir: string;
-  /** 项目目录（可选，默认自动检测） */
-  cwd?: string;
-  /** 数据库配置 */
-  databaseConfig?: import('../foundation/datastore/types').SQLiteDataStoreConfig;
-  /** Connector 配置 */
-  connectorConfig?: import('../extensions/connector/init').ConnectorGatewayConfig;
-}
-
-// ToolOutputConfig 和 ToolOutputOverrides 从 runtime/budget 导出，此处不再定义
 
 /**
  * Agent 工具定义配置（用于定义 Agent 可用工具）

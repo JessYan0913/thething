@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { parseFrontmatterFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getProjectConfigDir } from '../../foundation/paths';
+import { getProjectConfigDir } from '../../foundation/paths';
 import { MEMORY_MD_MAX_LINES, MEMORY_MD_MAX_SIZE_KB } from '../../config/defaults';
 
 // ============================================================
@@ -45,7 +45,7 @@ export interface LoadMemoryOptions {
  * @returns MemoryEntry 列表
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
 
   // 检查缓存
   const cacheKey = `memory:${cwd}`;

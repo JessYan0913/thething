@@ -1,3 +1,4 @@
+import type { DataStore } from '../../foundation/datastore';
 import { getGlobalDataStore } from '../../foundation/datastore';
 import { DEFAULT_MAX_BUDGET_USD } from '../../config/defaults';
 
@@ -24,6 +25,8 @@ export interface CostDelta {
 export interface CostTrackerOptions {
   model?: string;
   maxBudgetUsd?: number;
+  /** DataStore 实例（来自 CoreRuntime），优先使用 */
+  dataStore?: DataStore;
 }
 
 export class CostTracker {
@@ -35,11 +38,13 @@ export class CostTracker {
   private _maxBudgetUsd: number;
   private _persistedToDB = false;
   private _conversationId: string;
+  private _dataStore: DataStore;
 
   constructor(conversationId: string, options?: CostTrackerOptions) {
     this._conversationId = conversationId;
     this._model = options?.model ?? 'unknown';
     this._maxBudgetUsd = options?.maxBudgetUsd ?? DEFAULT_MAX_BUDGET_USD;
+    this._dataStore = options?.dataStore ?? getGlobalDataStore();
   }
 
   get totalCost(): number {
@@ -102,9 +107,7 @@ export class CostTracker {
     if (this._persistedToDB) return;
 
     try {
-      const costStore = getGlobalDataStore().costStore;
-
-      costStore.saveCostRecord({
+      this._dataStore.costStore.saveCostRecord({
         conversationId: this._conversationId,
         model: this._model,
         inputTokens: this._inputTokens,

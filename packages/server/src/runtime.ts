@@ -19,26 +19,44 @@ let runtimeInstance: CoreRuntime | null = null
 let contextInstance: AppContext | null = null
 
 /**
+ * 主动初始化 Server Runtime
+ *
+ * 通常在 server 启动时调用，确保 runtime 和 context 立即就绪。
+ * 如果已经初始化，则跳过。
+ */
+export async function initServerRuntime(): Promise<CoreRuntime> {
+  if (runtimeInstance) {
+    return runtimeInstance
+  }
+
+  const projectDir = getServerProjectDir()
+  const dataDir = getServerDataDir()
+
+  console.log(`[Server Runtime] Initializing with projectDir: ${projectDir}, dataDir: ${dataDir}`)
+
+  runtimeInstance = await bootstrap({
+    dataDir,
+    cwd: projectDir,
+  })
+
+  // 立即创建 context
+  contextInstance = await createContext({
+    runtime: runtimeInstance,
+    cwd: runtimeInstance.cwd,
+  })
+
+  console.log('[Server Runtime] Initialized successfully')
+  return runtimeInstance
+}
+
+/**
  * 获取 Server 的 CoreRuntime 实例
  *
  * 如果未初始化，会自动初始化。
  * Server 作为独立应用，使用自己的项目目录和数据目录。
  */
 export async function getServerRuntime(): Promise<CoreRuntime> {
-  if (!runtimeInstance) {
-    const projectDir = getServerProjectDir()
-    const dataDir = getServerDataDir()
-
-    console.log(`[Server Runtime] Initializing with projectDir: ${projectDir}, dataDir: ${dataDir}`)
-
-    runtimeInstance = await bootstrap({
-      dataDir,
-      cwd: projectDir,
-    })
-
-    console.log('[Server Runtime] Initialized successfully')
-  }
-  return runtimeInstance
+  return initServerRuntime()
 }
 
 /**

@@ -12,7 +12,6 @@ import { z } from 'zod';
 import fs from 'fs/promises';
 import path from 'path';
 import { loadSkillFile } from '../../api/loaders/skills';
-import { detectProjectDir } from '../../foundation/paths';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { Skill } from '../../extensions/skills/types';
 
@@ -243,8 +242,8 @@ IMPORTANT:
   inputSchema: SkillToolInputSchema,
 
   execute: async ({ skill, args, cwd: inputCwd }, options) => {
-    // 使用传入的 cwd，或者尝试检测项目目录
-    const cwd = inputCwd || detectProjectDir();
+    // 使用传入的 cwd，或使用当前工作目录
+    const cwd = inputCwd ?? process.cwd();
 
     const trimmedSkill = skill.trim().replace(/^\/+/, '');  // 移除开头的斜杠
 

@@ -4,7 +4,7 @@
 
 import { parseFrontmatterFile, parseFrontmatterContent, parseToolsList } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { AgentDefinition, AgentSource } from '../../extensions/subagents/types';
 import { AgentFrontmatterSchema } from '../../extensions/subagents/types';
 import yaml from 'js-yaml';
@@ -69,7 +69,7 @@ function extractAgentType(data: { name?: string; agentType?: string; displayName
  * 加载 Agents 配置
  */
 export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefinition[]> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
 
   // 检查缓存

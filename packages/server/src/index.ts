@@ -22,6 +22,16 @@ import connectorAdminTestToolRoutes from './routes/connector/admin/test-tool'
 import connectorAdminLogsRoutes from './routes/connector/admin/logs'
 import connectorWebhooksRoutes from './routes/connector/webhooks'
 
+// Runtime management
+export {
+  initServerRuntime,
+  getServerRuntime,
+  getServerContext,
+  getServerDataStore,
+  disposeServerRuntime,
+  reloadServerContext,
+} from './runtime'
+
 const app = new Hono()
 
 // CORS for local development

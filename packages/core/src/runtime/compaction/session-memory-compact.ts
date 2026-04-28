@@ -1,4 +1,6 @@
 import type { UIMessage } from "ai";
+import type { DataStore } from "../../foundation/datastore";
+import { getGlobalDataStore } from "../../foundation/datastore";
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
 } from "../../config/defaults";
@@ -13,15 +15,14 @@ import {
   estimateMessageTokens,
   hasTextBlocks,
 } from "./token-counter";
-import { getGlobalDataStore } from "../../foundation/datastore";
 
 export function shouldUseSessionMemoryCompaction(): boolean {
   return true;
 }
 
-function getSummaryByConversation(conversationId: string): StoredSummary | null {
+function getSummaryByConversation(conversationId: string, dataStore: DataStore): StoredSummary | null {
   try {
-    return getGlobalDataStore().summaryStore.getSummaryByConversation(conversationId);
+    return dataStore.summaryStore.getSummaryByConversation(conversationId);
   } catch {
     return null;
   }
@@ -132,7 +133,8 @@ async function calculateMessagesToKeepIndex(
 export async function trySessionMemoryCompact(
   messages: UIMessage[],
   conversationId: string,
-  config: Partial<SessionMemoryCompactConfig> = {}
+  config: Partial<SessionMemoryCompactConfig> = {},
+  dataStore?: DataStore,
 ): Promise<{
   messages: UIMessage[];
   executed: boolean;
@@ -143,9 +145,10 @@ export async function trySessionMemoryCompact(
     return null;
   }
 
+  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   const resolvedConfig = { ...DEFAULT_SESSION_MEMORY_CONFIG, ...config };
 
-  const summary = getSummaryByConversation(conversationId);
+  const summary = getSummaryByConversation(conversationId, effectiveDataStore);
   if (!summary) return null;
 
   // lastMessageOrder is stored as the 0-based array index of the last summarized message

@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { detectProjectDir } from '../../foundation/paths';
 import { scanMcpDirs, clearMcpCache } from '../../api/loaders/mcps';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { McpServerConfig, McpServerConfigSource } from './types';
@@ -28,7 +27,7 @@ export function getProjectMcpConfigDir(cwd: string): string {
  * 获取默认 MCP 配置目录（项目级）
  */
 export function getDefaultMcpConfigDir(): string {
-  return getProjectMcpConfigDir(detectProjectDir());
+  return getProjectMcpConfigDir(process.cwd());
 }
 
 // ============================================================
@@ -99,7 +98,7 @@ export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig
  * 获取所有 MCP 服务器配置（带来源信息）
  */
 export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpServerConfigSource[]> {
-  const effectiveCwd = cwd ?? detectProjectDir();
+  const effectiveCwd = cwd ?? process.cwd();
   const configs: McpServerConfigSource[] = [];
   const dirs: string[] = [getUserMcpConfigDir(), getProjectMcpConfigDir(effectiveCwd)];
 
@@ -155,7 +154,7 @@ export async function addMcpServerConfig(
 ): Promise<McpServerConfigSource> {
   const dir = targetDir === 'user'
     ? getUserMcpConfigDir()
-    : getProjectMcpConfigDir(cwd ?? detectProjectDir());
+    : getProjectMcpConfigDir(cwd ?? process.cwd());
 
   await ensureDir(dir);
 

@@ -4,7 +4,7 @@
 
 import { parseYamlFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader';
 import { ConnectorFrontmatterSchema } from '../../extensions/connector/loader';
 
@@ -43,7 +43,7 @@ export interface LoadConnectorsOptions {
  * @returns ConnectorFrontmatter 列表
  */
 export async function loadConnectors(options?: LoadConnectorsOptions): Promise<ConnectorFrontmatter[]> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
 
   // 检查缓存

@@ -9,8 +9,8 @@ import { fileURLToPath } from 'url'
  * 获取 Server 项目目录
  *
  * Server 作为独立应用有自己的配置目录 (.thething/)
- * 这与 monorepo 开发模式下的 detectProjectDir() 不同：
- * - detectProjectDir() 在 monorepo 中返回根目录
+ * 这与 monorepo 开发模式下的 resolveProjectDir() 不同：
+ * - resolveProjectDir() 在 monorepo 中返回根目录（当配置 monorepoPatterns）
  * - getServerProjectDir() 返回 server 包自己的目录
  *
  * 支持环境变量覆盖，便于生产部署时自定义配置路径

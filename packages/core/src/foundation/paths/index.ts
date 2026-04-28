@@ -20,7 +20,6 @@ export {
 
 // 便捷版本（向后兼容 - 读取当前环境）
 export {
-  detectProjectDir,
   getUserConfigDir,
   getProjectConfigDir,
   getConfigDirs,

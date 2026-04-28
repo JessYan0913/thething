@@ -5,6 +5,7 @@
 // 参考 ClaudeCode 的预算管理机制
 
 import type { UIMessage, Tool } from 'ai';
+import type { DataStore } from '../../foundation/datastore';
 import {
   estimateFullRequest,
   estimateMessagesTokens,
@@ -87,7 +88,8 @@ export async function checkInitialBudget(
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string,
-  conversationId?: string
+  conversationId?: string,
+  dataStore?: DataStore,
 ): Promise<InitialBudgetCheckResult> {
   // 第一次估算（使用异步精确估算）
   const initialEstimation = await estimateFullRequest(messages, instructions, tools, modelName);
@@ -169,7 +171,7 @@ export async function checkInitialBudget(
   // ============================================================
   if (conversationId && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.3) {
     try {
-      const compactResult = await compactMessagesIfNeeded(currentMessages, conversationId);
+      const compactResult = await compactMessagesIfNeeded(currentMessages, conversationId, dataStore);
       if (compactResult.executed && compactResult.tokensFreed > 1000) {
         currentMessages = compactResult.messages;
         actions.push(`API Compact: freed ${compactResult.tokensFreed} tokens`);

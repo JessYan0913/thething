@@ -3,6 +3,8 @@
 // ============================================================
 
 import type { UIMessage } from 'ai';
+import type { DataStore } from '../../foundation/datastore';
+import { getGlobalDataStore } from '../../foundation/datastore';
 import { DenialTracker } from '../agent-control/denial-tracking';
 import { ModelSwapper } from '../agent-control/model-switching';
 import { compactMessagesIfNeeded } from '../compaction';
@@ -35,7 +37,11 @@ export function createSessionState(
     model = 'unknown',
     projectDir = process.cwd(),
     toolOutputOverrides,
+    dataStore,
   } = options ?? {};
+
+  // 如果未传入 dataStore，使用全局实例（兼容旧代码）
+  const effectiveDataStore = dataStore ?? getGlobalDataStore();
 
   // 应用工具输出配置覆盖（如果有）
   if (toolOutputOverrides) {
@@ -43,7 +49,7 @@ export function createSessionState(
   }
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
-  const costTracker = new CostTracker(conversationId, { model, maxBudgetUsd });
+  const costTracker = new CostTracker(conversationId, { model, maxBudgetUsd, dataStore: effectiveDataStore });
   const denialTracker = new DenialTracker({
     maxDenialsPerTool: options?.maxDenialsPerTool,
   });
@@ -74,7 +80,7 @@ export function createSessionState(
     contentReplacementState: createContentReplacementState(),
 
     async compact(messages: UIMessage[]): Promise<CompactionResult> {
-      const result = await compactMessagesIfNeeded(messages, conversationId);
+      const result = await compactMessagesIfNeeded(messages, conversationId, effectiveDataStore);
       const compactionResult: CompactionResult = {
         messages: result.messages,
         executed: result.executed,

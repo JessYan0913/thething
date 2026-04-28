@@ -2,7 +2,7 @@
 // App Module - 应用层统一入口导出
 // ============================================================
 
-export { createContext, getAppContext } from './context';
+export { createContext } from './context';
 export { createAgent } from './create';
 
 // 向后兼容：createChatAgent 从 runtime/agent 导出

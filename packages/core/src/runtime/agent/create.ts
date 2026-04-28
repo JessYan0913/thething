@@ -80,6 +80,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     maxBudgetUsd: sessionOptions?.maxBudgetUsd ?? 5.0,
     model: modelConfig.modelName ?? sessionOptions?.model,
     projectDir: cwd,
+    dataStore: preloadedData?.dataStore,
   })
 
   let skillResolution: SkillResolution | null = null
@@ -143,7 +144,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     instructions,
     tools,
     modelName,
-    conversationId
+    conversationId,
+    preloadedData?.dataStore,
   )
 
   // 记录预算检查结果

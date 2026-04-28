@@ -11,7 +11,7 @@
 import path from 'path';
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import { PERMISSIONS_FILENAME, DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
@@ -87,7 +87,7 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  * 合并规则：项目级优先级高于用户级
  */
 export async function loadRules(cwd?: string): Promise<PermissionConfig> {
-  const effectiveCwd = cwd ?? detectProjectDir();
+  const effectiveCwd = cwd ?? process.cwd();
   const cacheKey = `permissions:${effectiveCwd}`;
 
   // 检查缓存
@@ -138,7 +138,7 @@ export async function loadRules(cwd?: string): Promise<PermissionConfig> {
  * @param cwd 当前工作目录（默认 process.cwd()）
  */
 export function loadRulesSync(cwd?: string): PermissionConfig {
-  const effectiveCwd = cwd ?? detectProjectDir();
+  const effectiveCwd = cwd ?? process.cwd();
   const cacheKey = `permissions:${effectiveCwd}`;
 
   const cached = permissionsCache.get(cacheKey);

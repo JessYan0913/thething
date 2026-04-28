@@ -6,6 +6,7 @@ import type { UIMessage } from 'ai';
 import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
 import type { ContentReplacementState, ToolOutputOverrides } from '../budget/tool-output-manager';
+import type { DataStore } from '../../foundation/datastore';
 
 /**
  * Session 状态选项
@@ -25,6 +26,8 @@ export interface SessionStateOptions {
   projectDir?: string;
   /** 工具输出配置覆盖（由应用层注入） */
   toolOutputOverrides?: ToolOutputOverrides;
+  /** DataStore 实例（来自 CoreRuntime） */
+  dataStore?: DataStore;
 }
 
 /**

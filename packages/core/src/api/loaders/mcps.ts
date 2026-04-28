@@ -4,7 +4,7 @@
 
 import { parseJsonFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { McpServerConfig } from '../../extensions/mcp/types';
 import { McpServerConfigSchema } from '../../extensions/mcp/types';
 
@@ -40,7 +40,7 @@ export interface LoadMcpsOptions {
  * 加载 MCP Servers 配置
  */
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
-  const cwd = options?.cwd ?? detectProjectDir();
+  const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
 
   // 检查缓存
