@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
 import type { TaskStore } from '../../runtime/tasks';
-import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // Agent Frontmatter Schema（用于解析 .md 文件）
@@ -65,8 +65,8 @@ export type AgentSource = 'builtin' | 'user' | 'project' | 'plugin';
  *
  * 来源：
  * - builtin: 硬编码 TypeScript（built-in/*.ts）
- * - user: 用户全局目录（~/${PROJECT_CONFIG_DIR_NAME}/agents/*.md）
- * - project: 项目目录（${PROJECT_CONFIG_DIR_NAME}/agents/*.md）
+ * - user: 用户全局目录（~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/*.md）
+ * - project: 项目目录（${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/*.md）
  * - plugin: 插件系统注册
  */
 export interface AgentDefinition {

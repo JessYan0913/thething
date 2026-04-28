@@ -6,7 +6,7 @@ import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from '../../api/loaders/agents';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
 import { detectProjectDir } from '../../foundation/paths';
-import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
 
 // ============================================================
@@ -17,7 +17,7 @@ const AgentToolInputSchema = z.object({
   agentType: z.string().optional().describe(
     'Agent type to use. Built-in: explore, research, plan, general-purpose. ' +
     'Custom agents (like test-agent) are already loaded and can be used directly by name. ' +
-    `Example: "test-agent" for a custom agent defined in ${PROJECT_CONFIG_DIR_NAME}/agents/test-agent.md. ` +
+    `Example: "test-agent" for a custom agent defined in ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/test-agent.md. ` +
     'If not specified, auto-routes based on task keywords.'
   ),
   task: z.string().describe('The task for the sub-agent to complete'),

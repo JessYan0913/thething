@@ -5,13 +5,13 @@
  */
 
 import * as path from 'path';
-import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { PathValidationResult } from './types';
 
 // 敏感路径列表 - 任何模式下都不可绕过
 const SENSITIVE_PATHS = [
   '.git',
-  // PROJECT_CONFIG_DIR_NAME,
+  // DEFAULT_PROJECT_CONFIG_DIR_NAME,
   '.env',
   '.env.local',
   '.env.development.local',
@@ -177,8 +177,8 @@ export function validateWritePath(
     'package.json',
     'tsconfig.json',
     '.gitignore',
-    `${PROJECT_CONFIG_DIR_NAME}/settings.json`,
-    `${PROJECT_CONFIG_DIR_NAME}/settings.local.json`,
+    `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/settings.json`,
+    `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/settings.local.json`,
   ];
 
   for (const protectedFile of protectedWriteFiles) {

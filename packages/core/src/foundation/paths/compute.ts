@@ -4,7 +4,7 @@
 
 import path from 'path';
 import os from 'os';
-import { PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // 项目目录检测
@@ -17,8 +17,8 @@ import { PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/
  * 返回 monorepo 根目录，而不是 packages 目录
  *
  * 这样可以确保配置文件在正确的位置：
- * - 项目级配置: 项目根/${PROJECT_CONFIG_DIR_NAME}/
- * - 用户级配置: ~/${PROJECT_CONFIG_DIR_NAME}/
+ * - 项目级配置: 项目根/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/
+ * - 用户级配置: ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/
  */
 export function detectProjectDir(): string {
   const cwd = process.cwd();
@@ -49,9 +49,9 @@ export function detectProjectDir(): string {
 export function getUserConfigDir(subdir?: string): string {
   const homeDir = os.homedir();
   if (subdir) {
-    return path.join(homeDir, PROJECT_CONFIG_DIR_NAME, subdir);
+    return path.join(homeDir, DEFAULT_PROJECT_CONFIG_DIR_NAME, subdir);
   }
-  return path.join(homeDir, PROJECT_CONFIG_DIR_NAME);
+  return path.join(homeDir, DEFAULT_PROJECT_CONFIG_DIR_NAME);
 }
 
 /**
@@ -63,9 +63,9 @@ export function getUserConfigDir(subdir?: string): string {
  */
 export function getProjectConfigDir(cwd: string, subdir?: string): string {
   if (subdir) {
-    return path.join(cwd, PROJECT_CONFIG_DIR_NAME, subdir);
+    return path.join(cwd, DEFAULT_PROJECT_CONFIG_DIR_NAME, subdir);
   }
-  return path.join(cwd, PROJECT_CONFIG_DIR_NAME);
+  return path.join(cwd, DEFAULT_PROJECT_CONFIG_DIR_NAME);
 }
 
 /**
@@ -93,7 +93,7 @@ export function getConfigDirs(cwd: string, subdir: string): string[] {
  */
 export function getUserDataDir(): string {
   const homeDir = os.homedir();
-  return path.join(homeDir, PROJECT_CONFIG_DIR_NAME, 'data');
+  return path.join(homeDir, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'data');
 }
 
 /**
@@ -103,7 +103,7 @@ export function getUserDataDir(): string {
  * @returns 目录绝对路径
  */
 export function getProjectDataDir(cwd: string): string {
-  return path.join(cwd, PROJECT_CONFIG_DIR_NAME, 'data');
+  return path.join(cwd, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'data');
 }
 
 // ============================================================

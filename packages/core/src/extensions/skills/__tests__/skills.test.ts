@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SkillFrontmatterSchema, DEFAULT_SKILL_LOADER_CONFIG, DEFAULT_SKILL_SCAN_DIRS } from '../types';
-import { PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
 
 // ============================================================
 // Skills Types Tests
@@ -113,7 +113,7 @@ describe('skills-types', () => {
 
   describe('constants', () => {
     it('should have correct default scan dirs', () => {
-      expect(DEFAULT_SKILL_SCAN_DIRS).toContain(`${PROJECT_CONFIG_DIR_NAME}/skills`);
+      expect(DEFAULT_SKILL_SCAN_DIRS).toContain(`${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills`);
     });
 
     it('should have correct default loader config', () => {

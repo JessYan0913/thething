@@ -103,7 +103,7 @@ export {
 
 // 项目配置目录
 export {
-  PROJECT_CONFIG_DIR_NAME,
+  DEFAULT_PROJECT_CONFIG_DIR_NAME,
 } from './defaults';
 
 // Tokenizer 远程加载

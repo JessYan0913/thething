@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
 import { scanAgentDirs, registerBuiltinAgents, globalAgentRegistry } from '../index';
 import { resolveAgentRoute } from '../router';
-import { PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
 
 describe('Agent Loader Integration', () => {
   beforeAll(async () => {
@@ -26,7 +26,7 @@ describe('Agent Loader Integration', () => {
     expect(builtinAgents.some(a => a.agentType === 'research')).toBe(true);
   });
 
-  it(`should load custom agents from ${PROJECT_CONFIG_DIR_NAME}/agents/`, async () => {
+  it(`should load custom agents from ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/`, async () => {
     const allAgents = globalAgentRegistry.getAll();
     const customAgents = allAgents.filter(a => a.source === 'project' || a.source === 'user');
 

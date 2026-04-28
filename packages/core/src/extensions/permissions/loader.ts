@@ -2,8 +2,8 @@
  * 权限配置加载器
  *
  * 配置文件路径:
- * - 用户全局: ~/${PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json
- * - 项目级: 项目/${PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json
+ * - 用户全局: ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json
+ * - 项目级: 项目/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json
  *
  * 优先级: 项目级 > 用户全局
  */
@@ -12,7 +12,7 @@ import path from 'path';
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
 import { detectProjectDir, getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
-import { PERMISSIONS_FILENAME, PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { PERMISSIONS_FILENAME, DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
 
@@ -81,8 +81,8 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  * @param cwd 当前工作目录（默认 process.cwd()）
  *
  * 加载顺序：
- * 1. 用户全局配置 (~/${PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json)
- * 2. 项目级配置 (项目/${PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json)
+ * 1. 用户全局配置 (~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json)
+ * 2. 项目级配置 (项目/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json)
  *
  * 合并规则：项目级优先级高于用户级
  */

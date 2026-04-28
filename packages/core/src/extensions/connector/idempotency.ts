@@ -5,13 +5,13 @@
 import { getDatabase } from '../../native-loader'
 import path from 'path'
 import os from 'os'
-import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 
-// 默认数据目录: ~/${PROJECT_CONFIG_DIR_NAME}/data（硬编码默认值，不读取环境变量）
-const DEFAULT_DATA_DIR = path.join(os.homedir(), PROJECT_CONFIG_DIR_NAME, 'data')
+// 默认数据目录: ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/data（硬编码默认值，不读取环境变量）
+const DEFAULT_DATA_DIR = path.join(os.homedir(), DEFAULT_PROJECT_CONFIG_DIR_NAME, 'data')
 
 export interface IdempotencyGuardOptions {
-  /** 数据库路径，默认为 ~/${PROJECT_CONFIG_DIR_NAME}/data/.connector-idempotency.db */
+  /** 数据库路径，默认为 ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/data/.connector-idempotency.db */
   dbPath?: string
   ttlMs?: number
 }

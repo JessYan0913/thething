@@ -13,7 +13,7 @@ import {
   PREVIEW_SIZE_CHARS,
   type PersistedToolResult,
 } from './tool-output-manager'
-import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 
 // ============================================================
 // 存储目录配置
@@ -23,7 +23,7 @@ import { PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 export const TOOL_RESULTS_SUBDIR = 'tool-results'
 
 /** 项目配置工作目录名（使用统一常量） */
-export const THETHING_DIR = PROJECT_CONFIG_DIR_NAME
+export const THETHING_DIR = DEFAULT_PROJECT_CONFIG_DIR_NAME
 
 // ============================================================
 // 路径辅助函数

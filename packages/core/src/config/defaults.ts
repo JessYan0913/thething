@@ -91,11 +91,13 @@ export const DEFAULT_MAX_OUTPUT_TOKENS = 15_000;
 // ============================================================
 
 /**
- * 项目配置目录名称
- * 可通过环境变量 THING_PROJECT_DIR_NAME 配置
- * 默认值为 '.siact'（原 '.thething' 已废弃）
+ * 默认项目配置目录名称
+ *
+ * 注意：packages/core 只定义默认值，不读取环境变量。
+ * 环境变量 THING_PROJECT_DIR_NAME 由应用层（CLI/Server）处理，
+ * 并通过配置参数传递给 core 模块。
  */
-export const PROJECT_CONFIG_DIR_NAME = process.env.THING_PROJECT_DIR_NAME || '.siact';
+export const DEFAULT_PROJECT_CONFIG_DIR_NAME = '.thething';
 
 // ============================================================
 // Skills 配置默认值
@@ -103,7 +105,7 @@ export const PROJECT_CONFIG_DIR_NAME = process.env.THING_PROJECT_DIR_NAME || '.s
 
 /** 默认 Skills 扫描目录 */
 export const DEFAULT_SKILL_SCAN_DIRS = [
-  `${PROJECT_CONFIG_DIR_NAME}/skills`,
+  `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills`,
 ];
 
 /** 默认 Skills 加载配置 */
@@ -119,14 +121,14 @@ export const DEFAULT_SKILL_LOADER_CONFIG = {
 // ============================================================
 
 /** 默认 MCP 配置目录 */
-export const DEFAULT_MCP_CONFIG_DIR = `${PROJECT_CONFIG_DIR_NAME}/mcps`;
+export const DEFAULT_MCP_CONFIG_DIR = `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/mcps`;
 
 // ============================================================
 // Permissions 配置默认值
 // ============================================================
 
 /** 默认 Permissions 配置目录 */
-export const DEFAULT_PERMISSIONS_DIR = `${PROJECT_CONFIG_DIR_NAME}/permissions`;
+export const DEFAULT_PERMISSIONS_DIR = `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions`;
 
 /** Permissions 配置文件名 */
 export const PERMISSIONS_FILENAME = 'permissions.json';
@@ -136,7 +138,7 @@ export const PERMISSIONS_FILENAME = 'permissions.json';
 // ============================================================
 
 /** 默认 Connector 配置目录 */
-export const DEFAULT_CONNECTORS_DIR = `${PROJECT_CONFIG_DIR_NAME}/connectors`;
+export const DEFAULT_CONNECTORS_DIR = `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/connectors`;
 
 /** 电路断路器阈值 */
 export const CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -150,7 +152,7 @@ export const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** Agent 扫描目录 */
 export const DEFAULT_AGENT_SCAN_DIRS = [
-  `${PROJECT_CONFIG_DIR_NAME}/agents`,
+  `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents`,
 ];
 
 /** Agent 加载默认配置 */

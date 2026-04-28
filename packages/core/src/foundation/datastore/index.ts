@@ -6,7 +6,7 @@
 // summaries, and costs.
 //
 // Note: Memory storage is handled by the file-based memory system
-// in ${PROJECT_CONFIG_DIR_NAME}/memory/, not by DataStore.
+// in ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/memory/, not by DataStore.
 //
 // @example Basic usage (default SQLite)
 // ```typescript
