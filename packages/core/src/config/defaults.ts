@@ -260,8 +260,9 @@ export const HF_OFFICIAL_BASE_URL = 'https://huggingface.co';
 export const MODEL_TO_HF_REPO_MAPPING: Record<string, { org: string; repo: string; variant?: string }> = {
   // Qwen 系列
   'qwen2.5': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
-  'qwen3': { org: 'Qwen', repo: 'Qwen3-7B', variant: 'Instruct' },
-  'qwen3.5': { org: 'Qwen', repo: 'Qwen3-7B', variant: 'Instruct' },
+  'qwen3': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },  // Qwen3 tokenizer 未发布，使用 Qwen2.5
+  'qwen3.5': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },  // Qwen3.5 tokenizer 未发布，使用 Qwen2.5
+  'qwen3.6': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },  // Qwen3.6 tokenizer 未发布，使用 Qwen2.5
   'qwen-max': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
   'qwen-plus': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },
   'qwen-turbo': { org: 'Qwen', repo: 'Qwen2.5-7B', variant: 'Instruct' },

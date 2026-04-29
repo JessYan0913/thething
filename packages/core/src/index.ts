@@ -58,7 +58,7 @@
 // ============================================================
 // 高层 API（推荐入口）
 // ============================================================
-export { bootstrap, type CoreRuntime, type BootstrapOptions } from './bootstrap';
+export { bootstrap, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './bootstrap';
 export { createAgent, createContext } from './api/app';
 export type {
   AppContext,

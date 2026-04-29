@@ -13,7 +13,7 @@ import {
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
-import { getServerProjectDir, getServerDataDir } from './config'
+import { getServerProjectDir, getServerDataDir, getServerTokenizerConfig } from './config'
 
 let runtimeInstance: CoreRuntime | null = null
 let contextInstance: AppContext | null = null
@@ -31,12 +31,14 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
 
   const projectDir = getServerProjectDir()
   const dataDir = getServerDataDir()
+  const tokenizerConfig = getServerTokenizerConfig()
 
   console.log(`[Server Runtime] Initializing with projectDir: ${projectDir}, dataDir: ${dataDir}`)
 
   runtimeInstance = await bootstrap({
     dataDir,
     cwd: projectDir,
+    tokenizerConfig,
   })
 
   // 立即创建 context

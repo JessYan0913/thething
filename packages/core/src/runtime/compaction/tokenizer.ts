@@ -57,6 +57,12 @@ class TokenCounterImpl {
   /** 是否禁用自动下载 */
   private disableAutoDownload: boolean = false;
 
+  /** 降级加载任务（协调并发请求） */
+  private fallbackLoadingTask: Promise<void> | null = null;
+
+  /** 降级警告已打印 */
+  private fallbackWarningPrinted: boolean = false;
+
   // ============================================================
   // 配置 API
   // ============================================================
@@ -297,16 +303,50 @@ class TokenCounterImpl {
    * 降级到默认 tokenizer
    */
   private async fallbackToDefault(modelName: string): Promise<Tokenizer> {
-    // 如果已有默认 tokenizer，直接使用
+    // 如果已有默认 tokenizer，直接使用（只打印一次警告）
     if (this.defaultTokenizer) {
-      if (!this.warnedModels.has(modelName)) {
-        this.warnedModels.add(modelName);
+      if (!this.fallbackWarningPrinted) {
+        this.fallbackWarningPrinted = true;
         console.log(`[TokenCounter] ⚠️ ${modelName} tokenizer 加载失败，降级使用默认 tokenizer`);
       }
+      this.warnedModels.add(modelName);
       return this.defaultTokenizer;
     }
 
-    // 加载默认 tokenizer
+    // 检查是否有正在进行的降级加载
+    if (this.fallbackLoadingTask) {
+      await this.fallbackLoadingTask;
+      // 加载完成后，再次检查
+      if (this.defaultTokenizer) {
+        this.warnedModels.add(modelName);
+        return this.defaultTokenizer;
+      }
+      // 如果加载失败，抛出错误
+      throw new Error(`Tokenizer 加载失败: 模型 ${modelName}`);
+    }
+
+    // 开始加载默认 tokenizer
+    this.fallbackLoadingTask = this.loadDefaultTokenizer(modelName);
+
+    try {
+      await this.fallbackLoadingTask;
+    } catch (error) {
+      this.fallbackLoadingTask = null;
+      throw error;
+    }
+
+    if (this.defaultTokenizer) {
+      this.warnedModels.add(modelName);
+      return this.defaultTokenizer;
+    }
+
+    throw new Error(`Tokenizer 加载失败: 模型 ${modelName}`);
+  }
+
+  /**
+   * 加载默认 tokenizer（内部方法）
+   */
+  private async loadDefaultTokenizer(modelName: string): Promise<void> {
     const defaultRepo = DEFAULT_TOKENIZER_REPO;
     const defaultDir = getUserTokenizerCacheDir(this.buildCacheDirName(defaultRepo));
     const defaultKey = this.buildCacheDirName(defaultRepo);
@@ -334,9 +374,11 @@ class TokenCounterImpl {
       this.defaultTokenizer = await this.loadFromDir(defaultDir);
       this.cache.set(defaultKey, this.defaultTokenizer);
 
-      this.warnedModels.add(modelName);
-      console.log(`[TokenCounter] ⚠️ ${modelName} tokenizer 加载失败，降级使用 ${defaultRepo.org}/${defaultRepo.repo}`);
-      return this.defaultTokenizer;
+      // 只打印一次降级警告
+      if (!this.fallbackWarningPrinted) {
+        this.fallbackWarningPrinted = true;
+        console.log(`[TokenCounter] ⚠️ ${modelName} tokenizer 加载失败，降级使用 ${defaultRepo.org}/${defaultRepo.repo}`);
+      }
     } catch (loadError) {
       throw new Error(`无法加载默认 tokenizer: ${loadError instanceof Error ? loadError.message : loadError}`);
     }
@@ -508,6 +550,8 @@ class TokenCounterImpl {
     this.warnedModels.clear();
     this.downloadingTasks.clear();
     this.defaultTokenizer = null;
+    this.fallbackLoadingTask = null;
+    this.fallbackWarningPrinted = false;
     console.log(`[TokenCounter] 缓存已清除`);
   }
 }

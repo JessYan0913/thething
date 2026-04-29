@@ -167,6 +167,14 @@ export {
   type FullRequestEstimation,
 } from "./token-counter";
 
+// Tokenizer 配置 API（显式配置，不依赖环境变量）
+export {
+  registerTokenizer,
+  setAutoDownload,
+  isTokenizerReady,
+  getTokenizerConfig,
+} from "./tokenizer";
+
 export { microCompactMessages } from "./micro-compact";
 
 export { trySessionMemoryCompact } from "./session-memory-compact";

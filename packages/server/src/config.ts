@@ -52,3 +52,42 @@ export function getServerDataDir(): string {
   const projectDir = getServerProjectDir()
   return path.join(projectDir, '.thething', 'data')
 }
+
+/**
+ * 获取 Server Tokenizer 配置
+ *
+ * 符合 core-redesign.md 理念：环境变量由应用层处理，不传入 core
+ *
+ * 支持的环境变量：
+ * - THETHING_TOKENIZER_DIR: tokenizer 目录路径
+ * - THETHING_TOKENIZER_DISABLE_AUTO_DOWNLOAD: 禁用自动下载 (true/false)
+ * - THETHING_TOKENIZER_PRELOAD: 预加载模型列表 (逗号分隔)
+ */
+export function getServerTokenizerConfig(): {
+  dir?: string;
+  disableAutoDownload?: boolean;
+  preloadModels?: string[];
+} {
+  const config: {
+    dir?: string;
+    disableAutoDownload?: boolean;
+    preloadModels?: string[];
+  } = {}
+
+  // tokenizer 目录
+  if (process.env.THETHING_TOKENIZER_DIR) {
+    config.dir = process.env.THETHING_TOKENIZER_DIR
+  }
+
+  // 禁用自动下载
+  if (process.env.THETHING_TOKENIZER_DISABLE_AUTO_DOWNLOAD === 'true') {
+    config.disableAutoDownload = true
+  }
+
+  // 预加载模型列表
+  if (process.env.THETHING_TOKENIZER_PRELOAD) {
+    config.preloadModels = process.env.THETHING_TOKENIZER_PRELOAD.split(',').map(s => s.trim())
+  }
+
+  return config
+}
