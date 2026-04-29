@@ -90,10 +90,11 @@ await runtime.dispose();
 ```typescript
 // ❌ 旧方式（隐式依赖全局状态）
 await initAll({ dataDir: './data' });  // 已移除
-const store = getGlobalDataStore();     // 内部状态
+const store = getGlobalDataStore();     // 已移除
 
 // ✅ 新方式（显式依赖）
 const runtime = await bootstrap({ dataDir: './data' });
+const store = runtime.dataStore;        // 显式获取
 const context = await createContext({ runtime, cwd });
 const { agent } = await createAgent({ context, ... });
 ```

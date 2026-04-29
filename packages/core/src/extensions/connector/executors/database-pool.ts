@@ -3,7 +3,7 @@
 // PostgreSQL 和 MySQL 为可选依赖，需要时安装: npm install pg 或 npm install mysql2
 // ============================================================
 
-import { getDatabase, type SqliteDatabase, type SqliteDatabaseConstructor } from '../../../native-loader'
+import { getDatabase, type SqliteDatabase, type SqliteDatabaseConstructor } from '../../../foundation/datastore/sqlite/native-loader'
 
 export type DatabaseType = 'sqlite' | 'postgresql' | 'mysql'
 

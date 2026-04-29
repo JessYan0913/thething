@@ -18,7 +18,7 @@ app.get('/compaction', async (c) => {
 
     const store = await getServerDataStore()
     const messages = store.messageStore.getMessagesByConversation(conversationId)
-    const tokenCount = estimateMessagesTokens(messages)
+    const tokenCount = await estimateMessagesTokens(messages)
 
     const summary = store.summaryStore.getSummaryByConversation(conversationId)
 

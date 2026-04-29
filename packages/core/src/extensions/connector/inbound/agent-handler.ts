@@ -7,10 +7,10 @@ import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { nanoid } from 'nanoid'
 import type { InboundMessageEvent } from '../types'
 import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
-import { getGlobalDataStore } from '../../../foundation/datastore'
 import { buildSystemPrompt } from '../../../extensions/system-prompt'
 import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '../../../extensions/memory'
 import { ConnectorRegistry } from '../registry'
+import type { DataStore } from '../../../foundation/datastore/types'
 import type { UIMessage } from 'ai'
 
 /**
@@ -23,6 +23,8 @@ export interface AgentHandlerConfig {
   model: LanguageModelV3
   /** 项目目录（可选） */
   cwd?: string
+  /** 数据存储实例（必须提供） */
+  dataStore: DataStore
 }
 
 /**
@@ -31,9 +33,11 @@ export interface AgentHandlerConfig {
  */
 export class AgentInboundHandler implements InboundEventHandler {
   private config: AgentHandlerConfig
+  private dataStore: DataStore
 
   constructor(config: AgentHandlerConfig) {
     this.config = config
+    this.dataStore = config.dataStore
   }
 
   async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
@@ -52,7 +56,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       const userMessage = this.buildUserMessage(event)
 
       // 3. 获取对话历史
-      const store = getGlobalDataStore()
+      const store = this.dataStore
       const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
       const messages = [...existingMessages, userMessage]
 
@@ -119,7 +123,7 @@ export class AgentInboundHandler implements InboundEventHandler {
   private async findOrCreateConversation(event: InboundMessageEvent): Promise<string> {
     // 使用 channel_id 作为对话 ID（格式：connector_type_channel_id）
     const conversationId = `${event.connector_type}_${event.channel_id}`
-    const store = getGlobalDataStore()
+    const store = this.dataStore
 
     const existing = store.conversationStore.getConversation(conversationId)
     if (existing) {

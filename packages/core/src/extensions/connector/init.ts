@@ -10,6 +10,7 @@ import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
 import { getProjectConfigDir } from '../../foundation/paths'
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 import { debugLog, debugWarn } from './debug'
+import type { DataStore } from '../../foundation/datastore/types'
 
 // ============================================================================
 // Connector Gateway Configuration
@@ -26,6 +27,8 @@ export interface ConnectorGatewayConfig {
   /** 模型实例（必须提供，用于 Inbound Processor） */
   model?: LanguageModelV3;
   enableInbound?: boolean;
+  /** 数据存储实例（必须提供，用于 Inbound Processor） */
+  dataStore?: DataStore;
 }
 
 // 单例 Registry（按 cwd 缓存）
@@ -68,14 +71,15 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
 
   // 初始化 Inbound Processor（可选）
   if (config?.enableInbound !== false) {
-    if (!config?.model) {
-      debugWarn('[ConnectorGateway] Model is required for Inbound processor. Skipping inbound initialization.')
+    if (!config?.model || !config?.dataStore) {
+      debugWarn('[ConnectorGateway] Model and dataStore are required for Inbound processor. Skipping inbound initialization.')
       return
     }
     const handlerConfig: AgentHandlerConfig = {
       registry,
       userId: config?.userId,
-      model: config?.model,
+      model: config.model,
+      dataStore: config.dataStore,
     }
 
     const handler = createAgentInboundHandler(handlerConfig)

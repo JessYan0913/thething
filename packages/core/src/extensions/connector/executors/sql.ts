@@ -2,7 +2,7 @@
 // SQL Executor - 数据库直连查询（只读，防 SQL 注入）
 // ============================================================
 
-import { getDatabase, type SqliteDatabase, type SqliteDatabaseConstructor } from '../../../native-loader'
+import { getDatabase, type SqliteDatabase, type SqliteDatabaseConstructor } from '../../../foundation/datastore/sqlite/native-loader'
 import type { SqlExecutorConfig, ExecutorResult } from '../types'
 
 export interface SqlExecutorDeps {

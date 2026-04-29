@@ -6,9 +6,30 @@
 
 import type { SqliteDatabase } from '../types';
 
+const SCHEMA_VERSION = 1;
+
+/**
+ * Ensure the database schema is up-to-date.
+ * Uses SQLite's user_version pragma to track schema version.
+ * Handles incremental migration for existing databases.
+ */
+function ensureSchemaVersion(db: SqliteDatabase): void {
+  const result = db.pragma('user_version');
+  const currentVersion = Array.isArray(result) ? (result[0] as { user_version: number }).user_version : 0;
+
+  if (currentVersion === SCHEMA_VERSION) return;
+
+  if (currentVersion < 1) {
+    // v1: initial schema (already created by initializeSchema)
+  }
+
+  db.pragma(`user_version = ${SCHEMA_VERSION}`);
+}
+
 /**
  * Initialize the database schema.
- * Creates all tables and indexes if they don't exist.
+ * Creates all tables and indexes if they don't exist,
+ * then ensures the schema version is up-to-date.
  */
 export function initializeSchema(db: SqliteDatabase): void {
   db.exec(`
@@ -53,14 +74,8 @@ export function initializeSchema(db: SqliteDatabase): void {
     -- Index for efficient summary lookup
     CREATE INDEX IF NOT EXISTS idx_summaries_conversation
       ON summaries(conversation_id, compacted_at DESC);
-  `);
-}
 
-/**
- * Initialize the cost tracking schema (separate table, may be created later)
- */
-export function initializeCostSchema(db: SqliteDatabase): void {
-  db.exec(`
+    -- Cost tracking table (unified into main schema)
     CREATE TABLE IF NOT EXISTS chat_costs (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
@@ -73,7 +88,11 @@ export function initializeCostSchema(db: SqliteDatabase): void {
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
+
+    -- Index for cost lookup by conversation
     CREATE INDEX IF NOT EXISTS idx_chat_costs_conversation
       ON chat_costs(conversation_id);
   `);
+
+  ensureSchemaVersion(db);
 }

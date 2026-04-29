@@ -1,8 +1,51 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { LanguageModelUsage } from 'ai';
 import type { CompactionResult } from '../../compaction/types';
+import type { CostStore } from '../../../foundation/datastore/types';
 import { TokenBudgetTracker } from '../token-budget';
 import { CostTracker, PRICING } from '../cost';
+
+// ============================================================
+// Helper: Mock CostStore
+// ============================================================
+function createMockCostStore(): CostStore {
+  const records = new Map<string, ReturnType<CostStore['saveCostRecord']>>();
+  return {
+    saveCostRecord(params) {
+      const record = {
+        id: `cost-${Date.now()}`,
+        conversationId: params.conversationId,
+        model: params.model,
+        inputTokens: params.inputTokens,
+        outputTokens: params.outputTokens,
+        cachedReadTokens: params.cachedReadTokens,
+        totalCostUsd: params.totalCostUsd,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      records.set(params.conversationId, record);
+      return record;
+    },
+    getCostByConversation(conversationId: string) {
+      return records.get(conversationId) ?? null;
+    },
+    updateCostByConversation(conversationId: string, params: {
+      inputTokens: number;
+      outputTokens: number;
+      cachedReadTokens: number;
+      totalCostUsd: number;
+    }) {
+      const record = records.get(conversationId);
+      if (record) {
+        record.inputTokens = params.inputTokens;
+        record.outputTokens = params.outputTokens;
+        record.cachedReadTokens = params.cachedReadTokens;
+        record.totalCostUsd = params.totalCostUsd;
+        record.updatedAt = new Date().toISOString();
+      }
+    },
+  };
+}
 
 // ============================================================
 // Helper: Create valid LanguageModelUsage object
@@ -181,7 +224,7 @@ describe('cost', () => {
     let tracker: CostTracker;
 
     beforeEach(() => {
-      tracker = new CostTracker('test-conv-1', { model: 'qwen-max', maxBudgetUsd: 5.0 });
+      tracker = new CostTracker('test-conv-1', createMockCostStore(), { model: 'qwen-max', maxBudgetUsd: 5.0 });
     });
 
     describe('constructor', () => {
@@ -207,7 +250,7 @@ describe('cost', () => {
       });
 
       it('should use default pricing for unknown model', () => {
-        const unknownTracker = new CostTracker('test-conv', { model: 'unknown-model' });
+        const unknownTracker = new CostTracker('test-conv', createMockCostStore(), { model: 'unknown-model' });
         const delta = unknownTracker.calculateDelta(100_000, 50_000, 0);
         // default pricing: input 1.5, output 4.5
         expect(delta.inputCost).toBeCloseTo(0.15, 2);

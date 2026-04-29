@@ -6,7 +6,7 @@ import chalk from 'chalk'
 import fs from 'fs'
 import path from 'path'
 import { getDataDirConfig } from '../lib/data-dir'
-import { bootstrap, resolveProjectDir, SQLiteDataStore } from '@the-thing/core'
+import { bootstrap, resolveProjectDir } from '@the-thing/core'
 
 export interface DbOptions {}
 
@@ -49,10 +49,9 @@ export async function dbBackup(backupPath: string): Promise<void> {
     fs.mkdirSync(backupDir, { recursive: true })
   }
 
-  // Perform backup using SQLite backup API
+  // Perform backup using DataStore backup API
   console.log(chalk.blue(`Backing up database to: ${backupPath}`))
 
-  // 使用 bootstrap 获取 runtime 和 dataStore
   const cwd = resolveProjectDir({
     monorepoPatterns: ['packages/server', 'packages/cli'],
   })
@@ -60,16 +59,8 @@ export async function dbBackup(backupPath: string): Promise<void> {
 
   try {
     const store = runtime.dataStore
-    if (store instanceof SQLiteDataStore) {
-      const db = store.getRawDb()
-      await db.backup(backupPath)
-      console.log(chalk.green('Backup completed successfully.'))
-    } else {
-      // Fallback for non-SQLite stores: file copy
-      console.log(chalk.yellow('Using file copy fallback (non-SQLite store)...'))
-      fs.copyFileSync(dataDirConfig.dbPath, backupPath)
-      console.log(chalk.green('Backup completed (via file copy).'))
-    }
+    await store.backup(backupPath)
+    console.log(chalk.green('Backup completed successfully.'))
   } catch (error) {
     // Fallback: copy file
     console.log(chalk.yellow('Using file copy fallback...'))

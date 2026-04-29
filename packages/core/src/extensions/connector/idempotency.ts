@@ -2,7 +2,7 @@
 // 幂等去重 - 使用 SQLite 替代 Redis（适合单实例部署）
 // ============================================================
 
-import { getDatabase } from '../../native-loader'
+import { getDatabase } from '../../foundation/datastore/sqlite/native-loader'
 import path from 'path'
 import os from 'os'
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'

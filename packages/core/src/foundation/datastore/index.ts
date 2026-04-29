@@ -8,30 +8,43 @@
 // Note: Memory storage is handled by the file-based memory system
 // in ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/memory/, not by DataStore.
 //
-// @example Basic usage (default SQLite)
+// @example Recommended usage (via CoreRuntime)
 // ```typescript
-// import { getGlobalDataStore } from '@the-thing/core/datastore';
+// import { bootstrap } from '@the-thing/core';
 //
-// const store = getGlobalDataStore();
+// const runtime = await bootstrap({ dataDir: './data' });
+// const store = runtime.dataStore;
 // store.conversationStore.createConversation('conv-123', 'My Chat');
+// // ...
+// await runtime.dispose();
 // ```
 //
-// @example Custom implementation
+// @example Standalone usage (scripts / CLI tools)
 // ```typescript
-// import { setGlobalDataStore, type DataStore } from '@the-thing/core/datastore';
+// import { createDefaultDataStore } from '@the-thing/core';
 //
-// setGlobalDataStore(new MyPostgresDataStore());
+// const store = createDefaultDataStore({ dataDir: './data' });
+// store.conversationStore.createConversation('conv-123', 'My Chat');
+// store.close();
+// ```
+//
+// @example Testing (isolated in-memory store)
+// ```typescript
+// import { createInMemoryDataStore } from '@the-thing/core';
+//
+// const store = createInMemoryDataStore();
+// // Use store in tests — each call creates a fresh isolated instance
 // ```
 //
 // @example Partial replacement (mix SQLite with custom)
 // ```typescript
-// import { createSQLiteDataStore, setGlobalDataStore } from '@the-thing/core/datastore';
+// import { createSQLiteDataStore, type DataStore } from '@the-thing/core';
 //
 // const sqlite = createSQLiteDataStore();
-// setGlobalDataStore({
+// const customStore: DataStore = {
 //   ...sqlite,
 //   costStore: new RedisCostStore(), // Only replace cost storage
-// });
+// };
 // ```
 
 // ============================================================================
@@ -40,14 +53,11 @@
 export * from './types';
 
 // ============================================================================
-// Global Instance Management
+// Factory Functions
 // ============================================================================
 export {
-  getGlobalDataStore,
-  setGlobalDataStore,
-  configureDataStore,
-  configureDatabase,
-  resetGlobalDataStore,
+  createDefaultDataStore,
+  createInMemoryDataStore,
 } from './store';
 
 // ============================================================================
@@ -61,5 +71,4 @@ export {
   SQLiteSummaryStore,
   SQLiteCostStore,
   initializeSchema,
-  initializeCostSchema,
 } from './sqlite';

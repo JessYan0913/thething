@@ -35,6 +35,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     preloadedData,
   } = config
 
+  const dataStore = preloadedData.dataStore
+
   // 判断是否是首次对话
   const isTurnZero = conversationMeta?.isNewConversation ?? false
 
@@ -80,7 +82,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     maxBudgetUsd: sessionOptions?.maxBudgetUsd ?? 5.0,
     model: modelConfig.modelName ?? sessionOptions?.model,
     projectDir: cwd,
-    dataStore: preloadedData?.dataStore,
+    dataStore,
   })
 
   let skillResolution: SkillResolution | null = null
@@ -144,8 +146,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     instructions,
     tools,
     modelName,
+    dataStore,
     conversationId,
-    preloadedData?.dataStore,
   )
 
   // 记录预算检查结果

@@ -1,7 +1,6 @@
 import { generateText, type UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import type { DataStore } from "../../foundation/datastore";
-import { getGlobalDataStore } from "../../foundation/datastore";
+import type { DataStore } from "../../foundation/datastore/types";
 import { DEFAULT_SESSION_MEMORY_CONFIG } from "../../config/defaults";
 import {
   type CompactBoundaryMessage,
@@ -248,10 +247,9 @@ async function getExistingSummarySafe(conversationId: string, dataStore: DataSto
 export async function compactViaAPI(
   messages: UIMessage[],
   conversationId: string,
+  dataStore: DataStore,
   model?: LanguageModelV3,
-  dataStore?: DataStore,
 ): Promise<CompactionResult> {
-  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
   const microResult = await microCompactMessages(messages);
@@ -287,7 +285,7 @@ export async function compactViaAPI(
     : "";
 
   // 获取已有摘要，实现增量更新
-  const existingSummary = await getExistingSummarySafe(conversationId, effectiveDataStore);
+  const existingSummary = await getExistingSummarySafe(conversationId, dataStore);
 
   let promptWithContext: string;
   if (existingSummary) {
@@ -376,7 +374,7 @@ export async function compactViaAPI(
   const lastSummarizedOrder = startIndex - 1;
 
   try {
-    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount, effectiveDataStore);
+    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount, dataStore);
   } catch (error) {
     console.error("[Compaction] Failed to save summary:", error);
   }
@@ -395,10 +393,9 @@ export async function compactWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
   customInstructions: string,
+  dataStore: DataStore,
   model?: LanguageModelV3,
-  dataStore?: DataStore,
 ): Promise<CompactionResult> {
-  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
   const microResult = await microCompactMessages(messages);
@@ -505,7 +502,7 @@ export async function compactWithCustomInstructions(
   const lastSummarizedOrder = startIndex - 1;
 
   try {
-    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount, effectiveDataStore);
+    await saveSummarySafe(conversationId, summary, lastSummarizedOrder, preCompactTokenCount, dataStore);
   } catch (error) {
     console.error("[Compaction] Failed to save summary:", error);
   }

@@ -45,6 +45,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       maxBudgetUsd: options.session?.maxBudgetUsd,
       compactThreshold: options.session?.compactThreshold,
       model: options.model.modelName,
+      dataStore: context.runtime.dataStore,
     },
     enableMcp: options.modules?.mcps ?? true,
     enableSkills: options.modules?.skills ?? true,

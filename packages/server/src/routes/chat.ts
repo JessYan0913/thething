@@ -80,6 +80,7 @@ app.post('/', async (c) => {
     const { messages: compactedMessages } = await compactMessagesIfNeeded(
       messages,
       conversationId,
+      store,
     )
 
     const preCompactionTokens = estimateMessagesTokens(messages)
@@ -165,16 +166,21 @@ app.post('/', async (c) => {
                 context.cwd,
               ).catch((err) => console.error('[Memory Extraction] Error:', err))
 
+              // Background Title Generation (non-blocking)
               if (isFirstMessage) {
-                const title = await generateConversationTitle(completedMessages, model)
-                store.conversationStore.updateConversationTitle(conversationId, title)
-                console.log(`[Title Generated] ${conversationId}: ${title}`)
+                generateConversationTitle(completedMessages, model)
+                  .then((title) => {
+                    store.conversationStore.updateConversationTitle(conversationId, title)
+                    console.log(`[Title Generated] ${conversationId}: ${title}`)
+                  })
+                  .catch((err) => console.error('[Title Generation] Error:', err))
               }
 
-              runCompactInBackground(messagesToSave, conversationId, model)
+              runCompactInBackground(messagesToSave, conversationId, store, model)
 
+              // Cleanup MCP connections (non-blocking)
               if (mcpRegistry) {
-                await mcpRegistry.disconnectAll()
+                mcpRegistry.disconnectAll().catch((err) => console.error('[MCP Cleanup] Error:', err))
               }
             } catch (err) {
               console.error('[Chat API] onFinish error:', err)

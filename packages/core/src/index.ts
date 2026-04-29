@@ -97,7 +97,7 @@ export * from './api';
 // ============================================================
 // Native 模块加载（SEA 支持）
 // ============================================================
-export { loadBetterSqlite3, getDatabase } from './native-loader';
+export { loadBetterSqlite3, getDatabase } from './foundation/datastore/sqlite/native-loader';
 export type {
   SqliteDatabase,
   SqliteDatabaseConstructor,

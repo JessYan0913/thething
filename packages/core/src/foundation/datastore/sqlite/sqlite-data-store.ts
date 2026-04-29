@@ -7,7 +7,7 @@
 import path from 'path';
 import fs from 'fs';
 import type { SqliteDatabase } from '../types';
-import { getDatabase } from '../../../native-loader';
+import { getDatabase } from './native-loader';
 import { initializeSchema } from './schema';
 import type {
   DataStore,
@@ -89,13 +89,13 @@ export class SQLiteDataStore implements DataStore {
     return this._isConnected && this.db.open;
   }
 
-  /**
-   * Get raw database connection.
-   * For advanced use cases only - prefer using sub-stores.
-   * @internal
-   */
-  getRawDb(): SqliteDatabase {
-    return this.db;
+  transaction<T>(fn: () => T): T {
+    const tx = this.db.transaction(fn);
+    return tx();
+  }
+
+  async backup(destination: string): Promise<void> {
+    await this.db.backup(destination);
   }
 }
 

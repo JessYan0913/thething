@@ -67,7 +67,7 @@ describe('foundation/scanner', () => {
 
     it('should not match different filename', () => {
       const pattern = 'SKILL.md';
-      const name = 'OTHER.md';
+      const name: string = 'OTHER.md';
       const matches = name === pattern;
       expect(matches).toBe(false);
     });

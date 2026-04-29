@@ -1,7 +1,6 @@
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import type { DataStore } from "../../foundation/datastore";
-import { getGlobalDataStore } from "../../foundation/datastore";
+import type { DataStore } from "../../foundation/datastore/types";
 import { COMPACT_TOKEN_THRESHOLD, type CompactionResult } from "./types";
 import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
@@ -13,9 +12,8 @@ import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
 export async function compactMessagesIfNeeded(
   messages: UIMessage[],
   conversationId: string,
-  dataStore?: DataStore,
+  dataStore: DataStore,
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
-  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   // 检查是否需要自动压缩
   const shouldAutoCompact = await autoCompactIfNeeded(messages, conversationId);
   if (!shouldAutoCompact) {
@@ -57,7 +55,7 @@ export async function compactMessagesIfNeeded(
       messagesAfterBoundary,
       conversationId,
       {},
-      effectiveDataStore,
+      dataStore,
     );
 
     if (sessionMemoryResult) {
@@ -101,7 +99,7 @@ export async function compactMessagesIfNeeded(
       `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
     );
     // Inject existing DB summary to restore context lost by truncation
-    const storedSummary = effectiveDataStore.summaryStore.getSummaryByConversation(conversationId);
+    const storedSummary = dataStore.summaryStore.getSummaryByConversation(conversationId);
     if (storedSummary) {
       const summaryMessage: UIMessage = {
         id: `summary-${Date.now()}`,
@@ -143,16 +141,16 @@ export async function compactMessagesWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
   customInstructions: string,
+  dataStore: DataStore,
   model?: LanguageModelV3,
-  dataStore?: DataStore,
 ): Promise<CompactionResult> {
   const { compactWithCustomInstructions } = await import("./api-compact");
   return compactWithCustomInstructions(
     messages,
     conversationId,
     customInstructions,
-    model,
     dataStore,
+    model,
   );
 }
 

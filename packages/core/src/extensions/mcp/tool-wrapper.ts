@@ -42,7 +42,7 @@ export function wrapMcpToolWithOutputHandler(
   // 创建包装后的工具
   return {
     ...tool,
-    execute: async (input: unknown, execOptions?: unknown) => {
+    execute: async (input: unknown, execOptions?: any) => {
       // 执行原工具
       const result = await originalExecute(input, execOptions)
 

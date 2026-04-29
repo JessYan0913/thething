@@ -1,6 +1,5 @@
 import type { UIMessage } from "ai";
-import type { DataStore } from "../../foundation/datastore";
-import { getGlobalDataStore } from "../../foundation/datastore";
+import type { DataStore } from "../../foundation/datastore/types";
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
 } from "../../config/defaults";
@@ -134,7 +133,7 @@ export async function trySessionMemoryCompact(
   messages: UIMessage[],
   conversationId: string,
   config: Partial<SessionMemoryCompactConfig> = {},
-  dataStore?: DataStore,
+  dataStore: DataStore,
 ): Promise<{
   messages: UIMessage[];
   executed: boolean;
@@ -145,10 +144,9 @@ export async function trySessionMemoryCompact(
     return null;
   }
 
-  const effectiveDataStore = dataStore ?? getGlobalDataStore();
   const resolvedConfig = { ...DEFAULT_SESSION_MEMORY_CONFIG, ...config };
 
-  const summary = getSummaryByConversation(conversationId, effectiveDataStore);
+  const summary = getSummaryByConversation(conversationId, dataStore);
   if (!summary) return null;
 
   // lastMessageOrder is stored as the 0-based array index of the last summarized message

@@ -219,7 +219,7 @@ describe('subagents/router', () => {
       it('should not route to plan for small message count', () => {
         const context = {
           ...createMockContext(),
-          parentMessages: [{ role: 'user', parts: [] }],
+          parentMessages: [{ id: 'msg-1', role: 'user' as const, parts: [] }],
         };
         const result = resolveAgentRoute(
           { task: 'do something random' },

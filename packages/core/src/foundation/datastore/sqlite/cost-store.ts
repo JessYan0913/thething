@@ -9,32 +9,7 @@ import type { CostStore, CostRecord, CostRow } from '../types';
  * SQLite-based CostStore implementation
  */
 export class SQLiteCostStore implements CostStore {
-  private schemaInitialized = false;
-
   constructor(private db: SqliteDatabase) {}
-
-  ensureSchema(): void {
-    if (this.schemaInitialized) return;
-
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS chat_costs (
-        id TEXT PRIMARY KEY,
-        conversation_id TEXT NOT NULL,
-        model TEXT NOT NULL,
-        input_tokens INTEGER DEFAULT 0,
-        output_tokens INTEGER DEFAULT 0,
-        cached_read_tokens INTEGER DEFAULT 0,
-        total_cost_usd REAL DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS idx_chat_costs_conversation
-        ON chat_costs(conversation_id);
-    `);
-
-    this.schemaInitialized = true;
-  }
 
   saveCostRecord(params: {
     conversationId: string;
@@ -44,8 +19,6 @@ export class SQLiteCostStore implements CostStore {
     cachedReadTokens: number;
     totalCostUsd: number;
   }): CostRecord {
-    this.ensureSchema();
-
     const existing = this.getCostByConversation(params.conversationId);
 
     if (existing) {
@@ -80,8 +53,6 @@ export class SQLiteCostStore implements CostStore {
   }
 
   getCostByConversation(conversationId: string): CostRecord | null {
-    this.ensureSchema();
-
     const stmt = this.db.prepare(
       'SELECT * FROM chat_costs WHERE conversation_id = ?'
     );
@@ -98,8 +69,6 @@ export class SQLiteCostStore implements CostStore {
       totalCostUsd: number;
     }
   ): void {
-    this.ensureSchema();
-
     this.db
       .prepare(
         `UPDATE chat_costs

@@ -14,7 +14,7 @@ import type { McpServerConfig } from '../../extensions/mcp/types'
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader'
 import type { PermissionRule } from '../../extensions/permissions/types'
 import type { MemoryEntry } from '../../api/loaders/memory'
-import type { DataStore } from '../../foundation/datastore'
+import type { DataStore } from '../../foundation/datastore/types'
 
 export interface AgentContextConfig {
   userId?: string
@@ -49,8 +49,8 @@ export interface PreloadedData {
   connectors: ConnectorFrontmatter[]
   permissions: PermissionRule[]
   memory: MemoryEntry[]
-  /** DataStore 实例（来自 CoreRuntime） */
-  dataStore?: DataStore
+  /** DataStore 实例（来自 CoreRuntime，必填） */
+  dataStore: DataStore
 }
 
 export interface CreateAgentConfig {
@@ -70,8 +70,8 @@ export interface CreateAgentConfig {
   enableMemory?: boolean
   enableConnector?: boolean
   writerRef?: { current: SubAgentStreamWriter | null }
-  /** 预加载的数据（来自 AppContext），优先使用，避免重复 loadAll */
-  preloadedData?: PreloadedData
+  /** 预加载的数据（来自 AppContext），必须提供 */
+  preloadedData: PreloadedData
 }
 
 export interface CreateAgentResult {

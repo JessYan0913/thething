@@ -159,7 +159,14 @@ export interface MessageStore {
   getMessagesByConversation(conversationId: string): UIMessage[];
 
   /**
-   * Save messages for a conversation (replaces existing messages)
+   * Save messages for a conversation.
+   *
+   * **Semantics: full replacement**. This method deletes all existing messages
+   * for the given conversationId, then re-inserts the provided messages list.
+   * It is NOT an incremental append — callers must pass the complete message history.
+   *
+   * For large conversations (100+ messages), implementations should wrap this
+   * in a transaction for atomicity.
    */
   saveMessages(conversationId: string, messages: UIMessage[]): void;
 
@@ -203,11 +210,6 @@ export interface SummaryStore {
  * Cost tracking storage interface
  */
 export interface CostStore {
-  /**
-   * Ensure the cost table schema exists
-   */
-  ensureSchema(): void;
-
   /**
    * Save or update a cost record for a conversation
    */
@@ -255,16 +257,17 @@ export interface CostStore {
  *
  * @example Full replacement
  * ```typescript
- * setGlobalDataStore(new MyCustomDataStore());
+ * const runtime = await bootstrap({ dataDir: './data' });
+ * const customStore: DataStore = new MyCustomDataStore();
  * ```
  *
  * @example Partial replacement (mix SQLite with custom)
  * ```typescript
  * const sqliteStore = createSQLiteDataStore(config);
- * setGlobalDataStore({
+ * const customStore: DataStore = {
  *   ...sqliteStore,
  *   conversationStore: new PostgresConversationStore(),
- * });
+ * };
  * ```
  */
 export interface DataStore {
@@ -279,6 +282,20 @@ export interface DataStore {
 
   /** Cost tracking storage */
   costStore: CostStore;
+
+  /**
+   * Execute a function within a database transaction.
+   * SQLite implementation uses db.transaction();
+   * remote implementations (e.g. PostgreSQL) can use BEGIN/COMMIT;
+   * implementations without transaction support may invoke the callback directly (degraded mode).
+   */
+  transaction<T>(fn: () => T): T;
+
+  /**
+   * Backup the database to a destination file.
+   * For non-SQLite implementations, this may fall back to file copy.
+   */
+  backup(destination: string): Promise<void>;
 
   /**
    * Close all connections

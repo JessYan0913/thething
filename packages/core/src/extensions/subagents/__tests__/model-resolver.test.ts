@@ -2,13 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { resolveModelForAgent, MODEL_MAPPING } from '../model-resolver';
 import type { AgentDefinition, AgentExecutionContext, LanguageModel } from '../types';
 
+// Helper: extract modelId from a LanguageModel result (test-only)
+function getModelId(model: LanguageModel): string {
+  if (typeof model === 'string') return model;
+  return model.modelId;
+}
+
 describe('subagents/model-resolver', () => {
-  // Create mock LanguageModel
+  // Create mock LanguageModel - use `as unknown as` to avoid union type issues
   const createMockModel = (modelId: string): LanguageModel => ({
     modelId,
     provider: 'test',
     specificationVersion: 'v1',
-  } as LanguageModel);
+    supportedUrls: {},
+    doGenerate: async () => ({ raw: {}, text: '', usage: {} }),
+    doStream: async () => ({} as any),
+  } as unknown as LanguageModel);
 
   // Create mock provider function
   const createMockProvider = () => (modelName: string): LanguageModel => createMockModel(modelName);
@@ -47,7 +56,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('parent-model');
+        expect(getModelId(result)).toBe('parent-model');
       });
 
       it('should return parent model when model is "inherit"', () => {
@@ -62,7 +71,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('parent-model');
+        expect(getModelId(result)).toBe('parent-model');
       });
     });
 
@@ -80,7 +89,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('custom-model');
+        expect(getModelId(result)).toBe('custom-model');
       });
     });
 
@@ -97,7 +106,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe(MODEL_MAPPING.fast);
+        expect(getModelId(result)).toBe(MODEL_MAPPING.fast);
       });
 
       it('should resolve "smart" to smart model via provider', () => {
@@ -112,7 +121,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe(MODEL_MAPPING.smart);
+        expect(getModelId(result)).toBe(MODEL_MAPPING.smart);
       });
     });
 
@@ -129,7 +138,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('claude-3-opus');
+        expect(getModelId(result)).toBe('claude-3-opus');
       });
     });
 
@@ -146,7 +155,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('parent-model');
+        expect(getModelId(result)).toBe('parent-model');
       });
 
       it('should fallback to parent model when provider is missing for "smart"', () => {
@@ -161,7 +170,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('parent-model');
+        expect(getModelId(result)).toBe('parent-model');
       });
 
       it('should fallback to parent model when provider is missing for specific model', () => {
@@ -176,7 +185,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(result.modelId).toBe('parent-model');
+        expect(getModelId(result)).toBe('parent-model');
       });
     });
 
@@ -195,7 +204,7 @@ describe('subagents/model-resolver', () => {
         const result = resolveModelForAgent(definition, context);
 
         // Should use the explicit LanguageModel, not parent
-        expect(result.modelId).toBe('explicit-model');
+        expect(getModelId(result)).toBe('explicit-model');
       });
 
       it('should use provider for "fast" even when parent model exists', () => {
@@ -211,8 +220,8 @@ describe('subagents/model-resolver', () => {
         const result = resolveModelForAgent(definition, context);
 
         // Should use fast model, not parent
-        expect(result.modelId).toBe(MODEL_MAPPING.fast);
-        expect(result.modelId).not.toBe('parent-model');
+        expect(getModelId(result)).toBe(MODEL_MAPPING.fast);
+        expect(getModelId(result)).not.toBe('parent-model');
       });
     });
   });

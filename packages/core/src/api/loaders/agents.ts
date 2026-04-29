@@ -2,7 +2,7 @@
 // Agents Loader (Subagents)
 // ============================================================
 
-import { parseFrontmatterFile, parseFrontmatterContent, parseToolsList } from '../../foundation/parser';
+import { parseFrontmatterFile, parseFrontmatterContent, parseToolsList, ParseError } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
 import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { AgentDefinition, AgentSource } from '../../extensions/subagents/types';
@@ -167,6 +167,11 @@ export function parseAgentMarkdown(
   source: AgentSource = 'project',
 ): AgentDefinition {
   const result = parseFrontmatterContent(content, AgentFrontmatterSchema);
+
+  // Validate that at least one identifier is present (name or agentType)
+  if (!result.data.name && !result.data.agentType && !result.data.displayName) {
+    throw new ParseError('(inline content)');
+  }
 
   return {
     agentType: extractAgentType(result.data),

@@ -6,7 +6,7 @@
 // 所有后续操作（createContext、createAgent）都以此为入参，
 // 确保依赖显式、顺序可推断。
 
-import { createSQLiteDataStore, setGlobalDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
+import { createSQLiteDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
 import { getConnectorRegistry, shutdownConnectorGateway, initConnectorGateway, type ConnectorGatewayConfig, type ConnectorRegistry } from './extensions/connector';
 import { initPermissions } from './extensions/permissions';
 import { resolveProjectDir } from './foundation/paths';
@@ -66,10 +66,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     ...options.databaseConfig,
   });
 
-  // 设置全局 DataStore（兼容旧代码）
-  // 后续重构应移除对全局状态的依赖
-  setGlobalDataStore(dataStore);
-
   // 初始化权限系统
   await initPermissions(cwd).catch((err) => {
     console.error('[Bootstrap] Permissions init failed:', err);
@@ -79,6 +75,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   await initConnectorGateway({
     enableInbound: true,
     cwd,
+    dataStore,
     ...options.connectorConfig,
   }).catch((err) => {
     console.error('[Bootstrap] ConnectorGateway init failed:', err);
@@ -94,8 +91,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     cwd,
     async dispose() {
       await shutdownConnectorGateway();
-      // SQLite DataStore 没有显式的 close 方法，但可以清理
-      // 如果有需要，可以添加 dataStore.close?.()
+      dataStore.close();
     },
   };
 }

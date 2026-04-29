@@ -14,4 +14,4 @@ export { SQLiteSummaryStore } from './summary-store';
 export { SQLiteCostStore } from './cost-store';
 
 // Schema utilities (for advanced users)
-export { initializeSchema, initializeCostSchema } from './schema';
+export { initializeSchema } from './schema';
