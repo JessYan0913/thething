@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
-import { ChevronRightIcon, FolderIcon, FileIcon, FileTextIcon, ImageIcon, CodeIcon } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { ChevronRightIcon, FolderIcon, FileIcon, FileTextIcon, ImageIcon, CodeIcon, AlertCircleIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface FileItem {
@@ -52,30 +52,36 @@ function TreeNode({ name, path: dirPath, depth, defaultOpen, selectedFile, onFil
   const [isOpen, setIsOpen] = useState(defaultOpen ?? depth < 3)
   const [children, setChildren] = useState<FileItem[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const fetchedRef = useRef(false)
 
   const loadChildren = useCallback(async () => {
-    if (children !== null) return
+    if (fetchedRef.current) return
+    fetchedRef.current = true
     setIsLoading(true)
+    setLoadError(null)
     try {
       const res = await fetch(`/api/fs/list?dir=${encodeURIComponent(dirPath)}`)
       if (res.ok) {
         const data = await res.json()
         setChildren(data.items ?? [])
       } else {
-        setChildren([])
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
       }
-    } catch {
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : '加载失败')
       setChildren([])
     } finally {
       setIsLoading(false)
     }
-  }, [dirPath, children])
+  }, [dirPath])
 
   useEffect(() => {
-    if (isOpen && children === null) {
+    if (isOpen && !fetchedRef.current) {
       loadChildren()
     }
-  }, [isOpen, loadChildren, children])
+  }, [isOpen, loadChildren])
 
   const toggle = () => {
     if (!isOpen) {
@@ -112,10 +118,16 @@ function TreeNode({ name, path: dirPath, depth, defaultOpen, selectedFile, onFil
           {isLoading && children === null && (
             <div className="text-xs text-muted-foreground/40 pl-6 py-0.5">加载中...</div>
           )}
-          {children !== null && children.length === 0 && (
+          {loadError && (
+            <div className="flex items-center gap-1 pl-6 py-0.5 text-xs text-destructive/70">
+              <AlertCircleIcon className="size-3 shrink-0" />
+              <span className="truncate">{loadError}</span>
+            </div>
+          )}
+          {!isLoading && !loadError && children !== null && children.length === 0 && (
             <div className="text-xs text-muted-foreground/40 pl-6 py-0.5">空目录</div>
           )}
-          {children !== null && children.map((item) => {
+          {!loadError && children !== null && children.map((item) => {
             if (item.type === "dir") {
               return (
                 <TreeNode
@@ -175,29 +187,37 @@ function FileNode({ name, path: filePath, depth, isSelected, onSelect }: FileNod
   )
 }
 
+const FILE_ICONS: Record<string, [string, string]> = {
+  md:    ["text-blue-400", "md"],
+  mdx:   ["text-blue-400", "mdx"],
+  json:  ["text-yellow-500", "json"],
+  yaml:  ["text-orange-500", "yaml"],
+  yml:   ["text-orange-500", "yml"],
+  ts:    ["text-green-500", "ts"],
+  tsx:   ["text-green-500", "tsx"],
+  js:    ["text-green-500", "js"],
+  jsx:   ["text-green-500", "jsx"],
+  png:   ["text-purple-500", "img"],
+  jpg:   ["text-purple-500", "img"],
+  jpeg:  ["text-purple-500", "img"],
+  gif:   ["text-purple-500", "img"],
+  svg:   ["text-purple-500", "img"],
+}
+
 function getFileIcon(ext: string): React.ReactNode {
   const className = "size-3.5 shrink-0"
-  switch (ext) {
-    case "md":
-    case "mdx":
-      return <FileTextIcon className={cn(className, "text-blue-400")} />
-    case "json":
-      return <CodeIcon className={cn(className, "text-yellow-500")} />
-    case "yaml":
-    case "yml":
-      return <CodeIcon className={cn(className, "text-orange-500")} />
-    case "ts":
-    case "tsx":
-    case "js":
-    case "jsx":
-      return <CodeIcon className={cn(className, "text-green-500")} />
-    case "png":
-    case "jpg":
-    case "jpeg":
-    case "gif":
-    case "svg":
-      return <ImageIcon className={cn(className, "text-purple-500")} />
-    default:
-      return <FileIcon className={cn(className, "text-muted-foreground")} />
+  const entry = FILE_ICONS[ext]
+  if (entry) {
+    const [color] = entry
+    if (["md", "mdx"].includes(ext)) {
+      return <FileTextIcon className={cn(className, color)} />
+    }
+    if (["json", "yaml", "yml", "ts", "tsx", "js", "jsx"].includes(ext)) {
+      return <CodeIcon className={cn(className, color)} />
+    }
+    if (["png", "jpg", "jpeg", "gif", "svg"].includes(ext)) {
+      return <ImageIcon className={cn(className, color)} />
+    }
   }
+  return <FileIcon className={cn(className, "text-muted-foreground")} />
 }

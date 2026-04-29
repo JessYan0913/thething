@@ -38,11 +38,7 @@ const effortColors: Record<string, string> = {
 export default function SkillsSettings() {
   const [skills, setSkills] = useState<SkillView[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  // Detail view state
   const [selectedSkill, setSelectedSkill] = useState<SkillView | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
-  const [showTree, setShowTree] = useState(true)
-  const [showPreview, setShowPreview] = useState(true)
 
   const loadSkills = useCallback(async () => {
     setIsLoading(true)
@@ -61,138 +57,15 @@ export default function SkillsSettings() {
 
   useEffect(() => { loadSkills() }, [loadSkills])
 
-  const handleSkillClick = (skill: SkillView) => {
-    setSelectedSkill(skill)
-    // 自动选中 SKILL.md，进入详情立即展示技能内容
-    setSelectedFilePath(skill.sourcePath + '/SKILL.md')
-    setShowTree(true)
-    setShowPreview(true)
-  }
-
-  const handleBack = () => {
-    setSelectedSkill(null)
-    setSelectedFilePath(null)
-  }
-
-  // Detail view
   if (selectedSkill) {
-    const skill = selectedSkill
-
     return (
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="sm" onClick={handleBack}>
-              <ArrowLeftIcon className="size-4" />
-              返回
-            </Button>
-            <div className="flex items-center gap-2 min-w-0">
-              <WrenchIcon className="size-5 shrink-0" />
-              <h1 className="text-lg font-semibold truncate">{skill.name}</h1>
-              {skill.source && (
-                <Badge variant="outline" className="text-xs shrink-0">{skill.source}</Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowTree(!showTree)}
-              data-active={showTree || undefined}
-              className={cn(showTree && "bg-accent")}
-            >
-              <PanelLeftOpenIcon className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPreview(!showPreview)}
-              data-active={showPreview || undefined}
-              className={cn(showPreview && "bg-accent")}
-            >
-              <PanelRightOpenIcon className="size-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={loadSkills} disabled={isLoading}>
-              <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-        </div>
-
-        {/* Skill Info Bar */}
-        <div className="flex items-center gap-3 px-6 py-2 border-b bg-muted/20 text-xs text-muted-foreground">
-          <Badge className={`text-xs border-0 ${effortColors[skill.effort] ?? effortColors.medium}`}>
-            {effortLabels[skill.effort] ?? skill.effort}
-          </Badge>
-          {skill.model && (
-            <Badge variant="outline" className="text-xs font-mono">
-              <TagIcon className="size-3 mr-0.5" />
-              {skill.model}
-            </Badge>
-          )}
-          {skill.allowedTools.length > 0 && (
-            <span className="flex items-center gap-1">
-              <LayersIcon className="size-3" />
-              {skill.allowedTools.length} 个工具
-            </span>
-          )}
-          {skill.whenToUse && (
-            <span className="flex items-center gap-1 truncate max-w-96" title={skill.whenToUse}>
-              <TargetIcon className="size-3 shrink-0" />
-              <span className="truncate">{skill.whenToUse}</span>
-            </span>
-          )}
-        </div>
-
-        {/* Split view: Tree + Preview */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Directory Tree */}
-          {showTree && (
-            <div className="w-72 border-r overflow-hidden flex flex-col shrink-0">
-              <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <FolderIcon className="size-3.5" />
-                  <span className="truncate max-w-48" title={skill.sourcePath}>
-                    {skill.sourcePath.split('/').pop() || skill.sourcePath}
-                  </span>
-                </div>
-              </div>
-              <DirectoryTree
-                rootPath={skill.sourcePath}
-                selectedFile={selectedFilePath}
-                onFileSelect={setSelectedFilePath}
-                className="flex-1 py-1"
-              />
-            </div>
-          )}
-
-          {/* File Preview */}
-          {showPreview && (
-            <div className="flex-1 overflow-hidden p-4">
-              <FilePreview
-                filePath={selectedFilePath}
-                className="h-full"
-                minHeight={400}
-              />
-            </div>
-          )}
-
-          {/* Empty state when panels are hidden */}
-          {!showTree && !showPreview && (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground/40 text-sm">
-              <div className="text-center space-y-2">
-                <InfoIcon className="size-8 mx-auto opacity-30" />
-                <p>使用顶栏按钮切换面板显示</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <SkillDetail
+        skill={selectedSkill}
+        onBack={() => setSelectedSkill(null)}
+      />
     )
   }
 
-  // List view
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -231,7 +104,7 @@ export default function SkillsSettings() {
               <SkillCard
                 key={skill.name}
                 skill={skill}
-                onClick={() => handleSkillClick(skill)}
+                onClick={() => setSelectedSkill(skill)}
               />
             ))}
           </div>
@@ -240,6 +113,137 @@ export default function SkillsSettings() {
     </div>
   )
 }
+
+// ============================================================
+// Skill Detail — 技能详情视图（目录树 + 文件预览分栏）
+// ============================================================
+
+interface SkillDetailProps {
+  skill: SkillView
+  onBack: () => void
+}
+
+function SkillDetail({ skill, onBack }: SkillDetailProps) {
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  const [showTree, setShowTree] = useState(true)
+  const [showPreview, setShowPreview] = useState(true)
+
+  // 进入详情时自动选中 SKILL.md
+  useEffect(() => {
+    setSelectedFilePath(`${skill.sourcePath}/SKILL.md`)
+    setShowTree(true)
+    setShowPreview(true)
+  }, [skill.sourcePath])
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeftIcon className="size-4" />
+            返回
+          </Button>
+          <div className="flex items-center gap-2 min-w-0">
+            <WrenchIcon className="size-5 shrink-0" />
+            <h1 className="text-lg font-semibold truncate">{skill.name}</h1>
+            {skill.source && (
+              <Badge variant="outline" className="text-xs shrink-0">{skill.source}</Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowTree(!showTree)}
+            className={cn(showTree && "bg-accent")}
+          >
+            <PanelLeftOpenIcon className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPreview(!showPreview)}
+            className={cn(showPreview && "bg-accent")}
+          >
+            <PanelRightOpenIcon className="size-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Skill Info Bar */}
+      <div className="flex items-center gap-3 px-6 py-2 border-b bg-muted/20 text-xs text-muted-foreground">
+        <Badge className={`text-xs border-0 ${effortColors[skill.effort] ?? effortColors.medium}`}>
+          {effortLabels[skill.effort] ?? skill.effort}
+        </Badge>
+        {skill.model && (
+          <Badge variant="outline" className="text-xs font-mono">
+            <TagIcon className="size-3 mr-0.5" />
+            {skill.model}
+          </Badge>
+        )}
+        {skill.allowedTools.length > 0 && (
+          <span className="flex items-center gap-1">
+            <LayersIcon className="size-3" />
+            {skill.allowedTools.length} 个工具
+          </span>
+        )}
+        {skill.whenToUse && (
+          <span className="flex items-center gap-1 truncate max-w-96" title={skill.whenToUse}>
+            <TargetIcon className="size-3 shrink-0" />
+            <span className="truncate">{skill.whenToUse}</span>
+          </span>
+        )}
+      </div>
+
+      {/* Split view: Tree + Preview */}
+      <div className="flex-1 flex overflow-hidden">
+        {showTree && (
+          <div className="w-72 border-r overflow-hidden flex flex-col shrink-0">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <FolderIcon className="size-3.5" />
+                <span className="truncate max-w-48" title={skill.sourcePath}>
+                  {skill.sourcePath.split('/').pop() || skill.sourcePath}
+                </span>
+              </div>
+            </div>
+            <DirectoryTree
+              rootPath={skill.sourcePath}
+              selectedFile={selectedFilePath}
+              onFileSelect={setSelectedFilePath}
+              className="flex-1 py-1"
+            />
+          </div>
+        )}
+
+        {showPreview && (
+          <div className="flex-1 overflow-hidden p-4">
+            <FilePreview
+              filePath={selectedFilePath}
+              className="h-full"
+              minHeight={400}
+            />
+          </div>
+        )}
+
+        {!showTree && !showPreview && (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground/40 text-sm">
+            <div className="text-center space-y-2">
+              <InfoIcon className="size-8 mx-auto opacity-30" />
+              <p>使用顶栏按钮切换面板显示</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// SkillCard — 技能列表卡片
+// ============================================================
 
 function SkillCard({ skill, onClick }: { skill: SkillView; onClick: () => void }) {
   return (
