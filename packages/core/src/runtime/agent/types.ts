@@ -15,6 +15,7 @@ import type { ConnectorFrontmatter } from '../../extensions/connector/loader'
 import type { PermissionRule } from '../../extensions/permissions/types'
 import type { MemoryEntry } from '../../api/loaders/memory'
 import type { DataStore } from '../../foundation/datastore/types'
+import type { BehaviorConfig } from '../../config/behavior'
 
 export interface AgentContextConfig {
   userId?: string
@@ -72,6 +73,8 @@ export interface CreateAgentConfig {
   writerRef?: { current: SubAgentStreamWriter | null }
   /** 预加载的数据（来自 AppContext），必须提供 */
   preloadedData: PreloadedData
+  /** 行为配置（来自 AppContext.behavior），用于消除硬编码 */
+  behaviorDefaults?: BehaviorConfig
 }
 
 export interface CreateAgentResult {

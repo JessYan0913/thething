@@ -16,6 +16,7 @@ import { cleanupSessionToolResults } from '../budget/tool-result-storage';
 import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
 import type { SessionState, SessionStateOptions } from './types';
+import { DEFAULT_MODEL_SPECS } from '../../config/behavior';
 
 export type { SessionState, SessionStateOptions };
 
@@ -36,6 +37,8 @@ export function createSessionState(
     projectDir = process.cwd(),
     toolOutputOverrides,
     dataStore,
+    availableModels = DEFAULT_MODEL_SPECS,
+    autoDowngradeCostThreshold = 80,
   } = options;
 
   // 应用工具输出配置覆盖（如果有）
@@ -48,14 +51,16 @@ export function createSessionState(
   const denialTracker = new DenialTracker({
     maxDenialsPerTool: options?.maxDenialsPerTool,
   });
+  // 使用传入的 availableModels（消除硬编码）
   const modelSwapper = new ModelSwapper({
-    availableModels: [
-      { id: 'qwen-max', name: 'Qwen Max', costMultiplier: 1.0, capabilityTier: 3 },
-      { id: 'qwen-plus', name: 'Qwen Plus', costMultiplier: 0.4, capabilityTier: 2 },
-      { id: 'qwen-turbo', name: 'Qwen Turbo', costMultiplier: 0.1, capabilityTier: 1 },
-    ],
+    availableModels: availableModels.map(m => ({
+      id: m.id,
+      name: m.name,
+      costMultiplier: m.costMultiplier,
+      capabilityTier: m.capabilityTier,
+    })),
     currentModel: model,
-    autoDowngradeCostThreshold: 80,
+    autoDowngradeCostThreshold,
     notifyOnSwitch: true,
   });
 

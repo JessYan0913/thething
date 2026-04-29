@@ -159,9 +159,12 @@ export default async function chat(options: ChatOptions): Promise<void> {
     monorepoPatterns: ['packages/server', 'packages/cli'],
   })
 
+  // 使用新的 layout 配置结构
   const runtime = await bootstrap({
-    dataDir: dataDirConfig.dataDir,
-    cwd,
+    layout: {
+      resourceRoot: cwd,
+      dataDir: dataDirConfig.dataDir,
+    },
   })
 
   // Get datastore from runtime
@@ -170,7 +173,8 @@ export default async function chat(options: ChatOptions): Promise<void> {
   // ============================================================
   // Step 2: CreateContext - 加载配置
   // ============================================================
-  const context = await createContext({ runtime, cwd })
+  // cwd 自动从 layout.resourceRoot 取值
+  const context = await createContext({ runtime })
 
   // Get or create conversation
   let conversationId = options.conversation

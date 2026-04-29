@@ -4,7 +4,7 @@
 
 import { parseYamlFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader';
 import { ConnectorFrontmatterSchema } from '../../extensions/connector/loader';
 
@@ -30,6 +30,8 @@ const connectorsCache = new LoadingCache<ConnectorFrontmatter[]>();
 export interface LoadConnectorsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
+  /** 配置目录名（可选，默认 '.thething'） */
+  configDirName?: string;
 }
 
 // ============================================================
@@ -45,21 +47,23 @@ export interface LoadConnectorsOptions {
 export async function loadConnectors(options?: LoadConnectorsOptions): Promise<ConnectorFrontmatter[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
+  const configDirName = options?.configDirName ?? '.thething';
+  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `connectors:${cwd}`;
+  const cacheKey = `connectors:${cwd}:${configDirName}`;
   const cached = connectorsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // 构建扫描目录
+  // 构建扫描目录（使用 configDirName）
   const dirs: string[] = [];
   if (sources.includes('user')) {
-    dirs.push(getUserConfigDir('connectors'));
+    dirs.push(computeUserConfigDir(homeDir, 'connectors', configDirName));
   }
   if (sources.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'connectors'));
+    dirs.push(computeProjectConfigDir(cwd, 'connectors', configDirName));
   }
 
   // 扫描 YAML 文件

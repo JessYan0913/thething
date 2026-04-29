@@ -34,6 +34,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     enableConnector = true,
     writerRef,
     preloadedData,
+    behaviorDefaults,
   } = config
 
   const dataStore = preloadedData.dataStore
@@ -175,14 +176,17 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   type ChatToolsType = Record<string, any>
 
+  // 从 behaviorDefaults 取值（消除硬编码）
+  const maxSteps = behaviorDefaults?.maxStepsPerSession ?? 50;
+
   const prepareStep = createAgentPipeline<ChatToolsType>({
     sessionState,
-    maxSteps: 50,
-    maxBudgetUsd: 5.0,
+    maxSteps,
+    maxBudgetUsd: behaviorDefaults?.maxBudgetUsdPerSession ?? 5.0,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {
-    maxSteps: 50,
+    maxSteps,
     denialTracker: sessionState.denialTracker,
     sessionState,
   })

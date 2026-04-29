@@ -35,16 +35,18 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
 
   console.log(`[Server Runtime] Initializing with projectDir: ${projectDir}, dataDir: ${dataDir}`)
 
+  // 使用新的 layout + behavior 配置结构
   runtimeInstance = await bootstrap({
-    dataDir,
-    cwd: projectDir,
+    layout: {
+      resourceRoot: projectDir,
+      dataDir,
+    },
     tokenizerConfig,
   })
 
-  // 立即创建 context
+  // 立即创建 context（cwd 自动从 layout.resourceRoot 取值）
   contextInstance = await createContext({
     runtime: runtimeInstance,
-    cwd: runtimeInstance.cwd,
   })
 
   console.log('[Server Runtime] Initialized successfully')
@@ -71,7 +73,6 @@ export async function getServerContext(): Promise<AppContext> {
     const runtime = await getServerRuntime()
     contextInstance = await createContext({
       runtime,
-      cwd: runtime.cwd,
     })
     console.log('[Server Context] Created successfully')
   }
@@ -111,4 +112,20 @@ export async function disposeServerRuntime(): Promise<void> {
 export async function getServerDataStore() {
   const runtime = await getServerRuntime()
   return runtime.dataStore
+}
+
+/**
+ * 获取布局配置（便捷方法）
+ */
+export async function getServerLayout() {
+  const runtime = await getServerRuntime()
+  return runtime.layout
+}
+
+/**
+ * 获取行为配置（便捷方法）
+ */
+export async function getServerBehavior() {
+  const runtime = await getServerRuntime()
+  return runtime.behavior
 }

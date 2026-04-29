@@ -24,11 +24,12 @@ import { createChatAgent } from '../../runtime/agent/create';
  */
 export async function createAgent(options: CreateAgentOptions): Promise<CreateAgentResult> {
   const { context, conversationId, messages = [], userId = 'default' } = options;
+  const { behavior } = context;
 
   // 直接从 context 取数据，不重复加载
   const { skills, mcps, memory, permissions, agents, cwd } = context;
 
-  // 创建 Agent，传递 preloadedData
+  // 创建 Agent，传递 preloadedData 和 behaviorDefaults
   const result = await createChatAgent({
     conversationId,
     messages,
@@ -41,11 +42,16 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     },
     sessionOptions: {
       projectDir: cwd,
-      maxContextTokens: options.session?.maxContextTokens,
-      maxBudgetUsd: options.session?.maxBudgetUsd,
-      compactThreshold: options.session?.compactThreshold,
+      // 从 behavior 取默认值，支持 options.session 覆盖
+      maxContextTokens: options.session?.maxContextTokens ?? behavior.maxContextTokens,
+      maxBudgetUsd: options.session?.maxBudgetUsd ?? behavior.maxBudgetUsdPerSession,
+      compactThreshold: options.session?.compactThreshold ?? behavior.compactionThreshold,
+      maxDenialsPerTool: options.session?.maxDenialsPerTool ?? behavior.maxDenialsPerTool,
       model: options.model.modelName,
       dataStore: context.runtime.dataStore,
+      // 新增：模型列表和降级阈值
+      availableModels: behavior.availableModels,
+      autoDowngradeCostThreshold: behavior.autoDowngradeCostThreshold,
     },
     enableMcp: options.modules?.mcps ?? true,
     enableSkills: options.modules?.skills ?? true,
@@ -63,6 +69,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       memory: [...memory],
       dataStore: context.runtime.dataStore,
     },
+    // 新增：传递行为配置
+    behaviorDefaults: behavior,
   });
 
   return result as CreateAgentResult;

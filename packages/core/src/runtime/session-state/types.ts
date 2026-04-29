@@ -7,6 +7,7 @@ import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
 import type { ContentReplacementState, ToolOutputOverrides } from '../budget/tool-output-manager';
 import type { DataStore } from '../../foundation/datastore/types';
+import type { ModelSpec } from '../../config/behavior';
 
 /**
  * Session 状态选项
@@ -28,6 +29,10 @@ export interface SessionStateOptions {
   toolOutputOverrides?: ToolOutputOverrides;
   /** DataStore 实例（来自 CoreRuntime，必填） */
   dataStore: DataStore;
+  /** 可用模型列表（来自 BehaviorConfig） */
+  availableModels?: ModelSpec[];
+  /** 自动降级成本阈值（来自 BehaviorConfig） */
+  autoDowngradeCostThreshold?: number;
 }
 
 /**

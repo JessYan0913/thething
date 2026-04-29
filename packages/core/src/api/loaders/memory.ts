@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { parseFrontmatterFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { getProjectConfigDir } from '../../foundation/paths';
+import { computeProjectConfigDir } from '../../foundation/paths';
 import { MEMORY_MD_MAX_LINES, MEMORY_MD_MAX_SIZE_KB } from '../../config/defaults';
 
 // ============================================================
@@ -32,6 +32,8 @@ const memoryCache = new LoadingCache<MemoryEntry[]>();
 
 export interface LoadMemoryOptions {
   cwd?: string;
+  /** 配置目录名（可选，默认 '.thething'） */
+  configDirName?: string;
 }
 
 // ============================================================
@@ -46,15 +48,16 @@ export interface LoadMemoryOptions {
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
   const cwd = options?.cwd ?? process.cwd();
+  const configDirName = options?.configDirName ?? '.thething';
 
   // 检查缓存
-  const cacheKey = `memory:${cwd}`;
+  const cacheKey = `memory:${cwd}:${configDirName}`;
   const cached = memoryCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const memoryDir = getProjectConfigDir(cwd, 'memory');
+  const memoryDir = computeProjectConfigDir(cwd, 'memory', configDirName);
 
   // 加载 MEMORY.md
   const entries: MemoryEntry[] = [];

@@ -11,6 +11,8 @@ import type { ConnectorFrontmatter } from '../../extensions/connector/loader';
 import type { PermissionRule } from '../../extensions/permissions/types';
 import type { MemoryEntry } from '../loaders/memory';
 import type { CoreRuntime } from '../../bootstrap';
+import type { ResolvedLayout } from '../../config/layout';
+import type { BehaviorConfig } from '../../config/behavior';
 import type { SessionState } from '../../runtime/session-state';
 import type { McpRegistry } from '../../extensions/mcp';
 
@@ -46,9 +48,13 @@ export interface LoadError {
 export interface AppContext {
   /** 绑定此 context 的运行时，提供数据存储等基础设施 */
   readonly runtime: CoreRuntime;
-  /** 项目工作目录（资源目录的计算基准） */
+  /** 展开后的布局（所有路径已解析为绝对路径） */
+  readonly layout: ResolvedLayout;
+  /** 行为配置（所有字段已填充默认值） */
+  readonly behavior: BehaviorConfig;
+  /** 项目工作目录（别名：layout.resourceRoot） */
   readonly cwd: string;
-  /** 数据目录 */
+  /** 数据目录（别名：layout.dataDir） */
   readonly dataDir: string;
 
   // 加载结果（只读快照）

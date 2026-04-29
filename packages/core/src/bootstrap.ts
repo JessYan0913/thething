@@ -16,9 +16,12 @@ import {
   setAutoDownload,
   preloadTokenizer,
 } from './runtime/compaction/tokenizer';
-import { configurePricing, type ModelPricing } from './foundation/model/pricing';
+import { configurePricing } from './foundation/model/pricing';
 import { waitForAllCompactions } from './runtime/compaction/background-queue';
 import { initGlobalTaskStoreFromDataStore } from './runtime/tasks/store';
+import { resolveLayout, type LayoutConfig, type ResolvedLayout } from './config/layout';
+import { buildBehaviorConfig, type BehaviorConfig } from './config/behavior';
+import path from 'path';
 
 // ============================================================
 // Tokenizer 配置类型
@@ -44,7 +47,72 @@ export interface TokenizerConfig {
 }
 
 // ============================================================
-// 核心运行时类型
+// Bootstrap 配置类型（重构）
+// ============================================================
+
+/**
+ * Bootstrap 配置选项
+ *
+ * 新结构：layout 必填，behavior 可选（全部使用默认值）
+ *
+ * @example
+ * // 最简场景（全部默认值）
+ * const runtime = await bootstrap({
+ *   layout: { resourceRoot: process.cwd() }
+ * });
+ *
+ * @example
+ * // 替换应用名
+ * const runtime = await bootstrap({
+ *   layout: {
+ *     resourceRoot: process.cwd(),
+ *     configDirName: '.myapp'
+ *   }
+ * });
+ *
+ * @example
+ * // 企业部署（数据与代码分离 + 调整预算）
+ * const runtime = await bootstrap({
+ *   layout: {
+ *     resourceRoot: process.cwd(),
+ *     configDirName: '.myapp',
+ *     dataDir: '/var/lib/myapp/data'
+ *   },
+ *   behavior: {
+ *     maxBudgetUsdPerSession: 20.0,
+ *     maxStepsPerSession: 100
+ *   }
+ * });
+ */
+export interface BootstrapOptions {
+  /** 布局配置（必填） */
+  layout: LayoutConfig;
+  /** 行为配置（可选，不传则全部使用默认值） */
+  behavior?: Partial<BehaviorConfig>;
+  /** 数据库配置（可选） */
+  databaseConfig?: SQLiteDataStoreConfig;
+  /** Connector Gateway 配置（可选） */
+  connectorConfig?: ConnectorGatewayConfig;
+  /** Tokenizer 配置（可选） */
+  tokenizerConfig?: TokenizerConfig;
+
+  // ── 向后兼容（deprecated）──────────────────────────────────
+
+  /**
+   * @deprecated 使用 layout.resourceRoot 代替
+   * 项目目录（可选，默认使用 resolveProjectDir）
+   */
+  cwd?: string;
+
+  /**
+   * @deprecated 使用 layout.dataDir 代替
+   * 数据目录（必填，现改为 layout 配置）
+   */
+  dataDir?: string;
+}
+
+// ============================================================
+// 核心运行时类型（重构）
 // ============================================================
 
 /**
@@ -53,103 +121,105 @@ export interface TokenizerConfig {
  * AppContext 和 Agent 的创建都依赖此对象。
  */
 export interface CoreRuntime {
-  /** 数据目录 */
-  readonly dataDir: string;
+  /** 展开后的布局（所有路径已解析为绝对路径） */
+  readonly layout: ResolvedLayout;
+  /** 完整行为配置（所有字段已填充默认值） */
+  readonly behavior: BehaviorConfig;
   /** 数据存储实例 */
   readonly dataStore: DataStore;
   /** Connector Registry 实例 */
   readonly connectorRegistry: ConnectorRegistry;
-  /** 项目工作目录 */
-  readonly cwd: string;
   /** 销毁所有资源（关闭数据库连接、停止 gateway 等） */
   dispose(): Promise<void>;
 }
 
 /**
- * Bootstrap 配置选项
- */
-export interface BootstrapOptions {
-  /** 数据目录（必填） */
-  dataDir: string;
-  /** 项目目录（可选，默认使用 resolveProjectDir） */
-  cwd?: string;
-  /** 数据库配置 */
-  databaseConfig?: SQLiteDataStoreConfig;
-  /** Connector Gateway 配置 */
-  connectorConfig?: ConnectorGatewayConfig;
-  /** Tokenizer 配置 */
-  tokenizerConfig?: TokenizerConfig;
-  /**
-   * 模型定价覆盖配置
-   *
-   * 覆盖内置定价表 DEFAULT_PRICING。
-   * 键为模型名，值为 USD/百万 token。
-   *
-   * @example
-   * modelPricing: {
-   *   'qwen-max': { input: 3.5, output: 10, cached: 0.8 }
-   * }
-   */
-  modelPricing?: Record<string, ModelPricing>;
-}
-
-/**
  * 初始化核心基础设施，返回运行时句柄。
  *
- * 这是使用 core 包（新 API）的强制第一步。
+ * 这是使用 core 包的强制第一步。
  * 所有后续操作（createContext、createAgent）都以此为入参，
  * 确保依赖显式、顺序可推断。
  *
  * @example
- * const runtime = await bootstrap({ dataDir: './data' });
- * const context = await createContext({ runtime, cwd });
+ * // 新 API
+ * const runtime = await bootstrap({
+ *   layout: { resourceRoot: process.cwd() }
+ * });
+ * const context = await createContext({ runtime });
  * const { agent } = await createAgent({ context });
- * // ...
  * await runtime.dispose();
+ *
+ * @example
+ * // 向后兼容 API（deprecated）
+ * const runtime = await bootstrap({
+ *   dataDir: './data',
+ *   cwd: process.cwd()
+ * });
  */
 export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime> {
-  // 定价配置最先执行，确保后续所有 CostTracker 使用正确数据
-  if (options.modelPricing) {
-    configurePricing(options.modelPricing);
+  // ── 处理向后兼容 ──────────────────────────────────────────
+  // 如果使用旧的 dataDir/cwd 参数，自动转换为 layout
+  let layoutConfig: LayoutConfig;
+  if (options.layout) {
+    layoutConfig = options.layout;
+  } else if (options.dataDir) {
+    // 向后兼容：从旧参数构建 layout
+    layoutConfig = {
+      resourceRoot: options.cwd ?? resolveProjectDir(),
+      dataDir: options.dataDir,
+    };
+  } else {
+    // 必须提供 layout
+    throw new Error('[Bootstrap] layout is required. Provide layout: { resourceRoot: ... }');
   }
 
-  const cwd = options.cwd ?? resolveProjectDir();
+  // 1. 解析布局
+  const layout = resolveLayout(layoutConfig);
 
-  // 初始化数据存储
+  // 2. 构建行为配置
+  const behavior = buildBehaviorConfig(options.behavior);
+
+  // 3. 定价配置注入（必须最先执行，确保后续所有 CostTracker 使用正确数据）
+  if (behavior.modelPricing) {
+    configurePricing(behavior.modelPricing);
+  }
+
+  // 4. 初始化数据存储
   const dataStore = createSQLiteDataStore({
-    dataDir: options.dataDir,
+    dataDir: layout.dataDir,
     ...options.databaseConfig,
   });
 
-  // 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
+  // 5. 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
   initGlobalTaskStoreFromDataStore(dataStore);
 
-  // 初始化权限系统
-  await initPermissions(cwd).catch((err) => {
+  // 6. 初始化权限系统（使用 layout.resourceRoot）
+  await initPermissions(layout.resourceRoot).catch((err) => {
     console.error('[Bootstrap] Permissions init failed:', err);
   });
 
-  // 初始化 Connector Gateway
+  // 7. 初始化 Connector Gateway
   await initConnectorGateway({
     enableInbound: true,
-    cwd,
+    cwd: layout.resourceRoot,
     dataStore,
+    idempotencyDbPath: path.join(layout.dataDir, '.connector-idempotency.db'),
     ...options.connectorConfig,
   }).catch((err) => {
     console.error('[Bootstrap] ConnectorGateway init failed:', err);
   });
 
-  // 获取 Connector Registry
-  const connectorRegistry = await getConnectorRegistry(cwd);
+  // 8. 获取 Connector Registry
+  const connectorRegistry = await getConnectorRegistry(layout.resourceRoot);
 
-  // 初始化 Tokenizer（显式配置，不依赖环境变量）
+  // 9. 初始化 Tokenizer（显式配置，不依赖环境变量）
   initTokenizer(options.tokenizerConfig);
 
   return {
-    dataDir: options.dataDir,
+    layout,
+    behavior,
     dataStore,
     connectorRegistry,
-    cwd,
     async dispose() {
       // 1. 等待所有后台压缩完成，避免关闭数据库时写入失败
       await waitForAllCompactions();

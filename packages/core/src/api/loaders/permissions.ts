@@ -4,7 +4,7 @@
 
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import { PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from '../../extensions/permissions/types';
 import { PermissionConfigSchema } from '../../extensions/permissions/types';
@@ -29,6 +29,8 @@ const permissionsCache = new LoadingCache<PermissionConfig>();
 
 export interface LoadPermissionsOptions {
   cwd?: string;
+  /** 配置目录名（可选，默认 '.thething'） */
+  configDirName?: string;
 }
 
 // ============================================================
@@ -43,16 +45,18 @@ export interface LoadPermissionsOptions {
  */
 export async function loadPermissions(options?: LoadPermissionsOptions): Promise<PermissionRule[]> {
   const cwd = options?.cwd ?? process.cwd();
+  const configDirName = options?.configDirName ?? '.thething';
+  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `permissions:${cwd}`;
+  const cacheKey = `permissions:${cwd}:${configDirName}`;
   const cached = permissionsCache.get(cacheKey);
   if (cached) {
     return cached.rules;
   }
 
-  const userDir = getUserConfigDir('permissions');
-  const projectDir = getProjectConfigDir(cwd, 'permissions');
+  const userDir = computeUserConfigDir(homeDir, 'permissions', configDirName);
+  const projectDir = computeProjectConfigDir(cwd, 'permissions', configDirName);
 
   // 加载用户级配置
   const userRules = await loadPermissionsFile(userDir, 'user');

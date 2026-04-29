@@ -14,8 +14,10 @@
 //    import { bootstrap, createContext, createAgent } from '@the-thing/core';
 //
 //    // 三步，每步的输入输出关系一目了然
-//    const runtime = await bootstrap({ dataDir: './data' });
-//    const context = await createContext({ runtime, cwd: process.cwd() });
+//    const runtime = await bootstrap({
+//      layout: { resourceRoot: process.cwd() }
+//    });
+//    const context = await createContext({ runtime });
 //    const { agent, adjustedMessages } = await createAgent({
 //      context,
 //      conversationId: 'conv-1',
@@ -74,6 +76,25 @@ export type {
 export { type ConnectorRegistry } from './extensions/connector';
 
 // ============================================================
+// 新的配置系统（推荐使用）
+// ============================================================
+export {
+  buildBehaviorConfig,
+  DEFAULT_MODEL_SPECS,
+  DEFAULT_MODEL_ALIASES,
+  type BehaviorConfig,
+  type ModelSpec,
+} from './config/behavior';
+
+export {
+  resolveLayout,
+  buildDefaultResourceLayout,
+  type LayoutConfig,
+  type ResolvedLayout,
+  type ResourceDirs,
+} from './config/layout';
+
+// ============================================================
 // 配置常量（白名单导出）
 // ============================================================
 // 模型能力
@@ -83,11 +104,11 @@ export {
   AUTOCOMPACT_BUFFER_TOKENS,
 } from './config/defaults';
 
-// Session 预算
-export {
-  DEFAULT_MAX_BUDGET_USD,
-  DEFAULT_MAX_DENIALS_PER_TOOL,
-} from './config/defaults';
+// Session 预算（deprecated）
+/** @deprecated 使用 BehaviorConfig.maxBudgetUsdPerSession 代替 */
+export { DEFAULT_MAX_BUDGET_USD } from './config/defaults';
+/** @deprecated 使用 BehaviorConfig.maxDenialsPerTool 代替 */
+export { DEFAULT_MAX_DENIALS_PER_TOOL } from './config/defaults';
 
 // 压缩配置
 export {

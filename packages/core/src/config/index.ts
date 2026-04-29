@@ -11,6 +11,29 @@
 // 5. 项目目录检测由 paths/ 模块提供（resolveProjectDir）
 
 // ============================================================
+// 新的配置系统（推荐使用）
+// ============================================================
+
+// BehaviorConfig - 运行时行为配置
+export {
+  buildBehaviorConfig,
+  DEFAULT_MODEL_SPECS,
+  DEFAULT_MODEL_ALIASES,
+  type BehaviorConfig,
+  type ModelSpec,
+} from './behavior';
+
+// LayoutConfig - 文件系统布局配置
+export {
+  resolveLayout,
+  buildDefaultResourceLayout,
+  type LayoutConfig,
+  type ResolvedLayout,
+  type ResourceDirs,
+  type ResourceLayout,  // deprecated alias
+} from './layout';
+
+// ============================================================
 // 默认值常量（统一导出）
 // ============================================================
 
@@ -21,11 +44,11 @@ export {
   AUTOCOMPACT_BUFFER_TOKENS,
 } from './defaults';
 
-// Session
-export {
-  DEFAULT_MAX_BUDGET_USD,
-  DEFAULT_MAX_DENIALS_PER_TOOL,
-} from './defaults';
+// Session（deprecated - 使用 BehaviorConfig 代替）
+/** @deprecated 使用 BehaviorConfig.maxBudgetUsdPerSession 代替 */
+export { DEFAULT_MAX_BUDGET_USD } from './defaults';
+/** @deprecated 使用 BehaviorConfig.maxDenialsPerTool 代替 */
+export { DEFAULT_MAX_DENIALS_PER_TOOL } from './defaults';
 
 // 压缩配置
 export {
@@ -52,36 +75,38 @@ export {
   BYTES_PER_TOKEN,
 } from './defaults';
 
-// Skills
-export {
-  DEFAULT_SKILL_SCAN_DIRS,
-  DEFAULT_SKILL_LOADER_CONFIG,
-} from './defaults';
+// Skills（deprecated - 由 resolveLayout 派生）
+/** @deprecated 使用 resolveLayout().resources.skills 代替 */
+export { DEFAULT_SKILL_SCAN_DIRS } from './defaults';
+/** @deprecated 未使用 */
+export { DEFAULT_SKILL_LOADER_CONFIG } from './defaults';
 
-// MCP
-export {
-  DEFAULT_MCP_CONFIG_DIR,
-} from './defaults';
+// MCP（deprecated - 由 resolveLayout 派生）
+/** @deprecated 使用 resolveLayout().resources.mcps 代替 */
+export { DEFAULT_MCP_CONFIG_DIR } from './defaults';
 
 // Permissions
 export {
-  DEFAULT_PERMISSIONS_DIR,
   PERMISSIONS_FILENAME,
 } from './defaults';
+/** @deprecated 使用 resolveLayout().resources.permissions 代替 */
+export { DEFAULT_PERMISSIONS_DIR } from './defaults';
 
 // Connector
 export {
-  DEFAULT_CONNECTORS_DIR,
   CIRCUIT_BREAKER_THRESHOLD,
   CIRCUIT_BREAKER_RESET_TIMEOUT_MS,
 } from './defaults';
+/** @deprecated 使用 resolveLayout().resources.connectors 代替 */
+export { DEFAULT_CONNECTORS_DIR } from './defaults';
 
-// Agent Control
-export {
-  MODEL_SWITCH_COST_THRESHOLD,
-  DEFAULT_AVAILABLE_MODELS,
-  MODEL_MAPPING,
-} from './defaults';
+// Agent Control（deprecated - 使用 BehaviorConfig 代替）
+/** @deprecated 使用 BehaviorConfig.autoDowngradeCostThreshold 代替 */
+export { MODEL_SWITCH_COST_THRESHOLD } from './defaults';
+/** @deprecated 使用 DEFAULT_MODEL_SPECS 或 BehaviorConfig.availableModels 代替 */
+export { DEFAULT_AVAILABLE_MODELS } from './defaults';
+/** @deprecated 使用 BehaviorConfig.modelAliases 代替 */
+export { MODEL_MAPPING } from './defaults';
 
 // 系统提示词
 export {
@@ -174,11 +199,3 @@ export type {
   ToolOutputConfig,
   ToolOutputOverrides,
 } from '../runtime/budget/tool-output-manager';
-
-// ============================================================
-// Resource Layout（资源目录配置）
-// ============================================================
-export {
-  buildDefaultResourceLayout,
-  type ResourceLayout,
-} from './layout';

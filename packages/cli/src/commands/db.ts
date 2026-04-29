@@ -55,7 +55,13 @@ export async function dbBackup(backupPath: string): Promise<void> {
   const cwd = resolveProjectDir({
     monorepoPatterns: ['packages/server', 'packages/cli'],
   })
-  const runtime = await bootstrap({ dataDir: dataDirConfig.dataDir, cwd })
+  // 使用新的 layout 配置结构
+  const runtime = await bootstrap({
+    layout: {
+      resourceRoot: cwd,
+      dataDir: dataDirConfig.dataDir,
+    },
+  })
 
   try {
     const store = runtime.dataStore
