@@ -63,7 +63,8 @@ export default function SkillsSettings() {
 
   const handleSkillClick = (skill: SkillView) => {
     setSelectedSkill(skill)
-    setSelectedFilePath(null)
+    // 自动选中 SKILL.md，进入详情立即展示技能内容
+    setSelectedFilePath(skill.sourcePath + '/SKILL.md')
     setShowTree(true)
     setShowPreview(true)
   }

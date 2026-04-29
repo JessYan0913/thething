@@ -1,31 +1,38 @@
 // ============================================================
-// File System API — 安全的目录列表和文件读取
-// 仅允许访问项目根目录下的文件
+// File System API — 目录列表和文件读取
+// 使用 CoreRuntime 的资源路径作为访问范围
 // ============================================================
 
 import { promises as fs } from 'fs'
 import path from 'path'
+import os from 'os'
 import { Hono } from 'hono'
-import { getServerProjectDir } from '../config'
+import { getServerRuntime } from '../runtime'
 
 const app = new Hono()
 
-const PROJECT_DIR = getServerProjectDir()
+/**
+ * 获取允许访问的根目录列表（resourceRoot + 用户 home）
+ */
+async function getAllowedRoots(): Promise<string[]> {
+  const runtime = await getServerRuntime()
+  const resourceRoot = runtime.layout.resourceRoot
+  const homeDir = os.homedir()
+  return [resourceRoot, homeDir]
+}
 
 /**
- * 确保路径在项目目录范围内，防止路径穿越
+ * 检查路径是否在允许范围内
  */
-function safeResolve(target: string): string | null {
-  const resolved = path.resolve(target)
-  if (!resolved.startsWith(PROJECT_DIR + path.sep) && resolved !== PROJECT_DIR) {
-    return null
-  }
-  return resolved
+function isPathAllowed(resolved: string, allowedRoots: string[]): boolean {
+  return allowedRoots.some(
+    (root) => resolved.startsWith(root + path.sep) || resolved === root,
+  )
 }
 
 /**
  * GET /list — 列出目录内容
- * Query: dir — 目录路径（绝对路径，须在项目目录内）
+ * Query: dir — 目录绝对路径
  */
 app.get('/list', async (c) => {
   const dirParam = c.req.query('dir')
@@ -33,9 +40,10 @@ app.get('/list', async (c) => {
     return c.json({ error: 'Missing dir query parameter' }, 400)
   }
 
-  const resolvedDir = safeResolve(dirParam)
-  if (!resolvedDir) {
-    return c.json({ error: 'Path outside project directory' }, 403)
+  const resolvedDir = path.resolve(dirParam)
+  const allowedRoots = await getAllowedRoots()
+  if (!isPathAllowed(resolvedDir, allowedRoots)) {
+    return c.json({ error: 'Path not allowed' }, 403)
   }
 
   try {
@@ -52,9 +60,8 @@ app.get('/list', async (c) => {
   const entries = await fs.readdir(resolvedDir, { withFileTypes: true })
   const items = await Promise.all(
     entries
-      .filter((e) => !e.name.startsWith('.')) // 跳过隐藏文件
+      .filter((e) => !e.name.startsWith('.'))
       .sort((a, b) => {
-        // 目录在前，文件在后，按名称排序
         if (a.isDirectory() !== b.isDirectory()) {
           return a.isDirectory() ? -1 : 1
         }
@@ -83,7 +90,7 @@ app.get('/list', async (c) => {
 
 /**
  * GET /read — 读取文件内容
- * Query: path — 文件路径（绝对路径，须在项目目录内）
+ * Query: path — 文件绝对路径
  */
 app.get('/read', async (c) => {
   const fileParam = c.req.query('path')
@@ -91,9 +98,10 @@ app.get('/read', async (c) => {
     return c.json({ error: 'Missing path query parameter' }, 400)
   }
 
-  const resolvedFile = safeResolve(fileParam)
-  if (!resolvedFile) {
-    return c.json({ error: 'Path outside project directory' }, 403)
+  const resolvedFile = path.resolve(fileParam)
+  const allowedRoots = await getAllowedRoots()
+  if (!isPathAllowed(resolvedFile, allowedRoots)) {
+    return c.json({ error: 'Path not allowed' }, 403)
   }
 
   try {
