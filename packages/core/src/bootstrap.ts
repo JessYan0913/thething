@@ -89,7 +89,9 @@ export interface BootstrapOptions {
   layout: LayoutConfig;
   /** 行为配置（可选，不传则全部使用默认值） */
   behavior?: Partial<BehaviorConfig>;
-  /** 数据库配置（可选） */
+  /** 自定义 DataStore 实例（可选，替换默认 SQLite 实现） */
+  dataStore?: DataStore;
+  /** 数据库配置（可选，仅当使用默认 SQLite 时生效） */
   databaseConfig?: SQLiteDataStoreConfig;
   /** Connector Gateway 配置（可选） */
   connectorConfig?: ConnectorGatewayConfig;
@@ -185,7 +187,8 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   }
 
   // 4. 初始化数据存储
-  const dataStore = createSQLiteDataStore({
+  // 如果传入自定义 DataStore，直接使用；否则创建默认 SQLite 实现
+  const dataStore = options.dataStore ?? createSQLiteDataStore({
     dataDir: layout.dataDir,
     ...options.databaseConfig,
   });
