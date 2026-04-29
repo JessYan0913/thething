@@ -19,7 +19,7 @@ import {
   PlusIcon,
   TrashIcon,
   XIcon,
-  PlugIcon,
+  SettingsIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { nanoid } from "nanoid";
@@ -118,10 +118,10 @@ export const ConversationSidebar = ({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="MCP 服务器">
-              <Link to="/chat/settings/mcp">
-                <PlugIcon />
-                <span>MCP 服务器</span>
+            <SidebarMenuButton asChild tooltip="系统设置">
+              <Link to="/settings">
+                <SettingsIcon />
+                <span>系统设置</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

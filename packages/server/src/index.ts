@@ -14,6 +14,10 @@ import conversationsRoutes from './routes/conversations'
 import tasksRoutes from './routes/tasks'
 import permissionsRoutes from './routes/permissions'
 import mcpRoutes from './routes/mcp'
+import skillsRoutes from './routes/skills'
+import agentsRoutes from './routes/agents'
+import connectorsRoutes from './routes/connectors'
+import memoryRoutes from './routes/memory'
 import debugRoutes from './routes/debug'
 import connectorToolsRoutes from './routes/connector/tools'
 import connectorTestRoutes from './routes/connector/test'
@@ -21,6 +25,7 @@ import connectorAdminToolsRoutes from './routes/connector/admin/tools'
 import connectorAdminTestToolRoutes from './routes/connector/admin/test-tool'
 import connectorAdminLogsRoutes from './routes/connector/admin/logs'
 import connectorWebhooksRoutes from './routes/connector/webhooks'
+import fsRoutes from './routes/fs'
 
 // Runtime management
 export {
@@ -47,6 +52,10 @@ app.route('/api/conversations', conversationsRoutes)
 app.route('/api/tasks', tasksRoutes)
 app.route('/api/permissions', permissionsRoutes)
 app.route('/api/mcp', mcpRoutes)
+app.route('/api/skills', skillsRoutes)
+app.route('/api/agents', agentsRoutes)
+app.route('/api/connectors', connectorsRoutes)
+app.route('/api/memory', memoryRoutes)
 app.route('/api/debug', debugRoutes)
 app.route('/api/connector/tools', connectorToolsRoutes)
 app.route('/api/connector/test', connectorTestRoutes)
@@ -54,6 +63,7 @@ app.route('/api/connector/admin/tools', connectorAdminToolsRoutes)
 app.route('/api/connector/admin/test-tool', connectorAdminTestToolRoutes)
 app.route('/api/connector/admin/logs', connectorAdminLogsRoutes)
 app.route('/api/connector/webhooks', connectorWebhooksRoutes)
+app.route('/api/fs', fsRoutes)
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }))

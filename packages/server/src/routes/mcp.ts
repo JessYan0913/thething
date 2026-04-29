@@ -12,16 +12,24 @@ import {
   createMcpRegistry,
   type McpServerConfig,
 } from '@the-thing/core'
+import { getServerRuntime } from '../runtime'
 
 const app = new Hono()
+
+/** 从 runtime 获取 resourceRoot */
+async function getResourceRoot(): Promise<string> {
+  const runtime = await getServerRuntime()
+  return runtime.layout.resourceRoot
+}
 
 app.get('/', async (c) => {
   try {
     const name = c.req.query('name')
     const connect = c.req.query('connect') === 'true'
+    const resourceRoot = await getResourceRoot()
 
     if (name) {
-      const config = await getMcpServerConfig(name)
+      const config = await getMcpServerConfig(name, resourceRoot)
       if (!config) {
         return c.json({ error: 'Server not found' }, 404)
       }
@@ -48,7 +56,7 @@ app.get('/', async (c) => {
       return c.json({ config })
     }
 
-    const configs = await getMcpServerConfigs()
+    const configs = await getMcpServerConfigs(resourceRoot)
     return c.json({ servers: configs })
   } catch (error) {
     console.error('[MCP API] GET error:', error)
@@ -64,12 +72,13 @@ app.post('/', async (c) => {
       return c.json({ error: 'name and transport.type are required' }, 400)
     }
 
-    const existing = await getMcpServerConfig(body.name)
+    const resourceRoot = await getResourceRoot()
+    const existing = await getMcpServerConfig(body.name, resourceRoot)
     if (existing) {
       return c.json({ error: 'Server already exists' }, 409)
     }
 
-    const config = await addMcpServerConfig(body)
+    const config = await addMcpServerConfig(body, resourceRoot)
     return c.json({ config }, 201)
   } catch (error) {
     console.error('[MCP API] POST error:', error)
@@ -86,7 +95,8 @@ app.put('/', async (c) => {
     }
 
     const body = await c.req.json() as Partial<McpServerConfig>
-    const config = await updateMcpServerConfig(name, body)
+    const resourceRoot = await getResourceRoot()
+    const config = await updateMcpServerConfig(name, body, resourceRoot)
 
     if (!config) {
       return c.json({ error: 'Server not found' }, 404)
@@ -107,7 +117,8 @@ app.delete('/', async (c) => {
       return c.json({ error: 'name query parameter is required' }, 400)
     }
 
-    const deleted = await deleteMcpServerConfig(name)
+    const resourceRoot = await getResourceRoot()
+    const deleted = await deleteMcpServerConfig(name, resourceRoot)
     if (!deleted) {
       return c.json({ error: 'Server not found' }, 404)
     }
