@@ -6,6 +6,10 @@
 // with custom implementations (PostgreSQL, MongoDB, etc).
 
 import type { UIMessage } from 'ai';
+import type { TaskStore } from '../../runtime/tasks/types';
+
+// Re-export TaskStore for convenience
+export type { TaskStore } from '../../runtime/tasks/types';
 
 // ============================================================================
 // SQLite Native Types (for better-sqlite3 interface)
@@ -283,6 +287,9 @@ export interface DataStore {
   /** Cost tracking storage */
   costStore: CostStore;
 
+  /** Task storage (for task management system) */
+  taskStore: TaskStore;
+
   /**
    * Execute a function within a database transaction.
    * SQLite implementation uses db.transaction();
@@ -355,4 +362,22 @@ export interface CostRow {
   total_cost_usd: number;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Task row for SQLite mapping
+ */
+export interface TaskRow {
+  id: string;
+  conversation_id: string;
+  subject: string;
+  status: string;
+  claimed_by: string | null;
+  active_form: string | null;
+  blocked_by: string;  // JSON array of task IDs
+  blocks: string;      // JSON array of task IDs
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  metadata: string;    // JSON object
 }

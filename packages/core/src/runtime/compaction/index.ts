@@ -195,6 +195,9 @@ export {
   runCompactInBackground,
   isCompactInProgress,
   getQueueSize,
+  waitForConversationCompaction,
+  waitForAllCompactions,
+  getActiveCompactionIds,
 } from "./background-queue";
 
 export {

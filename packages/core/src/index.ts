@@ -74,25 +74,213 @@ export type {
 export { type ConnectorRegistry } from './extensions/connector';
 
 // ============================================================
-// 配置（常量和类型）
+// 配置常量（白名单导出）
 // ============================================================
-export * from './config';
+// 模型能力
+export {
+  DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_OUTPUT_TOKENS,
+  AUTOCOMPACT_BUFFER_TOKENS,
+} from './config/defaults';
+
+// Session 预算
+export {
+  DEFAULT_MAX_BUDGET_USD,
+  DEFAULT_MAX_DENIALS_PER_TOOL,
+} from './config/defaults';
+
+// 压缩配置
+export {
+  COMPACT_TOKEN_THRESHOLD,
+  DEFAULT_SESSION_MEMORY_CONFIG,
+  DEFAULT_POST_COMPACT_CONFIG,
+} from './config/defaults';
+
+// Micro Compact
+export { DEFAULT_MICRO_COMPACT_CONFIG } from './runtime/compaction/types';
+export { DEFAULT_MICRO_COMPACT_CONFIG_RAW } from './config/defaults';
+
+// 工具输出
+export {
+  DEFAULT_MAX_OUTPUT_CHARS,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  DEFAULT_MAX_RESULT_SIZE_CHARS,
+  MAX_TOOL_RESULT_TOKENS,
+  MAX_TOOL_RESULT_BYTES,
+  MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
+  PREVIEW_SIZE_CHARS,
+  BYTES_PER_TOKEN,
+} from './config/defaults';
+
+// 数据存储
+export {
+  DEFAULT_DATA_DIR,
+  DEFAULT_DB_FILENAME,
+  DEFAULT_PROJECT_CONFIG_DIR_NAME,
+} from './config/defaults';
 
 // ============================================================
-// 分层导出（供高级用户）
+// Foundation Layer（白名单导出）
 // ============================================================
+// DataStore
+export {
+  createDefaultDataStore,
+  createInMemoryDataStore,
+  createSQLiteDataStore,
+} from './foundation/datastore';
+export type {
+  DataStore,
+  ConversationStore,
+  MessageStore,
+  SummaryStore,
+  CostStore,
+  TaskStore,
+  Conversation,
+  StoredMessage,
+  StoredSummary,
+  CostRecord,
+  SQLiteDataStoreConfig,
+} from './foundation/datastore/types';
 
-// 基础设施层
-export * from './foundation';
+// Model
+export {
+  createModelProvider,
+  createLanguageModel,
+  getModelContextLimit,
+  getDefaultOutputTokens,
+  getModelCapabilities,
+  getEffectiveContextBudget,
+  getAutoCompactThreshold,
+  // Pricing（定价配置）
+  configurePricing,
+  getModelPricing,
+  getPricingRegistry,
+  resetPricing,
+  DEFAULT_PRICING,
+} from './foundation/model';
+export type {
+  ModelCapabilities,
+  ModelProviderConfig,
+  ModelPricing,
+  PricingRegistry,
+} from './foundation/model';
 
-// 运行时层
-export * from './runtime';
+// Clock（时间抽象）
+export {
+  systemClock,
+  fixedClock,
+  offsetClock,
+  advancedClock,
+} from './foundation/clock';
+export type { Clock } from './foundation/clock';
 
-// 扩展层
-export * from './extensions';
+// Paths
+export { resolveProjectDir, resolveHomeDir } from './foundation/paths';
 
-// API 层
-export * from './api';
+// Parser
+export { parseFrontmatterFile, parseYamlFile, parseJsonFile } from './foundation/parser';
+
+// ============================================================
+// Runtime Layer（白名单导出）
+// ============================================================
+// Session State
+export { createSessionState } from './runtime/session-state';
+export type { SessionState, SessionStateOptions } from './runtime/session-state';
+
+// Compaction
+export {
+  compactMessagesIfNeeded,
+  estimateMessagesTokens,
+  waitForConversationCompaction,
+  waitForAllCompactions,
+  runCompactInBackground,
+} from './runtime/compaction';
+
+// Tasks
+export {
+  createTaskStore,
+  getGlobalTaskStore,
+  initGlobalTaskStoreFromDataStore,
+} from './runtime/tasks';
+export type {
+  Task,
+  TaskStatus,
+  TaskCreateInput,
+  TaskUpdateInput,
+  TaskClaimResult,
+} from './runtime/tasks/types';
+
+// ============================================================
+// Extensions Layer（白名单导出）
+// ============================================================
+// Loaders
+export {
+  loadAll,
+  loadSkills,
+  loadAgents,
+  loadMcpServers,
+  loadConnectors,
+  loadPermissions,
+  loadMemory,
+} from './api/loaders';
+export type {
+  LoadAllOptions,
+  LoadAllResult,
+  MemoryEntry,
+} from './api/loaders';
+
+// Skill types
+export type { Skill } from './extensions/skills/types';
+
+// Agent types
+export type { AgentDefinition } from './extensions/subagents/types';
+
+// MCP types
+export type { McpServerConfig, McpServerConfigSource } from './extensions/mcp/types';
+export {
+  createMcpRegistry,
+  getMcpServerConfigs,
+  getMcpServerConfig,
+  addMcpServerConfig,
+  updateMcpServerConfig,
+  deleteMcpServerConfig,
+} from './extensions/mcp';
+
+// Connector types
+export type { ConnectorFrontmatter } from './extensions/connector/loader';
+export {
+  getConnectorRegistry,
+  createWebhookHandler,
+  inboundEventQueue,
+  getWebhookConfigByHandler,
+  buildWechatWebhookConfig,
+  buildFeishuWebhookConfig,
+} from './extensions/connector';
+export type { ToolCallRequest } from './extensions/connector/types';
+
+// Permission types
+export type { PermissionRule, PermissionBehavior } from './extensions/permissions/types';
+export { removeRule, saveRule, loadRules } from './extensions/permissions';
+
+// Memory extraction
+export {
+  extractMemoriesInBackground,
+  extractMemoriesFromConversation,
+} from './extensions/memory';
+
+// Title generation
+export { generateConversationTitle } from './runtime/compaction';
+
+// SubAgent types
+export type { SubAgentStreamWriter } from './extensions/subagents';
+
+// ============================================================
+// DataStore exports（补充）
+// ============================================================
+export { SQLiteDataStore } from './foundation/datastore/sqlite/sqlite-data-store';
+
+// CredentialStore
+export { CredentialStore, credentialStore } from './extensions/connector/credentials/store';
 
 // ============================================================
 // Native 模块加载（SEA 支持）

@@ -16,6 +16,9 @@ import {
   setAutoDownload,
   preloadTokenizer,
 } from './runtime/compaction/tokenizer';
+import { configurePricing, type ModelPricing } from './foundation/model/pricing';
+import { waitForAllCompactions } from './runtime/compaction/background-queue';
+import { initGlobalTaskStoreFromDataStore } from './runtime/tasks/store';
 
 // ============================================================
 // Tokenizer 配置类型
@@ -76,6 +79,18 @@ export interface BootstrapOptions {
   connectorConfig?: ConnectorGatewayConfig;
   /** Tokenizer 配置 */
   tokenizerConfig?: TokenizerConfig;
+  /**
+   * 模型定价覆盖配置
+   *
+   * 覆盖内置定价表 DEFAULT_PRICING。
+   * 键为模型名，值为 USD/百万 token。
+   *
+   * @example
+   * modelPricing: {
+   *   'qwen-max': { input: 3.5, output: 10, cached: 0.8 }
+   * }
+   */
+  modelPricing?: Record<string, ModelPricing>;
 }
 
 /**
@@ -93,6 +108,11 @@ export interface BootstrapOptions {
  * await runtime.dispose();
  */
 export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime> {
+  // 定价配置最先执行，确保后续所有 CostTracker 使用正确数据
+  if (options.modelPricing) {
+    configurePricing(options.modelPricing);
+  }
+
   const cwd = options.cwd ?? resolveProjectDir();
 
   // 初始化数据存储
@@ -100,6 +120,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     dataDir: options.dataDir,
     ...options.databaseConfig,
   });
+
+  // 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
+  initGlobalTaskStoreFromDataStore(dataStore);
 
   // 初始化权限系统
   await initPermissions(cwd).catch((err) => {
@@ -128,7 +151,13 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     connectorRegistry,
     cwd,
     async dispose() {
+      // 1. 等待所有后台压缩完成，避免关闭数据库时写入失败
+      await waitForAllCompactions();
+
+      // 2. 关闭 Connector Gateway
       await shutdownConnectorGateway();
+
+      // 3. 关闭数据库连接
       dataStore.close();
     },
   };

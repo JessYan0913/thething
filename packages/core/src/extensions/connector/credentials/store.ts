@@ -10,8 +10,8 @@ export interface EncryptedCredential {
   id: string
   connector_id: string
   encrypted_data: string  // Base64 编码的加密数据
-  iv: string              // Base64 编码的初始化向量
-  auth_tag: string        // Base64 编码的认证标签（GCM 模式）
+  iv: string              // Base64 编码的初始化向量（空串表示明文模式）
+  auth_tag: string        // Base64 编码的认证标签（空串表示明文模式）
   created_at: number
   updated_at: number
   version: number
@@ -22,7 +22,7 @@ export interface CredentialData {
 }
 
 export interface CredentialStoreOptions {
-  encryptionKey?: string  // 加密密钥（32 字节）
+  encryptionKey?: string  // 加密密钥（至少 16 字节）
   storagePath?: string    // 存储文件路径
   useEnvFallback?: boolean  // 是否使用环境变量作为后备
 }
@@ -39,29 +39,71 @@ export function configureCredentialStoragePath(storagePath: string): void {
 
 const DEFAULT_USE_ENV_FALLBACK = true
 
+// scrypt 参数：OWASP 推荐最低值
+const SCRYPT_N = 16384  // CPU/内存代价
+const SCRYPT_R = 8      // 块大小
+const SCRYPT_P = 1      // 并行化参数
+const SCRYPT_SALT = 'thething-credential-store-v1'  // 应用级固定盐
+
 /**
  * 凭证加密存储器
  * 使用 AES-256-GCM 加密算法，提供认证加密
+ *
+ * 安全模式：
+ * - 生产环境（NODE_ENV=production）：必须提供加密密钥，否则抛错
+ * - 开发环境：无密钥时进入明文模式（带警告），凭证不加密存储
  */
 export class CredentialStore {
-  private encryptionKey: Buffer
+  private encryptionKey: Buffer | null  // null 表示明文模式
+  private readonly mode: 'encrypted' | 'plaintext'
   private storagePath: string
   private useEnvFallback: boolean
   private credentials: Map<string, EncryptedCredential> = new Map()
   private initialized = false
 
   constructor(options?: CredentialStoreOptions) {
-    // 加密密钥：32 字节（256 位）
-    const key = options?.encryptionKey || process.env.CONNECTOR_ENCRYPTION_KEY || ''
-    if (key.length < 32) {
-      // 如果密钥不足 32 字节，使用派生密钥
-      this.encryptionKey = crypto.createHash('sha256').update(key).digest()
+    const rawKey = options?.encryptionKey ?? process.env.CONNECTOR_ENCRYPTION_KEY
+    const isProduction = process.env.NODE_ENV === 'production'
+
+    if (!rawKey) {
+      if (isProduction) {
+        throw new Error(
+          '[CredentialStore] ENCRYPTION_KEY_REQUIRED: Production environment requires encryption key. ' +
+          'Set CONNECTOR_ENCRYPTION_KEY environment variable (min 16 chars) or pass encryptionKey option.'
+        )
+      }
+      // 开发/测试环境：明文模式 + 警告
+      console.warn(
+        '[CredentialStore] WARNING: Running in plaintext mode (no encryption key). ' +
+        'Credentials will be stored unencrypted. DO NOT use in production! ' +
+        'Set CONNECTOR_ENCRYPTION_KEY for secure storage.'
+      )
+      this.mode = 'plaintext'
+      this.encryptionKey = null
     } else {
-      this.encryptionKey = Buffer.from(key.substring(0, 32), 'utf-8')
+      if (rawKey.length < 16) {
+        throw new Error(
+          `[CredentialStore] ENCRYPTION_KEY_TOO_SHORT: Key length ${rawKey.length} is insufficient (min 16 chars).`
+        )
+      }
+      // 使用 scrypt 做密钥派生：慢速，抵抗暴力破解
+      this.encryptionKey = crypto.scryptSync(rawKey, SCRYPT_SALT, 32, {
+        N: SCRYPT_N,
+        r: SCRYPT_R,
+        p: SCRYPT_P,
+      })
+      this.mode = 'encrypted'
     }
 
     this.storagePath = options?.storagePath || defaultStoragePath || path.join(process.cwd(), '.connector-credentials.json')
     this.useEnvFallback = options?.useEnvFallback ?? DEFAULT_USE_ENV_FALLBACK
+  }
+
+  /**
+   * 检查是否运行在明文模式
+   */
+  isPlaintextMode(): boolean {
+    return this.mode === 'plaintext'
   }
 
   /**
@@ -174,12 +216,23 @@ export class CredentialStore {
 
   /**
    * 加密凭证数据
+   * 明文模式下直接返回 Base64 编码的 JSON（不加密）
    */
   private encrypt(data: CredentialData): {
     encrypted: string
     iv: string
     authTag: string
   } {
+    // 明文模式：直接 JSON 序列化
+    if (this.mode === 'plaintext' || !this.encryptionKey) {
+      return {
+        encrypted: Buffer.from(JSON.stringify(data)).toString('base64'),
+        iv: '',
+        authTag: '',
+      }
+    }
+
+    // 加密模式：AES-256-GCM
     // 生成随机 IV（12 字节，GCM 模式推荐）
     const iv = crypto.randomBytes(12)
 
@@ -205,8 +258,19 @@ export class CredentialStore {
 
   /**
    * 解密凭证数据
+   * 明文模式下直接解析 Base64 编码的 JSON
    */
   private decrypt(credential: EncryptedCredential): CredentialData {
+    // 明文模式：直接解析
+    if (this.mode === 'plaintext' || !credential.iv) {
+      return JSON.parse(Buffer.from(credential.encrypted_data, 'base64').toString('utf-8'))
+    }
+
+    // 加密模式：AES-256-GCM 解密
+    if (!this.encryptionKey) {
+      throw new Error('[CredentialStore] Cannot decrypt: no encryption key available')
+    }
+
     const iv = Buffer.from(credential.iv, 'base64')
     const authTag = Buffer.from(credential.auth_tag, 'base64')
     const encrypted = Buffer.from(credential.encrypted_data, 'base64')

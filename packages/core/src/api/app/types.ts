@@ -215,4 +215,23 @@ export interface CreateAgentResult {
   budgetActions?: string[];
   /** 底层模型实例（未包装 middleware），供后台任务使用 */
   model?: LanguageModelV3;
+
+  /**
+   * 释放本次对话占用的所有资源。
+   *
+   * 执行顺序：
+   * 1. 持久化成本数据到数据库
+   * 2. 等待进行中的后台压缩完成（可选）
+   * 3. 断开所有 MCP 连接
+   *
+   * 在 createAgent 的 onFinish 回调中调用：
+   * ```typescript
+   * onFinish: async () => {
+   *   await handle.dispose();
+   * }
+   * ```
+   *
+   * @param options.waitForCompaction - 是否等待后台压缩完成（默认 false）
+   */
+  dispose(options?: { waitForCompaction?: boolean }): Promise<void>;
 }

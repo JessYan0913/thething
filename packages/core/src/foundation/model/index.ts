@@ -20,3 +20,14 @@ export {
   getAutoCompactThreshold,
 } from './capabilities';
 export type { ModelCapabilities } from './capabilities-types';
+
+// Pricing（定价配置）
+export {
+  DEFAULT_PRICING,
+  FALLBACK_PRICING,
+  configurePricing,
+  getModelPricing,
+  getPricingRegistry,
+  resetPricing,
+} from './pricing';
+export type { ModelPricing, PricingRegistry } from './pricing';

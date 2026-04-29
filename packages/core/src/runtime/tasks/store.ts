@@ -9,6 +9,7 @@ import type {
   TaskStatus,
   AgentStatus,
 } from './types';
+import type { DataStore } from '../../foundation/datastore/types';
 import { HighWaterMarkImpl, getGlobalHighWaterMark } from './high-water-mark';
 
 /**
@@ -410,9 +411,28 @@ export function createTaskStore(hwm?: HighWaterMarkImpl): TaskStore {
  */
 let globalTaskStore: TaskStore | null = null;
 
+/**
+ * Initialize global TaskStore from DataStore.
+ * This should be called during bootstrap to use persistent task storage.
+ *
+ * @param dataStore - DataStore instance with taskStore
+ */
+export function initGlobalTaskStoreFromDataStore(dataStore: DataStore): void {
+  globalTaskStore = dataStore.taskStore;
+  console.log('[TaskStore] Initialized from DataStore (persistent mode)');
+}
+
+/**
+ * Get the global TaskStore instance.
+ *
+ * Priority:
+ * 1. If initGlobalTaskStoreFromDataStore was called, returns the DataStore's taskStore
+ * 2. Otherwise, creates a new InMemoryTaskStore (non-persistent fallback)
+ */
 export function getGlobalTaskStore(): TaskStore {
   if (!globalTaskStore) {
     globalTaskStore = createTaskStore();
+    console.warn('[TaskStore] Using InMemoryTaskStore (non-persistent mode). Call initGlobalTaskStoreFromDataStore for persistence.');
   }
   return globalTaskStore;
 }

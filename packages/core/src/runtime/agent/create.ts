@@ -11,6 +11,7 @@ import { resolveActiveSkills, loadMemoryContext, buildAgentInstructions } from '
 import { loadAllTools } from './tools'
 import { checkInitialBudget } from '../compaction/initial-budget-check'
 import { formatEstimationResult } from '../compaction/token-counter'
+import { waitForConversationCompaction } from '../compaction/background-queue'
 import { loadAll } from '../../api/loaders'
 import { loadProjectContext } from '../../extensions/system-prompt/sections/project-context'
 import {
@@ -195,6 +196,30 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     toolChoice: 'auto',
   })
 
+  // ============================================================
+  // dispose 实现：释放对话资源
+  // ============================================================
+  const createDispose = () => {
+    return async (options?: { waitForCompaction?: boolean }): Promise<void> => {
+      // 1. 持久化成本数据
+      await sessionState.costTracker.persistToDB()
+
+      // 2. 等待后台压缩完成（可选）
+      if (options?.waitForCompaction) {
+        await waitForConversationCompaction(conversationId)
+      }
+
+      // 3. 断开 MCP 连接
+      if (mcpRegistry) {
+        await mcpRegistry.disconnectAll().catch((e) =>
+          console.warn('[AgentHandle.dispose] MCP disconnect error:', e)
+        )
+      }
+
+      console.log(`[AgentHandle.dispose] Completed for ${conversationId}`)
+    }
+  }
+
   return {
     agent,
     sessionState,
@@ -206,5 +231,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     model: modelInstance,
     // 新增：附件注入信息
     attachmentInfo,
+    // 新增：dispose 方法
+    dispose: createDispose(),
   }
 }

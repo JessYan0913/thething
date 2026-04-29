@@ -7,6 +7,7 @@
 // - scanner: 目录扫描
 // - datastore: 数据存储抽象层
 // - model: 模型提供者和能力配置
+// - clock: 时间抽象（可测试设计）
 // ============================================================
 
 export * from './paths';
@@ -14,3 +15,4 @@ export * from './parser';
 export * from './scanner';
 export * from './datastore';
 export * from './model';
+export * from './clock';

@@ -16,11 +16,13 @@ import type {
   MessageStore,
   SummaryStore,
   CostStore,
+  TaskStore,
 } from '../types';
 import { SQLiteConversationStore } from './conversation-store';
 import { SQLiteMessageStore } from './message-store';
 import { SQLiteSummaryStore } from './summary-store';
 import { SQLiteCostStore } from './cost-store';
+import { SQLiteTaskStore } from './task-store';
 
 // 从统一配置模块导入常量
 import {
@@ -50,6 +52,7 @@ export class SQLiteDataStore implements DataStore {
   readonly messageStore: MessageStore;
   readonly summaryStore: SummaryStore;
   readonly costStore: CostStore;
+  readonly taskStore: TaskStore;
 
   constructor(config: SQLiteDataStoreConfig = {}) {
     const dataDir = config.dataDir || getDefaultDataDir();
@@ -74,6 +77,7 @@ export class SQLiteDataStore implements DataStore {
     this.conversationStore = new SQLiteConversationStore(this.db);
     this.summaryStore = new SQLiteSummaryStore(this.db);
     this.costStore = new SQLiteCostStore(this.db);
+    this.taskStore = new SQLiteTaskStore(this.db);
     // MessageStore needs conversationStore for auto-creating conversations
     this.messageStore = new SQLiteMessageStore(this.db, this.conversationStore);
   }

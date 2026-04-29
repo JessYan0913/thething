@@ -3,7 +3,8 @@ import type { LanguageModelUsage } from 'ai';
 import type { CompactionResult } from '../../compaction/types';
 import type { CostStore } from '../../../foundation/datastore/types';
 import { TokenBudgetTracker } from '../token-budget';
-import { CostTracker, PRICING } from '../cost';
+import { CostTracker } from '../cost';
+import { DEFAULT_PRICING } from '../../../foundation/model/pricing';
 
 // ============================================================
 // Helper: Mock CostStore
@@ -203,20 +204,20 @@ describe('token-budget', () => {
 // Cost Tracker Tests
 // ============================================================
 describe('cost', () => {
-  describe('PRICING', () => {
+  describe('DEFAULT_PRICING', () => {
     it('should have pricing for qwen-max', () => {
-      expect(PRICING['qwen-max']).toBeDefined();
-      expect(PRICING['qwen-max'].input).toBe(4);
-      expect(PRICING['qwen-max'].output).toBe(12);
+      expect(DEFAULT_PRICING['qwen-max']).toBeDefined();
+      expect(DEFAULT_PRICING['qwen-max'].input).toBe(4);
+      expect(DEFAULT_PRICING['qwen-max'].output).toBe(12);
     });
 
     it('should have pricing for qwen-plus', () => {
-      expect(PRICING['qwen-plus']).toBeDefined();
-      expect(PRICING['qwen-plus'].input).toBe(1.5);
+      expect(DEFAULT_PRICING['qwen-plus']).toBeDefined();
+      expect(DEFAULT_PRICING['qwen-plus'].input).toBe(1.5);
     });
 
     it('should have pricing for deepseek-v3', () => {
-      expect(PRICING['deepseek-v3']).toBeDefined();
+      expect(DEFAULT_PRICING['deepseek-v3']).toBeDefined();
     });
   });
 

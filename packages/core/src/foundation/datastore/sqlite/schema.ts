@@ -1,12 +1,12 @@
 // ============================================================
 // SQLite Schema Initialization
 // ============================================================
-// Database schema for conversations, messages, summaries, and costs.
+// Database schema for conversations, messages, summaries, costs, and tasks.
 // Memory is stored in file system (.siact/memory/), not in database.
 
 import type { SqliteDatabase } from '../types';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -21,6 +21,41 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
 
   if (currentVersion < 1) {
     // v1: initial schema (already created by initializeSchema)
+  }
+
+  if (currentVersion < 2) {
+    // v2: add tasks table
+    db.exec(`
+      -- Tasks table for task management system
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')),
+        claimed_by TEXT,
+        active_form TEXT,
+        blocked_by TEXT NOT NULL DEFAULT '[]',
+        blocks TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        completed_at TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      -- Index for task lookup by conversation
+      CREATE INDEX IF NOT EXISTS idx_tasks_conversation
+        ON tasks(conversation_id);
+
+      -- Index for task status lookup
+      CREATE INDEX IF NOT EXISTS idx_tasks_status
+        ON tasks(status);
+
+      -- Index for claimed tasks lookup
+      CREATE INDEX IF NOT EXISTS idx_tasks_claimed
+        ON tasks(claimed_by);
+    `);
+    console.log('[Schema] Migrated to v2: added tasks table');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

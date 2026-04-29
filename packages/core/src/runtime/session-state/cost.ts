@@ -1,15 +1,6 @@
 import type { CostStore } from '../../foundation/datastore/types';
 import { DEFAULT_MAX_BUDGET_USD } from '../../config/defaults';
-
-const PRICING: Record<string, { input: number; output: number; cached: number }> = {
-  'qwen-max': { input: 4, output: 12, cached: 1 },
-  'qwen-plus': { input: 1.5, output: 4.5, cached: 0.5 },
-  'qwen-turbo': { input: 0.5, output: 1.5, cached: 0.2 },
-  'qwen-max-latest': { input: 4, output: 12, cached: 1 },
-  'qwen-plus-latest': { input: 1.5, output: 4.5, cached: 0.5 },
-  'qwen-turbo-latest': { input: 0.5, output: 1.5, cached: 0.2 },
-  'deepseek-v3': { input: 1.2, output: 4.8, cached: 0.4 },
-};
+import { getModelPricing } from '../../foundation/model/pricing';
 
 export interface CostDelta {
   inputTokens: number;
@@ -69,7 +60,7 @@ export class CostTracker {
   }
 
   calculateDelta(inputTokens: number, outputTokens: number, cachedReadTokens: number): CostDelta {
-    const pricing = PRICING[this._model] ?? { input: 1.5, output: 4.5, cached: 0.5 };
+    const pricing = getModelPricing(this._model);
 
     const inputCost = (inputTokens * pricing.input) / 1_000_000;
     const outputCost = (outputTokens * pricing.output) / 1_000_000;
@@ -141,5 +132,3 @@ export class CostTracker {
     };
   }
 }
-
-export { PRICING };

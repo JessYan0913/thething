@@ -12,6 +12,7 @@ export { SQLiteConversationStore } from './conversation-store';
 export { SQLiteMessageStore } from './message-store';
 export { SQLiteSummaryStore } from './summary-store';
 export { SQLiteCostStore } from './cost-store';
+export { SQLiteTaskStore } from './task-store';
 
 // Schema utilities (for advanced users)
 export { initializeSchema } from './schema';

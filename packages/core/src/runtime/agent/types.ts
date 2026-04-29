@@ -91,6 +91,13 @@ export interface CreateAgentResult {
     hasSkillListing: boolean
     skillListingCount: number
   }
+  /**
+   * 释放本次对话占用的所有资源
+   * - 持久化成本数据
+   * - 等待后台压缩（可选）
+   * - 断开 MCP 连接
+   */
+  dispose(options?: { waitForCompaction?: boolean }): Promise<void>
 }
 
 export interface SkillResolution {
