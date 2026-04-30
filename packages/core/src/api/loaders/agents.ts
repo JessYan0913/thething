@@ -1,10 +1,13 @@
 // ============================================================
 // Agents Loader (Subagents)
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import { parseFrontmatterFile, parseFrontmatterContent, parseToolsList, ParseError } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { AgentDefinition, AgentSource } from '../../extensions/subagents/types';
 import { AgentFrontmatterSchema } from '../../extensions/subagents/types';
 import yaml from 'js-yaml';
@@ -30,8 +33,6 @@ const agentsCache = new LoadingCache<AgentDefinition[]>();
 export interface LoadAgentsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
 }
 
 // ============================================================
@@ -69,27 +70,27 @@ function extractAgentType(data: { name?: string; agentType?: string; displayName
 
 /**
  * 加载 Agents 配置
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
 export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefinition[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
-  const configDirName = options?.configDirName ?? '.thething';
-  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `agents:${cwd}:${configDirName}`;
+  const cacheKey = `agents:${cwd}`;
   const cached = agentsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // 构建扫描目录（使用 configDirName）
+  // 构建扫描目录（使用全局 configDirName）
   const dirs: string[] = [];
   if (sources.includes('user')) {
-    dirs.push(computeUserConfigDir(homeDir, 'agents', configDirName));
+    dirs.push(getUserConfigDir('agents'));
   }
   if (sources.includes('project')) {
-    dirs.push(computeProjectConfigDir(cwd, 'agents', configDirName));
+    dirs.push(getProjectConfigDir(cwd, 'agents'));
   }
 
   // 扫描文件

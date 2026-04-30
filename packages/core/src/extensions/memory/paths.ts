@@ -1,13 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { getResolvedConfigDirName } from '../../foundation/paths';
 
 // ============================================================================
 // Memory Configuration
 // ============================================================================
 
 export interface MemoryConfig {
-  /** Base directory for memory storage. Defaults to cwd/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/memory */
+  /** Base directory for memory storage. Defaults to cwd/${configDirName}/memory */
   baseDir?: string;
   /** Project directory (cwd), used to compute default baseDir */
   cwd?: string;
@@ -23,7 +23,8 @@ let configuredMemoryBaseDir: string | null = null;
  */
 export function configureMemory(config: MemoryConfig): void {
   const cwd = config.cwd ?? process.cwd();
-  const defaultBaseDir = path.join(cwd, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'memory');
+  const configDirName = getResolvedConfigDirName();
+  const defaultBaseDir = path.join(cwd, configDirName, 'memory');
   configuredMemoryBaseDir =
     config.baseDir || process.env.THETHING_MEMORY_DIR || defaultBaseDir;
 }
@@ -38,9 +39,10 @@ export function getMemoryBaseDir(cwd?: string): string {
   if (configuredMemoryBaseDir) {
     return configuredMemoryBaseDir;
   }
-  // 未配置时，使用 cwd 参数计算
+  // 未配置时，使用参数计算
   const effectiveCwd = cwd ?? process.cwd();
-  return process.env.THETHING_MEMORY_DIR || path.join(effectiveCwd, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'memory');
+  const configDirName = getResolvedConfigDirName();
+  return process.env.THETHING_MEMORY_DIR || path.join(effectiveCwd, configDirName, 'memory');
 }
 
 /**

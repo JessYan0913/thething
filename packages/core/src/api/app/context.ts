@@ -29,11 +29,10 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   const dataDir = options.dataDir ?? layout.dataDir;
   const homeDir = resolveHomeDir();
 
-  // 加载所有配置，传入 configDirName
+  // 加载所有配置（configDirName 使用全局单例，已在 bootstrap 时设置）
   const loadOptions: LoadAllOptions = {
     cwd,
     dataDir,
-    configDirName: layout.configDirName,
     resourceDirs: layout.resources,
   };
   const loaded = await loadAll(loadOptions);

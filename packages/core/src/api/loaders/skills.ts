@@ -1,10 +1,13 @@
 // ============================================================
 // Skills Loader
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import { parseFrontmatterFile } from '../../foundation/parser';
 import { scanConfigDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir, computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { z } from 'zod';
 import type { Skill, SkillMetadata, SkillLoaderConfig } from '../../extensions/skills/types';
 import { SkillFrontmatterSchema } from '../../extensions/skills/types';
@@ -30,8 +33,6 @@ const skillsCache = new LoadingCache<Skill[]>();
 export interface LoadSkillsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
 }
 
 // ============================================================
@@ -40,27 +41,27 @@ export interface LoadSkillsOptions {
 
 /**
  * 加载 Skills 配置
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
 export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
-  const configDirName = options?.configDirName ?? '.thething';
-  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `skills:${cwd}:${configDirName}`;
+  const cacheKey = `skills:${cwd}`;
   const cached = skillsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // 构建扫描目录（使用 configDirName）
+  // 构建扫描目录（使用全局 configDirName）
   const dirs: string[] = [];
   if (sources.includes('user')) {
-    dirs.push(computeUserConfigDir(homeDir, 'skills', configDirName));
+    dirs.push(getUserConfigDir('skills'));
   }
   if (sources.includes('project')) {
-    dirs.push(computeProjectConfigDir(cwd, 'skills', configDirName));
+    dirs.push(getProjectConfigDir(cwd, 'skills'));
   }
 
   // 扫描目录 - 使用 scanConfigDirs 支持 dirPattern

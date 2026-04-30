@@ -12,7 +12,7 @@ import { z } from 'zod';
 import fs from 'fs/promises';
 import path from 'path';
 import { loadSkillFile } from '../../api/loaders/skills';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { computeUserConfigDir, computeProjectConfigDir, getResolvedConfigDirName } from '../../foundation/paths';
 import type { Skill } from '../../extensions/skills/types';
 
 // ============================================================
@@ -56,16 +56,19 @@ interface SkillToolResult {
 /**
  * 向上搜索技能目录
  *
- * 从 cwd 开始，向上搜索 ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills 目录，
+ * 从 cwd 开始，向上搜索技能目录，
  * 直到找到或到达用户 home 目录。
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  *
  * @param cwd - 当前工作目录
  * @returns 找到的技能目录列表
  */
 async function findSkillDirs(cwd: string): Promise<string[]> {
+  const configDirName = getResolvedConfigDirName();
   const skillDirs: string[] = [];
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const userSkillDir = path.join(homeDir, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'skills');
+  const userSkillDir = computeUserConfigDir(homeDir, 'skills', configDirName);
 
   // 1. 添加用户级技能目录（如果存在）
   try {
@@ -80,7 +83,7 @@ async function findSkillDirs(cwd: string): Promise<string[]> {
   // 2. 向上搜索项目级技能目录
   let currentDir = cwd;
   while (currentDir) {
-    const projectSkillDir = path.join(currentDir, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'skills');
+    const projectSkillDir = computeProjectConfigDir(currentDir, 'skills', configDirName);
     try {
       const stat = await fs.stat(projectSkillDir);
       if (stat.isDirectory()) {
@@ -111,6 +114,10 @@ async function findSkillDirs(cwd: string): Promise<string[]> {
  * @returns 技能数据或 null
  */
 async function searchSkillInDirs(skillDirs: string[], skillName: string): Promise<Skill | null> {
+  const configDirName = getResolvedConfigDirName();
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const userSkillDir = computeUserConfigDir(homeDir, 'skills', configDirName);
+
   for (const skillDir of skillDirs) {
     try {
       const skillSubDir = path.join(skillDir, skillName);
@@ -119,10 +126,8 @@ async function searchSkillInDirs(skillDirs: string[], skillName: string): Promis
       const stat = await fs.stat(skillFile);
       if (!stat.isFile()) continue;
 
-      // 确定来源
-      const source = skillDir.includes(`${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills`) && !skillDir.includes(process.env.HOME || '')
-        ? 'project'
-        : 'user';
+      // 确定来源：用户目录为 user，其他为 project
+      const source = skillDir.startsWith(userSkillDir) ? 'user' : 'project';
 
       const skill = await loadSkillFile(skillFile, source as 'user' | 'project');
       if (skill.name === skillName) {
@@ -249,7 +254,7 @@ IMPORTANT:
 
     console.log(`[SkillTool] Invoking skill: ${trimmedSkill}${args ? ` with args: ${args}` : ''}`);
 
-    // 加载技能
+    // 加载技能（使用全局 configDirName）
     const skillData = await findSkill(trimmedSkill, cwd);
 
     if (!skillData) {

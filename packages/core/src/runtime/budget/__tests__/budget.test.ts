@@ -28,7 +28,6 @@ import {
   buildPersistedOutputMessage,
   formatSize,
   TOOL_RESULTS_SUBDIR,
-  THETHING_DIR,
   type PersistedToolResult,
 } from '../tool-result-storage';
 import {
@@ -340,7 +339,7 @@ describe('tool-result-storage', () => {
   describe('path functions', () => {
     it('should build correct tool results directory', () => {
       const dir = getToolResultsDir('session-1', '/project');
-      expect(dir).toContain(THETHING_DIR);
+      expect(dir).toContain('.thething');
       expect(dir).toContain(TOOL_RESULTS_SUBDIR);
       expect(dir).toContain('session-1');
     });

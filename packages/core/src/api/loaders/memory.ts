@@ -1,12 +1,15 @@
 // ============================================================
 // Memory Loader
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import fs from 'fs/promises';
 import path from 'path';
 import { parseFrontmatterFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { computeProjectConfigDir } from '../../foundation/paths';
+import { getProjectConfigDir } from '../../foundation/paths';
 import { MEMORY_MD_MAX_LINES, MEMORY_MD_MAX_SIZE_KB } from '../../config/defaults';
 
 // ============================================================
@@ -32,8 +35,6 @@ const memoryCache = new LoadingCache<MemoryEntry[]>();
 
 export interface LoadMemoryOptions {
   cwd?: string;
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
 }
 
 // ============================================================
@@ -43,21 +44,23 @@ export interface LoadMemoryOptions {
 /**
  * 加载 Memory 配置
  *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ *
  * @param options 加载选项
  * @returns MemoryEntry 列表
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
   const cwd = options?.cwd ?? process.cwd();
-  const configDirName = options?.configDirName ?? '.thething';
 
   // 检查缓存
-  const cacheKey = `memory:${cwd}:${configDirName}`;
+  const cacheKey = `memory:${cwd}`;
   const cached = memoryCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const memoryDir = computeProjectConfigDir(cwd, 'memory', configDirName);
+  // 使用全局 configDirName
+  const memoryDir = getProjectConfigDir(cwd, 'memory');
 
   // 加载 MEMORY.md
   const entries: MemoryEntry[] = [];

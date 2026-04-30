@@ -4,6 +4,9 @@
 // 参考 Claude Code toolResultStorage.ts
 // 大工具输出持久化到磁盘，返回预览 + 文件路径
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import { mkdir, writeFile, readdir, stat, rm } from 'fs/promises'
 import { join, dirname } from 'path'
@@ -13,7 +16,7 @@ import {
   PREVIEW_SIZE_CHARS,
   type PersistedToolResult,
 } from './tool-output-manager'
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
+import { getResolvedConfigDirName } from '../../foundation/paths'
 
 // ============================================================
 // 存储目录配置
@@ -22,22 +25,30 @@ import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 /** 工具结果存储子目录名 */
 export const TOOL_RESULTS_SUBDIR = 'tool-results'
 
-/** 项目配置工作目录名（使用统一常量） */
-export const THETHING_DIR = DEFAULT_PROJECT_CONFIG_DIR_NAME
-
 // ============================================================
 // 路径辅助函数
 // ============================================================
 
 /**
  * 获取工具结果存储目录
+ *
+ * @param sessionId 会话 ID
+ * @param projectDir 项目目录
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
 export function getToolResultsDir(sessionId: string, projectDir: string): string {
-  return join(projectDir, THETHING_DIR, TOOL_RESULTS_SUBDIR, sessionId)
+  const configDirName = getResolvedConfigDirName();
+  return join(projectDir, configDirName, TOOL_RESULTS_SUBDIR, sessionId)
 }
 
 /**
  * 获取单个工具结果文件路径
+ *
+ * @param toolUseId 工具调用 ID
+ * @param sessionId 会话 ID
+ * @param projectDir 项目目录
+ * @param isJson 是否为 JSON 格式
  */
 export function getToolResultPath(
   toolUseId: string,
@@ -66,7 +77,7 @@ export async function persistToolResult(
   content: string,
   toolUseId: string,
   sessionId: string,
-  projectDir: string
+  projectDir: string,
 ): Promise<PersistedToolResult> {
   // 确保目录存在
   const dir = getToolResultsDir(sessionId, projectDir)
@@ -172,10 +183,13 @@ export function buildPersistedOutputMessage(result: PersistedToolResult, isTempo
 /**
  * 清理会话的工具结果目录
  * 在会话结束时调用
+ *
+ * @param sessionId 会话 ID
+ * @param projectDir 项目目录
  */
 export async function cleanupSessionToolResults(
   sessionId: string,
-  projectDir: string
+  projectDir: string,
 ): Promise<void> {
   const dir = getToolResultsDir(sessionId, projectDir)
 
@@ -198,12 +212,16 @@ export async function cleanupSessionToolResults(
 /**
  * 清理所有超过指定天数的工具结果
  * 可用于定期清理
+ *
+ * @param projectDir 项目目录
+ * @param maxAgeDays 最大保留天数
  */
 export async function cleanupOldToolResults(
   projectDir: string,
   maxAgeDays: number = 7
 ): Promise<{ cleanedSessions: number; cleanedFiles: number }> {
-  const toolResultsDir = join(projectDir, THETHING_DIR, TOOL_RESULTS_SUBDIR)
+  const configDirName = getResolvedConfigDirName();
+  const toolResultsDir = join(projectDir, configDirName, TOOL_RESULTS_SUBDIR)
 
   try {
     const sessions = await readdir(toolResultsDir)

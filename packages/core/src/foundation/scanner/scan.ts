@@ -5,7 +5,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { minimatch } from 'minimatch';
-import { getUserConfigDir } from '../paths';
+import { computeUserConfigDir, resolveHomeDir, getResolvedConfigDirName } from '../paths';
 import type { ScanOptions, ScanConfig, ScanResult } from './types';
 
 export type { ScanOptions, ScanConfig, ScanResult };
@@ -230,8 +230,15 @@ function matchesPattern(name: string, pattern: string): boolean {
   return minimatch(name, pattern);
 }
 
+/**
+ * Determine source based on directory path
+ *
+ * @param dir - Directory path
+ * @returns 'user' or 'project'
+ */
 function determineSource(dir: string): 'user' | 'project' {
-  const userConfigDir = getUserConfigDir();
+  const configDirName = getResolvedConfigDirName();
+  const userConfigDir = computeUserConfigDir(resolveHomeDir(), undefined, configDirName);
 
   if (dir.startsWith(userConfigDir)) {
     return 'user';

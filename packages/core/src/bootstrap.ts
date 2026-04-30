@@ -9,7 +9,7 @@
 import { createSQLiteDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
 import { getConnectorRegistry, shutdownConnectorGateway, initConnectorGateway, type ConnectorGatewayConfig, type ConnectorRegistry } from './extensions/connector';
 import { initPermissions } from './extensions/permissions';
-import { resolveProjectDir } from './foundation/paths';
+import { resolveProjectDir, setResolvedConfigDirName } from './foundation/paths';
 import {
   registerTokenizer,
   setTokenizerDir,
@@ -178,6 +178,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 1. 解析布局
   const layout = resolveLayout(layoutConfig);
 
+  // 1.1. 设置全局 configDirName（让所有 get* 便捷函数使用正确的值）
+  setResolvedConfigDirName(layout.configDirName);
+
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);
 
@@ -196,12 +199,12 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 5. 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
   initGlobalTaskStoreFromDataStore(dataStore);
 
-  // 6. 初始化权限系统（使用 layout.resourceRoot）
+  // 6. 初始化权限系统（使用全局 configDirName）
   await initPermissions(layout.resourceRoot).catch((err) => {
     console.error('[Bootstrap] Permissions init failed:', err);
   });
 
-  // 7. 初始化 Connector Gateway
+  // 7. 初始化 Connector Gateway（传递 cwd 和 dataStore，configDirName 使用全局值）
   await initConnectorGateway({
     enableInbound: true,
     cwd: layout.resourceRoot,
@@ -212,7 +215,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     console.error('[Bootstrap] ConnectorGateway init failed:', err);
   });
 
-  // 8. 获取 Connector Registry
+  // 8. 获取 Connector Registry（使用全局 configDirName）
   const connectorRegistry = await getConnectorRegistry(layout.resourceRoot);
 
   // 9. 初始化 Tokenizer（显式配置，不依赖环境变量）

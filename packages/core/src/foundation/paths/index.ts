@@ -8,6 +8,13 @@ export {
   resolveHomeDir,
 } from './resolve';
 
+// 全局单例管理（configDirName）
+export {
+  setResolvedConfigDirName,
+  getResolvedConfigDirName,
+  clearResolvedConfigDirName,
+} from './compute';
+
 // 纯函数版本（compute 前缀 - 接受参数，不读取环境）
 export {
   computeUserConfigDir,
@@ -18,7 +25,7 @@ export {
   computeUserTokenizerCacheDir,
 } from './compute';
 
-// 便捷版本（向后兼容 - 读取当前环境）
+// 便捷版本（使用全局单例 configDirName）
 export {
   getUserConfigDir,
   getProjectConfigDir,

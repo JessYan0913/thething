@@ -7,6 +7,44 @@ import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../..
 import { resolveHomeDir } from './resolve';
 
 // ============================================================
+// 全局单例：已解析的 configDirName
+// ============================================================
+
+/**
+ * 已解析的配置目录名（全局单例）
+ * 在 bootstrap() 时通过 resolveLayout() 设置一次
+ * 之后所有 get* 便捷函数都使用此值
+ */
+let resolvedConfigDirName: string | null = null;
+
+/**
+ * 设置已解析的配置目录名
+ * 通常只在 bootstrap() 的 resolveLayout() 中调用一次
+ *
+ * @param name 配置目录名（如 '.thething', '.siact'）
+ */
+export function setResolvedConfigDirName(name: string): void {
+  resolvedConfigDirName = name;
+}
+
+/**
+ * 获取已解析的配置目录名
+ * 如果未设置，返回默认值 '.thething'
+ *
+ * @returns 配置目录名
+ */
+export function getResolvedConfigDirName(): string {
+  return resolvedConfigDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+}
+
+/**
+ * 清除已解析的配置目录名（用于测试或重新初始化）
+ */
+export function clearResolvedConfigDirName(): void {
+  resolvedConfigDirName = null;
+}
+
+// ============================================================
 // 配置目录路径（纯函数版本 - compute 前缀）
 // ============================================================
 
@@ -70,18 +108,18 @@ export function computeConfigDirs(
 }
 
 // ============================================================
-// 配置目录路径（便捷版本 - 向后兼容）
+// 配置目录路径（便捷版本 - 使用全局单例）
 // ============================================================
-// 这些函数读取当前环境，使用默认 configDirName
+// 这些函数读取全局单例 getResolvedConfigDirName()
 
 /**
  * 获取用户全局配置目录（便捷版本）
  *
  * @param subdir 子目录名（如 'agents', 'skills', 'mcps'）
- * @returns 目录绝对路径（使用默认 configDirName '.thething'）
+ * @returns 目录绝对路径（使用全局单例 configDirName）
  */
 export function getUserConfigDir(subdir?: string): string {
-  return computeUserConfigDir(resolveHomeDir(), subdir);
+  return computeUserConfigDir(resolveHomeDir(), subdir, getResolvedConfigDirName());
 }
 
 /**
@@ -89,10 +127,10 @@ export function getUserConfigDir(subdir?: string): string {
  *
  * @param cwd 项目根目录
  * @param subdir 子目录名
- * @returns 目录绝对路径（使用默认 configDirName '.thething'）
+ * @returns 目录绝对路径（使用全局单例 configDirName）
  */
 export function getProjectConfigDir(cwd: string, subdir?: string): string {
-  return computeProjectConfigDir(cwd, subdir);
+  return computeProjectConfigDir(cwd, subdir, getResolvedConfigDirName());
 }
 
 /**
@@ -100,10 +138,10 @@ export function getProjectConfigDir(cwd: string, subdir?: string): string {
  *
  * @param cwd 项目根目录
  * @param subdir 子目录名
- * @returns [用户目录, 项目目录]（使用默认 configDirName '.thething'）
+ * @returns [用户目录, 项目目录]（使用全局单例 configDirName）
  */
 export function getConfigDirs(cwd: string, subdir: string): string[] {
-  return computeConfigDirs(resolveHomeDir(), cwd, subdir);
+  return computeConfigDirs(resolveHomeDir(), cwd, subdir, getResolvedConfigDirName());
 }
 
 // ============================================================
@@ -139,26 +177,26 @@ export function computeProjectDataDir(
 }
 
 // ============================================================
-// 数据目录路径（便捷版本 - 向后兼容）
+// 数据目录路径（便捷版本 - 使用全局单例）
 // ============================================================
 
 /**
  * 获取用户全局数据目录（便捷版本）
  *
- * @returns 目录绝对路径（使用默认 configDirName '.thething'）
+ * @returns 目录绝对路径（使用全局单例 configDirName）
  */
 export function getUserDataDir(): string {
-  return computeUserDataDir(resolveHomeDir());
+  return computeUserDataDir(resolveHomeDir(), getResolvedConfigDirName());
 }
 
 /**
  * 获取项目级数据目录（便捷版本）
  *
  * @param cwd 项目根目录
- * @returns 目录绝对路径（使用默认 configDirName '.thething'）
+ * @returns 目录绝对路径（使用全局单例 configDirName）
  */
 export function getProjectDataDir(cwd: string): string {
-  return computeProjectDataDir(cwd);
+  return computeProjectDataDir(cwd, getResolvedConfigDirName());
 }
 
 /**

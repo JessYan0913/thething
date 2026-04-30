@@ -67,8 +67,6 @@ import { loadMemory, clearMemoryCache } from './memory';
 export interface LoadAllOptions {
   cwd?: string;
   dataDir?: string;
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
   /** 已解析的资源目录（可选，直接使用而不重新计算） */
   resourceDirs?: ResourceDirs;
   skills?: LoadSkillsOptions;
@@ -96,23 +94,24 @@ export type LoadedData = LoadAllResult;
 /**
  * 加载所有配置
  *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取，
+ * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+ *
  * @param options 加载选项
  * @returns 所有配置
  */
 export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> {
   const cwd = options?.cwd ?? process.cwd();
   const dataDir = options?.dataDir ?? getUserDataDir();
-  const configDirName = options?.configDirName ?? '.thething';
 
-  // 并行加载所有模块
-  // 如果提供了 resourceDirs，各 loader 可以直接使用（暂不实现，保持向后兼容）
+  // 并行加载所有模块（使用全局 configDirName）
   const [skills, agents, mcps, connectors, permissions, memory] = await Promise.all([
-    loadSkills({ cwd, configDirName, ...options?.skills }),
-    loadAgents({ cwd, configDirName, ...options?.agents }),
-    loadMcpServers({ cwd, configDirName, ...options?.mcps }),
-    loadConnectors({ cwd, configDirName, ...options?.connectors }),
-    loadPermissions({ cwd, configDirName, ...options?.permissions }),
-    loadMemory({ cwd, configDirName, ...options?.memory }),
+    loadSkills({ cwd, ...options?.skills }),
+    loadAgents({ cwd, ...options?.agents }),
+    loadMcpServers({ cwd, ...options?.mcps }),
+    loadConnectors({ cwd, ...options?.connectors }),
+    loadPermissions({ cwd, ...options?.permissions }),
+    loadMemory({ cwd, ...options?.memory }),
   ]);
 
   return {

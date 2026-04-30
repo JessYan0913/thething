@@ -1,10 +1,13 @@
 // ============================================================
 // MCP Loader
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import { parseJsonFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { McpServerConfig } from '../../extensions/mcp/types';
 import { McpServerConfigSchema } from '../../extensions/mcp/types';
 
@@ -30,8 +33,6 @@ const mcpsCache = new LoadingCache<McpServerConfig[]>();
 export interface LoadMcpsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
 }
 
 // ============================================================
@@ -40,27 +41,27 @@ export interface LoadMcpsOptions {
 
 /**
  * 加载 MCP Servers 配置
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
-  const configDirName = options?.configDirName ?? '.thething';
-  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `mcps:${cwd}:${configDirName}`;
+  const cacheKey = `mcps:${cwd}`;
   const cached = mcpsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // 构建扫描目录（使用 configDirName）
+  // 构建扫描目录（使用全局 configDirName）
   const dirs: string[] = [];
   if (sources.includes('user')) {
-    dirs.push(computeUserConfigDir(homeDir, 'mcps', configDirName));
+    dirs.push(getUserConfigDir('mcps'));
   }
   if (sources.includes('project')) {
-    dirs.push(computeProjectConfigDir(cwd, 'mcps', configDirName));
+    dirs.push(getProjectConfigDir(cwd, 'mcps'));
   }
 
   // 扫描文件

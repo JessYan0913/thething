@@ -13,7 +13,7 @@ import {
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
-import { getServerProjectDir, getServerDataDir, getServerTokenizerConfig } from './config'
+import { getServerTokenizerConfig } from './config'
 
 let runtimeInstance: CoreRuntime | null = null
 let contextInstance: AppContext | null = null
@@ -29,18 +29,22 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
     return runtimeInstance
   }
 
-  const projectDir = getServerProjectDir()
-  const dataDir = getServerDataDir()
   const tokenizerConfig = getServerTokenizerConfig()
 
-  console.log(`[Server Runtime] Initializing with projectDir: ${projectDir}, dataDir: ${dataDir}`)
-
   // 使用新的 layout + behavior 配置结构
+  const layout = {
+    resourceRoot: 'E:/thething/packages/server',
+    dataDir: 'E:/thething/packages/server/.siact/data',
+    configDirName: '.siact'
+  }
+
+  console.log(`[Server Runtime] Initializing with:`)
+  console.log(`  resourceRoot: ${layout.resourceRoot}`)
+  console.log(`  dataDir: ${layout.dataDir}`)
+  console.log(`  configDirName: ${layout.configDirName}`)
+
   runtimeInstance = await bootstrap({
-    layout: {
-      resourceRoot: projectDir,
-      dataDir,
-    },
+    layout,
     tokenizerConfig,
   })
 

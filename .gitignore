@@ -66,6 +66,7 @@ next-env.d.ts
 .data/
 connector-idempotency.db
 .thething/
+**/.siact/**
 
 # IDE
 .vscode/

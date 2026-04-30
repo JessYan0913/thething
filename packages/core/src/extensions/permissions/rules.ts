@@ -1,5 +1,8 @@
 /**
  * 权限规则管理 - 规则匹配与 CRUD
+ *
+ * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+ * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
  */
 
 import * as fs from 'fs/promises';
@@ -37,6 +40,7 @@ export { loadRules, loadRulesSync, clearPermissionsCache, initPermissions } from
  */
 async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void> {
   const effectiveCwd = cwd ?? process.cwd();
+  // 使用全局 configDirName
   const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
 
   await ensurePermissionsDir(projectDir);

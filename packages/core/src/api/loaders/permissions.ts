@@ -1,10 +1,13 @@
 // ============================================================
 // Permissions Loader
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import { PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from '../../extensions/permissions/types';
 import { PermissionConfigSchema } from '../../extensions/permissions/types';
@@ -29,8 +32,6 @@ const permissionsCache = new LoadingCache<PermissionConfig>();
 
 export interface LoadPermissionsOptions {
   cwd?: string;
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
 }
 
 // ============================================================
@@ -40,23 +41,24 @@ export interface LoadPermissionsOptions {
 /**
  * 加载 Permissions 配置
  *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ *
  * @param options 加载选项
  * @returns PermissionRule 列表
  */
 export async function loadPermissions(options?: LoadPermissionsOptions): Promise<PermissionRule[]> {
   const cwd = options?.cwd ?? process.cwd();
-  const configDirName = options?.configDirName ?? '.thething';
-  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `permissions:${cwd}:${configDirName}`;
+  const cacheKey = `permissions:${cwd}`;
   const cached = permissionsCache.get(cacheKey);
   if (cached) {
     return cached.rules;
   }
 
-  const userDir = computeUserConfigDir(homeDir, 'permissions', configDirName);
-  const projectDir = computeProjectConfigDir(cwd, 'permissions', configDirName);
+  // 使用全局 configDirName
+  const userDir = getUserConfigDir('permissions');
+  const projectDir = getProjectConfigDir(cwd, 'permissions');
 
   // 加载用户级配置
   const userRules = await loadPermissionsFile(userDir, 'user');

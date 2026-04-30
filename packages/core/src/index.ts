@@ -223,6 +223,9 @@ export {
   getGlobalTaskStore,
   initGlobalTaskStoreFromDataStore,
 } from './runtime/tasks';
+export {
+  STATUS_CONFIG,
+} from './runtime/tasks/types';
 export type {
   Task,
   TaskStatus,

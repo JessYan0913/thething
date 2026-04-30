@@ -1,10 +1,13 @@
 // ============================================================
 // Connectors Loader
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
-import { parseYamlFile } from '../../foundation/parser';
+import { parsePlainYamlFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader';
 import { ConnectorFrontmatterSchema } from '../../extensions/connector/loader';
 
@@ -30,8 +33,6 @@ const connectorsCache = new LoadingCache<ConnectorFrontmatter[]>();
 export interface LoadConnectorsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
-  /** 配置目录名（可选，默认 '.thething'） */
-  configDirName?: string;
 }
 
 // ============================================================
@@ -41,29 +42,29 @@ export interface LoadConnectorsOptions {
 /**
  * 加载 Connectors 配置
  *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ *
  * @param options 加载选项
  * @returns ConnectorFrontmatter 列表
  */
 export async function loadConnectors(options?: LoadConnectorsOptions): Promise<ConnectorFrontmatter[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
-  const configDirName = options?.configDirName ?? '.thething';
-  const homeDir = resolveHomeDir();
 
   // 检查缓存
-  const cacheKey = `connectors:${cwd}:${configDirName}`;
+  const cacheKey = `connectors:${cwd}`;
   const cached = connectorsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // 构建扫描目录（使用 configDirName）
+  // 构建扫描目录（使用全局 configDirName）
   const dirs: string[] = [];
   if (sources.includes('user')) {
-    dirs.push(computeUserConfigDir(homeDir, 'connectors', configDirName));
+    dirs.push(getUserConfigDir('connectors'));
   }
   if (sources.includes('project')) {
-    dirs.push(computeProjectConfigDir(cwd, 'connectors', configDirName));
+    dirs.push(getProjectConfigDir(cwd, 'connectors'));
   }
 
   // 扫描 YAML 文件
@@ -129,7 +130,7 @@ export async function loadConnectorFile(
   filePath: string,
   source: 'user' | 'project',
 ): Promise<ConnectorWithSource> {
-  const result = await parseYamlFile(filePath, ConnectorFrontmatterSchema);
+  const result = await parsePlainYamlFile(filePath, ConnectorFrontmatterSchema);
 
   // 环境变量替换
   const processed = replaceEnvVars(result.data as Record<string, unknown>);

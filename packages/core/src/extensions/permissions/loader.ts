@@ -2,17 +2,20 @@
  * 权限配置加载器
  *
  * 配置文件路径:
- * - 用户全局: ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json
- * - 项目级: 项目/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json
+ * - 用户全局: ~/${configDirName}/permissions/permissions.json
+ * - 项目级: 项目/${configDirName}/permissions/permissions.json
  *
  * 优先级: 项目级 > 用户全局
+ *
+ * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+ * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
  */
 
 import path from 'path';
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
 import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
-import { PERMISSIONS_FILENAME, DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
 
@@ -81,10 +84,12 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  * @param cwd 当前工作目录（默认 process.cwd()）
  *
  * 加载顺序：
- * 1. 用户全局配置 (~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json)
- * 2. 项目级配置 (项目/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions/permissions.json)
+ * 1. 用户全局配置 (~/${configDirName}/permissions/permissions.json)
+ * 2. 项目级配置 (项目/${configDirName}/permissions/permissions.json)
  *
  * 合并规则：项目级优先级高于用户级
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
 export async function loadRules(cwd?: string): Promise<PermissionConfig> {
   const effectiveCwd = cwd ?? process.cwd();
@@ -96,6 +101,7 @@ export async function loadRules(cwd?: string): Promise<PermissionConfig> {
     return cached;
   }
 
+  // 使用全局 configDirName（通过 setResolvedConfigDirName 设置）
   const userDir = getUserConfigDir('permissions');
   const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
 

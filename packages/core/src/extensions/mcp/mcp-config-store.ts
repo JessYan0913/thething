@@ -1,7 +1,14 @@
+/**
+ * MCP 配置存储
+ *
+ * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+ * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+ */
+
 import fs from 'fs/promises';
 import path from 'path';
 import { scanMcpDirs, clearMcpCache } from '../../api/loaders/mcps';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
 import type { McpServerConfig, McpServerConfigSource } from './types';
 
 // ============================================================
@@ -10,17 +17,22 @@ import type { McpServerConfig, McpServerConfigSource } from './types';
 
 /**
  * 获取用户级 MCP 配置目录
+ *
+ * 注意：configDirName 从全局单例获取
  */
 export function getUserMcpConfigDir(): string {
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
-  return path.join(homeDir, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'mcps');
+  return getUserConfigDir('mcps');
 }
 
 /**
  * 获取项目级 MCP 配置目录
+ *
+ * @param cwd 项目目录
+ *
+ * 注意：configDirName 从全局单例获取
  */
 export function getProjectMcpConfigDir(cwd: string): string {
-  return path.join(cwd, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'mcps');
+  return getProjectConfigDir(cwd, 'mcps');
 }
 
 /**
@@ -69,11 +81,13 @@ function toSerializable(config: McpServerConfig): Record<string, unknown> {
 
 /**
  * 反序列化配置（带来源信息）
+ *
+ * @param data 配置数据
+ * @param filePath 文件路径
  */
 function fromSerializable(data: Record<string, unknown>, filePath: string): McpServerConfigSource {
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? '';
-  const userConfigDir = path.join(homeDir, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'mcps');
-
+  // 使用全局 configDirName 判断来源
+  const userConfigDir = getUserMcpConfigDir();
   const source = filePath.startsWith(userConfigDir) ? 'user' : 'project';
 
   return {
@@ -89,6 +103,8 @@ function fromSerializable(data: Record<string, unknown>, filePath: string): McpS
 
 /**
  * 获取所有 MCP 服务器配置（使用新加载器）
+ *
+ * @param cwd 项目目录
  */
 export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig[]> {
   return scanMcpDirs(cwd);
@@ -96,6 +112,8 @@ export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig
 
 /**
  * 获取所有 MCP 服务器配置（带来源信息）
+ *
+ * @param cwd 项目目录
  */
 export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpServerConfigSource[]> {
   const effectiveCwd = cwd ?? process.cwd();
@@ -126,6 +144,9 @@ export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpSe
 
 /**
  * 获取单个 MCP 服务器配置
+ *
+ * @param name MCP 服务器名称
+ * @param cwd 项目目录
  */
 export async function getMcpServerConfig(name: string, cwd?: string): Promise<McpServerConfig | null> {
   const configs = await getMcpServerConfigsWithSource(cwd);
@@ -134,6 +155,9 @@ export async function getMcpServerConfig(name: string, cwd?: string): Promise<Mc
 
 /**
  * 获取单个 MCP 服务器配置（带来源信息）
+ *
+ * @param name MCP 服务器名称
+ * @param cwd 项目目录
  */
 export async function getMcpServerConfigWithSource(name: string, cwd?: string): Promise<McpServerConfigSource | null> {
   const configs = await getMcpServerConfigsWithSource(cwd);

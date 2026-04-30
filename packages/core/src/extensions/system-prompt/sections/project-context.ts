@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
+import { computeUserConfigDir, getResolvedConfigDirName } from '../../../foundation/paths';
 import type { SystemPromptSection } from '../types';
 
 // ============================================================================
@@ -43,9 +43,8 @@ export interface LoadedProjectContext {
   combinedContent: string | null;
 }
 
-// Global cache for project context
-let cachedContext: LoadedProjectContext | null = null;
-let cacheTimestamp: number = 0;
+// Global cache for project context (keyed by cwd:configDirName)
+const contextCache = new Map<string, { context: LoadedProjectContext; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
@@ -103,20 +102,28 @@ async function searchContextFilesInDir(dir: string, cwd: string): Promise<Loaded
  * Stops at the home directory or filesystem root.
  *
  * Multi-level context merging strategy:
- * - User level: ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/THING.md (personal preferences)
+ * - User level: ~/${configDirName}/THING.md (personal preferences)
  * - Project level: /project/THING.md (team shared)
  * - Module level: /project/src/THING.md (module specific)
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ *
+ * @param cwd - Current working directory
  */
 export async function loadProjectContext(
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
 ): Promise<LoadedProjectContext> {
+  const configDirName = getResolvedConfigDirName();
+  const cacheKey = `${cwd}:${configDirName}`;
+
   // Check cache first
-  if (cachedContext && Date.now() - cacheTimestamp < CACHE_TTL_MS) {
-    return cachedContext;
+  const cached = contextCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.context;
   }
 
   const userHome = process.env.HOME || process.env.USERPROFILE || '/';
-  const userContextDir = path.join(userHome, DEFAULT_PROJECT_CONFIG_DIR_NAME);
+  const userContextDir = computeUserConfigDir(userHome, undefined, configDirName);
 
   const userLevel: LoadedContextFile[] = [];
   const projectLevel: LoadedContextFile[] = [];
@@ -126,7 +133,7 @@ export async function loadProjectContext(
   let reachedRoot = false;
 
   while (!reachedRoot && currentDir !== '/') {
-    // Check for user-level context (in ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME} directory)
+    // Check for user-level context (in ~/${configDirName} directory)
     if (currentDir === userHome || currentDir === userContextDir) {
       const userContextPath = path.join(userContextDir, 'THING.md');
       const loaded = await loadContextFile(userContextPath, cwd, 'THING.md');
@@ -161,25 +168,26 @@ export async function loadProjectContext(
       ? allContexts.map((ctx) => `=== ${ctx.relativePath} ===\n\n${ctx.content}`).join('\n\n---\n\n')
       : null;
 
-  cachedContext = { userLevel, projectLevel, combinedContent };
-  cacheTimestamp = Date.now();
+  const result = { userLevel, projectLevel, combinedContent };
+  contextCache.set(cacheKey, { context: result, timestamp: Date.now() });
 
-  return cachedContext;
+  return result;
 }
 
 /**
  * Clear the project context cache.
  */
 export function clearProjectContextCache(): void {
-  cachedContext = null;
-  cacheTimestamp = 0;
+  contextCache.clear();
 }
 
 /**
  * Force reload the project context.
+ *
+ * @param cwd - Current working directory
  */
 export async function reloadProjectContext(
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
 ): Promise<LoadedProjectContext> {
   clearProjectContextCache();
   return loadProjectContext(cwd);
@@ -192,9 +200,11 @@ export async function reloadProjectContext(
 /**
  * Creates the project context section for the system prompt.
  * Returns null if no project context files are found.
+ *
+ * @param cwd - Current working directory
  */
 export async function createProjectContextSection(
-  cwd?: string
+  cwd?: string,
 ): Promise<SystemPromptSection> {
   const context = await loadProjectContext(cwd);
 
@@ -211,10 +221,17 @@ export async function createProjectContextSection(
 /**
  * Synchronous version that returns the cached context if available.
  * Returns null if no context is cached.
+ *
+ * @param cwd - Current working directory
  */
-export function getCachedProjectContext(): string | null {
-  if (!cachedContext) {
+export function getCachedProjectContext(cwd?: string): string | null {
+  const effectiveCwd = cwd ?? process.cwd();
+  const configDirName = getResolvedConfigDirName();
+  const cacheKey = `${effectiveCwd}:${configDirName}`;
+
+  const cached = contextCache.get(cacheKey);
+  if (!cached) {
     return null;
   }
-  return cachedContext.combinedContent;
+  return cached.context.combinedContent;
 }

@@ -1,6 +1,9 @@
 // ============================================================
 // Connector Gateway 初始化
 // ============================================================
+//
+// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
+// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { ConnectorRegistry } from './registry'
@@ -8,7 +11,6 @@ import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
 import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
 import { getProjectConfigDir } from '../../foundation/paths'
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults'
 import { debugLog, debugWarn } from './debug'
 import type { DataStore } from '../../foundation/datastore/types'
 
@@ -21,7 +23,7 @@ export interface ConnectorGatewayConfig {
   cwd?: string;
   /** Directory containing connector YAML configs. */
   configDir?: string;
-  /** Path to idempotency database. Defaults to ~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/data/.connector-idempotency.db */
+  /** Path to idempotency database. Defaults to <cwd>/<configDirName>/data/.connector-idempotency.db */
   idempotencyDbPath?: string;
   userId?: string;
   /** 模型实例（必须提供，用于 Inbound Processor） */
@@ -39,20 +41,22 @@ let inboundInitialized = false
  * 获取 Connector Registry 单例
  *
  * @param cwd 项目目录，用于加载 connector 配置
+ *
+ * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
 export async function getConnectorRegistry(cwd?: string): Promise<ConnectorRegistry> {
   const effectiveCwd = cwd ?? process.cwd()
-  const cacheKey = effectiveCwd
 
-  if (!connectorRegistries.has(cacheKey)) {
+  if (!connectorRegistries.has(effectiveCwd)) {
+    // 使用全局 configDirName
     const configDir = getProjectConfigDir(effectiveCwd, 'connectors')
     const registry = new ConnectorRegistry(configDir)
     await registry.initialize()
-    connectorRegistries.set(cacheKey, registry)
+    connectorRegistries.set(effectiveCwd, registry)
     debugLog('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
   }
 
-  return connectorRegistries.get(cacheKey)!
+  return connectorRegistries.get(effectiveCwd)!
 }
 
 /**
@@ -65,6 +69,7 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
     configureIdempotencyGuard({ dbPath: config.idempotencyDbPath })
   }
 
+  // 使用全局 configDirName
   const registry = await getConnectorRegistry(config?.cwd)
 
   debugLog('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
