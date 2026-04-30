@@ -160,8 +160,6 @@ describe('datastore-mock', () => {
   class MockCostStore {
     private costs: Map<string, CostRecord> = new Map();
 
-    ensureSchema(): void {}
-
     saveCostRecord(params: {
       conversationId: string;
       model: string;
