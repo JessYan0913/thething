@@ -136,17 +136,11 @@ function LanguageSelect() {
 
 export default function GeneralSettings() {
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-6 py-4 border-b">
-        <PaletteIcon className="size-5" />
-        <h1 className="text-lg font-semibold">通用设置</h1>
-      </div>
-
+    <div className="flex flex-col h-full min-h-0">
       {/* Content */}
       <div className="flex-1 overflow-auto">
         <div className="flex justify-center px-6 py-6">
-          <div className="w-full max-w-2xl rounded-lg border mt-6">
+          <div className="w-full max-w-2xl rounded-lg border">
           {/* Appearance */}
           <div className="px-4 py-2 border-b bg-muted/30">
             <span className="text-xs font-medium text-muted-foreground">Appearance</span>

@@ -153,25 +153,25 @@ export default function SkillsSettings() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-2">
-          <WrenchIcon className="size-5" />
-          <h1 className="text-lg font-semibold">技能管理</h1>
-          <Badge variant="secondary" className="text-xs">
-            {skills.length} 个技能
-          </Badge>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Toolbar */}
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索技能..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8"
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={loadSkills} disabled={isLoading}>
-            <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-          <Button size="sm" onClick={() => setIsUploadOpen(true)}>
-            <PlusIcon className="mr-1 size-4" />
-            上传 Skill
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={loadSkills} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button size="sm" onClick={() => setIsUploadOpen(true)}>
+          <PlusIcon className="mr-1 size-4" />
+          上传 Skill
+        </Button>
       </div>
 
       {/* Message toast */}
@@ -185,21 +185,8 @@ export default function SkillsSettings() {
         </div>
       )}
 
-      {/* Search bar */}
-      <div className="px-6 py-3 border-b">
-        <div className="relative">
-          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索技能..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-      </div>
-
       {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...
@@ -405,7 +392,7 @@ function SkillDetail({ skill, onBack }: SkillDetailProps) {
   }, [fileContent, selectedFilePath])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-3 min-w-0">

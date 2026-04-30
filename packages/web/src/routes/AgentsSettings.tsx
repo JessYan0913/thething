@@ -57,7 +57,7 @@ export default function AgentsSettings() {
   if (selectedAgent) {
     const agent = selectedAgent
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-3 min-w-0">
@@ -181,23 +181,19 @@ export default function AgentsSettings() {
 
   // List view
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-2">
-          <BotIcon className="size-5" />
-          <h1 className="text-lg font-semibold">代理管理</h1>
-          <Badge variant="secondary" className="text-xs">
-            {agents.length} 个代理
-          </Badge>
-        </div>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Toolbar */}
+      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
+        <Badge variant="secondary" className="text-xs">
+          {agents.length} 个代理
+        </Badge>
         <Button variant="ghost" size="sm" onClick={loadAgents} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...

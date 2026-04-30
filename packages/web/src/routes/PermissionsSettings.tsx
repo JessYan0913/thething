@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose,
   DialogDescription,
@@ -108,92 +107,88 @@ export default function PermissionsSettings() {
   }, [])
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-2">
-          <ShieldIcon className="size-5" />
-          <h1 className="text-lg font-semibold">权限管理</h1>
-          <Badge variant="secondary" className="text-xs">
-            {rules.length} 条规则
-          </Badge>
-        </div>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Toolbar */}
+      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
+        <Badge variant="secondary" className="text-xs">
+          {rules.length} 条规则
+        </Badge>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={loadRules} disabled={isLoading}>
             <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <PlusIcon className="size-4" />
-                添加规则
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>添加权限规则</DialogTitle>
-                <DialogDescription>
-                  设置工具调用的权限行为。支持 glob 模式匹配。
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">工具名称</label>
-                  <Input
-                    placeholder="例如: Bash, Read, Edit"
-                    value={newToolName}
-                    onChange={(e) => setNewToolName(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">路径模式（可选）</label>
-                  <Input
-                    placeholder="例如: src/**, *.ts"
-                    value={newPattern}
-                    onChange={(e) => setNewPattern(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">行为</label>
-                  <Select value={newBehavior} onValueChange={(v: "allow" | "ask" | "deny") => setNewBehavior(v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="allow">允许（allow）</SelectItem>
-                      <SelectItem value="ask">询问（ask）</SelectItem>
-                      <SelectItem value="deny">拒绝（deny）</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {addError && (
-                  <div className="flex items-center gap-2 text-sm text-destructive">
-                    <AlertCircleIcon className="size-4" />
-                    {addError}
-                  </div>
-                )}
-              </div>
-
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline">取消</Button>
-                </DialogClose>
-                <Button onClick={handleAddRule} disabled={!newToolName.trim()}>
-                  <PlusIcon className="size-4" />
-                  添加
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <PlusIcon className="size-4" />
+            添加规则
+          </Button>
         </div>
       </div>
 
+      {/* Add Rule Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加权限规则</DialogTitle>
+            <DialogDescription>
+              设置工具调用的权限行为。支持 glob 模式匹配。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">工具名称</label>
+              <Input
+                placeholder="例如: Bash, Read, Edit"
+                value={newToolName}
+                onChange={(e) => setNewToolName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">路径模式（可选）</label>
+              <Input
+                placeholder="例如: src/**, *.ts"
+                value={newPattern}
+                onChange={(e) => setNewPattern(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">行为</label>
+              <Select value={newBehavior} onValueChange={(v: "allow" | "ask" | "deny") => setNewBehavior(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="allow">允许（allow）</SelectItem>
+                  <SelectItem value="ask">询问（ask）</SelectItem>
+                  <SelectItem value="deny">拒绝（deny）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {addError && (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <AlertCircleIcon className="size-4" />
+                {addError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button onClick={handleAddRule} disabled={!newToolName.trim()}>
+              <PlusIcon className="size-4" />
+              添加
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...

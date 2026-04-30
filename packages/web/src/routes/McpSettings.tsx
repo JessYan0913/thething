@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, PlugIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon } from 'lucide-react'
+import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -220,16 +220,12 @@ export default function McpSettingsPage() {
   }, [editForm, editServer, loadServers])
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-2">
-          <PlugIcon className="size-5" />
-          <h1 className="text-lg font-semibold">MCP 服务器管理</h1>
-          <Badge variant="secondary" className="text-xs">
-            {servers.filter((s) => s.status === 'connected').length} 已连接 / {servers.length} 总计
-          </Badge>
-        </div>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Toolbar */}
+      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
+        <Badge variant="secondary" className="text-xs">
+          {servers.filter((s) => s.status === 'connected').length} 已连接 / {servers.length} 总计
+        </Badge>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={loadServers} disabled={isLoading}>
             <RefreshCwIcon className={`size-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -280,7 +276,7 @@ export default function McpSettingsPage() {
       </div>
 
       {/* Server list */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground">加载中...</div>
         ) : servers.length === 0 ? (
