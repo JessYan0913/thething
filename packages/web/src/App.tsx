@@ -4,6 +4,7 @@ import ChatHome from './routes/ChatHome'
 import ChatPage from './routes/ChatPage'
 import SettingsLayout from './routes/SettingsLayout'
 import SettingsIndex from './routes/SettingsIndex'
+import GeneralSettings from './routes/GeneralSettings'
 import McpSettings from './routes/McpSettings'
 import SkillsSettings from './routes/SkillsSettings'
 import AgentsSettings from './routes/AgentsSettings'
@@ -23,6 +24,7 @@ export default function App() {
         </Route>
         <Route path="/settings" element={<SettingsLayout />}>
           <Route index element={<SettingsIndex />} />
+          <Route path="general" element={<GeneralSettings />} />
           <Route path="mcp" element={<McpSettings />} />
           <Route path="skills" element={<SkillsSettings />} />
           <Route path="agents" element={<AgentsSettings />} />

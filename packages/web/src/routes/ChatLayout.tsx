@@ -2,6 +2,7 @@ import {
   ConversationSidebar,
   type ConversationItem,
 } from "@/components/ConversationSidebar";
+import { ModeToggle } from "@/components/ModeToggle";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { nanoid } from "nanoid";
 import { useCallback, createContext, useContext, useEffect, useRef, useState } from "react";
@@ -216,8 +217,9 @@ export default function ChatLayout() {
           {/* Main Content - changes per route */}
           <SidebarInset className="flex flex-col flex-1 overflow-hidden">
             {/* Top bar with sidebar toggle */}
-            <div className="flex shrink-0 items-center border-b px-4 py-2">
+            <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
               <SidebarTrigger />
+              <ModeToggle />
             </div>
             {/* Outlet renders child routes */}
             <Outlet />

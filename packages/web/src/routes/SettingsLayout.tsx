@@ -22,10 +22,16 @@ import {
   DatabaseIcon,
   ArrowLeftIcon,
   SettingsIcon,
+  PaletteIcon,
 } from "lucide-react"
 import { Link, Outlet, useLocation } from "react-router-dom"
+import { ModeToggle } from "@/components/ModeToggle"
 
-const menuItems = [
+const generalItems = [
+  { to: "/settings/general", icon: PaletteIcon, label: "通用设置" },
+]
+
+const resourceItems = [
   { to: "/settings/mcp", icon: PlugIcon, label: "MCP 服务器" },
   { to: "/settings/skills", icon: WrenchIcon, label: "技能管理" },
   { to: "/settings/agents", icon: BotIcon, label: "代理管理" },
@@ -57,10 +63,32 @@ export default function SettingsLayout() {
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
+                通用
+              </SidebarGroupLabel>
+              <SidebarMenu>
+                {generalItems.map((item) => (
+                  <SidebarMenuItem key={item.to}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={activePath === item.to || (item.to !== "/settings" && activePath.startsWith(item.to))}
+                      tooltip={item.label}
+                    >
+                      <Link to={item.to}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
                 资源管理
               </SidebarGroupLabel>
               <SidebarMenu>
-                {menuItems.map((item) => (
+                {resourceItems.map((item) => (
                   <SidebarMenuItem key={item.to}>
                     <SidebarMenuButton
                       asChild
@@ -96,8 +124,9 @@ export default function SettingsLayout() {
 
         {/* Settings Content */}
         <SidebarInset className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex shrink-0 items-center border-b px-4 py-2">
+          <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
             <SidebarTrigger />
+            <ModeToggle />
           </div>
           <Outlet />
         </SidebarInset>
