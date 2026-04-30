@@ -7,7 +7,20 @@
 // 3. 状态稳定性（保证 prompt cache）
 // ============================================================
 
-// 从统一配置模块导入常量
+// ============================================================
+// Tool Output 配置来源说明
+// ============================================================
+// 重要：以下配置常量已迁移到 BehaviorConfig.toolOutput
+// - DEFAULT_MAX_RESULT_SIZE_CHARS → behavior.toolOutput.maxResultSizeChars
+// - MAX_TOOL_RESULT_TOKENS → behavior.toolOutput.maxToolResultTokens
+// - MAX_TOOL_RESULTS_PER_MESSAGE_CHARS → behavior.toolOutput.maxToolResultsPerMessageChars
+// - PREVIEW_SIZE_CHARS → behavior.toolOutput.previewSizeChars
+//
+// 调用方应从 runtime.behavior 获取配置
+// 此处保留 defaults 导入作为 fallback 和向后兼容
+// ============================================================
+
+// 从统一配置模块导入常量（作为 fallback）
 import {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULT_TOKENS,
@@ -17,7 +30,7 @@ import {
   BYTES_PER_TOKEN,
 } from '../../config/defaults';
 
-// 重新导出供其他模块使用
+// 重新导出供其他模块使用（向后兼容，后续将标记 deprecated）
 export {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULT_TOKENS,

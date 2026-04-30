@@ -30,10 +30,20 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   const homeDir = resolveHomeDir();
 
   // 加载所有配置（configDirName 使用全局单例，已在 bootstrap 时设置）
+  // 从 layout.filenames 和 behavior.memory 获取配置参数
   const loadOptions: LoadAllOptions = {
     cwd,
     dataDir,
     resourceDirs: layout.resources,
+    permissions: {
+      cwd,
+      filename: layout.filenames.permissions,  // 从 ResolvedLayout 传入
+    },
+    memory: {
+      cwd,
+      maxLines: behavior.memory.mdMaxLines,    // 从 BehaviorConfig 传入
+      maxSizeKb: behavior.memory.mdMaxSizeKb,
+    },
   };
   const loaded = await loadAll(loadOptions);
 

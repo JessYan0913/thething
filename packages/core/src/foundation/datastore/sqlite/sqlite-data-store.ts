@@ -3,6 +3,14 @@
 // ============================================================
 // Provides all sub-stores with a shared SQLite database connection.
 // Note: Memory storage is file-based, not database-based.
+//
+// 重要变更（2026-04）：
+// - DEFAULT_DATA_DIR 已迁移到 ResolvedLayout.dataDir
+// - DEFAULT_DB_FILENAME 已迁移到 ResolvedLayout.filenames.db
+//
+// 调用方应从 runtime.layout 获取配置并传入 SQLiteDataStoreConfig
+// 此处保留 defaults 导入作为 fallback
+// ============================================================
 
 import path from 'path';
 import fs from 'fs';
@@ -24,7 +32,7 @@ import { SQLiteSummaryStore } from './summary-store';
 import { SQLiteCostStore } from './cost-store';
 import { SQLiteTaskStore } from './task-store';
 
-// 从统一配置模块导入常量
+// 从统一配置模块导入常量（作为 fallback）
 import {
   DEFAULT_DATA_DIR,
   DEFAULT_DB_FILENAME,

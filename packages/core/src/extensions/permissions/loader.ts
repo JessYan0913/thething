@@ -9,6 +9,11 @@
  *
  * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
  * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+ *
+ * 重要变更（2026-04）：
+ * - PERMISSIONS_FILENAME 已迁移到 ResolvedLayout.filenames.permissions
+ * - 调用方可通过 filename 参数传入配置
+ * - 未传入时使用 defaults.ts 作为 fallback
  */
 
 import path from 'path';
@@ -26,9 +31,12 @@ const permissionsCache = new LoadingCache<PermissionConfig>();
 
 /**
  * 获取配置文件的绝对路径
+ *
+ * @param dir 目录路径
+ * @param filename 文件名（默认 PERMISSIONS_FILENAME）
  */
-function getPermissionsFilePath(dir: string): string {
-  return path.join(dir, PERMISSIONS_FILENAME);
+function getPermissionsFilePath(dir: string, filename: string = PERMISSIONS_FILENAME): string {
+  return path.join(dir, filename);
 }
 
 /**
@@ -82,6 +90,7 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  * 加载权限配置（支持多层级）
  *
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param filename 配置文件名（来自 ResolvedLayout.filenames.permissions）
  *
  * 加载顺序：
  * 1. 用户全局配置 (~/${configDirName}/permissions/permissions.json)
@@ -91,9 +100,10 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  *
  * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
-export async function loadRules(cwd?: string): Promise<PermissionConfig> {
+export async function loadRules(cwd?: string, filename?: string): Promise<PermissionConfig> {
   const effectiveCwd = cwd ?? process.cwd();
-  const cacheKey = `permissions:${effectiveCwd}`;
+  const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
+  const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}`;
 
   // 检查缓存
   const cached = permissionsCache.get(cacheKey);
@@ -106,7 +116,7 @@ export async function loadRules(cwd?: string): Promise<PermissionConfig> {
   const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
 
   // 加载用户级配置
-  const userConfig = await loadConfigFile(getPermissionsFilePath(userDir));
+  const userConfig = await loadConfigFile(getPermissionsFilePath(userDir, effectiveFilename));
   const userRules = userConfig?.rules ?? [];
 
   // 标记用户级规则的来源
@@ -115,7 +125,7 @@ export async function loadRules(cwd?: string): Promise<PermissionConfig> {
   }
 
   // 加载项目级配置
-  const projectConfig = await loadConfigFile(getPermissionsFilePath(projectDir));
+  const projectConfig = await loadConfigFile(getPermissionsFilePath(projectDir, effectiveFilename));
   const projectRules = projectConfig?.rules ?? [];
 
   // 标记项目级规则的来源
@@ -168,9 +178,10 @@ export function clearPermissionsCache(): void {
  * 应在应用启动时调用
  *
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param filename 配置文件名（来自 ResolvedLayout.filenames.permissions）
  */
-export async function initPermissions(cwd?: string): Promise<void> {
-  await loadRules(cwd);
+export async function initPermissions(cwd?: string, filename?: string): Promise<void> {
+  await loadRules(cwd, filename);
 }
 
 // ============================================================

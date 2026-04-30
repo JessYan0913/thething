@@ -3,6 +3,15 @@
 // ============================================================
 // Core 模块只提供计算函数和默认值，不读取环境变量。
 // 应用层负责注入配置覆盖值。
+//
+// 重要变更（2026-04）：
+// - DEFAULT_CONTEXT_LIMIT 已迁移到 BehaviorConfig.maxContextTokens
+// - DEFAULT_OUTPUT_TOKENS 应通过函数参数传入
+// - AUTOCOMPACT_BUFFER_TOKENS 已迁移到 BehaviorConfig.compaction
+//
+// 调用方应从 runtime.behavior 获取配置并传入函数参数
+// 此处保留 defaults 导入作为 fallback
+// ============================================================
 
 import {
   DEFAULT_CONTEXT_LIMIT,
@@ -10,9 +19,17 @@ import {
   AUTOCOMPACT_BUFFER_TOKENS,
 } from '../../config/defaults';
 
+// 重新导出供其他模块使用（已标记 deprecated）
+/** @deprecated 使用 BehaviorConfig.maxContextTokens 代替 */
 export {
   DEFAULT_CONTEXT_LIMIT,
+};
+/** @deprecated 通过函数参数传入代替 */
+export {
   DEFAULT_OUTPUT_TOKENS,
+};
+/** @deprecated 使用 BehaviorConfig.compaction 相关配置代替 */
+export {
   AUTOCOMPACT_BUFFER_TOKENS,
 };
 

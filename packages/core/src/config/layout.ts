@@ -15,7 +15,12 @@
 
 import path from 'path';
 import os from 'os';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from './defaults';
+import {
+  DEFAULT_PROJECT_CONFIG_DIR_NAME,
+  TOKENIZER_CACHE_DIR_NAME,
+  PERMISSIONS_FILENAME,
+  DEFAULT_DB_FILENAME,
+} from './defaults';
 
 /**
  * 资源目录结构
@@ -119,6 +124,14 @@ export interface ResolvedLayout {
   readonly contextFileNames: readonly string[];
   /** Tokenizer 缓存目录 */
   readonly tokenizerCacheDir: string;
+  // 新增：文件名常量
+  /** 文件名配置 */
+  readonly filenames: {
+    /** Permissions 配置文件名 */
+    readonly permissions: string;
+    /** 数据库文件名 */
+    readonly db: string;
+  };
 }
 
 /**
@@ -158,6 +171,11 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
     resources: Object.freeze({ ...defaultResources, ...config.resources }),
     contextFileNames: Object.freeze(config.contextFileNames ?? ['THING.md', 'CONTEXT.md']),
     tokenizerCacheDir: path.join(os.homedir(), '.cache', 'thething', TOKENIZER_CACHE_DIR_NAME),
+    // 新增：文件名配置
+    filenames: Object.freeze({
+      permissions: PERMISSIONS_FILENAME,
+      db: DEFAULT_DB_FILENAME,
+    }),
   });
 }
 

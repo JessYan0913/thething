@@ -4,6 +4,11 @@
 //
 // 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
 // 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+//
+// 重要变更（2026-04）：
+// - PERMISSIONS_FILENAME 已迁移到 ResolvedLayout.filenames.permissions
+// - 调用方可通过 options.filename 传入自定义文件名
+// - 未传入时使用 defaults.ts 作为 fallback
 
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
@@ -32,6 +37,8 @@ const permissionsCache = new LoadingCache<PermissionConfig>();
 
 export interface LoadPermissionsOptions {
   cwd?: string;
+  /** Permissions 配置文件名（来自 ResolvedLayout.filenames.permissions） */
+  filename?: string;
 }
 
 // ============================================================
@@ -43,14 +50,16 @@ export interface LoadPermissionsOptions {
  *
  * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  *
- * @param options 加载选项
+ * @param options 加载选项（filename 可从 ResolvedLayout.filenames.permissions 传入）
  * @returns PermissionRule 列表
  */
 export async function loadPermissions(options?: LoadPermissionsOptions): Promise<PermissionRule[]> {
   const cwd = options?.cwd ?? process.cwd();
+  // 使用传入的 filename，否则使用 fallback
+  const filename = options?.filename ?? PERMISSIONS_FILENAME;
 
   // 检查缓存
-  const cacheKey = `permissions:${cwd}`;
+  const cacheKey = `permissions:${cwd}:${filename}`;
   const cached = permissionsCache.get(cacheKey);
   if (cached) {
     return cached.rules;
@@ -61,10 +70,10 @@ export async function loadPermissions(options?: LoadPermissionsOptions): Promise
   const projectDir = getProjectConfigDir(cwd, 'permissions');
 
   // 加载用户级配置
-  const userRules = await loadPermissionsFile(userDir, 'user');
+  const userRules = await loadPermissionsFile(userDir, 'user', filename);
 
   // 加载项目级配置
-  const projectRules = await loadPermissionsFile(projectDir, 'project');
+  const projectRules = await loadPermissionsFile(projectDir, 'project', filename);
 
   // 合并（project > user）
   const allRules: RuleWithSource[] = [...userRules, ...projectRules];
@@ -98,13 +107,15 @@ export async function loadPermissions(options?: LoadPermissionsOptions): Promise
  *
  * @param dir 目录路径
  * @param source 来源
+ * @param filename 文件名（默认 'permissions.json'）
  * @returns PermissionRule 列表（带 source）
  */
 async function loadPermissionsFile(
   dir: string,
   source: 'user' | 'project',
+  filename: string = PERMISSIONS_FILENAME,
 ): Promise<RuleWithSource[]> {
-  const filePath = `${dir}/${PERMISSIONS_FILENAME}`;
+  const filePath = `${dir}/${filename}`;
 
   try {
     const result = await parseJsonFile(filePath, PermissionConfigSchema);

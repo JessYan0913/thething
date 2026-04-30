@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { DataStore } from "../../foundation/datastore/types";
+import type { CompactionConfig } from "../../config/behavior";
 import { COMPACT_TOKEN_THRESHOLD, type CompactionResult } from "./types";
 import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
@@ -9,11 +10,25 @@ import { getMessagesAfterCompactBoundary } from "./boundary";
 import { tryPtlDegradation } from "./ptl-degradation";
 import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
 
+/**
+ * Compaction 函数选项
+ */
+export interface CompactOptions {
+  /** Compaction 配置（来自 BehaviorConfig.compaction） */
+  compactionConfig?: CompactionConfig;
+  /** 压缩阈值（来自 BehaviorConfig.compactionThreshold） */
+  compactionThreshold?: number;
+}
+
 export async function compactMessagesIfNeeded(
   messages: UIMessage[],
   conversationId: string,
   dataStore: DataStore,
+  options?: CompactOptions,
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  // 使用传入的阈值，否则使用 fallback
+  const threshold = options?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
+
   // 检查是否需要自动压缩
   const shouldAutoCompact = await autoCompactIfNeeded(messages, conversationId);
   if (!shouldAutoCompact) {
@@ -22,14 +37,14 @@ export async function compactMessagesIfNeeded(
 
   const tokenCount = await estimateMessagesTokens(messages);
 
-  if (tokenCount < COMPACT_TOKEN_THRESHOLD) {
+  if (tokenCount < threshold) {
     return { messages, executed: false, tokensFreed: 0 };
   }
 
   const messagesAfterBoundary = getMessagesAfterCompactBoundary(messages);
   const tokensAfterBoundary = await estimateMessagesTokens(messagesAfterBoundary);
 
-  if (tokensAfterBoundary < COMPACT_TOKEN_THRESHOLD * 0.5) {
+  if (tokensAfterBoundary < threshold * 0.5) {
     const summaryMessage = messages.find(
       (m) =>
         m.role === "system" &&
@@ -54,7 +69,7 @@ export async function compactMessagesIfNeeded(
     const sessionMemoryResult = await trySessionMemoryCompact(
       messagesAfterBoundary,
       conversationId,
-      {},
+      options?.compactionConfig?.sessionMemory ?? {},
       dataStore,
     );
 
@@ -82,7 +97,7 @@ export async function compactMessagesIfNeeded(
       `[Compaction] MicroCompact: freed ${microResult.tokensFreed} tokens, remaining: ${tokensAfterMicro}`,
     );
 
-    if (tokensAfterMicro < COMPACT_TOKEN_THRESHOLD) {
+    if (tokensAfterMicro < threshold) {
       recordCompactSuccess(conversationId);
       return {
         messages: microResult.messages,

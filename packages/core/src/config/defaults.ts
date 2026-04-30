@@ -3,10 +3,26 @@
 // ============================================================
 // 参考 Claude Code 的配置架构：默认值集中定义，便于维护和测试
 //
-// 重要：packages/core 中所有模块的配置常量都应从此文件导入
-// 不允许在其他模块中重复定义相同的常量
+// ============================================================
+// 重要变更（2026-04）：职责重构
+// ============================================================
+// 本文件现在仅作为 buildBehaviorConfig() 和 resolveLayout() 的默认值来源。
 //
-// 设计原则：
+// 业务模块不应直接从此文件导入常量，应通过以下途径获取配置：
+// - BehaviorConfig → runtime.behavior（如 maxBudgetUsdPerSession、compaction 等）
+// - ResolvedLayout → runtime.layout（如 configDirName、filenames 等）
+//
+// 仅以下常量可保留直接导入（纯技术常量，无业务决策）：
+// - BYTES_PER_TOKEN（Token 计算常量）
+// - TOKENIZER_CACHE_DIR_NAME（已通过 layout 传递）
+// - DEFAULT_PROJECT_CONFIG_DIR_NAME（foundation 层全局单例 fallback）
+//
+// 导出策略：
+// - 大部分常量已标记 @deprecated，建议使用配置系统代替
+// - 仅被 behavior.ts/layout.ts 内部使用的常量可不导出
+// ============================================================
+
+// 设计原则（保留原有说明）：
 // - Core 模块只定义业务逻辑默认值，不定义环境变量名
 // - 环境变量名由应用层（CLI/Server）定义
 // - Core 模块通过参数接收配置，不直接读取 process.env

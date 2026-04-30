@@ -7,7 +7,7 @@ import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
 import type { ContentReplacementState, ToolOutputOverrides } from '../budget/tool-output-manager';
 import type { DataStore } from '../../foundation/datastore/types';
-import type { ModelSpec } from '../../config/behavior';
+import type { ModelSpec, CompactionConfig } from '../../config/behavior';
 
 /**
  * Session 状态选项
@@ -33,6 +33,8 @@ export interface SessionStateOptions {
   availableModels?: ModelSpec[];
   /** 自动降级成本阈值（来自 BehaviorConfig） */
   autoDowngradeCostThreshold?: number;
+  /** Compaction 配置（来自 BehaviorConfig.compaction） */
+  compactionConfig?: CompactionConfig;
 }
 
 /**

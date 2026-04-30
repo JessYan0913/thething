@@ -1,5 +1,7 @@
 import type { CostStore } from '../../foundation/datastore/types';
-import { DEFAULT_MAX_BUDGET_USD } from '../../config/defaults';
+// 注意：DEFAULT_MAX_BUDGET_USD 已迁移到 BehaviorConfig.maxBudgetUsdPerSession
+// 此处使用内置默认值作为 fallback，调用方应从 behavior 获取并传入
+const DEFAULT_MAX_BUDGET_USD_FALLBACK = 5.0;
 import { getModelPricing } from '../../foundation/model/pricing';
 
 export interface CostDelta {
@@ -31,7 +33,9 @@ export class CostTracker {
   constructor(conversationId: string, costStore: CostStore, options?: CostTrackerOptions) {
     this._conversationId = conversationId;
     this._model = options?.model ?? 'unknown';
-    this._maxBudgetUsd = options?.maxBudgetUsd ?? DEFAULT_MAX_BUDGET_USD;
+    // 注意：maxBudgetUsd 应从 BehaviorConfig.maxBudgetUsdPerSession 获取并传入
+    // 此处 fallback 仅用于未传入配置时的兜底
+    this._maxBudgetUsd = options?.maxBudgetUsd ?? DEFAULT_MAX_BUDGET_USD_FALLBACK;
     this._costStore = costStore;
   }
 

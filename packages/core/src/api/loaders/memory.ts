@@ -4,6 +4,12 @@
 //
 // 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
 // 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+//
+// 重要变更（2026-04）：
+// - MEMORY_MD_MAX_LINES 已迁移到 BehaviorConfig.memory.mdMaxLines
+// - MEMORY_MD_MAX_SIZE_KB 已迁移到 BehaviorConfig.memory.mdMaxSizeKb
+// - 调用方可通过 options.maxLines/maxSizeKb 传入配置
+// - 未传入时使用 defaults.ts 作为 fallback
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -35,6 +41,10 @@ const memoryCache = new LoadingCache<MemoryEntry[]>();
 
 export interface LoadMemoryOptions {
   cwd?: string;
+  /** MEMORY.md 最大行数（来自 BehaviorConfig.memory.mdMaxLines） */
+  maxLines?: number;
+  /** MEMORY.md 最大大小 KB（来自 BehaviorConfig.memory.mdMaxSizeKb） */
+  maxSizeKb?: number;
 }
 
 // ============================================================
@@ -46,14 +56,17 @@ export interface LoadMemoryOptions {
  *
  * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  *
- * @param options 加载选项
+ * @param options 加载选项（maxLines/maxSizeKb 可从 BehaviorConfig.memory 传入）
  * @returns MemoryEntry 列表
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
   const cwd = options?.cwd ?? process.cwd();
+  // 使用传入的限制，否则使用 fallback
+  const maxLines = options?.maxLines ?? MEMORY_MD_MAX_LINES;
+  const maxSizeKb = options?.maxSizeKb ?? MEMORY_MD_MAX_SIZE_KB;
 
-  // 检查缓存
-  const cacheKey = `memory:${cwd}`;
+  // 检查缓存（包含限制参数）
+  const cacheKey = `memory:${cwd}:${maxLines}:${maxSizeKb}`;
   const cached = memoryCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -72,7 +85,7 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
     const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
 
     // 截断超长内容
-    const truncatedContent = truncateContent(content, lines, sizeKb);
+    const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
 
     entries.push({
       content: truncatedContent,
@@ -97,7 +110,7 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
         const lines = content.split('\n').length;
         const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
 
-        const truncatedContent = truncateContent(content, lines, sizeKb);
+        const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
 
         entries.push({
           content: truncatedContent,
@@ -121,20 +134,32 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
 
 /**
  * 截断超长内容
+ *
+ * @param content 原始内容
+ * @param lines 当前行数
+ * @param sizeKb 当前大小 KB
+ * @param maxLines 最大行数限制
+ * @param maxSizeKb 最大大小限制 KB
  */
-function truncateContent(content: string, lines: number, sizeKb: number): string {
+function truncateContent(
+  content: string,
+  lines: number,
+  sizeKb: number,
+  maxLines: number,
+  maxSizeKb: number,
+): string {
   // 检查行数
-  if (lines > MEMORY_MD_MAX_LINES) {
+  if (lines > maxLines) {
     const contentLines = content.split('\n');
-    content = contentLines.slice(0, MEMORY_MD_MAX_LINES).join('\n');
-    console.warn(`[MemoryLoader] Truncated ${lines} lines to ${MEMORY_MD_MAX_LINES}`);
+    content = contentLines.slice(0, maxLines).join('\n');
+    console.warn(`[MemoryLoader] Truncated ${lines} lines to ${maxLines}`);
   }
 
   // 检查大小
-  if (sizeKb > MEMORY_MD_MAX_SIZE_KB) {
-    const maxBytes = MEMORY_MD_MAX_SIZE_KB * 1024;
+  if (sizeKb > maxSizeKb) {
+    const maxBytes = maxSizeKb * 1024;
     content = content.slice(0, maxBytes);
-    console.warn(`[MemoryLoader] Truncated ${sizeKb}KB to ${MEMORY_MD_MAX_SIZE_KB}KB`);
+    console.warn(`[MemoryLoader] Truncated ${sizeKb}KB to ${maxSizeKb}KB`);
   }
 
   return content;

@@ -199,8 +199,8 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 5. 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
   initGlobalTaskStoreFromDataStore(dataStore);
 
-  // 6. 初始化权限系统（使用全局 configDirName）
-  await initPermissions(layout.resourceRoot).catch((err) => {
+  // 6. 初始化权限系统（使用全局 configDirName，传入 filename）
+  await initPermissions(layout.resourceRoot, layout.filenames.permissions).catch((err) => {
     console.error('[Bootstrap] Permissions init failed:', err);
   });
 

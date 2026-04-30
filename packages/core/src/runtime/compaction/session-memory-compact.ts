@@ -1,5 +1,14 @@
 import type { UIMessage } from "ai";
 import type { DataStore } from "../../foundation/datastore/types";
+
+// ============================================================
+// Compaction 配置来源说明
+// ============================================================
+// 重要：DEFAULT_SESSION_MEMORY_CONFIG 已迁移到 BehaviorConfig.compaction.sessionMemory
+// 调用方应从 runtime.behavior 获取配置并传入函数参数
+// 此处保留 defaults 导入作为 fallback
+// ============================================================
+
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
 } from "../../config/defaults";

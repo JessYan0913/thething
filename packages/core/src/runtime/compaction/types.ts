@@ -1,6 +1,18 @@
 import type { UIMessage } from "ai";
 
-// 从统一配置模块导入常量
+// ============================================================
+// Compaction 配置来源说明
+// ============================================================
+// 重要：以下配置常量已迁移到 BehaviorConfig.compaction
+// - DEFAULT_SESSION_MEMORY_CONFIG → behavior.compaction.sessionMemory
+// - DEFAULT_MICRO_COMPACT_CONFIG_RAW → behavior.compaction.micro
+// - DEFAULT_POST_COMPACT_CONFIG → behavior.compaction.postCompact
+//
+// 调用方应从 runtime.behavior 获取配置并传入 compaction 函数参数
+// 此处保留 defaults 导入作为 fallback 和向后兼容
+// ============================================================
+
+// 从统一配置模块导入常量（作为 fallback）
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
   DEFAULT_MICRO_COMPACT_CONFIG_RAW,

@@ -3,9 +3,10 @@
 // ============================================================
 
 import type { UIMessage } from 'ai';
+import type { CompactionConfig } from '../../config/behavior';
 import { DenialTracker } from '../agent-control/denial-tracking';
 import { ModelSwapper } from '../agent-control/model-switching';
-import { compactMessagesIfNeeded } from '../compaction';
+import { compactMessagesIfNeeded, type CompactOptions } from '../compaction';
 import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
 import {
@@ -39,6 +40,7 @@ export function createSessionState(
     dataStore,
     availableModels = DEFAULT_MODEL_SPECS,
     autoDowngradeCostThreshold = 80,
+    compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
   } = options;
 
   // 应用工具输出配置覆盖（如果有）
@@ -64,6 +66,12 @@ export function createSessionState(
     notifyOnSwitch: true,
   });
 
+  // 构建压缩选项（从 BehaviorConfig 传入）
+  const compactOptions: CompactOptions = {
+    compactionConfig,
+    compactionThreshold: compactThreshold,
+  };
+
   // 使用普通对象，简化状态管理
   const state: SessionState = {
     conversationId,
@@ -80,7 +88,7 @@ export function createSessionState(
     contentReplacementState: createContentReplacementState(),
 
     async compact(messages: UIMessage[]): Promise<CompactionResult> {
-      const result = await compactMessagesIfNeeded(messages, conversationId, dataStore);
+      const result = await compactMessagesIfNeeded(messages, conversationId, dataStore, compactOptions);
       const compactionResult: CompactionResult = {
         messages: result.messages,
         executed: result.executed,

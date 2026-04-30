@@ -1,6 +1,17 @@
 // ============================================================
 // Paths - 路径计算函数
 // ============================================================
+//
+// 重要变更（2026-04）：
+// - DEFAULT_PROJECT_CONFIG_DIR_NAME 已迁移到 ResolvedLayout.configDirName
+// - TOKENIZER_CACHE_DIR_NAME 已迁移到 ResolvedLayout.tokenizerCacheDir
+//
+// 设计模式：
+// - compute*() 纯函数版本：接受 configDirName 参数，不依赖全局状态
+// - get*() 便捷版本：使用全局单例 getResolvedConfigDirName()
+//
+// 调用方应从 runtime.layout 获取配置，或使用纯函数版本传入参数
+// ============================================================
 
 import path from 'path';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/defaults';
