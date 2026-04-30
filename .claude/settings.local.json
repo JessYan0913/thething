@@ -52,7 +52,9 @@
       "Bash(cat)",
       "Bash(rm test-dir.ts)",
       "Bash(rm test-import-chain.ts)",
-      "Bash(rm test-fix.ts)"
+      "Bash(rm test-fix.ts)",
+      "Bash(npx --package typescript tsc --noEmit --project packages/server/tsconfig.json)",
+      "Bash(git status *)"
     ]
   }
 }

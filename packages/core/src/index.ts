@@ -287,6 +287,9 @@ export { removeRule, saveRule, loadRules } from './extensions/permissions';
 export {
   extractMemoriesInBackground,
   extractMemoriesFromConversation,
+  scanMemoryFiles,
+  loadEntrypoint,
+  readMemoryContent,
 } from './extensions/memory';
 
 // Title generation

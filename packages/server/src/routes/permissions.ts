@@ -4,9 +4,15 @@
 
 import { Hono } from 'hono'
 import { removeRule, saveRule, loadRules, type PermissionBehavior } from '@the-thing/core'
-import { getServerProjectDir } from '../config'
+import { getServerRuntime } from '../runtime'
 
 const app = new Hono()
+
+/** 从 runtime 获取 resourceRoot */
+async function getResourceRoot(): Promise<string> {
+  const runtime = await getServerRuntime()
+  return runtime.layout.resourceRoot
+}
 
 app.post('/', async (c) => {
   try {
@@ -17,12 +23,12 @@ app.post('/', async (c) => {
       return c.json({ error: 'Missing toolName' }, 400)
     }
 
-    const projectDir = getServerProjectDir()
+    const resourceRoot = await getResourceRoot()
     const rule = await saveRule({
       toolName,
       pattern,
       behavior: behavior || 'allow',
-    }, projectDir)
+    }, resourceRoot)
 
     return c.json({ success: true, rule })
   } catch (error) {
@@ -39,8 +45,8 @@ app.delete('/', async (c) => {
       return c.json({ error: 'Missing id' }, 400)
     }
 
-    const projectDir = getServerProjectDir()
-    await removeRule(id, projectDir)
+    const resourceRoot = await getResourceRoot()
+    await removeRule(id, resourceRoot)
     return c.json({ success: true })
   } catch (error) {
     console.error('[Permissions API] Error:', error)
@@ -50,8 +56,8 @@ app.delete('/', async (c) => {
 
 app.get('/', async (c) => {
   try {
-    const projectDir = getServerProjectDir()
-    const config = await loadRules(projectDir)
+    const resourceRoot = await getResourceRoot()
+    const config = await loadRules(resourceRoot)
     return c.json({ rules: config.rules })
   } catch (error) {
     console.error('[Permissions API] Error:', error)
