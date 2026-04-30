@@ -23,27 +23,28 @@ import {
   PaletteIcon,
 } from "lucide-react"
 import { Link, Outlet, useLocation } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { ModeToggle } from "@/components/ModeToggle"
-import { Badge } from "@/components/ui/badge"
-
-const generalItems = [
-  { to: "/settings/general", icon: PaletteIcon, label: "通用设置" },
-]
-
-const resourceItems = [
-  { to: "/settings/mcp", icon: PlugIcon, label: "MCP 服务器" },
-  { to: "/settings/skills", icon: WrenchIcon, label: "技能管理" },
-  { to: "/settings/agents", icon: BotIcon, label: "代理管理" },
-  { to: "/settings/connectors", icon: LinkIcon, label: "连接器" },
-  { to: "/settings/permissions", icon: ShieldIcon, label: "权限管理" },
-  { to: "/settings/memory", icon: DatabaseIcon, label: "记忆管理" },
-]
-
-const allItems = [...generalItems, ...resourceItems]
 
 export default function SettingsLayout() {
+  const { t } = useTranslation('settings')
   const location = useLocation()
   const activePath = location.pathname
+
+  const generalItems = [
+    { to: "/settings/general", icon: PaletteIcon, label: t('sidebar.generalSettings') },
+  ]
+
+  const resourceItems = [
+    { to: "/settings/mcp", icon: PlugIcon, label: t('sidebar.mcpServers') },
+    { to: "/settings/skills", icon: WrenchIcon, label: t('sidebar.skills') },
+    { to: "/settings/agents", icon: BotIcon, label: t('sidebar.agents') },
+    { to: "/settings/connectors", icon: LinkIcon, label: t('sidebar.connectors') },
+    { to: "/settings/permissions", icon: ShieldIcon, label: t('sidebar.permissions') },
+    { to: "/settings/memory", icon: DatabaseIcon, label: t('sidebar.memory') },
+  ]
+
+  const allItems = [...generalItems, ...resourceItems]
   const activeItem = allItems.find(
     (item) => activePath === item.to || (item.to !== "/settings" && activePath.startsWith(item.to))
   )
@@ -56,7 +57,7 @@ export default function SettingsLayout() {
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
-                通用
+                {t('sidebar.general')}
               </SidebarGroupLabel>
               <SidebarMenu>
                 {generalItems.map((item) => (
@@ -78,7 +79,7 @@ export default function SettingsLayout() {
 
             <SidebarGroup>
               <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
-                资源管理
+                {t('sidebar.resourceManagement')}
               </SidebarGroupLabel>
               <SidebarMenu>
                 {resourceItems.map((item) => (
@@ -102,10 +103,10 @@ export default function SettingsLayout() {
           <SidebarFooter>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="返回聊天">
+                <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')}>
                   <Link to="/chat">
                     <ArrowLeftIcon />
-                    <span>返回聊天</span>
+                    <span>{t('sidebar.backToChat')}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

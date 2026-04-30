@@ -1,0 +1,36 @@
+{
+  "sidebar": {
+    "general": "General",
+    "generalSettings": "General Settings",
+    "resourceManagement": "Resource Management",
+    "mcpServers": "MCP Servers",
+    "skills": "Skills",
+    "agents": "Agents",
+    "connectors": "Connectors",
+    "permissions": "Permissions",
+    "memory": "Memory",
+    "backToChat": "Back to Chat",
+    "systemSettings": "System Settings"
+  },
+  "general": {
+    "appearance": "Appearance",
+    "language": "Language",
+    "theme": {
+      "title": "Theme",
+      "description": "Select the theme for the app interface",
+      "toggle": "Toggle theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "languageSection": {
+      "title": "Language",
+      "description": "Select the display language for the app",
+      "options": {
+        "zhCN": "简体中文",
+        "en": "English",
+        "ja": "日本語"
+      }
+    }
+  }
+}

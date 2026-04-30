@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ChatLayout from './routes/ChatLayout'
 import ChatHome from './routes/ChatHome'
 import ChatPage from './routes/ChatPage'
@@ -14,6 +16,13 @@ import MemorySettings from './routes/MemorySettings'
 import ConnectorAdmin from './routes/ConnectorAdmin'
 
 export default function App() {
+  const { i18n } = useTranslation()
+
+  // Update HTML lang attribute when language changes
+  useEffect(() => {
+    document.documentElement.lang = i18n.language
+  }, [i18n.language])
+
   return (
     <BrowserRouter>
       <Routes>

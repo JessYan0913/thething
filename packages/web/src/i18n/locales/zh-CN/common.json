@@ -1,0 +1,25 @@
+{
+  "buttons": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirm": "确认",
+    "add": "添加",
+    "edit": "编辑",
+    "refresh": "刷新",
+    "back": "返回",
+    "close": "关闭"
+  },
+  "status": {
+    "loading": "加载中...",
+    "saving": "保存中...",
+    "deleting": "删除中...",
+    "success": "成功",
+    "error": "错误",
+    "connected": "已连接",
+    "disconnected": "未连接"
+  },
+  "badges": {
+    "notAvailable": "未开放"
+  }
+}

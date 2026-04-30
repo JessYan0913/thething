@@ -31,6 +31,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 // ============================================================================
 // Types
@@ -66,6 +67,8 @@ export const ConversationSidebar = ({
   onRenameConversation,
   isLoading = false,
 }: ConversationSidebarProps) => {
+  const { t } = useTranslation();
+
   return (
     <Sidebar collapsible="icon">
       {/* Header with New Conversation button */}
@@ -74,10 +77,10 @@ export const ConversationSidebar = ({
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={onCreateConversation}
-              tooltip="New conversation"
+              tooltip={t('chat:conversation.new')}
             >
               <PlusIcon />
-              <span>New conversation</span>
+              <span>{t('chat:conversation.new')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -89,12 +92,12 @@ export const ConversationSidebar = ({
           <SidebarGroupContent>
             {isLoading ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                Loading...
+                {t('chat:conversation.loading')}
               </div>
             ) : conversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-xs px-2">
                 <MessageSquareIcon className="size-6 opacity-50" />
-                <span>No conversations yet</span>
+                <span>{t('chat:conversation.noConversations')}</span>
               </div>
             ) : (
               <SidebarMenu>
@@ -118,10 +121,10 @@ export const ConversationSidebar = ({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="系统设置">
+            <SidebarMenuButton asChild tooltip={t('settings:sidebar.systemSettings')}>
               <Link to="/settings">
                 <SettingsIcon />
-                <span>系统设置</span>
+                <span>{t('settings:sidebar.systemSettings')}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -153,6 +156,7 @@ const ConversationItem = ({
   onDelete,
   onRename,
 }: ConversationItemProps) => {
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(conversation.title);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -253,7 +257,7 @@ const ConversationItem = ({
             onKeyDown={handleDeleteKeyDown}
             tabIndex={0}
           >
-            <span className="truncate text-destructive text-xs">Delete?</span>
+            <span className="truncate text-destructive text-xs">{t('chat:conversation.deleteConfirm')}</span>
             <div className="flex items-center gap-0.5">
               <Button
                 className="size-5 rounded-sm"
@@ -288,7 +292,7 @@ const ConversationItem = ({
             className="right-7"
             onClick={handleStartEdit}
             showOnHover
-            title="Rename"
+            title={t('chat:conversation.rename')}
           >
             <PencilIcon />
           </SidebarMenuAction>
@@ -296,7 +300,7 @@ const ConversationItem = ({
             className="hover:bg-destructive/10 hover:text-destructive"
             onClick={handleStartDelete}
             showOnHover
-            title="Delete"
+            title={t('chat:conversation.delete')}
           >
             <TrashIcon />
           </SidebarMenuAction>

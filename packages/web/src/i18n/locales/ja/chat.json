@@ -1,0 +1,35 @@
+{
+  "emptyState": {
+    "homeTitle": "新しい会話を開始",
+    "homeDescription": "サイドバーの + ボタンをクリックして開始。"
+  },
+  "conversation": {
+    "new": "新規会話",
+    "loading": "読み込み中...",
+    "noConversations": "会話がありません",
+    "rename": "名前変更",
+    "delete": "削除",
+    "deleteConfirm": "削除？"
+  },
+  "input": {
+    "placeholder": "AIアシスタントにメッセージ..."
+  },
+  "approval": {
+    "pending": "承認待ち",
+    "alwaysAllow": "このタイプの操作を常に許可",
+    "approveSelected": "選択を承認",
+    "denyAll": "すべて拒否",
+    "denied": "拒否済み",
+    "deniedByUser": "ユーザーにより拒否"
+  },
+  "tools": {
+    "waitingApproval": "承認待ち:",
+    "bash": "コマンド実行",
+    "writeFile": "ファイル書き込み",
+    "editFile": "ファイル編集",
+    "readFile": "ファイル読み込み",
+    "glob": "ファイル検索",
+    "grep": "内容検索",
+    "webSearch": "Web検索"
+  }
+}

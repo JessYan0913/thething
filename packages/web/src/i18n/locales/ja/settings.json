@@ -1,0 +1,36 @@
+{
+  "sidebar": {
+    "general": "一般",
+    "generalSettings": "一般設定",
+    "resourceManagement": "リソース管理",
+    "mcpServers": "MCPサーバー",
+    "skills": "スキル管理",
+    "agents": "エージェント管理",
+    "connectors": "コネクター",
+    "permissions": "権限管理",
+    "memory": "メモリ管理",
+    "backToChat": "チャットに戻る",
+    "systemSettings": "システム設定"
+  },
+  "general": {
+    "appearance": "外観",
+    "language": "言語",
+    "theme": {
+      "title": "テーマ",
+      "description": "アプリのテーマを選択",
+      "toggle": "テーマ切替",
+      "light": "ライト",
+      "dark": "ダーク",
+      "system": "システム設定"
+    },
+    "languageSection": {
+      "title": "言語",
+      "description": "アプリの表示言語を選択",
+      "options": {
+        "zhCN": "简体中文",
+        "en": "English",
+        "ja": "日本語"
+      }
+    }
+  }
+}

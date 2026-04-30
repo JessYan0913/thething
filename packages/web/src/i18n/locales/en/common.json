@@ -1,0 +1,25 @@
+{
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "add": "Add",
+    "edit": "Edit",
+    "refresh": "Refresh",
+    "back": "Back",
+    "close": "Close"
+  },
+  "status": {
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "deleting": "Deleting...",
+    "success": "Success",
+    "error": "Error",
+    "connected": "Connected",
+    "disconnected": "Disconnected"
+  },
+  "badges": {
+    "notAvailable": "Not Available"
+  }
+}

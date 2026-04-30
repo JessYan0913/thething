@@ -1,12 +1,15 @@
-import { ConversationEmptyState } from "@/components/ai-elements/conversation";
+import { useTranslation } from "react-i18next"
+import { ConversationEmptyState } from "@/components/ai-elements/conversation"
 
 export default function ChatHome() {
+  const { t } = useTranslation('chat')
+
   return (
     <div className="flex flex-1 items-center justify-center">
       <ConversationEmptyState
-        title="Start a new conversation"
-        description="Click the + button in the sidebar to begin."
+        title={t('emptyState.homeTitle')}
+        description={t('emptyState.homeDescription')}
       />
     </div>
-  );
+  )
 }

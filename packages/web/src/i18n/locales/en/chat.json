@@ -1,0 +1,35 @@
+{
+  "emptyState": {
+    "homeTitle": "Start a new conversation",
+    "homeDescription": "Click the + button in the sidebar to begin."
+  },
+  "conversation": {
+    "new": "New conversation",
+    "loading": "Loading...",
+    "noConversations": "No conversations yet",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteConfirm": "Delete?"
+  },
+  "input": {
+    "placeholder": "Message AI Assistant..."
+  },
+  "approval": {
+    "pending": "Pending approval",
+    "alwaysAllow": "Always allow this type of action",
+    "approveSelected": "Approve selected",
+    "denyAll": "Deny all",
+    "denied": "Denied",
+    "deniedByUser": "Action denied by user"
+  },
+  "tools": {
+    "waitingApproval": "Waiting for approval:",
+    "bash": "Execute command",
+    "writeFile": "Write file",
+    "editFile": "Edit file",
+    "readFile": "Read file",
+    "glob": "Search files",
+    "grep": "Search content",
+    "webSearch": "Web search"
+  }
+}

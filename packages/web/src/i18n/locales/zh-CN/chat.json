@@ -1,0 +1,35 @@
+{
+  "emptyState": {
+    "homeTitle": "开始新对话",
+    "homeDescription": "点击侧边栏的 + 按钮开始。"
+  },
+  "conversation": {
+    "new": "新建对话",
+    "loading": "加载中...",
+    "noConversations": "暂无对话",
+    "rename": "重命名",
+    "delete": "删除",
+    "deleteConfirm": "删除？"
+  },
+  "input": {
+    "placeholder": "向 AI 助手发送消息..."
+  },
+  "approval": {
+    "pending": "待审批操作",
+    "alwaysAllow": "以后自动允许此类操作",
+    "approveSelected": "执行选中",
+    "denyAll": "全部拒绝",
+    "denied": "已拒绝",
+    "deniedByUser": "操作已被用户拒绝"
+  },
+  "tools": {
+    "waitingApproval": "等待审批:",
+    "bash": "执行命令",
+    "writeFile": "写入文件",
+    "editFile": "编辑文件",
+    "readFile": "读取文件",
+    "glob": "搜索文件",
+    "grep": "搜索内容",
+    "webSearch": "网络搜索"
+  }
+}
