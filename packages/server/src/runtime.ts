@@ -17,6 +17,7 @@ import {
   type AppContext,
 } from '@the-thing/core'
 import { getServerTokenizerConfig } from './config'
+import { startFeishuLongConnection, stopFeishuLongConnection } from './feishu-long-connection'
 
 let runtimeInstance: CoreRuntime | null = null
 let contextInstance: AppContext | null = null
@@ -72,6 +73,9 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
       enableInbound: true,
     })
     console.log('[Server Runtime] Connector Gateway inbound initialized')
+
+    // 启动飞书长连接（WebSocket 模式，无需公网域名）
+    await startFeishuLongConnection()
   } else {
     console.log('[Server Runtime] No model API key configured, skipping Connector Gateway inbound')
   }
@@ -126,6 +130,7 @@ export async function reloadServerContext(): Promise<AppContext> {
  */
 export async function disposeServerRuntime(): Promise<void> {
   if (runtimeInstance) {
+    stopFeishuLongConnection()
     await shutdownConnectorGateway()
     await runtimeInstance.dispose()
     runtimeInstance = null

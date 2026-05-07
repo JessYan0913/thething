@@ -310,8 +310,9 @@ export {
   getWebhookConfigByHandler,
   buildWechatWebhookConfig,
   buildFeishuWebhookConfig,
+  getIdempotencyGuard,
 } from './extensions/connector';
-export type { ToolCallRequest } from './extensions/connector/types';
+export type { ToolCallRequest, InboundMessageEvent } from './extensions/connector/types';
 
 // Permission types
 export type { PermissionRule, PermissionBehavior } from './extensions/permissions/types';

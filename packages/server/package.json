@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
+    "@larksuiteoapi/node-sdk": "^1.62.1",
     "@the-thing/core": "workspace:*",
     "ai": "^6.0.149",
     "dotenv": "^16.4.5",
