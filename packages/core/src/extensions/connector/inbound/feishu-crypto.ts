@@ -174,33 +174,49 @@ export class FeishuWebhookHandler {
     const nonce = req.headers['x-lark-request-nonce'] || req.query.nonce || ''
     const signature = req.headers['x-lark-signature'] || req.query.signature || ''
 
-    // 1. 验签
-    const verified = this.crypto.verifySignature({
-      timestamp,
-      nonce,
-      signature,
-      body: req.body,
-      encryptKey: config.encryptKey,
-    })
-
-    if (!verified) {
-      console.warn('[FeishuWebhook] Signature verification failed')
-      return { success: false, error: 'SIGNATURE_INVALID' }
-    }
-
-    // 2. 解析请求体
+    // 1. 解析请求体（先尝试解析，判断是加密还是明文）
     let bodyJson: unknown
+    let isEncrypted = false
+
     try {
       bodyJson = JSON.parse(req.body)
+      // 飞书加密消息格式：{ "encrypt": "..." }
+      if ((bodyJson as Record<string, unknown>).encrypt) {
+        isEncrypted = true
+      }
     } catch {
-      // 可能是加密消息
-      const encryptData = (JSON.parse(req.body) as Record<string, unknown>).encrypt as string
-      if (encryptData) {
+      return { success: false, error: 'INVALID_BODY_FORMAT' }
+    }
+
+    // 2. 加密模式：需要验签 + 解密
+    if (isEncrypted) {
+      if (!config.encryptKey) {
+        console.warn('[FeishuWebhook] Received encrypted message but no encryptKey configured')
+        return { success: false, error: 'ENCRYPT_KEY_MISSING' }
+      }
+
+      const verified = this.crypto.verifySignature({
+        timestamp,
+        nonce,
+        signature,
+        body: req.body,
+        encryptKey: config.encryptKey,
+      })
+
+      if (!verified) {
+        console.warn('[FeishuWebhook] Signature verification failed')
+        return { success: false, error: 'SIGNATURE_INVALID' }
+      }
+
+      try {
+        const encryptData = (bodyJson as Record<string, unknown>).encrypt as string
         bodyJson = this.crypto.decrypt(encryptData, config.encryptKey).raw
-      } else {
-        return { success: false, error: 'INVALID_BODY_FORMAT' }
+      } catch (err) {
+        console.error('[FeishuWebhook] Decryption failed:', err)
+        return { success: false, error: 'DECRYPTION_FAILED' }
       }
     }
+    // 明文模式：无需验签，直接使用解析后的 JSON
 
     // 3. 解析为统一事件格式
     const parsed = this.crypto.parseToInboundEvent(bodyJson)

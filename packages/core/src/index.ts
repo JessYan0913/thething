@@ -303,6 +303,8 @@ export {
 export type { ConnectorFrontmatter } from './extensions/connector/loader';
 export {
   getConnectorRegistry,
+  initConnectorGateway,
+  shutdownConnectorGateway,
   createWebhookHandler,
   inboundEventQueue,
   getWebhookConfigByHandler,

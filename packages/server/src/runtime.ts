@@ -10,6 +10,9 @@
 import {
   bootstrap,
   createContext,
+  initConnectorGateway,
+  shutdownConnectorGateway,
+  createLanguageModel,
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
@@ -52,6 +55,26 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
   contextInstance = await createContext({
     runtime: runtimeInstance,
   })
+
+  // 初始化 Connector Gateway（Inbound Processor）
+  // 从环境变量读取模型配置，用于处理飞书/企微等入站消息
+  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY
+  const baseURL = process.env.DASHSCOPE_BASE_URL || process.env.OPENAI_BASE_URL
+  const modelName = process.env.THETHING_MODEL || process.env.DASHSCOPE_MODEL || 'qwen-max'
+
+  if (apiKey && baseURL) {
+    const model = createLanguageModel({ apiKey, baseURL, modelName })
+    await initConnectorGateway({
+      cwd: layout.resourceRoot,
+      registry: runtimeInstance.connectorRegistry,
+      model,
+      dataStore: runtimeInstance.dataStore,
+      enableInbound: true,
+    })
+    console.log('[Server Runtime] Connector Gateway inbound initialized')
+  } else {
+    console.log('[Server Runtime] No model API key configured, skipping Connector Gateway inbound')
+  }
 
   console.log('[Server Runtime] Initialized successfully')
   return runtimeInstance
@@ -103,6 +126,7 @@ export async function reloadServerContext(): Promise<AppContext> {
  */
 export async function disposeServerRuntime(): Promise<void> {
   if (runtimeInstance) {
+    await shutdownConnectorGateway()
     await runtimeInstance.dispose()
     runtimeInstance = null
     contextInstance = null

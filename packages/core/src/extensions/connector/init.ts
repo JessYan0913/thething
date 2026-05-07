@@ -31,6 +31,8 @@ export interface ConnectorGatewayConfig {
   enableInbound?: boolean;
   /** 数据存储实例（必须提供，用于 Inbound Processor） */
   dataStore?: DataStore;
+  /** 复用已有的 ConnectorRegistry（避免重复创建） */
+  registry?: ConnectorRegistry;
 }
 
 // 单例 Registry（按 cwd 缓存）
@@ -69,8 +71,8 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
     configureIdempotencyGuard({ dbPath: config.idempotencyDbPath })
   }
 
-  // 使用全局 configDirName
-  const registry = await getConnectorRegistry(config?.cwd)
+  // 优先使用传入的 registry，否则创建新的
+  const registry = config?.registry ?? await getConnectorRegistry(config?.cwd)
 
   debugLog('[ConnectorGateway] Initialized registry with', registry.getConnectorIds().length, 'connectors')
 

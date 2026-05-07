@@ -159,10 +159,10 @@ class InboundEventProcessor {
       case 'wecom':
       case 'wechat-mp':
       case 'wechat-kf':
-        return 'wecom_send_message'  // 或根据具体配置调整
+        return 'send_message'
 
       case 'feishu':
-        return 'feishu_reply_message'
+        return 'reply_message'
 
       default:
         return null
