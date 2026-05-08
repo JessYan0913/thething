@@ -10,7 +10,7 @@ import { ConnectorRegistry } from './registry'
 import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
 import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
-import { getProjectConfigDir, getResolvedConfigDirName } from '../../foundation/paths'
+import { getProjectConfigDir } from '../../foundation/paths'
 import { debugLog, debugWarn } from './debug'
 
 // ============================================================================
@@ -59,9 +59,7 @@ export async function getConnectorRegistry(cwd?: string): Promise<ConnectorRegis
   const effectiveCwd = cwd ?? process.cwd()
 
   if (!connectorRegistries.has(effectiveCwd)) {
-    // 使用全局 configDirName
     const configDir = getProjectConfigDir(effectiveCwd, 'connectors')
-    console.log(`[ConnectorGateway] configDir: ${configDir} (cwd: ${effectiveCwd}, configDirName: ${getResolvedConfigDirName()})`)
     const registry = new ConnectorRegistry(configDir)
     await registry.initialize()
     connectorRegistries.set(effectiveCwd, registry)

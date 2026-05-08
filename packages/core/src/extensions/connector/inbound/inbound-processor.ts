@@ -86,12 +86,23 @@ class InboundEventProcessor {
     inboundEventQueue.onEvent(async (event) => {
       debugLog('[InboundEventProcessor] Processing event:', event.event_id)
 
+      // 处理状态指示器：添加"正在处理"表情
+      let indicatorResultId: string | undefined = undefined
+      if (this.registry) {
+        indicatorResultId = await this.addProcessingIndicator(event)
+      }
+
       try {
         const result = await this.handler.handle(event)
 
         // 如果有回复，通过 Connector 发送
         if (result.success && result.response && this.registry) {
           await this.sendReply(event, result.response)
+        }
+
+        // 处理完成：移除"正在处理"表情
+        if (indicatorResultId && this.registry) {
+          await this.removeProcessingIndicator(event, indicatorResultId)
         }
 
         // 记录处理结果
@@ -103,6 +114,11 @@ class InboundEventProcessor {
         )
 
       } catch (error) {
+        // 失败：移除"正在处理"表情
+        if (indicatorResultId && this.registry) {
+          await this.removeProcessingIndicator(event, indicatorResultId)
+        }
+
         debugError('[InboundEventProcessor] Processing error:', event.event_id, error)
         auditLogger.logInboundMessage(
           event.connector_type,
@@ -114,6 +130,79 @@ class InboundEventProcessor {
     })
 
     debugLog('[InboundEventProcessor] Started')
+  }
+
+  /**
+   * 添加处理状态指示器
+   */
+  private async addProcessingIndicator(event: InboundMessageEvent): Promise<string | undefined> {
+    if (!this.registry) return undefined
+
+    const connector = this.registry.getDefinition(event.connector_type)
+    const indicator = connector?.inbound?.processing_indicator
+
+    if (!indicator?.enabled) return undefined
+
+    const messageId = event.message.id
+    if (!messageId) return undefined
+
+    try {
+      const result = await this.registry.callTool({
+        connector_id: event.connector_type,
+        tool_name: indicator.add_tool,
+        tool_input: {
+          message_id: messageId,
+          ...indicator.add_input,
+        },
+      })
+
+      if (!result.success) {
+        debugWarn('[InboundEventProcessor] Add indicator failed:', result.error)
+        return undefined
+      }
+
+      // 提取 reaction_id 或其他标识
+      const resultId = (result.result as { data?: { reaction_id?: string } })?.data?.reaction_id
+      debugLog('[InboundEventProcessor] Add indicator success:', resultId)
+      return resultId
+    } catch (err) {
+      debugWarn('[InboundEventProcessor] Add indicator error:', err)
+      return undefined
+    }
+  }
+
+  /**
+   * 移除处理状态指示器
+   */
+  private async removeProcessingIndicator(event: InboundMessageEvent, resultId: string): Promise<void> {
+    if (!this.registry || !resultId) return
+
+    const connector = this.registry.getDefinition(event.connector_type)
+    const indicator = connector?.inbound?.processing_indicator
+
+    if (!indicator?.enabled) return
+
+    const messageId = event.message.id
+    if (!messageId) return
+
+    try {
+      const result = await this.registry.callTool({
+        connector_id: event.connector_type,
+        tool_name: indicator.remove_tool,
+        tool_input: {
+          message_id: messageId,
+          reaction_id: resultId,
+        },
+      })
+
+      if (!result.success) {
+        debugWarn('[InboundEventProcessor] Remove indicator failed:', result.error)
+      } else {
+        debugLog('[InboundEventProcessor] Remove indicator success:', resultId)
+      }
+    } catch (err) {
+      debugWarn('[InboundEventProcessor] Remove indicator error:', err)
+    }
   }
 
   /**

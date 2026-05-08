@@ -155,6 +155,7 @@ class TokenCounterImpl {
 
       if (!this.warnedModels.has(modelName)) {
         console.log(`[TokenCounter] ✅ 已加载 ${modelName} tokenizer`);
+        this.warnedModels.add(modelName);
       }
 
       return tokenizer;

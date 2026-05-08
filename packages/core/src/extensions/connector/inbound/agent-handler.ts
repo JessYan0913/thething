@@ -1,6 +1,9 @@
 // ============================================================
 // Agent 入站处理器 - 连接 Agent Core 处理 Webhook 消息
 // ============================================================
+//
+// 处理状态指示器（如飞书的"正在思考"表情）由 InboundEventProcessor
+// 根据 connector YAML 配置自动处理，此处不再硬编码
 
 import type { UIMessage } from 'ai'
 import { nanoid } from 'nanoid'
@@ -35,6 +38,9 @@ export interface AgentHandlerConfig {
 /**
  * Agent 入站处理器
  * 接收 Webhook 消息，触发 Agent 对话，返回回复
+ *
+ * 注意：处理状态指示器由 InboundEventProcessor 自动处理，
+ * 根据 connector YAML 中的 inbound.processing_indicator 配置
  */
 export class AgentInboundHandler implements InboundEventHandler {
   private config: AgentHandlerConfig

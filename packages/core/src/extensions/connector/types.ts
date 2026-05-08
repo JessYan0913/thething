@@ -18,6 +18,13 @@ export interface ConnectorDefinition {
     enabled: boolean
     webhook_path: string
     handler: string  // wecom | feishu | test-service | custom
+    // 处理状态指示器：收到消息时显示"正在处理"状态
+    processing_indicator?: {
+      enabled: boolean
+      add_tool: string  // 开始处理时调用的工具名
+      remove_tool: string  // 处理完成后调用的工具名
+      add_input?: Record<string, unknown>  // add 工具的额外参数
+    }
   }
 
   // 认证配置
