@@ -16,7 +16,7 @@ import {
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
-import { getServerTokenizerConfig } from './config'
+import { getServerTokenizerConfig, getServerLayoutConfig } from './config'
 import { startFeishuLongConnection, stopFeishuLongConnection } from './feishu-long-connection'
 
 let runtimeInstance: CoreRuntime | null = null
@@ -35,12 +35,8 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
 
   const tokenizerConfig = getServerTokenizerConfig()
 
-  // 使用新的 layout + behavior 配置结构
-  const layout = {
-    resourceRoot: 'E:/thething/packages/server',
-    dataDir: 'E:/thething/packages/server/.siact/data',
-    configDirName: '.siact'
-  }
+  // 使用新的 layout + behavior 配置结构（从环境变量读取）
+  const layout = getServerLayoutConfig()
 
   console.log(`[Server Runtime] Initializing with:`)
   console.log(`  resourceRoot: ${layout.resourceRoot}`)

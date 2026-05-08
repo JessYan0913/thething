@@ -18,3 +18,16 @@ export const ENV_DASHSCOPE_API_KEY = 'DASHSCOPE_API_KEY';
 
 /** 环境变量：DashScope Base URL */
 export const ENV_DASHSCOPE_BASE_URL = 'DASHSCOPE_BASE_URL';
+
+// ============================================================
+// Layout Configuration - 布局配置环境变量
+// ============================================================
+
+/** 环境变量：项目根目录（资源目录） */
+export const ENV_RESOURCE_ROOT = 'THETHING_RESOURCE_ROOT';
+
+/** 环境变量：数据目录路径 */
+export const ENV_DATA_DIR = 'THETHING_DATA_DIR';
+
+/** 环境变量：配置目录名称 */
+export const ENV_CONFIG_DIR_NAME = 'THETHING_CONFIG_DIR_NAME';
