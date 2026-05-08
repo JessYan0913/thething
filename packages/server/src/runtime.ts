@@ -64,12 +64,10 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
   const modelName = process.env.THETHING_MODEL || process.env.DASHSCOPE_MODEL || 'qwen-max'
 
   if (apiKey && baseURL) {
-    const model = createLanguageModel({ apiKey, baseURL, modelName })
     await initConnectorGateway({
       cwd: layout.resourceRoot,
       registry: runtimeInstance.connectorRegistry,
-      model,
-      dataStore: runtimeInstance.dataStore,
+      context: contextInstance,
       enableInbound: true,
     })
     console.log('[Server Runtime] Connector Gateway inbound initialized')

@@ -148,6 +148,19 @@ export class HttpExecutor {
         return String(val ?? '')
       })
 
+      // 输入变量带默认值 - ${input.xxx|default} 格式
+      // 当变量缺失或为空时使用默认值
+      .replace(/\$\{input\.(\w+)\|([^}]+)\}/g, (_, key, defaultVal) => {
+        const val = input[key]
+        if (val === undefined || val === null || val === '') {
+          return defaultVal
+        }
+        if (Array.isArray(val)) {
+          return JSON.stringify(val)
+        }
+        return String(val)
+      })
+
       // 输入变量嵌套 - ${input.xxx.yyy} 格式
       .replace(/\$\{input\.(\w+)\.(\w+)\}/g, (_, key1, key2) => {
         const obj = input[key1] as Record<string, unknown> | undefined
@@ -197,6 +210,33 @@ export class HttpExecutor {
         if (altRefMatch) {
           const inputKey = altRefMatch[1]
           result[key] = input[inputKey] ?? value
+          continue
+        }
+
+        // 特殊语法 $json(input.xxx) - 将输入值序列化为 JSON 字符串
+        // 用于飞书等 API 要求 content 字段是 JSON 字符串的场景
+        const jsonMatch = value.match(/^\$json\(input\.(\w+)\)$/)
+        if (jsonMatch) {
+          const inputKey = jsonMatch[1]
+          const inputVal = input[inputKey]
+          if (typeof inputVal === 'object' && inputVal !== null) {
+            result[key] = JSON.stringify(inputVal)
+          } else if (typeof inputVal === 'string') {
+            // 字符串需要包装成 JSON 格式 {"text": "..."}
+            result[key] = JSON.stringify({ text: inputVal })
+          } else {
+            result[key] = JSON.stringify(inputVal)
+          }
+          continue
+        }
+
+        // 特殊语法 $jsonEscape(input.xxx) - JSON 转义字符串（用于嵌入 JSON 字符串中）
+        const jsonEscapeMatch = value.match(/^\$jsonEscape\(input\.(\w+)\)$/)
+        if (jsonEscapeMatch) {
+          const inputKey = jsonEscapeMatch[1]
+          const inputVal = input[inputKey]
+          // JSON.stringify 会自动处理转义，然后去掉外层引号
+          result[key] = JSON.stringify(String(inputVal ?? '')).slice(1, -1)
           continue
         }
 

@@ -46,8 +46,6 @@ class InboundEventQueue {
 
     this.queue.push(queuedEvent)
 
-    console.log('[InboundEventQueue] Event queued:', event.event_id, 'connector:', event.connector_type)
-
     // 触发处理回调
     this.triggerProcessing(event)
 

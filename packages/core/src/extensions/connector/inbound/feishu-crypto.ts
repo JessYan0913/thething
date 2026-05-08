@@ -223,7 +223,6 @@ export class FeishuWebhookHandler {
 
     // 4. 幂等检查（同一 event_id 不重复处理）
     // 注：实际部署时需要连接 IdempotencyGuard
-    console.log('[FeishuWebhook] Received event:', parsed.eventId, parsed.messageType)
 
     // 5. 构建事件（推送给 Agent Core）
     const inboundEvent = {

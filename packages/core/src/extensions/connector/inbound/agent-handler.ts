@@ -2,16 +2,14 @@
 // Agent 入站处理器 - 连接 Agent Core 处理 Webhook 消息
 // ============================================================
 
-import { generateText } from 'ai'
-import type { LanguageModelV3 } from '@ai-sdk/provider'
+import type { UIMessage } from 'ai'
 import { nanoid } from 'nanoid'
 import type { InboundMessageEvent } from '../types'
 import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
-import { buildSystemPrompt } from '../../../extensions/system-prompt'
-import { findRelevantMemories, buildMemorySection, getUserMemoryDir, ensureMemoryDirExists } from '../../../extensions/memory'
+import { createAgent, type AppContext } from '../../../api/app'
+import { generateConversationTitle } from '../../../runtime/compaction'
+import { extractMemoriesInBackground } from '../../../extensions/memory'
 import { ConnectorRegistry } from '../registry'
-import type { DataStore } from '../../../foundation/datastore/types'
-import type { UIMessage } from 'ai'
 
 /**
  * Agent 入站处理器配置
@@ -19,12 +17,19 @@ import type { UIMessage } from 'ai'
 export interface AgentHandlerConfig {
   registry: ConnectorRegistry
   userId?: string
-  /** 模型实例（必须提供） */
-  model: LanguageModelV3
-  /** 项目目录（可选） */
-  cwd?: string
-  /** 数据存储实例（必须提供） */
-  dataStore: DataStore
+  /** AppContext（必须提供，用于 createAgent） */
+  context: AppContext
+  /** 模块启用配置（默认全部启用） */
+  modules?: {
+    /** MCP 工具（默认 true） */
+    mcps?: boolean
+    /** 技能系统（默认 true） */
+    skills?: boolean
+    /** 记忆系统（默认 true） */
+    memory?: boolean
+    /** Connector 工具（默认 false，避免循环调用） */
+    connectors?: boolean
+  }
 }
 
 /**
@@ -33,21 +38,12 @@ export interface AgentHandlerConfig {
  */
 export class AgentInboundHandler implements InboundEventHandler {
   private config: AgentHandlerConfig
-  private dataStore: DataStore
 
   constructor(config: AgentHandlerConfig) {
     this.config = config
-    this.dataStore = config.dataStore
   }
 
   async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
-    console.log('[AgentInboundHandler] Processing event:', {
-      eventId: event.event_id,
-      connectorType: event.connector_type,
-      channelId: event.channel_id,
-      senderId: event.sender.id,
-    })
-
     try {
       // 1. 根据 channel_id 查找或创建对话
       const conversationId = await this.findOrCreateConversation(event)
@@ -56,51 +52,87 @@ export class AgentInboundHandler implements InboundEventHandler {
       const userMessage = this.buildUserMessage(event)
 
       // 3. 获取对话历史
-      const store = this.dataStore
+      const store = this.config.context.runtime.dataStore
       const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
-      const messages = [...existingMessages, userMessage]
+      const isFirstMessage = existingMessages.length === 0
+      const messages: UIMessage[] = [...existingMessages, userMessage]
 
-      // 4. 获取记忆上下文
+      // 4. 获取用户 ID
       const userId = this.config.userId || event.sender.id
-      const memoryContext = await this.getMemoryContext(userId, event.message.text || '')
 
-      // 5. 构建系统提示词
-      const { prompt } = await buildSystemPrompt({
-        includeProjectContext: false,
-        memoryContext: {
-          userId,
-          recalledMemoriesContent: memoryContext,
+      // 5. 创建 Agent（复用 HTTP Chat 的完整流程）
+      const { agent, sessionState, adjustedMessages, model, dispose } = await createAgent({
+        context: this.config.context,
+        conversationId,
+        messages,
+        userId,
+        model: {
+          apiKey: process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY!,
+          baseURL: process.env.DASHSCOPE_BASE_URL || process.env.OPENAI_BASE_URL!,
+          modelName: process.env.THETHING_MODEL || process.env.DASHSCOPE_MODEL || 'qwen-max',
+          includeUsage: true,
         },
-        conversationMeta: {
-          messageCount: messages.length,
-          isNewConversation: existingMessages.length === 0,
-          conversationStartTime: Date.now(),
+        // 模块配置：默认启用 MCP/Skills/Memory，禁用 Connector（避免循环调用）
+        modules: {
+          mcps: this.config.modules?.mcps ?? true,
+          skills: this.config.modules?.skills ?? true,
+          memory: this.config.modules?.memory ?? true,
+          connectors: this.config.modules?.connectors ?? false,
         },
       })
 
-      // 6. 调用 LLM 生成回复
-      if (!this.config.model) {
-        throw new Error('[AgentInboundHandler] Model is required in config')
-      }
-      const { text: response } = await generateText({
-        model: this.config.model,
-        system: prompt,
-        messages: messages.map(m => ({
+      // 6. 执行 Agent（非流式）
+      const messagesToProcess = adjustedMessages ?? messages
+      const result = await agent.generate({
+        messages: messagesToProcess.map(m => ({
           role: m.role,
           content: m.parts
-            .filter((p) => p.type === 'text')
-            .map((p) => p.type === 'text' ? p.text : '')
+            .filter(p => p.type === 'text')
+            .map(p => p.type === 'text' ? p.text : '')
             .join('\n'),
         })),
-        maxOutputTokens: 1000,
-        temperature: 0.7,
       })
 
-      // 7. 构建助手消息并保存
-      const assistantMessage = this.buildAssistantMessage(response)
-      store.messageStore.saveMessages(conversationId, [...messages, assistantMessage])
+      // 7. 获取响应文本
+      const response = result.text
 
-      console.log('[AgentInboundHandler] Generated response:', response.substring(0, 100))
+      // 8. 构建助手消息并保存
+      const assistantMessage = this.buildAssistantMessage(response)
+      const completedMessages = [...messagesToProcess, assistantMessage]
+      // 保存原始消息 + 新消息（排除附件）
+      const messagesToSave = [...messages, assistantMessage]
+      store.messageStore.saveMessages(conversationId, messagesToSave)
+
+      // 9. 后台处理
+      const cwd = this.config.context.cwd
+
+      // 记忆提取
+      extractMemoriesInBackground(
+        completedMessages,
+        userId,
+        conversationId,
+        model,
+        cwd,
+      ).catch((err: Error) => console.error('[Memory Extraction] Error:', err))
+
+      // 标题生成（首次对话）
+      if (isFirstMessage) {
+        generateConversationTitle(completedMessages, model)
+          .then((title: string) => {
+            store.conversationStore.updateConversationTitle(conversationId, title)
+          })
+          .catch((err: Error) => console.error('[Title Generation] Error:', err))
+      }
+
+      // 成本持久化
+      sessionState.costTracker.persistToDB().catch((err: Error) =>
+        console.error('[Cost Persist] Error:', err)
+      )
+
+      // 释放资源
+      dispose().catch((err: Error) =>
+        console.error('[Agent Dispose] Error:', err)
+      )
 
       return {
         success: true,
@@ -123,7 +155,7 @@ export class AgentInboundHandler implements InboundEventHandler {
   private async findOrCreateConversation(event: InboundMessageEvent): Promise<string> {
     // 使用 channel_id 作为对话 ID（格式：connector_type_channel_id）
     const conversationId = `${event.connector_type}_${event.channel_id}`
-    const store = this.dataStore
+    const store = this.config.context.runtime.dataStore
 
     const existing = store.conversationStore.getConversation(conversationId)
     if (existing) {
@@ -133,7 +165,6 @@ export class AgentInboundHandler implements InboundEventHandler {
     // 创建新对话，标题使用发送者信息
     const title = `${event.connector_type} - ${event.sender.name || event.sender.id}`
     store.conversationStore.createConversation(conversationId, title)
-    console.log('[AgentInboundHandler] Created conversation:', conversationId)
 
     return conversationId
   }
@@ -167,29 +198,6 @@ export class AgentInboundHandler implements InboundEventHandler {
           text: response,
         },
       ],
-    }
-  }
-
-  /**
-   * 获取记忆上下文
-   */
-  private async getMemoryContext(userId: string, query: string): Promise<string> {
-    try {
-      const userMemDir = getUserMemoryDir(userId, this.config.cwd)
-      await ensureMemoryDirExists(userMemDir)
-
-      if (!query) return ''
-
-      const relevantMemories = await findRelevantMemories(query, userMemDir, {
-        maxResults: 3,
-      })
-
-      if (relevantMemories.length === 0) return ''
-
-      return await buildMemorySection(relevantMemories, userMemDir)
-    } catch (error) {
-      console.error('[AgentInboundHandler] Memory context error:', error)
-      return ''
     }
   }
 }

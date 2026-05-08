@@ -180,6 +180,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
   // 1.1. 设置全局 configDirName（让所有 get* 便捷函数使用正确的值）
   setResolvedConfigDirName(layout.configDirName);
+  console.log(`[Bootstrap] configDirName set to: ${layout.configDirName}`);
 
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);
@@ -204,11 +205,10 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     console.error('[Bootstrap] Permissions init failed:', err);
   });
 
-  // 7. 初始化 Connector Gateway（传递 cwd 和 dataStore，configDirName 使用全局值）
+  // 7. 初始化 Connector Gateway（仅 Registry，Inbound 在应用层初始化）
   await initConnectorGateway({
-    enableInbound: true,
+    enableInbound: false,  // Bootstrap 只初始化 Registry，Inbound 需要 AppContext
     cwd: layout.resourceRoot,
-    dataStore,
     idempotencyDbPath: path.join(layout.dataDir, '.connector-idempotency.db'),
     ...options.connectorConfig,
   }).catch((err) => {

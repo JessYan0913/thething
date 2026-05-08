@@ -131,13 +131,6 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     },
   }
 
-  console.log('[FeishuWS] Received message:', {
-    messageId,
-    chatId,
-    senderId,
-    content: contentText.substring(0, 50),
-  })
-
   // 推入事件队列
   await inboundEventQueue.push(event)
 }

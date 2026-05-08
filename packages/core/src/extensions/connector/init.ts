@@ -5,14 +5,13 @@
 // 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
 // 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
 
-import type { LanguageModelV3 } from '@ai-sdk/provider'
+import type { AppContext } from '../../api/app'
 import { ConnectorRegistry } from './registry'
 import { inboundEventProcessor, createAgentInboundHandler } from './inbound'
 import type { AgentHandlerConfig } from './inbound'
 import { configureIdempotencyGuard, getIdempotencyGuard } from './idempotency'
-import { getProjectConfigDir } from '../../foundation/paths'
+import { getProjectConfigDir, getResolvedConfigDirName } from '../../foundation/paths'
 import { debugLog, debugWarn } from './debug'
-import type { DataStore } from '../../foundation/datastore/types'
 
 // ============================================================================
 // Connector Gateway Configuration
@@ -26,13 +25,23 @@ export interface ConnectorGatewayConfig {
   /** Path to idempotency database. Defaults to <cwd>/<configDirName>/data/.connector-idempotency.db */
   idempotencyDbPath?: string;
   userId?: string;
-  /** 模型实例（必须提供，用于 Inbound Processor） */
-  model?: LanguageModelV3;
+  /** AppContext（启用 Inbound 时必须提供） */
+  context?: AppContext;
+  /** 是否启用 Inbound 处理（默认 true，设为 false 时只初始化 Registry） */
   enableInbound?: boolean;
-  /** 数据存储实例（必须提供，用于 Inbound Processor） */
-  dataStore?: DataStore;
   /** 复用已有的 ConnectorRegistry（避免重复创建） */
   registry?: ConnectorRegistry;
+  /** Agent 模块配置（用于 Inbound 处理） */
+  modules?: {
+    /** MCP 工具（默认 true） */
+    mcps?: boolean
+    /** 技能系统（默认 true） */
+    skills?: boolean
+    /** 记忆系统（默认 true） */
+    memory?: boolean
+    /** Connector 工具（默认 false，避免循环调用） */
+    connectors?: boolean
+  }
 }
 
 // 单例 Registry（按 cwd 缓存）
@@ -52,6 +61,7 @@ export async function getConnectorRegistry(cwd?: string): Promise<ConnectorRegis
   if (!connectorRegistries.has(effectiveCwd)) {
     // 使用全局 configDirName
     const configDir = getProjectConfigDir(effectiveCwd, 'connectors')
+    console.log(`[ConnectorGateway] configDir: ${configDir} (cwd: ${effectiveCwd}, configDirName: ${getResolvedConfigDirName()})`)
     const registry = new ConnectorRegistry(configDir)
     await registry.initialize()
     connectorRegistries.set(effectiveCwd, registry)
@@ -78,15 +88,15 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
 
   // 初始化 Inbound Processor（可选）
   if (config?.enableInbound !== false) {
-    if (!config?.model || !config?.dataStore) {
-      debugWarn('[ConnectorGateway] Model and dataStore are required for Inbound processor. Skipping inbound initialization.')
+    if (!config?.context) {
+      debugWarn('[ConnectorGateway] context is required for Inbound processor. Skipping inbound initialization.')
       return
     }
     const handlerConfig: AgentHandlerConfig = {
       registry,
       userId: config?.userId,
-      model: config.model,
-      dataStore: config.dataStore,
+      context: config.context,
+      modules: config?.modules,
     }
 
     const handler = createAgentInboundHandler(handlerConfig)

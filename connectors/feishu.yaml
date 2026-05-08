@@ -60,9 +60,8 @@ tools:
       headers:
         Authorization: "Bearer ${token}"
       body:
-        msg_type: "${input.msg_type}"
-        content:
-          text: "${input.text}"
+        msg_type: "text"
+        content: "$json(input.text)"
 
   - name: send_message
     description: 主动向飞书用户或群发送消息（非回复场景）
@@ -91,8 +90,7 @@ tools:
       body:
         receive_id: "${input.receive_id}"
         msg_type: "text"
-        content:
-          text: "${input.text}"
+        content: "$json(input.text)"
 
   - name: get_user_info
     description: 查询飞书用户信息
