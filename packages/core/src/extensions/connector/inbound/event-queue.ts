@@ -46,6 +46,8 @@ class InboundEventQueue {
 
     this.queue.push(queuedEvent)
 
+    console.log('[InboundEventQueue] Event queued:', event.event_id, 'connector:', event.connector_type)
+
     // 触发处理回调
     this.triggerProcessing(event)
 
@@ -69,28 +71,42 @@ class InboundEventQueue {
 
   /**
    * 触发事件处理
+   * 异步执行，不阻塞 push() 返回（解决飞书 webhook 超时问题）
    */
-  private async triggerProcessing(event: InboundMessageEvent): Promise<void> {
+  private triggerProcessing(event: InboundMessageEvent): void {
     const queuedEvent = this.queue.find(e => e.event.event_id === event.event_id)
     if (!queuedEvent) return
 
     queuedEvent.status = 'processing'
 
-    // 执行所有注册的处理回调
-    for (const callback of this.processingCallbacks) {
-      try {
-        await callback(event)
-        queuedEvent.status = 'completed'
-        queuedEvent.processingResult = { success: true }
-      } catch (error) {
+    // 异步执行处理回调，不等待完成
+    // 这样 push() 可以立即返回，webhook 不会超时
+    Promise.resolve()
+      .then(async () => {
+        for (const callback of this.processingCallbacks) {
+          try {
+            await callback(event)
+            queuedEvent.status = 'completed'
+            queuedEvent.processingResult = { success: true }
+          } catch (error) {
+            queuedEvent.status = 'failed'
+            queuedEvent.processingResult = {
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            }
+            console.error('[InboundEventQueue] Processing failed:', event.event_id, error)
+          }
+        }
+      })
+      .catch((error) => {
+        // 捕获未处理的异常
         queuedEvent.status = 'failed'
         queuedEvent.processingResult = {
           success: false,
           error: error instanceof Error ? error.message : String(error),
         }
-        console.error('[InboundEventQueue] Processing failed:', event.event_id, error)
-      }
-    }
+        console.error('[InboundEventQueue] Unexpected processing error:', event.event_id, error)
+      })
   }
 
   /**
