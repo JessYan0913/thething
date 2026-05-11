@@ -41,6 +41,20 @@ const behaviorColors: Record<string, string> = {
   deny: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/25",
 }
 
+// 支持权限控制的内置工具
+const builtinTools = [
+  { name: "bash", label: "Bash", description: "执行 shell 命令，pattern 匹配命令前缀" },
+  { name: "read_file", label: "Read File", description: "读取文件，pattern 匹配文件路径" },
+  { name: "edit_file", label: "Edit File", description: "编辑文件，pattern 匹配文件路径" },
+  { name: "write_file", label: "Write File", description: "写入文件，pattern 匹配文件路径" },
+  { name: "ask_user_question", label: "Ask User", description: "询问用户问题（强制需审批）" },
+  { name: "*", label: "*（所有工具）", description: "通配符，匹配所有工具" },
+]
+
+const toolLabels: Record<string, string> = Object.fromEntries(
+  builtinTools.map(t => [t.name, t.label])
+)
+
 export default function PermissionsSettings() {
   const [rules, setRules] = useState<RuleView[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -75,14 +89,14 @@ export default function PermissionsSettings() {
   useEffect(() => { loadRules() }, [loadRules])
 
   const handleAddRule = useCallback(async () => {
-    if (!newToolName.trim()) return
+    if (!newToolName) return
     setAddError("")
     try {
       const res = await fetch("/api/permissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          toolName: newToolName.trim(),
+          toolName: newToolName,
           pattern: newPattern.trim() || undefined,
           behavior: newBehavior,
         }),
@@ -124,14 +138,14 @@ export default function PermissionsSettings() {
 
   // 更新规则
   const handleUpdateRule = useCallback(async () => {
-    if (!editingRule || !editToolName.trim()) return
+    if (!editingRule || !editToolName) return
     setEditError("")
     try {
       const res = await fetch(`/api/permissions?id=${encodeURIComponent(editingRule.id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          toolName: editToolName.trim(),
+          toolName: editToolName,
           pattern: editPattern.trim() || undefined,
           behavior: editBehavior,
         }),
@@ -185,11 +199,25 @@ export default function PermissionsSettings() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">工具名称</label>
-              <Input
-                placeholder="例如: Bash, Read, Edit"
-                value={newToolName}
-                onChange={(e) => setNewToolName(e.target.value)}
-              />
+              <Select value={newToolName} onValueChange={setNewToolName}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择工具" />
+                </SelectTrigger>
+                <SelectContent>
+                  {builtinTools.map((tool) => (
+                    <SelectItem key={tool.name} value={tool.name}>
+                      <div className="flex flex-col">
+                        <span>{tool.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {newToolName && (
+                <p className="text-xs text-muted-foreground">
+                  {builtinTools.find(t => t.name === newToolName)?.description}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -227,7 +255,7 @@ export default function PermissionsSettings() {
             <DialogClose asChild>
               <Button variant="outline">取消</Button>
             </DialogClose>
-            <Button onClick={handleAddRule} disabled={!newToolName.trim()}>
+            <Button onClick={handleAddRule} disabled={!newToolName}>
               <PlusIcon className="size-4" />
               添加
             </Button>
@@ -248,11 +276,25 @@ export default function PermissionsSettings() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">工具名称</label>
-              <Input
-                placeholder="例如: Bash, Read, Edit"
-                value={editToolName}
-                onChange={(e) => setEditToolName(e.target.value)}
-              />
+              <Select value={editToolName} onValueChange={setEditToolName}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择工具" />
+                </SelectTrigger>
+                <SelectContent>
+                  {builtinTools.map((tool) => (
+                    <SelectItem key={tool.name} value={tool.name}>
+                      <div className="flex flex-col">
+                        <span>{tool.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editToolName && (
+                <p className="text-xs text-muted-foreground">
+                  {builtinTools.find(t => t.name === editToolName)?.description}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -290,7 +332,7 @@ export default function PermissionsSettings() {
             <DialogClose asChild>
               <Button variant="outline">取消</Button>
             </DialogClose>
-            <Button onClick={handleUpdateRule} disabled={!editToolName.trim()}>
+            <Button onClick={handleUpdateRule} disabled={!editToolName}>
               保存
             </Button>
           </DialogFooter>
@@ -339,7 +381,9 @@ function RuleRow({ rule, onDelete, onEdit }: { rule: RuleView; onDelete: () => v
         <Badge className={`text-xs border-0 ${behaviorColors[rule.behavior]}`}>
           {behaviorLabels[rule.behavior]}
         </Badge>
-        <span className="text-sm font-mono font-medium">{rule.toolName}</span>
+        <span className="text-sm font-mono font-medium">
+          {toolLabels[rule.toolName] || rule.toolName}
+        </span>
         {rule.pattern && (
           <span className="text-xs text-muted-foreground font-mono truncate max-w-48">
             {rule.pattern}
