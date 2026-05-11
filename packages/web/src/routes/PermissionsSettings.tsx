@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { ShieldIcon, RefreshCwIcon, PlusIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon } from "lucide-react"
+import { ShieldIcon, RefreshCwIcon, PlusIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, PencilIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,6 +49,13 @@ export default function PermissionsSettings() {
   const [newPattern, setNewPattern] = useState("")
   const [newBehavior, setNewBehavior] = useState<"allow" | "ask" | "deny">("ask")
   const [addError, setAddError] = useState("")
+
+  // 编辑状态
+  const [editingRule, setEditingRule] = useState<RuleView | null>(null)
+  const [editToolName, setEditToolName] = useState("")
+  const [editPattern, setEditPattern] = useState("")
+  const [editBehavior, setEditBehavior] = useState<"allow" | "ask" | "deny">("ask")
+  const [editError, setEditError] = useState("")
 
   const loadRules = useCallback(async () => {
     setIsLoading(true)
@@ -105,6 +112,47 @@ export default function PermissionsSettings() {
       }
     } catch { /* ignore */ }
   }, [])
+
+  // 打开编辑对话框
+  const openEditDialog = useCallback((rule: RuleView) => {
+    setEditingRule(rule)
+    setEditToolName(rule.toolName)
+    setEditPattern(rule.pattern ?? "")
+    setEditBehavior(rule.behavior)
+    setEditError("")
+  }, [])
+
+  // 更新规则
+  const handleUpdateRule = useCallback(async () => {
+    if (!editingRule || !editToolName.trim()) return
+    setEditError("")
+    try {
+      const res = await fetch(`/api/permissions?id=${encodeURIComponent(editingRule.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolName: editToolName.trim(),
+          pattern: editPattern.trim() || undefined,
+          behavior: editBehavior,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRules((prev) =>
+          prev.map((r) => r.id === editingRule.id ? data.rule : r)
+        )
+        setEditingRule(null)
+        setEditToolName("")
+        setEditPattern("")
+        setEditBehavior("ask")
+      } else {
+        const data = await res.json()
+        setEditError(data.error ?? "更新失败")
+      }
+    } catch {
+      setEditError("网络错误")
+    }
+  }, [editingRule, editToolName, editPattern, editBehavior])
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -187,6 +235,68 @@ export default function PermissionsSettings() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Rule Dialog */}
+      <Dialog open={editingRule !== null} onOpenChange={(open) => !open && setEditingRule(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑权限规则</DialogTitle>
+            <DialogDescription>
+              修改工具调用的权限设置。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">工具名称</label>
+              <Input
+                placeholder="例如: Bash, Read, Edit"
+                value={editToolName}
+                onChange={(e) => setEditToolName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">路径模式（可选）</label>
+              <Input
+                placeholder="例如: src/**, *.ts"
+                value={editPattern}
+                onChange={(e) => setEditPattern(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">行为</label>
+              <Select value={editBehavior} onValueChange={(v: "allow" | "ask" | "deny") => setEditBehavior(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="allow">允许（allow）</SelectItem>
+                  <SelectItem value="ask">询问（ask）</SelectItem>
+                  <SelectItem value="deny">拒绝（deny）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editError && (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <AlertCircleIcon className="size-4" />
+                {editError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button onClick={handleUpdateRule} disabled={!editToolName.trim()}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
@@ -206,7 +316,12 @@ export default function PermissionsSettings() {
         ) : (
           <div className="space-y-2">
             {rules.map((rule) => (
-              <RuleRow key={rule.id} rule={rule} onDelete={() => handleDeleteRule(rule.id)} />
+              <RuleRow
+                key={rule.id}
+                rule={rule}
+                onDelete={() => handleDeleteRule(rule.id)}
+                onEdit={() => openEditDialog(rule)}
+              />
             ))}
           </div>
         )}
@@ -215,7 +330,7 @@ export default function PermissionsSettings() {
   )
 }
 
-function RuleRow({ rule, onDelete }: { rule: RuleView; onDelete: () => void }) {
+function RuleRow({ rule, onDelete, onEdit }: { rule: RuleView; onDelete: () => void; onEdit: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
@@ -245,9 +360,14 @@ function RuleRow({ rule, onDelete }: { rule: RuleView; onDelete: () => void }) {
             </Button>
           </div>
         ) : (
-          <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={() => setConfirmDelete(true)}>
-            <TrashIcon className="size-3" />
-          </Button>
+          <>
+            <Button variant="ghost" size="sm" onClick={onEdit}>
+              <PencilIcon className="size-3" />
+            </Button>
+            <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+              <TrashIcon className="size-3" />
+            </Button>
+          </>
         )}
       </div>
     </div>

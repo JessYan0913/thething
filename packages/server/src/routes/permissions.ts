@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { removeRule, saveRule, loadRules, type PermissionBehavior } from '@the-thing/core'
+import { removeRule, saveRule, loadRules, updateRule, type PermissionBehavior } from '@the-thing/core'
 import { getServerRuntime } from '../runtime'
 
 const app = new Hono()
@@ -51,6 +51,35 @@ app.delete('/', async (c) => {
   } catch (error) {
     console.error('[Permissions API] Error:', error)
     return c.json({ error: 'Failed to remove rule' }, 500)
+  }
+})
+
+app.put('/', async (c) => {
+  try {
+    const id = c.req.query('id')
+
+    if (!id) {
+      return c.json({ error: 'Missing id' }, 400)
+    }
+
+    const body = await c.req.json<{ toolName?: string; pattern?: string; behavior?: PermissionBehavior }>()
+    const { toolName, pattern, behavior } = body
+
+    const resourceRoot = await getResourceRoot()
+    const rule = await updateRule(id, {
+      toolName,
+      pattern,
+      behavior,
+    }, resourceRoot)
+
+    if (!rule) {
+      return c.json({ error: 'Rule not found' }, 404)
+    }
+
+    return c.json({ success: true, rule })
+  } catch (error) {
+    console.error('[Permissions API] Error:', error)
+    return c.json({ error: 'Failed to update rule' }, 500)
   }
 })
 

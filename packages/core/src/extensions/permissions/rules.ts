@@ -98,6 +98,37 @@ export async function removeRule(id: string, cwd?: string): Promise<void> {
 }
 
 /**
+ * 更新规则
+ *
+ * @param id 规则 ID
+ * @param updates 更新的字段
+ * @param cwd 当前工作目录（默认 process.cwd()）
+ */
+export async function updateRule(
+  id: string,
+  updates: Partial<Omit<PermissionRule, 'id' | 'createdAt' | 'source'>>,
+  cwd?: string,
+): Promise<PermissionRule | null> {
+  const config = await loadRules(cwd);
+  const ruleIndex = config.rules.findIndex(r => r.id === id);
+
+  if (ruleIndex === -1) {
+    return null;
+  }
+
+  const existingRule = config.rules[ruleIndex];
+  const updatedRule: PermissionRule = {
+    ...existingRule,
+    ...updates,
+  };
+
+  config.rules[ruleIndex] = updatedRule;
+  await saveConfig(config, cwd);
+
+  return updatedRule;
+}
+
+/**
  * 清除所有规则（仅清除项目级）
  *
  * @param cwd 当前工作目录（默认 process.cwd()）

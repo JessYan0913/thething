@@ -321,7 +321,7 @@ export type { ToolCallRequest, InboundMessageEvent, ConnectorRuntime, ConnectorR
 
 // Permission types
 export type { PermissionRule, PermissionBehavior } from './extensions/permissions/types';
-export { removeRule, saveRule, loadRules } from './extensions/permissions';
+export { removeRule, saveRule, loadRules, updateRule } from './extensions/permissions';
 
 // Memory extraction
 export {
