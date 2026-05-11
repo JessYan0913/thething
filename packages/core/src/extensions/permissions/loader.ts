@@ -19,7 +19,7 @@
 import path from 'path';
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { getUserConfigDir, getProjectConfigDir, getResolvedCwd } from '../../foundation/paths';
 import { PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
@@ -151,18 +151,25 @@ export async function loadRules(cwd?: string, filename?: string): Promise<Permis
  * 同步加载（用于 needsApproval 中，避免异步问题）
  * 需要先调用 loadRules() 进行初始化
  *
- * @param cwd 当前工作目录（默认 process.cwd()）
+ * 使用全局单例 getResolvedCwd() 获取 cwd，
+ * 该值在 bootstrap() 时通过 setResolvedCwd() 设置。
+ *
+ * @param cwd 当前工作目录（可选，默认使用全局单例）
+ * @param filename 配置文件名（可选，默认 PERMISSIONS_FILENAME）
  */
-export function loadRulesSync(cwd?: string): PermissionConfig {
-  const effectiveCwd = cwd ?? process.cwd();
-  const cacheKey = `permissions:${effectiveCwd}`;
+export function loadRulesSync(cwd?: string, filename?: string): PermissionConfig {
+  const effectiveCwd = cwd ?? getResolvedCwd();
+  const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
+  const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}`;
 
   const cached = permissionsCache.get(cacheKey);
   if (cached) {
+    console.log(`[loadRulesSync] ✅ Found cached rules: ${cached.rules.length} rules for ${effectiveCwd}`);
     return cached;
   }
 
-  // 返回空配置，避免在 needsApproval 中出错
+  // 缓存未找到，返回空配置
+  console.log(`[loadRulesSync] ⚠️ Cache not found for key: ${cacheKey}`);
   return createEmptyConfig();
 }
 

@@ -78,6 +78,3 @@ export class AuthManager {
     }
   }
 }
-
-// 单例导出
-export const authManager = new AuthManager()

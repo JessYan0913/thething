@@ -2,6 +2,13 @@
 // Connector Gateway 核心类型定义
 // ============================================================
 
+// 前向声明类型（避免循环导入）
+import type { ConnectorRegistry } from './registry'
+import type { IdempotencyGuard } from './idempotency'
+import type { AuditLogger } from './audit-logger'
+import type { InboundEventQueue } from './inbound/event-queue'
+import type { InboundEventProcessor } from './inbound/inbound-processor'
+
 /**
  * Connector 定义（单一 YAML 配置文件）
  * 包含 Manifest 信息和运行时配置
@@ -197,4 +204,70 @@ export interface ExecutorResult {
   data?: unknown
   error?: string
   metadata?: Record<string, unknown>
+}
+
+// ============================================================
+// ConnectorRuntime - 实例管理接口
+// ============================================================
+
+import type { LanguageModelV3 } from '@ai-sdk/provider'
+
+/**
+ * 模型配置（用于 Connector inbound handler）
+ * 由应用层传入，不读取环境变量
+ */
+export interface ConnectorModelConfig {
+  apiKey: string
+  baseURL: string
+  modelName: string
+  includeUsage?: boolean
+}
+
+/**
+ * ConnectorRuntime 配置
+ *
+ * 应用层创建 ConnectorRuntime 时需要提供的配置。
+ * 所有路径和参数都显式传入，不依赖 process.env 或 cwd。
+ */
+export interface ConnectorRuntimeConfig {
+  /** 项目根目录 */
+  cwd: string
+
+  /** Connector YAML 配置目录路径 */
+  configDir: string
+
+  /** 数据存储目录（用于 idempotency、audit 等） */
+  dataDir: string
+
+  /** 用户标识 */
+  userId?: string
+
+  /** AppContext（用于 inbound handler） */
+  appContext?: unknown  // 使用 unknown 避免循环导入
+
+  /** 模型配置（用于 inbound handler） */
+  model?: ConnectorModelConfig
+}
+
+/**
+ * ConnectorRuntime 实例
+ *
+ * 包含所有 connector 运行时需要的组件实例。
+ * 由应用层创建和管理，不再使用进程级单例。
+ */
+export interface ConnectorRuntime {
+  /** Connector 注册表 */
+  registry: ConnectorRegistry
+
+  /** 幂等守卫 */
+  idempotencyGuard: IdempotencyGuard
+
+  /** 审计日志器 */
+  auditLogger: AuditLogger
+
+  /** 入站事件队列 */
+  eventQueue: InboundEventQueue
+
+  /** 入站事件处理器 */
+  eventProcessor: InboundEventProcessor
 }

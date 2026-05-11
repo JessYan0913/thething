@@ -8,7 +8,7 @@ import type {
   ConnectorDefinition,
 } from '../types';
 import { TokenManager } from '../token-manager';
-import { authManager } from '../auth/manager';
+import { AuthManager } from '../auth/manager';
 
 export interface HttpExecutorDeps {
   tokenManager: TokenManager
@@ -16,6 +16,8 @@ export interface HttpExecutorDeps {
 }
 
 export class HttpExecutor {
+  private authManager = new AuthManager()
+
   constructor(
     private deps: HttpExecutorDeps
   ) {}
@@ -36,7 +38,7 @@ export class HttpExecutor {
 
     try {
       // 1. 获取认证信息
-      const auth = await authManager.getAuth(connector.auth, credentials)
+      const auth = await this.authManager.getAuth(connector.auth, credentials)
 
       // 2. 如果是自定义认证（微信/飞书），需要获取 token
       const headers: Record<string, string> = {

@@ -26,16 +26,22 @@ export interface AuditLogEntry {
 export interface AuditLoggerOptions {
   maxEntries?: number
   onLog?: (entry: AuditLogEntry) => void
+  dbPath?: string
+  enablePersistence?: boolean
 }
 
 export class AuditLogger {
   private entries: AuditLogEntry[] = []
   private maxEntries: number
   private onLog?: (entry: AuditLogEntry) => void
+  private dbPath?: string
+  private enablePersistence: boolean
 
   constructor(options?: AuditLoggerOptions) {
     this.maxEntries = options?.maxEntries ?? 1000
     this.onLog = options?.onLog
+    this.dbPath = options?.dbPath
+    this.enablePersistence = options?.enablePersistence ?? false
   }
 
   log(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): AuditLogEntry {
@@ -167,5 +173,3 @@ export class AuditLogger {
     return 'audit_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9)
   }
 }
-
-export const auditLogger = new AuditLogger()

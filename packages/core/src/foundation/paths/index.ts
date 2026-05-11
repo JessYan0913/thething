@@ -8,10 +8,12 @@ export {
   resolveHomeDir,
 } from './resolve';
 
-// 全局单例管理（configDirName）
+// 全局单例管理（configDirName 和 cwd）
 export {
   setResolvedConfigDirName,
   getResolvedConfigDirName,
+  setResolvedCwd,
+  getResolvedCwd,
   clearResolvedConfigDirName,
 } from './compute';
 

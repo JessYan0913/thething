@@ -54,8 +54,10 @@ export class ConnectorRegistry {
    * 初始化：扫描并加载所有 YAML 配置文件
    */
   async initialize(): Promise<void> {
+    console.log(`[ConnectorRegistry] Initializing with configDir: ${this.configDir}`)
+
     if (!fs.existsSync(this.configDir)) {
-      debugLog('[ConnectorRegistry] Config directory not found:', this.configDir)
+      console.warn('[ConnectorRegistry] Config directory not found:', this.configDir)
       return
     }
 
@@ -64,17 +66,17 @@ export class ConnectorRegistry {
       .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))
       .map(f => path.join(this.configDir, f))
 
-    debugLog(`[ConnectorRegistry] Found ${yamlFiles.length} YAML files`)
+    console.log(`[ConnectorRegistry] Found ${yamlFiles.length} YAML files:`, yamlFiles.map(f => path.basename(f)))
 
     for (const yamlPath of yamlFiles) {
       try {
         await this.loadConnector(yamlPath)
       } catch (error) {
-        debugError(`[ConnectorRegistry] Failed to load ${yamlPath}:`, error)
+        console.error(`[ConnectorRegistry] Failed to load ${yamlPath}:`, error)
       }
     }
 
-    debugLog(`[ConnectorRegistry] Initialized ${this.connectors.size} connectors`)
+    console.log(`[ConnectorRegistry] Initialized ${this.connectors.size} connectors:`, this.connectors.keys())
   }
 
   /**
@@ -144,14 +146,27 @@ export class ConnectorRegistry {
 
   private replaceEnvVarInString(str: string): string {
     // 替换 ${VAR_NAME} 格式
-    return str.replace(/\$\{(\w+)\}/g, (_, varName) => {
+    const missingVars: string[] = []
+
+    const result = str.replace(/\$\{(\w+)\}/g, (_, varName) => {
       const envValue = process.env[varName]
       if (envValue === undefined) {
-        debugWarn(`[ConnectorRegistry] Environment variable ${varName} not found, keeping original`)
-        return str
+        missingVars.push(varName)
+        return '' // 替换为空字符串，允许 connector 加载
       }
       return envValue
     })
+
+    // 记录缺失的环境变量（警告而非错误）
+    // 允许 connector 加载，运行时会根据实际情况处理
+    if (missingVars.length > 0) {
+      console.warn(
+        `[ConnectorRegistry] Warning: Missing environment variables for placeholder: ${missingVars.join(', ')}\n` +
+        `Original string: "${str}" - replaced with empty string`
+      )
+    }
+
+    return result
   }
 
   /**
@@ -397,25 +412,84 @@ export class ConnectorRegistry {
     input: Record<string, unknown>,
     connectorId: string
   ): Promise<unknown> {
-    // 在沙箱环境中执行脚本（简化版，生产环境应使用更安全的沙箱）
+    // ============================================================
+    // SECURITY: Script executor is DISABLED by default
+    // ============================================================
+    // `new Function()` has no sandbox isolation - can access process, require, fs
+    // This is a Remote Code Execution (RCE) vulnerability if YAML is tampered
+    //
+    // To enable (unsafe, only for trusted internal connectors):
+    // 1. Set CONNECTOR_ENABLE_SCRIPT_EXECUTOR=true
+    // 2. Ensure connector YAML files are from trusted sources only
+    //
+    // Recommended alternatives:
+    // - Use 'http' executor for API calls
+    // - Use 'sql' executor for database operations
+    // - Use 'mock' executor for testing
+    // ============================================================
+    const enableScriptExecutor = process.env.CONNECTOR_ENABLE_SCRIPT_EXECUTOR === 'true'
+
+    if (!enableScriptExecutor) {
+      throw new Error(
+        `[ScriptExecutor] DISABLED for security reasons.\n` +
+        `Connector: ${connectorId}\n` +
+        `Script executor allows arbitrary code execution without sandbox isolation.\n` +
+        `Alternatives:\n` +
+        `  1. Use 'http' executor for API calls (recommended)\n` +
+        `  2. Use 'sql' executor for database operations\n` +
+        `  3. Use 'mock' executor for testing\n` +
+        `To enable (unsafe): Set CONNECTOR_ENABLE_SCRIPT_EXECUTOR=true\n` +
+        `WARNING: Only enable if connector YAML files are from trusted sources!`
+      )
+    }
+
+    // ============================================================
+    // Enabled mode: Execute with limited sandbox
+    // ============================================================
+    // WARNING: This is still NOT fully secure. The sandbox only limits
+    // direct access, but sophisticated attacks may still be possible.
+    // For production, consider using vm2 or isolating in a separate process.
+    // ============================================================
+    debugWarn(
+      `[ScriptExecutor] ENABLED (unsafe mode). Connector: ${connectorId}\n` +
+      `WARNING: Script execution without vm2 sandbox is not fully secure!`
+    )
+
+    // Limited sandbox - no access to process, require, fs, etc.
     const sandbox = {
       input,
       connectorId,
-      console: { log: () => {} },
+      // Limited console - no info/debug that could leak sensitive data
+      console: {
+        log: (...args: unknown[]) => debugLog('[Script]', ...args),
+        warn: (...args: unknown[]) => debugWarn('[Script]', ...args),
+        error: (...args: unknown[]) => debugError('[Script]', ...args),
+      },
+      // Explicitly NO access to:
+      // - process (env, exit, etc.)
+      // - require/module (file system, network, etc.)
+      // - globalThis (setTimeout, setInterval leak timers)
       result: undefined as unknown,
     }
 
-    // 使用 Function 构造器执行（注意：生产环境应使用 vm2 或类似沙箱）
+    // Use Function constructor with strict mode
+    // Note: This is NOT a proper sandbox - it only limits direct references
     const wrappedScript = `
       "use strict";
-      const { input, connectorId } = this;
+      const { input, connectorId, console, result } = this;
       ${config.script}
     `
 
-    const fn = new Function(wrappedScript)
-    const result = fn.call(sandbox)
+    try {
+      const fn = new Function(wrappedScript)
+      const result = fn.call(sandbox)
 
-    return sandbox.result ?? result
+      return sandbox.result ?? result
+    } catch (err) {
+      throw new Error(
+        `[ScriptExecutor] Execution failed for connector ${connectorId}: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
   }
 
   /**

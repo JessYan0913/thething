@@ -65,6 +65,12 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
       registry: runtimeInstance.connectorRegistry,
       context: contextInstance,
       enableInbound: true,
+      modelConfig: {
+        apiKey,
+        baseURL,
+        modelName,
+        includeUsage: true,
+      },
     })
     console.log('[Server Runtime] Connector Gateway inbound initialized')
 

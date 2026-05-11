@@ -5,7 +5,7 @@
 // 消息接收走 WebSocket，回复走 HTTP REST API
 
 import * as Lark from '@larksuiteoapi/node-sdk'
-import { inboundEventQueue, getIdempotencyGuard } from '@the-thing/core'
+import { getInboundEventQueue, getIdempotencyGuard } from '@the-thing/core'
 import type { InboundMessageEvent } from '@the-thing/core'
 
 let wsClient: Lark.WSClient | null = null
@@ -102,7 +102,8 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 
   // 幂等检查
-  const isDuplicate = await getIdempotencyGuard().isDuplicate(messageId, 'feishu')
+  const guard = await getIdempotencyGuard()
+  const isDuplicate = await guard.isDuplicate(messageId, 'feishu')
   if (isDuplicate) {
     console.log('[FeishuWS] Duplicate message skipped:', messageId)
     return
@@ -132,5 +133,10 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 
   // 推入事件队列
-  await inboundEventQueue.push(event)
+  const queue = getInboundEventQueue()
+  if (queue) {
+    await queue.push(event)
+  } else {
+    console.warn('[FeishuWS] Event queue not initialized, message dropped:', event.event_id)
+  }
 }

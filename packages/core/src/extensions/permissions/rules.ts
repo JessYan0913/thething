@@ -131,7 +131,8 @@ export function matchRule(
   const effectiveRules = rules ?? loadRulesSync().rules;
 
   for (const rule of effectiveRules) {
-    if (rule.toolName !== toolName) {
+    // 支持通配符 toolName: '*' 匹配所有工具
+    if (rule.toolName !== toolName && rule.toolName !== '*') {
       continue;
     }
 

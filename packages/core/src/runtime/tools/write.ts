@@ -18,15 +18,18 @@ export const writeFileTool = tool({
   needsApproval: async ({ filePath }) => {
     // Step 1: 检查持久化规则（Always allow）
     const matchedRule = checkPermissionRules('write_file', { filePath });
+    console.log(`[write_file needsApproval] filePath=${filePath}, matchedRule=${matchedRule ? JSON.stringify(matchedRule) : 'null'}`);
     if (matchedRule?.behavior === 'allow') {
+      console.log(`[write_file needsApproval] ✅ Auto-approved by permissions.json`);
       return false;  // 自动放行
     }
     if (matchedRule?.behavior === 'deny') {
-      // 不抛出错误，返回 true 让审批流程处理，或让 execute 返回错误结果
+      console.log(`[write_file needsApproval] ❌ Denied by permissions.json`);
       return true;
     }
 
     // Step 2: 写入操作默认需要审批
+    console.log(`[write_file needsApproval] ⚠️ No matching rule, needs approval`);
     return true;
   },
   execute: async ({ filePath, content, mode = 'overwrite' }) => {

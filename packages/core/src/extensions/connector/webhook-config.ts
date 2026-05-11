@@ -32,20 +32,57 @@ export interface FeishuWebhookConfig {
   verificationToken: string
 }
 
-/**
- * 配置缓存
- */
-let webhookConfigsCache: Map<string, WebhookConfigLoaded> | null = null
+// ============================================================
+// 缓存管理（带 TTL）
+// ============================================================
+
+interface CacheEntry<T> {
+  data: T
+  loadedAt: number
+  ttlMs: number
+}
+
+let webhookConfigsCache: CacheEntry<Map<string, WebhookConfigLoaded>> | null = null
+const DEFAULT_CACHE_TTL_MS = 60_000 // 1 分钟
 
 /**
  * 加载所有 Webhook 配置
+ *
+ * @param options 加载选项
+ *   - forceRefresh: 强制刷新缓存
+ *   - ttlMs: 缓存 TTL（毫秒），默认 60_000
  */
-export async function loadWebhookConfigs(): Promise<Map<string, WebhookConfigLoaded>> {
-  if (webhookConfigsCache) {
-    return webhookConfigsCache
+export async function loadWebhookConfigs(options?: {
+  forceRefresh?: boolean
+  ttlMs?: number
+}): Promise<Map<string, WebhookConfigLoaded>> {
+  const now = Date.now()
+  const ttlMs = options?.ttlMs ?? DEFAULT_CACHE_TTL_MS
+
+  // 检查缓存是否有效
+  if (!options?.forceRefresh && webhookConfigsCache) {
+    if (now - webhookConfigsCache.loadedAt < webhookConfigsCache.ttlMs) {
+      return webhookConfigsCache.data
+    }
   }
 
-  webhookConfigsCache = new Map()
+  // 重新加载
+  const configs = await reloadWebhookConfigs()
+
+  webhookConfigsCache = {
+    data: configs,
+    loadedAt: now,
+    ttlMs,
+  }
+
+  return configs
+}
+
+/**
+ * 重新加载配置（内部方法）
+ */
+async function reloadWebhookConfigs(): Promise<Map<string, WebhookConfigLoaded>> {
+  const configsMap = new Map<string, WebhookConfigLoaded>()
   const registry = await getConnectorRegistry()
   const connectorIds = registry.getConnectorIds()
 
@@ -63,11 +100,11 @@ export async function loadWebhookConfigs(): Promise<Map<string, WebhookConfigLoa
       credentials: connector.credentials || {},
     }
 
-    webhookConfigsCache.set(connectorId, config)
+    configsMap.set(connectorId, config)
     console.log('[WebhookConfig] Loaded:', connectorId, 'handler:', config.handler)
   }
 
-  return webhookConfigsCache
+  return configsMap
 }
 
 /**

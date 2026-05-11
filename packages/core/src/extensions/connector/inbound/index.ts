@@ -11,12 +11,11 @@ export {
   type WebhookHandlerResult,
   type WebhookConfig,
 } from './webhook-handler'
-export { inboundEventQueue, type QueuedEvent, type InboundEventQueue } from './event-queue'
+export { InboundEventQueue, type QueuedEvent, type QueuePushResult, type QueueStats } from './event-queue'
 export {
-  inboundEventProcessor,
+  InboundEventProcessor,
   type InboundEventHandler,
   type InboundEventResult,
-  type InboundEventProcessor,
 } from './inbound-processor'
 
 // Agent 入站处理器

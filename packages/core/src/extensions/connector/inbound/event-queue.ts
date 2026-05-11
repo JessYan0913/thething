@@ -16,28 +16,97 @@ export interface QueuedEvent {
 }
 
 /**
+ * 队列推送结果
+ */
+export interface QueuePushResult {
+  eventId: string
+  accepted: boolean
+  reason?: 'queue_full' | 'duplicate'
+  queueStats?: QueueStats
+}
+
+/**
+ * 队列统计
+ */
+export interface QueueStats {
+  total: number
+  pending: number
+  processing: number
+  completed: number
+  failed: number
+  maxSize: number
+}
+
+/**
  * 入站事件队列（内存实现，单实例部署）
  * 生产环境可替换为 Redis 或消息队列
  */
-class InboundEventQueue {
+export class InboundEventQueue {
   private queue: QueuedEvent[] = []
   private maxQueueSize = 100
   private processingCallbacks: Array<(event: InboundMessageEvent) => Promise<void>> = []
+  private dropCount = 0
+  private lastDropLogTime = 0
 
   /**
    * 推送事件到队列
+   *
+   * @returns QueuePushResult - 包含是否接受、原因和队列状态
    */
-  async push(event: InboundMessageEvent): Promise<string> {
-    // 检查队列容量
-    if (this.queue.length >= this.maxQueueSize) {
-      // 移除已完成的最旧事件
-      this.queue = this.queue.filter(e => e.status !== 'completed')
-      if (this.queue.length >= this.maxQueueSize) {
-        console.warn('[InboundEventQueue] Queue full, dropping oldest pending event')
-        this.queue.shift()
+  async push(event: InboundMessageEvent): Promise<QueuePushResult> {
+    // 1. 检查重复事件
+    const existing = this.queue.find(e => e.event.event_id === event.event_id)
+    if (existing) {
+      return {
+        eventId: event.event_id,
+        accepted: false,
+        reason: 'duplicate',
+        queueStats: this.getStats(),
       }
     }
 
+    // 2. 检查队列容量
+    if (this.queue.length >= this.maxQueueSize) {
+      // 优先清理已完成/失败的事件（不影响正在处理的）
+      this.queue = this.queue.filter(e => e.status !== 'completed' && e.status !== 'failed')
+
+      // 如果清理后仍然满，需要丢弃
+      if (this.queue.length >= this.maxQueueSize) {
+        // 记录丢弃统计（每 10 秒输出一次汇总日志）
+        this.dropCount++
+        const now = Date.now()
+        if (now - this.lastDropLogTime > 10000) {
+          console.warn(
+            `[InboundEventQueue] Queue overflow: ${this.dropCount} events dropped in last 10s`,
+            `Current stats:`, this.getStats()
+          )
+          this.dropCount = 0
+          this.lastDropLogTime = now
+        }
+
+        // 优先丢弃最老的 pending 事件（而不是正在 processing 的）
+        const pendingEvents = this.queue.filter(e => e.status === 'pending')
+        if (pendingEvents.length > 0) {
+          // 丢弃最老的 pending 事件
+          const oldestPending = pendingEvents[0]
+          this.queue = this.queue.filter(e => e !== oldestPending)
+          console.warn(
+            `[InboundEventQueue] Dropped oldest pending event: ${oldestPending.event.event_id}`
+          )
+        } else {
+          // 极端情况：所有事件都在 processing，无法丢弃
+          // 返回拒绝而不是丢弃 processing 事件
+          return {
+            eventId: event.event_id,
+            accepted: false,
+            reason: 'queue_full',
+            queueStats: this.getStats(),
+          }
+        }
+      }
+    }
+
+    // 3. 添加事件
     const queuedEvent: QueuedEvent = {
       event,
       queuedAt: Date.now(),
@@ -48,10 +117,14 @@ class InboundEventQueue {
 
     console.log('[InboundEventQueue] Event queued:', event.event_id, 'connector:', event.connector_type)
 
-    // 触发处理回调
+    // 4. 触发处理回调
     this.triggerProcessing(event)
 
-    return event.event_id
+    return {
+      eventId: event.event_id,
+      accepted: true,
+      queueStats: this.getStats(),
+    }
   }
 
   /**
@@ -145,19 +218,14 @@ class InboundEventQueue {
   /**
    * 获取队列统计
    */
-  getStats(): {
-    total: number
-    pending: number
-    processing: number
-    completed: number
-    failed: number
-  } {
+  getStats(): QueueStats {
     return {
       total: this.queue.length,
       pending: this.queue.filter(e => e.status === 'pending').length,
       processing: this.queue.filter(e => e.status === 'processing').length,
       completed: this.queue.filter(e => e.status === 'completed').length,
       failed: this.queue.filter(e => e.status === 'failed').length,
+      maxSize: this.maxQueueSize,
     }
   }
 
@@ -180,9 +248,3 @@ class InboundEventQueue {
     this.queue = []
   }
 }
-
-// 单例导出
-export const inboundEventQueue = new InboundEventQueue()
-
-// 导出类型
-export type { InboundEventQueue }

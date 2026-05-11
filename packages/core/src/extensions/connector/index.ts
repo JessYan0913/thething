@@ -5,12 +5,12 @@
 export * from './types'
 export { ConnectorRegistry } from './registry'
 export { TokenManager } from './token-manager'
-export { AuthManager, authManager } from './auth/manager'
+export { AuthManager } from './auth/manager'
 export { HttpExecutor } from './executors/http'
 export { MockExecutor } from './executors/mock'
 export { SqlExecutor } from './executors/sql'
 export { MultiSqlExecutor } from './executors/multi-sql'
-export { DatabasePoolManager, databasePoolManager } from './executors/database-pool'
+export { DatabasePoolManager } from './executors/database-pool'
 export {
   convertConnectorToolToAItool,
   getAllConnectorTools,
@@ -19,8 +19,8 @@ export {
 } from './tool-adapter'
 export { withRetry } from './retry'
 export { CircuitBreaker, CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
-export { AuditLogger, auditLogger } from './audit-logger'
-export { IdempotencyGuard, configureIdempotencyGuard } from './idempotency'
+export { AuditLogger } from './audit-logger'
+export { IdempotencyGuard } from './idempotency'
 
 // 凭证加密存储
 export * from './credentials/index'
@@ -28,13 +28,21 @@ export * from './credentials/index'
 // Inbound Layer - 入站消息处理
 export * from './inbound/index'
 
-// 初始化函数
+// Runtime Factory
+export {
+  createConnectorRuntime,
+  initializeConnectorRuntime,
+  disposeConnectorRuntime,
+} from './factory'
+
+// 初始化函数（兼容旧代码，后续移除）
 export {
   getConnectorRegistry,
   initConnectorGateway,
   isInboundInitialized,
   shutdownConnectorGateway,
   getIdempotencyGuard,
+  getInboundEventQueue,
   type ConnectorGatewayConfig,
 } from './init'
 

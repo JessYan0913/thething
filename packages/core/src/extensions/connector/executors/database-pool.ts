@@ -338,6 +338,3 @@ export class DatabasePoolManager {
     return this.pools.has(connectionId) || this.configs.has(connectionId)
   }
 }
-
-// 单例导出
-export const databasePoolManager = new DatabasePoolManager()

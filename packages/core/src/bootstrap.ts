@@ -9,7 +9,7 @@
 import { createSQLiteDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
 import { getConnectorRegistry, shutdownConnectorGateway, initConnectorGateway, type ConnectorGatewayConfig, type ConnectorRegistry } from './extensions/connector';
 import { initPermissions } from './extensions/permissions';
-import { resolveProjectDir, setResolvedConfigDirName } from './foundation/paths';
+import { resolveProjectDir, setResolvedConfigDirName, setResolvedCwd } from './foundation/paths';
 import {
   registerTokenizer,
   setTokenizerDir,
@@ -178,9 +178,11 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 1. 解析布局
   const layout = resolveLayout(layoutConfig);
 
-  // 1.1. 设置全局 configDirName（让所有 get* 便捷函数使用正确的值）
+  // 1.1. 设置全局 configDirName 和 cwd（让所有 get* 便捷函数使用正确的值）
   setResolvedConfigDirName(layout.configDirName);
+  setResolvedCwd(layout.resourceRoot);
   console.log(`[Bootstrap] configDirName set to: ${layout.configDirName}`);
+  console.log(`[Bootstrap] cwd set to: ${layout.resourceRoot}`);
 
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);

@@ -29,6 +29,13 @@ import { resolveHomeDir } from './resolve';
 let resolvedConfigDirName: string | null = null;
 
 /**
+ * 已解析的项目目录（全局单例）
+ * 在 bootstrap() 时通过 resolveLayout() 设置一次
+ * 用于 permissions loader 等需要同步获取 cwd 的场景
+ */
+let resolvedCwd: string | null = null;
+
+/**
  * 设置已解析的配置目录名
  * 通常只在 bootstrap() 的 resolveLayout() 中调用一次
  *
@@ -36,6 +43,16 @@ let resolvedConfigDirName: string | null = null;
  */
 export function setResolvedConfigDirName(name: string): void {
   resolvedConfigDirName = name;
+}
+
+/**
+ * 设置已解析的项目目录
+ * 通常只在 bootstrap() 的 resolveLayout() 中调用一次
+ *
+ * @param cwd 项目根目录
+ */
+export function setResolvedCwd(cwd: string): void {
+  resolvedCwd = cwd;
 }
 
 /**
@@ -49,10 +66,21 @@ export function getResolvedConfigDirName(): string {
 }
 
 /**
+ * 获取已解析的项目目录
+ * 如果未设置，返回 process.cwd()
+ *
+ * @returns 项目根目录
+ */
+export function getResolvedCwd(): string {
+  return resolvedCwd ?? process.cwd();
+}
+
+/**
  * 清除已解析的配置目录名（用于测试或重新初始化）
  */
 export function clearResolvedConfigDirName(): void {
   resolvedConfigDirName = null;
+  resolvedCwd = null;
 }
 
 // ============================================================

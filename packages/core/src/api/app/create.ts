@@ -29,6 +29,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // 直接从 context 取数据，不重复加载
   const { skills, mcps, memory, permissions, agents, cwd } = context;
 
+  // 权限规则完全来自 permissions.json，不合并额外规则
+  // Connector 场景和 UI 场景保持一致，统一由 permissions.json 控制
+  const effectivePermissions = [...permissions];
+
   // 创建 Agent，传递 preloadedData 和 behaviorDefaults
   const result = await createChatAgent({
     conversationId,
@@ -53,6 +57,12 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       availableModels: behavior.availableModels,
       autoDowngradeCostThreshold: behavior.autoDowngradeCostThreshold,
     },
+    // 传递对话元数据（用于控制技能附件注入等行为）
+    conversationMeta: options.conversationMeta ? {
+      messageCount: messages.length,
+      isNewConversation: options.conversationMeta.isNewConversation,
+      conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
+    } : undefined,
     enableMcp: options.modules?.mcps ?? true,
     enableSkills: options.modules?.skills ?? true,
     enableMemory: options.modules?.memory ?? true,
@@ -65,7 +75,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       agents: [...agents],
       mcps: [...mcps],
       connectors: [...context.connectors],
-      permissions: [...permissions],
+      permissions: effectivePermissions,
       memory: [...memory],
       dataStore: context.runtime.dataStore,
     },

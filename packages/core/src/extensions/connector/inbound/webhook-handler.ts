@@ -97,7 +97,8 @@ export class WechatWebhookHandler {
     const parsed = xmlToInboundEvent(xmlContent, subtype)
 
     // 4. 幂等检查
-    const isDuplicate = await getIdempotencyGuard().isDuplicate(parsed.messageId, 'wechat')
+    const guard = await getIdempotencyGuard()
+    const isDuplicate = await guard.isDuplicate(parsed.messageId, 'wechat')
     if (isDuplicate) {
       console.log('[WechatWebhook] Duplicate message skipped:', parsed.messageId)
       return { success: true, eventId: parsed.messageId }  // 返回成功但不处理
@@ -213,7 +214,8 @@ export class FeishuWebhookHandlerAdapter {
 
     // 幂等检查
     if (result.eventId) {
-      const isDuplicate = await getIdempotencyGuard().isDuplicate(result.eventId, 'feishu')
+      const guard = await getIdempotencyGuard()
+      const isDuplicate = await guard.isDuplicate(result.eventId, 'feishu')
       if (isDuplicate) {
         console.log('[FeishuWebhook] Duplicate message skipped:', result.eventId)
         return { success: true, eventId: result.eventId }

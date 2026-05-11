@@ -306,13 +306,18 @@ export {
   initConnectorGateway,
   shutdownConnectorGateway,
   createWebhookHandler,
-  inboundEventQueue,
+  getInboundEventQueue,
   getWebhookConfigByHandler,
   buildWechatWebhookConfig,
   buildFeishuWebhookConfig,
   getIdempotencyGuard,
+  InboundEventQueue,
+  InboundEventProcessor,
+  createConnectorRuntime,
+  initializeConnectorRuntime,
+  disposeConnectorRuntime,
 } from './extensions/connector';
-export type { ToolCallRequest, InboundMessageEvent } from './extensions/connector/types';
+export type { ToolCallRequest, InboundMessageEvent, ConnectorRuntime, ConnectorRuntimeConfig } from './extensions/connector/types';
 
 // Permission types
 export type { PermissionRule, PermissionBehavior } from './extensions/permissions/types';

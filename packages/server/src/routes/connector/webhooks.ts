@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import {
   createWebhookHandler,
-  inboundEventQueue,
+  getInboundEventQueue,
   getWebhookConfigByHandler,
   buildWechatWebhookConfig,
   buildFeishuWebhookConfig,
@@ -130,7 +130,10 @@ app.post('/:handler', async (c) => {
           },
         }
 
-        await inboundEventQueue.push(event)
+        const queue = getInboundEventQueue()
+        if (queue) {
+          await queue.push(event)
+        }
         console.log('[Webhook Test-Service] Event queued:', event.event_id, 'duration:', Date.now() - startTime, 'ms')
 
         return c.json({
@@ -163,7 +166,10 @@ app.post('/:handler', async (c) => {
     }
 
     if (webhookHandlerResult?.success && webhookHandlerResult.event) {
-      await inboundEventQueue.push(webhookHandlerResult.event)
+      const queue = getInboundEventQueue()
+      if (queue) {
+        await queue.push(webhookHandlerResult.event)
+      }
       console.log('[Webhook] Event queued:', webhookHandlerResult.eventId, 'duration:', Date.now() - startTime, 'ms')
     }
 

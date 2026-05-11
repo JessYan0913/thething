@@ -8,9 +8,21 @@ import type { SystemPromptSection } from '../types';
 // ============================================================================
 
 /**
- * Marker files that indicate project context.
+ * Base marker files that indicate project context (always checked).
  */
-const CONTEXT_MARKERS = ['THING.md', '.thething.md', 'CONTEXT.md'] as const;
+const BASE_CONTEXT_MARKERS = ['THING.md', 'CONTEXT.md'] as const;
+
+/**
+ * Get all context marker files (including dynamic configDirName-based marker).
+ *
+ * @returns Array of marker file names to check
+ */
+function getContextMarkers(): string[] {
+  const configDirName = getResolvedConfigDirName();
+  // 动态生成配置目录名对应的标记文件（如 .thething.md 或 .siact.md）
+  const configMarker = `${configDirName}.md`;
+  return [...BASE_CONTEXT_MARKERS, configMarker];
+}
 
 /**
  * Represents a loaded context file.
@@ -85,8 +97,9 @@ async function loadContextFile(
  */
 async function searchContextFilesInDir(dir: string, cwd: string): Promise<LoadedContextFile[]> {
   const results: LoadedContextFile[] = [];
+  const markers = getContextMarkers();
 
-  for (const marker of CONTEXT_MARKERS) {
+  for (const marker of markers) {
     const filePath = path.join(dir, marker);
     const loaded = await loadContextFile(filePath, cwd, marker);
     if (loaded) {

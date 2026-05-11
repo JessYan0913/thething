@@ -5,22 +5,8 @@ import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from '../../api/loaders/agents';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { getResolvedConfigDirName } from '../../foundation/paths';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
-
-// ============================================================
-// Agent Tool Input Schema
-// ============================================================
-
-const AgentToolInputSchema = z.object({
-  agentType: z.string().optional().describe(
-    'Agent type to use. Built-in: explore, research, plan, general-purpose. ' +
-    'Custom agents (like test-agent) are already loaded and can be used directly by name. ' +
-    `Example: "test-agent" for a custom agent defined in ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/test-agent.md. ` +
-    'If not specified, auto-routes based on task keywords.'
-  ),
-  task: z.string().describe('The task for the sub-agent to complete'),
-});
 
 // ============================================================
 // Recursion Tracker
@@ -42,6 +28,20 @@ const tracker = new RecursionTracker();
  */
 export function createAgentTool(config: AgentToolConfig) {
   const cwd = config.cwd ?? process.cwd();
+
+  // 动态获取配置目录名（使用全局单例）
+  const configDirName = getResolvedConfigDirName();
+
+  // 动态生成 input schema（使用正确的 configDirName）
+  const AgentToolInputSchema = z.object({
+    agentType: z.string().optional().describe(
+      'Agent type to use. Built-in: explore, research, plan, general-purpose. ' +
+      'Custom agents (like test-agent) are already loaded and can be used directly by name. ' +
+      `Example: "test-agent" for a custom agent defined in ${configDirName}/agents/test-agent.md. ` +
+      'If not specified, auto-routes based on task keywords.'
+    ),
+    task: z.string().describe('The task for the sub-agent to complete'),
+  });
 
   // 动态生成 agent 列表描述
   const registeredAgents = globalAgentRegistry.getAll();

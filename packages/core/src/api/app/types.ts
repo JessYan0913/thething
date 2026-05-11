@@ -189,6 +189,14 @@ export interface CreateAgentOptions {
 
   /** 高级参数 */
   writerRef?: { current: unknown };
+
+  /** 对话元数据（用于控制技能附件注入等行为） */
+  conversationMeta?: {
+    /** 是否是新对话（首次消息） */
+    isNewConversation: boolean;
+    /** 对话开始时间戳 */
+    conversationStartTime?: number;
+  };
 }
 
 // ============================================================

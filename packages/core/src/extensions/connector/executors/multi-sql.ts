@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { SqlExecutorConfig, ExecutorResult } from '../types'
-import { DatabasePoolManager, databasePoolManager, type DatabaseConnectionConfig } from './database-pool'
+import { DatabasePoolManager, type DatabaseConnectionConfig } from './database-pool'
 
 export interface MultiSqlExecutorConfig {
   poolManager?: DatabasePoolManager
@@ -19,7 +19,8 @@ export class MultiSqlExecutor {
   private getConnectionConfig: (connectionId: string) => Promise<DatabaseConnectionConfig | null>
 
   constructor(config?: MultiSqlExecutorConfig) {
-    this.poolManager = config?.poolManager || databasePoolManager
+    // 创建新实例，不使用单例
+    this.poolManager = config?.poolManager || new DatabasePoolManager()
     this.getConnectionConfig = config?.getConnectionConfig || this.defaultGetConnectionConfig
   }
 

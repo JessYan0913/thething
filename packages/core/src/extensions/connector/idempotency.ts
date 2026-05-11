@@ -134,26 +134,87 @@ export class IdempotencyGuard {
   }
 }
 
-// 单例管理（延迟初始化）
+// ============================================================
+// 单例管理（强制显式配置，避免竞态）
+// ============================================================
+
 let idempotencyGuardInstance: IdempotencyGuard | null = null
+let configuredOptions: IdempotencyGuardOptions | undefined = undefined
+let initializationPromise: Promise<IdempotencyGuard> | null = null
 
 /**
- * 获取 IdempotencyGuard 单例（延迟初始化）
+ * 配置 IdempotencyGuard（必须在首次使用前调用）
+ *
+ * 重要：必须在任何可能调用 getIdempotencyGuard 的代码之前调用此函数。
+ * initConnectorGateway() 会自动调用此函数。
+ *
+ * @throws 如果已初始化则抛错（防止配置冲突）
  */
-export function getIdempotencyGuard(): IdempotencyGuard {
+export function configureIdempotencyGuard(options?: IdempotencyGuardOptions): void {
+  if (idempotencyGuardInstance) {
+    throw new Error(
+      '[IdempotencyGuard] Already initialized.\n' +
+      'configureIdempotencyGuard() must be called BEFORE first use.\n' +
+      'Current initialization order may be incorrect.'
+    )
+  }
+  configuredOptions = options
+}
+
+/**
+ * 获取 IdempotencyGuard 单例（异步版本）
+ *
+ * 使用异步版本确保正确的初始化顺序。
+ * 如果 configureIdempotencyGuard 未被调用，使用默认配置。
+ */
+export async function getIdempotencyGuard(): Promise<IdempotencyGuard> {
+  // 已初始化：直接返回
+  if (idempotencyGuardInstance) {
+    return idempotencyGuardInstance
+  }
+
+  // 正在初始化：等待完成
+  if (initializationPromise) {
+    return initializationPromise
+  }
+
+  // 开始初始化
+  initializationPromise = (async () => {
+    const instance = new IdempotencyGuard(configuredOptions)
+    idempotencyGuardInstance = instance
+    return instance
+  })()
+
+  return initializationPromise
+}
+
+/**
+ * 获取 IdempotencyGuard 单例（同步版本）
+ *
+ * 仅在已预初始化的情况下可用。
+ *
+ * @throws 如果未预初始化则抛错
+ */
+export function getIdempotencyGuardSync(): IdempotencyGuard {
   if (!idempotencyGuardInstance) {
-    idempotencyGuardInstance = new IdempotencyGuard()
+    throw new Error(
+      '[IdempotencyGuard] Not initialized.\n' +
+      'Call configureIdempotencyGuard() before synchronous use, ' +
+      'or use async getIdempotencyGuard().\n' +
+      'initConnectorGateway() should be called first.'
+    )
   }
   return idempotencyGuardInstance
 }
 
 /**
- * 配置 IdempotencyGuard（必须在首次使用前调用）
+ * 重置单例（仅用于测试）
  */
-export function configureIdempotencyGuard(options?: IdempotencyGuardOptions): void {
+export function resetIdempotencyGuard(): void {
   if (idempotencyGuardInstance) {
-    console.warn('[IdempotencyGuard] Already initialized. configureIdempotencyGuard() must be called before first use.')
-    return
+    idempotencyGuardInstance.close()
   }
-  idempotencyGuardInstance = new IdempotencyGuard(options)
+  idempotencyGuardInstance = null
+  configuredOptions = undefined
+  initializationPromise = null
 }
