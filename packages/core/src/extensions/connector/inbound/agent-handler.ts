@@ -15,6 +15,14 @@ import { extractMemoriesInBackground } from '../../../extensions/memory'
 import { ConnectorRegistry } from '../registry'
 import type { ConnectorModelConfig } from '../types'
 import { checkPermissionRules } from '../../../extensions/permissions/rules'
+import { buildApprovalAskMessage } from '../approval-handler'
+import {
+  isToolCallApproved,
+  markToolCallApproved,
+  setPendingApproval,
+  getPendingApproval,
+  clearPendingApproval,
+} from '../approval-context'
 
 /**
  * Convert ContentParts from result.steps into UIMessage.parts format,
@@ -38,7 +46,6 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
     for (const item of content) {
       const itemObj = item as Record<string, unknown>
 
-      // 提取推理内容
       if (itemObj.type === 'reasoning' && typeof itemObj.text === 'string') {
         reasoningTexts.push(itemObj.text)
       } else if (itemObj.type === 'reasoningText' && typeof itemObj.text === 'string') {
@@ -48,7 +55,6 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
       const toolCallId = itemObj.toolCallId as string | undefined
       if (!toolCallId) continue
 
-      // 提取工具调用
       if (itemObj.type === 'tool-call') {
         callsByToolCallId[toolCallId] = {
           toolName: itemObj.toolName as string,
@@ -65,18 +71,14 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
 
   const parts: UIMessage['parts'] = []
 
-  // Add reasoning parts first (shown as collapsible "Thought for X seconds" in UI)
   for (const text of reasoningTexts) {
     parts.push({ type: 'reasoning', text } as UIMessage['parts'][number])
   }
 
-  // Add tool parts - 只添加有结果或错误的完整工具调用
-  // 未执行的调用（没有结果/错误）会导致 convertToModelMessages 报错
   for (const [toolCallId, call] of Object.entries(callsByToolCallId)) {
     const isError = toolCallId in errorsByToolCallId
     const hasResult = toolCallId in resultsByToolCallId
 
-    // 跳过未执行的工具调用（没有结果也没有错误）
     if (!isError && !hasResult) {
       console.warn('[stepsToMessageParts] Skipping incomplete tool call:', toolCallId, call.toolName)
       continue
@@ -114,9 +116,6 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
  *
  * convertToModelMessages 要求工具调用必须有对应的工具结果
  * 如果历史消息中有未执行的工具调用（权限被拒绝等），会导致转换失败
- *
- * @param messages - 原始消息列表
- * @returns 过滤后的消息列表（移除不完整的工具调用）
  */
 function sanitizeMessagesForConversion(messages: UIMessage[]): UIMessage[] {
   return messages.map(msg => {
@@ -125,28 +124,21 @@ function sanitizeMessagesForConversion(messages: UIMessage[]): UIMessage[] {
     const sanitizedParts: UIMessage['parts'] = []
 
     for (const part of msg.parts) {
-      // 只保留文本和推理内容
       if (part.type === 'text' || part.type === 'reasoning') {
         sanitizedParts.push(part)
         continue
       }
 
-      // 对于工具调用，检查是否有完整的结果
       const partObj = part as Record<string, unknown>
       const state = partObj.state as string | undefined
 
-      // 只保留有输出结果的工具调用
-      // 'output-available' 和 'output-error' 是完整的
-      // 'input-available' 是不完整的（没有执行）
       if (state === 'output-available' || state === 'output-error') {
         sanitizedParts.push(part)
       } else if (state === 'input-available' || !state) {
-        // 不完整的工具调用，跳过
         const toolName = (partObj as { toolName?: string }).toolName
         const toolCallId = (partObj as { toolCallId?: string }).toolCallId
         console.warn('[sanitizeMessagesForConversion] Skipping incomplete tool call:', toolCallId, toolName)
       } else {
-        // 其他未知状态，保留
         sanitizedParts.push(part)
       }
     }
@@ -185,8 +177,12 @@ export interface AgentHandlerConfig {
  * Agent 入站处理器
  * 接收 Webhook 消息，触发 Agent 对话，返回回复
  *
- * 注意：处理状态指示器由 InboundEventProcessor 自动处理，
- * 根据 connector YAML 中的 inbound.processing_indicator 配置
+ * 权限征询流程（纯内存，无数据库）：
+ *   1. agent 执行遇到 tool-approval-request
+ *   2. 检查 permissions.json → allow/deny → 自动处理
+ *   3. 无规则匹配 → setPendingApproval() → 返回询问消息给用户
+ *   4. 用户回复"同意" → getPendingApproval() → markToolCallApproved() → 重跑 agent
+ *   5. agent 重跑 → isToolCallApproved() → 自动批准 → 工具正常执行
  */
 export class AgentInboundHandler implements InboundEventHandler {
   private config: AgentHandlerConfig
@@ -210,20 +206,60 @@ export class AgentInboundHandler implements InboundEventHandler {
       const conversationId = await this.findOrCreateConversation(event)
       console.log('[AgentInboundHandler] Conversation ID:', conversationId)
 
-      // 2. 构建用户消息
-      const userMessage = this.buildUserMessage(event)
-
-      // 3. 获取对话历史
+      // 2. 获取对话历史
       const store = this.config.context.runtime.dataStore
       const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
       const isFirstMessage = existingMessages.length === 0
-      const messages: UIMessage[] = [...existingMessages, userMessage]
 
-      // 4. 获取用户 ID
+      // 3. 检测当前消息是否为审批响应
+      // 审批状态完全由内存 approval-context 管理，不依赖数据库
+      // 只有当内存中确实存在 pending approval 时，才将关键词消息视为审批响应
+      const approvalKeywords = ['同意', '允许', '批准', '确认', 'ok', 'yes', '好', '行', '可以', '是的', '没问题']
+      const denyKeywords = ['拒绝', '不同意', '禁止', '取消', 'no', '不行', '不要', 'deny']
+      const messageText = event.message.text?.toLowerCase().trim() || ''
+      const isApproveKeyword = approvalKeywords.some(k => messageText.includes(k))
+      const isDenyKeyword = denyKeywords.some(k => messageText.includes(k))
+
+      const pendingApproval = getPendingApproval(conversationId)
+      const isApprovalResponse = (isApproveKeyword || isDenyKeyword) && pendingApproval !== null
+
+      // 4. 构建本次执行的消息列表
+      let userMessage: UIMessage
+      let messages: UIMessage[]
+
+      if (isApprovalResponse && pendingApproval && existingMessages.length > 0) {
+        if (isApproveKeyword) {
+          // 用户同意：标记工具为已批准，清除 pending 状态
+          markToolCallApproved(conversationId, pendingApproval.toolName, pendingApproval.input)
+          clearPendingApproval(conversationId)
+          console.log('[AgentInboundHandler] User approved tool call:', {
+            conversationId,
+            toolName: pendingApproval.toolName,
+          })
+        } else {
+          // 用户拒绝：清除 pending 状态，直接返回
+          clearPendingApproval(conversationId)
+          console.log('[AgentInboundHandler] User denied tool call:', pendingApproval.toolName)
+          return {
+            success: true,
+            response: `已取消 ${pendingApproval.toolName} 操作`,
+            conversationId,
+          }
+        }
+
+        // 不将"同意"/"拒绝"消息存入历史，使用现有历史重跑 agent
+        console.log('[AgentInboundHandler] Approval response detected, replaying with existing messages')
+        messages = existingMessages
+      } else {
+        // 正常消息：构建并追加新的用户消息
+        userMessage = this.buildUserMessage(event)
+        messages = [...existingMessages, userMessage]
+      }
+
+      // 5. 获取用户 ID
       const userId = this.config.userId || event.sender.id
 
-      // 5. 创建 Agent（复用 HTTP Chat 的完整流程）
-      // 权限规则统一由 permissions.json 控制，与 UI 场景保持一致
+      // 6. 创建 Agent
       const modelConfig = this.config.modelConfig
       if (!modelConfig) {
         throw new Error('[AgentInboundHandler] modelConfig is required but not provided')
@@ -240,12 +276,10 @@ export class AgentInboundHandler implements InboundEventHandler {
           modelName: modelConfig.modelName,
           includeUsage: modelConfig.includeUsage ?? true,
         },
-        // 传递对话元数据，确保首次对话正确注入技能附件
         conversationMeta: {
           isNewConversation: isFirstMessage,
           conversationStartTime: Date.now(),
         },
-        // 模块配置：默认启用 MCP/Skills/Memory，禁用 Connector（避免循环调用）
         modules: {
           mcps: this.config.modules?.mcps ?? true,
           skills: this.config.modules?.skills ?? true,
@@ -254,33 +288,26 @@ export class AgentInboundHandler implements InboundEventHandler {
         },
       })
 
-      // 6. 执行 Agent（流式，支持自动审批循环）
-      // 使用 stream 方法确保工具调用循环正确执行
-      // 当 needsApproval 返回 true 时，SDK 会暂停并等待审批响应
-      // Connector 场景需要自动审批并继续执行
+      // 7. 执行 Agent（流式，支持审批循环）
       const messagesToProcess = adjustedMessages ?? messages
       const sanitizedMessages = sanitizeMessagesForConversion(messagesToProcess)
       let currentMessages = await convertToModelMessages(sanitizedMessages)
 
-      // 7. 处理流式输出（支持审批循环）
       let responseText = ''
       const writtenFiles: Array<{ path: string; content: string }> = []
       let steps: unknown[] = []
       let finishReason: string = ''
-      let maxApprovalRounds = 10 // 防止无限循环
+      const maxApprovalRounds = 10
       let approvalRound = 0
-      // 保存最后一次 stream 结果用于获取最终文本
       let lastStreamText: string = ''
 
       while (approvalRound < maxApprovalRounds) {
         approvalRound++
 
-        // 必须先 await stream() 返回的 Promise，才能访问 fullStream 等属性
         const streamResult = await agent.stream({
           messages: currentMessages,
         })
 
-        // 消费 fullStream 获取文本和审批请求
         const approvalRequests: Array<{
           approvalId: string
           toolCallId: string
@@ -292,7 +319,7 @@ export class AgentInboundHandler implements InboundEventHandler {
           if (part.type === 'text-delta') {
             responseText += part.text
           }
-          // 从工具调用中提取 write_file 内容（流式阶段）
+
           if (part.type === 'tool-call') {
             const toolCallPart = part as {
               type: 'tool-call'
@@ -311,9 +338,7 @@ export class AgentInboundHandler implements InboundEventHandler {
               })
             }
           }
-          // 处理审批请求 - 这是关键！
-          // ToolApprovalRequestOutput 类型结构: { type, approvalId, toolCall }
-          // toolCall 包含: { toolCallId, toolName, input }
+
           if (part.type === 'tool-approval-request') {
             const approvalPart = part as unknown as {
               type: 'tool-approval-request'
@@ -338,12 +363,10 @@ export class AgentInboundHandler implements InboundEventHandler {
           }
         }
 
-        // 等待所有 Promise 完成
         finishReason = await streamResult.finishReason
         steps = await streamResult.steps
         lastStreamText = await streamResult.text || ''
 
-        // 调试：打印执行结果
         console.log('[AgentInboundHandler] Stream result (round ' + approvalRound + '):', {
           stepsCount: steps.length,
           textLength: responseText.length,
@@ -357,14 +380,11 @@ export class AgentInboundHandler implements InboundEventHandler {
           }),
         })
 
-        // 如果没有审批请求，说明循环完成
         if (approvalRequests.length === 0) {
           break
         }
 
-        // 处理审批请求 - 根据权限规则自动审批
-        // 从 stream 输出的 steps 中提取完整的 assistant 内容
-        // 需要包含 tool-call 部分，否则 SDK 无法找到对应的工具调用来执行
+        // 从 steps 中提取 assistant 内容（tool-call + reasoning）
         const lastStep = steps[steps.length - 1] as Record<string, unknown> | undefined
         const stepContent = (lastStep?.content ?? []) as Array<{
           type: string
@@ -374,7 +394,6 @@ export class AgentInboundHandler implements InboundEventHandler {
           text?: string
         }>
 
-        // 提取 tool-call 部分
         const toolCallParts: Array<{
           type: 'tool-call'
           toolCallId: string
@@ -382,7 +401,6 @@ export class AgentInboundHandler implements InboundEventHandler {
           input: Record<string, unknown>
         }> = []
 
-        // 提取 reasoning 部分（如果有）
         const reasoningParts: Array<{
           type: 'reasoning'
           text: string
@@ -404,7 +422,6 @@ export class AgentInboundHandler implements InboundEventHandler {
           }
         }
 
-        // 构建审批请求部分
         const approvalRequestParts: Array<{
           type: 'tool-approval-request'
           approvalId: string
@@ -415,14 +432,12 @@ export class AgentInboundHandler implements InboundEventHandler {
           toolCallId: req.toolCallId,
         }))
 
-        // 组合 assistant 消息内容：reasoning + tool-call + tool-approval-request
         const assistantContent = [
           ...reasoningParts,
           ...toolCallParts,
           ...approvalRequestParts,
         ]
 
-        // 构建审批响应内容（用于 tool 消息）
         const toolApprovalContent: Array<{
           type: 'tool-approval-response'
           approvalId: string
@@ -430,8 +445,9 @@ export class AgentInboundHandler implements InboundEventHandler {
           reason?: string
         }> = []
 
+        let needsUserApproval = false
+
         for (const req of approvalRequests) {
-          // 检查权限规则
           const matchedRule = checkPermissionRules(req.toolName, req.input)
 
           if (matchedRule?.behavior === 'allow') {
@@ -455,28 +471,64 @@ export class AgentInboundHandler implements InboundEventHandler {
               approved: false,
               reason: `操作被权限规则拒绝: ${matchedRule.pattern}`,
             })
-          } else {
-            // 没有匹配规则的，默认自动批准（Connector 场景无人交互）
-            console.log('[AgentInboundHandler] Auto-approved (no matching rule):', {
-              toolName: req.toolName,
-              input: req.input,
-            })
+          } else if (isToolCallApproved(conversationId, req.toolName, req.input)) {
+            // 用户已在本次会话中审批过此工具（重跑场景）
+            console.log('[AgentInboundHandler] Already approved by user:', req.toolName)
             toolApprovalContent.push({
               type: 'tool-approval-response',
               approvalId: req.approvalId,
               approved: true,
             })
+          } else {
+            // 无权限规则且未批准：向用户征询确认
+            console.log('[AgentInboundHandler] Needs user approval:', {
+              toolName: req.toolName,
+              input: req.input,
+            })
+
+            // 写入内存 pending 状态（不用数据库）
+            setPendingApproval(conversationId, {
+              toolName: req.toolName,
+              input: req.input,
+              connectorType: event.connector_type,
+              channelId: event.channel_id,
+              createdAt: Date.now(),
+            })
+
+            // 保存用户消息到历史，确保用户回复"同意"后 agent 重跑时能找到原始任务
+            const userMessageToSave: UIMessage = {
+              id: nanoid(),
+              role: 'user',
+              parts: [{ type: 'text', text: event.message.text || '' }],
+            }
+            store.messageStore.saveMessages(conversationId, [...existingMessages, userMessageToSave])
+
+            console.log('[AgentInboundHandler] Saved user message and set pending approval for:', req.toolName)
+
+            needsUserApproval = true
+            break
           }
         }
 
-        // 更新消息列表，添加 assistant 消息和 tool 审批响应消息
-        // AssistantContent 必须包含 tool-call，否则 SDK 无法执行工具
+        if (needsUserApproval) {
+          // 中断循环，向用户发送询问消息
+          const pendingInfo = getPendingApproval(conversationId)
+          return {
+            success: true,
+            response: buildApprovalAskMessage(
+              pendingInfo?.toolName ?? approvalRequests[0].toolName,
+              pendingInfo?.input ?? approvalRequests[0].input
+            ),
+            conversationId,
+          }
+        }
+
+        // 将 assistant 消息和审批响应追加到消息列表，继续循环
         currentMessages.push({
           role: 'assistant',
           content: assistantContent,
         } as ModelMessage)
 
-        // ToolContent 格式: Array<ToolResultPart | ToolApprovalResponse>
         currentMessages.push({
           role: 'tool',
           content: toolApprovalContent,
@@ -489,8 +541,7 @@ export class AgentInboundHandler implements InboundEventHandler {
         console.warn('[AgentInboundHandler] Max approval rounds reached, stopping loop')
       }
 
-      // 8. 提取响应文本（流式已累积）
-      // 如果流式累积为空，使用最后一次 stream 的文本
+      // 8. 提取响应文本
       if (!responseText) {
         responseText = lastStreamText
       }
@@ -500,10 +551,8 @@ export class AgentInboundHandler implements InboundEventHandler {
         responseText = responseText.trim() ? `${responseText}\n\n${fileSection}` : fileSection
       }
 
-      // 8.2 过滤系统信息内容（发送到飞书前）
       let finalResponse = this.filterSystemContent(responseText)
 
-      // 如果过滤后为空，使用最后一次 stream 文本或默认消息
       if (!finalResponse || finalResponse.trim().length === 0) {
         finalResponse = lastStreamText || '任务已完成'
       }
@@ -517,22 +566,18 @@ export class AgentInboundHandler implements InboundEventHandler {
       }
 
       // 10. 保存对话历史（过滤掉系统注入的消息）
-      // messagesToProcess 包含 skill_listing 等注入消息，需要过滤后再保存
-      // 但保留原始用户消息（不包含注入消息）
-      const messagesToSave = this.filterInjectedMessages(messages)  // 使用原始 messages，不含注入
+      const messagesToSave = this.filterInjectedMessages(messages)
       const finalMessages = [...messagesToSave, assistantMessage]
       store.messageStore.saveMessages(conversationId, finalMessages)
 
-      // 11. 后台处理（使用 setImmediate，与 UI Chat 一致）
+      // 11. 后台处理
       const cwd = this.config.context.cwd
 
       setImmediate(() => {
-        // 记忆提取（使用完整对话）
         extractMemoriesInBackground(finalMessages, userId, conversationId, model, cwd).catch((err: Error) =>
           console.error('[Memory Extraction] Error:', err)
         )
 
-        // 标题生成（首次对话）
         if (isFirstMessage) {
           generateConversationTitle(messagesToSave, model)
             .then((title: string) => {
@@ -541,12 +586,10 @@ export class AgentInboundHandler implements InboundEventHandler {
             .catch((err: Error) => console.error('[Title Generation] Error:', err))
         }
 
-        // 成本持久化
         sessionState.costTracker.persistToDB().catch((err: Error) =>
           console.error('[Cost Persist] Error:', err)
         )
 
-        // 释放资源
         dispose().catch((err: Error) =>
           console.error('[Agent Dispose] Error:', err)
         )
@@ -575,23 +618,13 @@ export class AgentInboundHandler implements InboundEventHandler {
 
   /**
    * 过滤系统信息内容
-   *
-   * 某些模型可能会把 <system-reminder> 或技能列表当作回复的一部分
-   * 需要在发送到飞书前过滤掉这些内容
    */
   private filterSystemContent(response: string): string {
     if (!response) return ''
 
-    // 过滤 <system-reminder> 标签内容
     let filtered = response.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-
-    // 过滤技能列表开头
     filtered = filtered.replace(/The following skills are available[\s\S]*?(?=\n\n[A-Z]|\n\n\n|$)/g, '')
-
-    // 过滤 "New skills are now available" 开头
     filtered = filtered.replace(/New skills are now available[\s\S]*?(?=\n\n[A-Z]|\n\n\n|$)/g, '')
-
-    // 清理多余空白
     filtered = filtered.trim()
 
     return filtered
@@ -599,29 +632,22 @@ export class AgentInboundHandler implements InboundEventHandler {
 
   /**
    * 过滤系统注入的消息
-   *
-   * messages 可能包含 skill_listing 等注入消息，
-   * 这些消息不应保存到对话历史中（UI 用户不应该看到）
-   *
-   * @param messages - 原始消息列表
-   * @returns 过滤后的消息列表
    */
   private filterInjectedMessages(messages: UIMessage[]): UIMessage[] {
     return messages.filter(msg => {
-      // 过滤 skill_listing 消息（ID 以 skill-listing- 开头）
       if (msg.id.startsWith('skill-listing-')) {
         return false
       }
 
-      // 过滤包含 <system-reminder> 的消息
       const text = this.extractMessageText(msg)
       if (text.includes('<system-reminder>')) {
         return false
       }
 
-      // 过滤技能列表开头
-      if (text.startsWith('The following skills are available') ||
-          text.startsWith('New skills are now available')) {
+      if (
+        text.startsWith('The following skills are available') ||
+        text.startsWith('New skills are now available')
+      ) {
         return false
       }
 
@@ -641,10 +667,8 @@ export class AgentInboundHandler implements InboundEventHandler {
 
   /**
    * 根据 channel_id 查找或创建对话
-   * channel_id 作为对话的唯一标识
    */
   private async findOrCreateConversation(event: InboundMessageEvent): Promise<string> {
-    // 使用 channel_id 作为对话 ID（格式：connector_type_channel_id）
     const conversationId = `${event.connector_type}_${event.channel_id}`
     const store = this.config.context.runtime.dataStore
 
@@ -653,7 +677,6 @@ export class AgentInboundHandler implements InboundEventHandler {
       return conversationId
     }
 
-    // 创建新对话，标题使用发送者信息
     const title = `${event.connector_type} - ${event.sender.name || event.sender.id}`
     store.conversationStore.createConversation(conversationId, title)
 

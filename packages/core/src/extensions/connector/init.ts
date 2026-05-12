@@ -154,6 +154,7 @@ export async function initConnectorGateway(config?: ConnectorGatewayConfig): Pro
     const handler = createAgentInboundHandler(handlerConfig)
     inboundEventProcessorInstance.setHandler(handler)
     inboundEventProcessorInstance.setRegistry(registry)
+
     inboundEventProcessorInstance.start()
 
     inboundInitialized = true

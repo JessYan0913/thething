@@ -25,6 +25,25 @@ export { IdempotencyGuard } from './idempotency'
 // 凭证加密存储
 export * from './credentials/index'
 
+// Approval handling
+export {
+  buildApprovalAskMessage,
+  parseApprovalResponse,
+} from './approval-handler'
+export type { PendingApprovalInfo } from './approval-context'
+export {
+  setPendingApproval,
+  getPendingApproval,
+  clearPendingApproval,
+  hasPendingApproval,
+  markToolCallApproved,
+  isToolCallApproved,
+  clearToolCallApproval,
+  clearConversationApprovals,
+  clearAllApprovals,
+  generateApprovalKey,
+} from './approval-context'
+
 // Inbound Layer - 入站消息处理
 export * from './inbound/index'
 

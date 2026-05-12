@@ -6,7 +6,7 @@
 
 import type { SqliteDatabase } from '../types';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -56,6 +56,34 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
         ON tasks(claimed_by);
     `);
     console.log('[Schema] Migrated to v2: added tasks table');
+  }
+
+  if (currentVersion < 3) {
+    // v3: add pending_approvals table for Connector mode
+    db.exec(`
+      -- Pending approvals table for Connector mode
+      CREATE TABLE IF NOT EXISTS pending_approvals (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        tool_call_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        input TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'denied', 'expired')),
+        created_at TEXT DEFAULT (datetime('now')),
+        connector_type TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      -- Index for approval lookup by conversation
+      CREATE INDEX IF NOT EXISTS idx_approvals_conversation
+        ON pending_approvals(conversation_id);
+
+      -- Index for approval status lookup
+      CREATE INDEX IF NOT EXISTS idx_approvals_status
+        ON pending_approvals(status);
+    `);
+    console.log('[Schema] Migrated to v3: added pending_approvals table');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

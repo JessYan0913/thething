@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validateWritePath } from '../../extensions/permissions';
+import { isToolCallApproved } from '../../extensions/connector/approval-context';
 
 export const writeFileTool = tool({
   description: '创建或覆盖文件内容。自动创建父目录。如需追加内容请使用 append 模式。',
@@ -15,10 +16,16 @@ export const writeFileTool = tool({
       .default('overwrite')
       .describe('写入模式: overwrite（覆盖/创建）, create（仅创建，存在则报错）, append（追加到末尾）'),
   }),
-  needsApproval: async ({ filePath }) => {
-    // Step 1: 检查持久化规则（Always allow）
+  needsApproval: async ({ filePath }, { toolCallId }) => {
+    // Step 1: 检查是否已被用户批准（Connector 模式）
+    if (toolCallId && isToolCallApproved(toolCallId)) {
+      console.log(`[write_file needsApproval] ✅ Already approved by user, toolCallId=${toolCallId}`);
+      return false;
+    }
+
+    // Step 2: 检查持久化规则（Always allow）
     const matchedRule = checkPermissionRules('write_file', { filePath });
-    console.log(`[write_file needsApproval] filePath=${filePath}, matchedRule=${matchedRule ? JSON.stringify(matchedRule) : 'null'}`);
+    console.log(`[write_file needsApproval] filePath=${filePath}, toolCallId=${toolCallId}, matchedRule=${matchedRule ? JSON.stringify(matchedRule) : 'null'}`);
     if (matchedRule?.behavior === 'allow') {
       console.log(`[write_file needsApproval] ✅ Auto-approved by permissions.json`);
       return false;  // 自动放行
@@ -28,7 +35,7 @@ export const writeFileTool = tool({
       return true;
     }
 
-    // Step 2: 写入操作默认需要审批
+    // Step 3: 写入操作默认需要审批
     console.log(`[write_file needsApproval] ⚠️ No matching rule, needs approval`);
     return true;
   },
