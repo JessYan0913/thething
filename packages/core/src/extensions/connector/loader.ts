@@ -54,8 +54,19 @@ const ToolDefinitionSchema = z.object({
 
 const InboundSchema = z.object({
   enabled: z.boolean(),
-  webhook_path: z.string(),
-  handler: z.string(),
+  webhookPath: z.string().optional(),
+  protocol: z.string().min(1),
+  transports: z.array(z.string()).optional(),
+  reply: z.object({
+    tool: z.string(),
+    input: z.record(z.string(), z.unknown()).optional().default({}),
+  }).optional(),
+  processing_indicator: z.object({
+    enabled: z.boolean(),
+    add_tool: z.string(),
+    remove_tool: z.string(),
+    add_input: z.record(z.string(), z.unknown()).optional(),
+  }).optional(),
 });
 
 export const ConnectorFrontmatterSchema = z.object({

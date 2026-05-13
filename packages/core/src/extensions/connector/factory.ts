@@ -10,12 +10,21 @@
 import path from 'path'
 import type { ConnectorRuntime, ConnectorRuntimeConfig } from './types'
 import { ConnectorRegistry } from './registry'
-import { IdempotencyGuard } from './idempotency'
 import { AuditLogger } from './audit-logger'
-import { InboundEventQueue } from './inbound/event-queue'
 import { InboundEventProcessor } from './inbound/inbound-processor'
 import { createAgentInboundHandler, type AgentHandlerConfig } from './inbound/agent-handler'
+import { ConnectorInboundGateway } from './inbound/gateway/inbound-gateway'
+import { SQLiteInboundInbox } from './inbound/inbox/sqlite-inbox'
+import { ConnectorResponder } from './inbound/responder/responder'
+import { DefaultConnectorInboundRuntime } from './inbound/runtime'
 import type { AppContext } from '../../api/app'
+
+export interface ConfigureConnectorInboundOptions {
+  userId?: string
+  appContext: AppContext
+  modules?: AgentHandlerConfig['modules']
+  modelConfig?: ConnectorRuntimeConfig['model']
+}
 
 /**
  * 创建 ConnectorRuntime 实例
@@ -25,50 +34,47 @@ import type { AppContext } from '../../api/app'
  */
 export function createConnectorRuntime(config: ConnectorRuntimeConfig): ConnectorRuntime {
   // 1. 创建 Registry（不按 cwd 缓存，每次创建新实例）
-  const registry = new ConnectorRegistry(config.configDir)
-
-  // 2. 创建 IdempotencyGuard（显式传入路径）
-  const idempotencyGuard = new IdempotencyGuard({
-    dbPath: path.join(config.dataDir, 'connector-idempotency.db'),
+  const registry = new ConnectorRegistry(config.configDir, {
+    env: config.env,
+    allowUnsafeScriptExecutor: config.allowUnsafeScriptExecutor,
   })
 
-  // 3. 创建 AuditLogger（可选持久化到 SQLite）
+  // 2. 创建 AuditLogger（可选持久化到 SQLite）
   const auditLogger = new AuditLogger({
     dbPath: path.join(config.dataDir, 'connector-audit.db'),
     enablePersistence: true,
   })
 
-  // 4. 创建 EventQueue
-  const eventQueue = new InboundEventQueue()
-
-  // 5. 创建 EventProcessor
+  // 3. 创建 EventProcessor
   const eventProcessor = new InboundEventProcessor()
 
-  // 6. 配置 EventProcessor 与 Queue 的关联
-  eventProcessor.setQueue(eventQueue)
+  // 4. 配置 EventProcessor
   eventProcessor.setAuditLogger(auditLogger)
 
-  // 7. 如果有 AppContext，配置 inbound handler
-  if (config.appContext) {
-    const handlerConfig: AgentHandlerConfig = {
-      registry,
-      userId: config.userId,
-      context: config.appContext as AppContext,
-      // 如果提供了模型配置，注入到 handler
-      modelConfig: config.model,
-    }
-    const handler = createAgentInboundHandler(handlerConfig)
-    eventProcessor.setHandler(handler)
-    eventProcessor.setRegistry(registry)
+  const responder = new ConnectorResponder({ registry })
+  const inbox = SQLiteInboundInbox.fromDataDir(config.dataDir)
+  const gateway = new ConnectorInboundGateway({
+    registry,
+    inbox,
+  })
+  const inbound = new DefaultConnectorInboundRuntime(gateway, inbox, responder)
+  const runtime: ConnectorRuntime = {
+    registry,
+    auditLogger,
+    inbound,
+    inboundService: eventProcessor,
   }
 
-  return {
-    registry,
-    idempotencyGuard,
-    auditLogger,
-    eventQueue,
-    eventProcessor,
+  // 5. 如果有 AppContext，配置 inbound handler
+  if (config.appContext) {
+    configureConnectorInboundRuntime(runtime, {
+      userId: config.userId,
+      appContext: config.appContext as AppContext,
+      modelConfig: config.model,
+    })
   }
+
+  return runtime
 }
 
 /**
@@ -78,12 +84,41 @@ export function createConnectorRuntime(config: ConnectorRuntimeConfig): Connecto
  *
  * @param runtime ConnectorRuntime 实例
  */
-export async function initializeConnectorRuntime(runtime: ConnectorRuntime): Promise<void> {
+export async function initializeConnectorRuntime(
+  runtime: ConnectorRuntime,
+  options?: { startConsumer?: boolean },
+): Promise<void> {
   // 1. 初始化 Registry（加载 YAML 配置）
   await runtime.registry.initialize()
 
-  // 2. 启动 EventProcessor（注册队列回调）
-  runtime.eventProcessor.start()
+  // 2. 启动标准入站消费者
+  if (options?.startConsumer !== false) {
+    runtime.inbound.startConsumer(runtime.inboundService)
+  }
+}
+
+/**
+ * 绑定入站 Agent 处理器并启动消费者。
+ *
+ * bootstrap 阶段只能初始化 registry；server 创建 AppContext 和模型配置后，
+ * 再调用该函数把标准 InboundEvent 交给 Agent 应用服务。
+ */
+export function configureConnectorInboundRuntime(
+  runtime: ConnectorRuntime,
+  options: ConfigureConnectorInboundOptions,
+): void {
+  const handlerConfig: AgentHandlerConfig = {
+    registry: runtime.registry,
+    userId: options.userId,
+    context: options.appContext,
+    modules: options.modules,
+    modelConfig: options.modelConfig,
+  }
+  const handler = createAgentInboundHandler(handlerConfig)
+  const processor = runtime.inboundService as InboundEventProcessor
+  processor.setHandler(handler)
+  processor.setRegistry(runtime.registry)
+  runtime.inbound.startConsumer(processor)
 }
 
 /**
@@ -92,12 +127,12 @@ export async function initializeConnectorRuntime(runtime: ConnectorRuntime): Pro
  * @param runtime ConnectorRuntime 实例
  */
 export async function disposeConnectorRuntime(runtime: ConnectorRuntime): Promise<void> {
-  // 1. 停止 EventProcessor
-  runtime.eventProcessor.stop()
-
-  // 2. 释放 Registry 资源
+  // 1. 释放 Registry 资源
   runtime.registry.dispose()
 
-  // 3. 关闭 IdempotencyGuard 数据库
-  runtime.idempotencyGuard.close()
+  // 2. 停止并关闭入站运行时
+  runtime.inbound.stopConsumer()
+  const inbox = runtime.inbound.inbox as { close?: () => void }
+  inbox.close?.()
+
 }

@@ -8,10 +8,10 @@ import { Hono } from 'hono'
 interface CallLog {
   id: string
   timestamp: string
-  connector_id: string
-  tool_name: string
+  connectorId: string
+  toolName: string
   success: boolean
-  duration_ms: number
+  durationMs: number
   input: Record<string, unknown>
   result?: unknown
   error?: string
@@ -23,14 +23,14 @@ const MAX_LOGS = 1000
 const app = new Hono()
 
 app.get('/', (c) => {
-  const connectorId = c.req.query('connector_id')
+  const connectorId = c.req.query('connectorId')
   const limit = parseInt(c.req.query('limit') || '50')
   const offset = parseInt(c.req.query('offset') || '0')
 
   let filteredLogs = callLogs
 
   if (connectorId) {
-    filteredLogs = callLogs.filter(log => log.connector_id === connectorId)
+    filteredLogs = callLogs.filter(log => log.connectorId === connectorId)
   }
 
   const total = filteredLogs.length
@@ -41,35 +41,36 @@ app.get('/', (c) => {
 
   // 统计
   const stats = {
-    total_calls: callLogs.length,
-    success_rate: callLogs.length > 0
+    totalCalls: callLogs.length,
+    successRate: callLogs.length > 0
       ? (callLogs.filter(l => l.success).length / callLogs.length * 100).toFixed(2) + '%'
       : '0%',
-    avg_duration_ms: callLogs.length > 0
-      ? Math.round(callLogs.reduce((sum, l) => sum + l.duration_ms, 0) / callLogs.length)
+    avgDurationMs: callLogs.length > 0
+      ? Math.round(callLogs.reduce((sum, l) => sum + l.durationMs, 0) / callLogs.length)
       : 0,
-    by_connector: {} as Record<string, { total: number; success: number; avg_ms: number }>,
+    byConnector: {} as Record<string, { total: number; success: number; avgMs: number }>,
   }
 
   // 按 connector 统计
   for (const log of callLogs) {
-    if (!stats.by_connector[log.connector_id]) {
-      stats.by_connector[log.connector_id] = { total: 0, success: 0, avg_ms: 0 }
+    if (!stats.byConnector[log.connectorId]) {
+      stats.byConnector[log.connectorId] = { total: 0, success: 0, avgMs: 0 }
     }
-    const s = stats.by_connector[log.connector_id]
+    const s = stats.byConnector[log.connectorId]
     s.total++
     if (log.success) s.success++
+    s.avgMs += log.durationMs
   }
 
-  for (const [id, s] of Object.entries(stats.by_connector)) {
-    s.avg_ms = Math.round(s.avg_ms / (stats.by_connector[id]?.total || 1))
+  for (const [id, s] of Object.entries(stats.byConnector)) {
+    s.avgMs = Math.round(s.avgMs / (stats.byConnector[id]?.total || 1))
   }
 
   return c.json({
     success: true,
     data: {
       logs: paginatedLogs,
-      pagination: { total, limit, offset, has_more: offset + limit < total },
+      pagination: { total, limit, offset, hasMore: offset + limit < total },
       stats,
     },
   })
@@ -79,10 +80,10 @@ app.get('/', (c) => {
 app.post('/', async (c) => {
   try {
     const body = await c.req.json<{
-      connector_id: string
-      tool_name: string
+      connectorId: string
+      toolName: string
       success: boolean
-      duration_ms: number
+      durationMs: number
       input: Record<string, unknown>
       result?: unknown
       error?: string
@@ -101,7 +102,7 @@ app.post('/', async (c) => {
       callLogs.splice(MAX_LOGS)
     }
 
-    return c.json({ success: true, log_id: log.id })
+    return c.json({ success: true, logId: log.id })
   } catch (error) {
     return c.json(
       { success: false, error: error instanceof Error ? error.message : String(error) },

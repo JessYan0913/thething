@@ -3,28 +3,34 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getConnectorRegistry, type ToolCallRequest } from '@the-thing/core'
+import { getServerRuntime } from '../../../runtime'
 
 const app = new Hono()
 
+interface ConnectorToolInvocationBody {
+  connectorId: string
+  toolName: string
+  input?: Record<string, unknown>
+}
+
 app.post('/', async (c) => {
   try {
-    const body = await c.req.json() as ToolCallRequest
+    const body = await c.req.json() as ConnectorToolInvocationBody
 
-    if (!body.connector_id || !body.tool_name) {
+    if (!body.connectorId || !body.toolName) {
       return c.json(
-        { success: false, error: 'Missing connector_id or tool_name' },
+        { success: false, error: 'Missing connectorId or toolName' },
         400
       )
     }
 
-    const reg = await getConnectorRegistry()
+    const reg = (await getServerRuntime()).connectorRegistry
 
     const startTime = Date.now()
     const result = await reg.callTool({
-      connector_id: body.connector_id,
-      tool_name: body.tool_name,
-      tool_input: body.tool_input || {},
+      connectorId: body.connectorId,
+      toolName: body.toolName,
+      input: body.input || {},
     })
 
     return c.json({
@@ -32,13 +38,13 @@ app.post('/', async (c) => {
       data: {
         ...result,
         timing: {
-          duration_ms: Date.now() - startTime,
+          durationMs: Date.now() - startTime,
           timestamp: new Date().toISOString(),
         },
         request: {
-          connector_id: body.connector_id,
-          tool_name: body.tool_name,
-          tool_input: body.tool_input,
+          connectorId: body.connectorId,
+          toolName: body.toolName,
+          input: body.input,
         },
       },
     })

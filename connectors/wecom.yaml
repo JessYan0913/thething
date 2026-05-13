@@ -11,8 +11,19 @@ enabled: true
 # 入站配置（Webhook 接收消息）
 inbound:
   enabled: true
-  webhook_path: /api/connector/webhooks/wecom
-  handler: wecom
+  webhookPath: /api/connector/webhooks/wecom
+  protocol: wecom
+  transports: [http]
+  reply:
+    tool: send_message
+    input:
+      reply_context:
+        connector_type: "$replyAddress.protocol"
+        channel_id: "$replyAddress.channelId"
+        reply_to_message_id: "$replyAddress.messageId"
+        thread_id: "$replyAddress.threadId"
+        raw: "$replyAddress.raw"
+      text: "$message.text"
 
 # 认证配置
 auth:
@@ -57,13 +68,13 @@ tools:
     executor: http
     executor_config:
       method: POST
-      url: "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${token}"
+      url: "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={{token}}"
       body:
-        touser: "${input.reply_context.channel_id}"
-        msgtype: "${input.msgtype}"
+        touser: "{{input.reply_context.channel_id}}"
+        msgtype: "{{input.msgtype}}"
         agentid: "${WECOM_AGENT_ID}"
         text:
-          content: "${input.text}"
+          content: "{{input.text}}"
 
   - name: get_user_info
     description: 根据 userid 查询企业微信用户信息
@@ -79,4 +90,4 @@ tools:
     executor: http
     executor_config:
       method: GET
-      url: "https://qyapi.weixin.qq.com/cgi-bin/user/get?access_token=${token}&userid=${input.userid}"
+      url: "https://qyapi.weixin.qq.com/cgi-bin/user/get?access_token={{token}}&userid={{input.userid}}"

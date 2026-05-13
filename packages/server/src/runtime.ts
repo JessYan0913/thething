@@ -10,9 +10,7 @@
 import {
   bootstrap,
   createContext,
-  initConnectorGateway,
-  shutdownConnectorGateway,
-  createLanguageModel,
+  configureConnectorInboundRuntime,
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
@@ -21,6 +19,7 @@ import { startFeishuLongConnection, stopFeishuLongConnection } from './feishu-lo
 
 let runtimeInstance: CoreRuntime | null = null
 let contextInstance: AppContext | null = null
+let initPromise: Promise<CoreRuntime> | null = null
 
 /**
  * 主动初始化 Server Runtime
@@ -32,7 +31,19 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
   if (runtimeInstance) {
     return runtimeInstance
   }
+  if (initPromise) {
+    return initPromise
+  }
 
+  initPromise = initializeServerRuntime()
+  try {
+    return await initPromise
+  } finally {
+    initPromise = null
+  }
+}
+
+async function initializeServerRuntime(): Promise<CoreRuntime> {
   const tokenizerConfig = getServerTokenizerConfig()
 
   // 使用新的 layout + behavior 配置结构（从环境变量读取）
@@ -46,6 +57,9 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
   runtimeInstance = await bootstrap({
     layout,
     tokenizerConfig,
+    connectorConfig: {
+      env: process.env,
+    },
   })
 
   // 立即创建 context（cwd 自动从 layout.resourceRoot 取值）
@@ -60,11 +74,8 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
   const modelName = process.env.THETHING_MODEL || process.env.DASHSCOPE_MODEL || 'qwen-max'
 
   if (apiKey && baseURL) {
-    await initConnectorGateway({
-      cwd: layout.resourceRoot,
-      registry: runtimeInstance.connectorRegistry,
-      context: contextInstance,
-      enableInbound: true,
+    configureConnectorInboundRuntime(runtimeInstance.connectorRuntime, {
+      appContext: contextInstance,
       modelConfig: {
         apiKey,
         baseURL,
@@ -75,7 +86,7 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
     console.log('[Server Runtime] Connector Gateway inbound initialized')
 
     // 启动飞书长连接（WebSocket 模式，无需公网域名）
-    await startFeishuLongConnection()
+    await startFeishuLongConnection(runtimeInstance.connectorRegistry, runtimeInstance.connectorInbound)
   } else {
     console.log('[Server Runtime] No model API key configured, skipping Connector Gateway inbound')
   }
@@ -131,7 +142,6 @@ export async function reloadServerContext(): Promise<AppContext> {
 export async function disposeServerRuntime(): Promise<void> {
   if (runtimeInstance) {
     stopFeishuLongConnection()
-    await shutdownConnectorGateway()
     await runtimeInstance.dispose()
     runtimeInstance = null
     contextInstance = null

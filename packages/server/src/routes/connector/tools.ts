@@ -3,27 +3,33 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getConnectorRegistry, type ToolCallRequest } from '@the-thing/core'
+import { getServerRuntime } from '../../runtime'
 
 const app = new Hono()
 
+interface ConnectorToolInvocationBody {
+  connectorId: string
+  toolName: string
+  input?: Record<string, unknown>
+}
+
 app.post('/call', async (c) => {
   try {
-    const body = await c.req.json() as ToolCallRequest
+    const body = await c.req.json() as ConnectorToolInvocationBody
 
-    if (!body.connector_id || !body.tool_name) {
+    if (!body.connectorId || !body.toolName) {
       return c.json(
-        { success: false, error: 'Missing connector_id or tool_name' },
+        { success: false, error: 'Missing connectorId or toolName' },
         400
       )
     }
 
-    const reg = await getConnectorRegistry()
+    const reg = (await getServerRuntime()).connectorRegistry
 
     const result = await reg.callTool({
-      connector_id: body.connector_id,
-      tool_name: body.tool_name,
-      tool_input: body.tool_input || {},
+      connectorId: body.connectorId,
+      toolName: body.toolName,
+      input: body.input || {},
     })
 
     return c.json(result, result.success ? 200 : 400)
@@ -38,9 +44,9 @@ app.post('/call', async (c) => {
 
 app.get('/', async (c) => {
   try {
-    const connectorId = c.req.query('connector_id')
+    const connectorId = c.req.query('connectorId')
 
-    const reg = await getConnectorRegistry()
+    const reg = (await getServerRuntime()).connectorRegistry
 
     if (connectorId) {
       const connector = reg.getDefinition(connectorId)
@@ -54,15 +60,16 @@ app.get('/', async (c) => {
       return c.json({
         success: true,
         data: {
-          connector_id: connectorId,
+          connectorId,
           name: connector.name,
           version: connector.version,
           description: connector.description,
           enabled: connector.enabled,
           tools: connector.tools.map(t => ({
             name: t.name,
+            toolName: t.name,
             description: t.description,
-            input_schema: t.input_schema,
+            inputSchema: t.input_schema,
           })),
         },
       })
@@ -73,11 +80,11 @@ app.get('/', async (c) => {
           connectors: reg.getConnectorIds().map(id => {
             const connector = reg.getDefinition(id)!
             return {
-              connector_id: id,
+              connectorId: id,
               name: connector.name,
               version: connector.version,
               enabled: connector.enabled,
-              tool_count: connector.tools.length,
+              toolCount: connector.tools.length,
             }
           }),
         },

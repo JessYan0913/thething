@@ -3,23 +3,23 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getConnectorRegistry } from '@the-thing/core'
+import { getServerRuntime } from '../../../runtime'
 
 const app = new Hono()
 
 app.get('/', async (c) => {
   try {
-    const reg = await getConnectorRegistry()
+    const reg = (await getServerRuntime()).connectorRegistry
     const connectorIds = reg.getConnectorIds()
 
     const tools: Array<{
-      connector_id: string
-      connector_name: string
-      tool_name: string
-      tool_description: string
-      input_schema: unknown
+      connectorId: string
+      connectorName: string
+      toolName: string
+      toolDescription: string
+      inputSchema: unknown
       executor: string
-      timeout_ms?: number
+      timeoutMs?: number
       retryable?: boolean
     }> = []
 
@@ -32,13 +32,13 @@ app.get('/', async (c) => {
 
       for (const tool of connector.tools) {
         tools.push({
-          connector_id: connectorId,
-          connector_name: connector.name,
-          tool_name: tool.name,
-          tool_description: tool.description,
-          input_schema: tool.input_schema,
+          connectorId,
+          connectorName: connector.name,
+          toolName: tool.name,
+          toolDescription: tool.description,
+          inputSchema: tool.input_schema,
           executor: tool.executor,
-          timeout_ms: tool.timeout_ms,
+          timeoutMs: tool.timeout_ms,
           retryable: tool.retryable,
         })
       }
@@ -55,7 +55,7 @@ app.get('/', async (c) => {
             id,
             name: connector.name,
             enabled: connector.enabled,
-            tool_count: connector.tools.length,
+            toolCount: connector.tools.length,
           }
         }),
       },

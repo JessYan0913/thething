@@ -116,9 +116,9 @@ export function convertConnectorToolToAItool(
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const result = await options.registry.callTool({
-        connector_id: connectorId,
-        tool_name: toolDef.name,
-        tool_input: input,
+        connectorId,
+        toolName: toolDef.name,
+        input,
       })
 
       if (!result.success) {

@@ -11,8 +11,19 @@ enabled: true
 # 入站配置（Webhook 接收消息）
 inbound:
   enabled: true
-  webhook_path: /api/connector/webhooks/feishu
-  handler: feishu
+  webhookPath: /api/connector/webhooks/feishu
+  protocol: feishu
+  transports: [http, websocket]
+  reply:
+    tool: reply_message
+    input:
+      reply_context:
+        connector_type: "$replyAddress.protocol"
+        channel_id: "$replyAddress.channelId"
+        reply_to_message_id: "$replyAddress.messageId"
+        thread_id: "$replyAddress.threadId"
+        raw: "$replyAddress.raw"
+      text: "$message.text"
 
 # 认证配置
 auth:
@@ -56,9 +67,9 @@ tools:
     executor: http
     executor_config:
       method: POST
-      url: "https://open.feishu.cn/open-apis/im/v1/messages/${input.reply_context.reply_to_message_id}/reply"
+      url: "https://open.feishu.cn/open-apis/im/v1/messages/{{input.reply_context.reply_to_message_id}}/reply"
       headers:
-        Authorization: "Bearer ${token}"
+        Authorization: "Bearer {{token}}"
       body:
         msg_type: "text"
         content: "$json(input.text)"
@@ -84,11 +95,11 @@ tools:
     executor: http
     executor_config:
       method: POST
-      url: "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${input.receive_id_type}"
+      url: "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type={{input.receive_id_type}}"
       headers:
-        Authorization: "Bearer ${token}"
+        Authorization: "Bearer {{token}}"
       body:
-        receive_id: "${input.receive_id}"
+        receive_id: "{{input.receive_id}}"
         msg_type: "text"
         content: "$json(input.text)"
 
@@ -106,6 +117,6 @@ tools:
     executor: http
     executor_config:
       method: GET
-      url: "https://open.feishu.cn/open-apis/contact/v3/users/${input.user_id}?user_id_type=open_id"
+      url: "https://open.feishu.cn/open-apis/contact/v3/users/{{input.user_id}}?user_id_type=open_id"
       headers:
-        Authorization: "Bearer ${token}"
+        Authorization: "Bearer {{token}}"

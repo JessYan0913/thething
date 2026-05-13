@@ -36,7 +36,7 @@ export class MockExecutor {
     // 常见的 echo 模式：将输入原样返回
     const result = response === 'ECHO'
       ? { echoed: input, timestamp: Date.now() }
-      : response
+      : renderMockValue(response, input)
 
     return {
       success: true,
@@ -47,4 +47,50 @@ export class MockExecutor {
       },
     }
   }
+}
+
+function renderMockValue(value: unknown, input: Record<string, unknown>): unknown {
+  if (typeof value === 'string') {
+    return renderMockTemplate(value, input)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => renderMockValue(item, input))
+  }
+
+  if (value && typeof value === 'object') {
+    const rendered: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(value)) {
+      rendered[key] = renderMockValue(child, input)
+    }
+    return rendered
+  }
+
+  return value
+}
+
+function renderMockTemplate(template: string, input: Record<string, unknown>): string {
+  const now = new Date()
+
+  return template
+    .replace(/\{\{timestamp\}\}/g, () => String(Date.now()))
+    .replace(/\{\{iso_timestamp\}\}/g, () => now.toISOString())
+    .replace(/\{\{uuid\}\}/g, () => crypto.randomUUID())
+    .replace(/\{\{input\.([\w.]+)\}\}/g, (_, path) => {
+      return stringifyTemplateValue(resolvePath(input, path))
+    })
+}
+
+function resolvePath(source: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, part) => {
+    if (!current || typeof current !== 'object') return undefined
+    return (current as Record<string, unknown>)[part]
+  }, source)
+}
+
+function stringifyTemplateValue(value: unknown): string {
+  if (Array.isArray(value) || (value && typeof value === 'object')) {
+    return JSON.stringify(value)
+  }
+  return String(value ?? '')
 }

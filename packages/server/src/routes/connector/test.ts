@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getConnectorRegistry } from '@the-thing/core'
+import { getServerRuntime } from '../../runtime'
 
 const app = new Hono()
 
@@ -16,7 +16,7 @@ app.get('/', async (c) => {
   }> = []
 
   try {
-    const reg = await getConnectorRegistry()
+    const reg = (await getServerRuntime()).connectorRegistry
 
     const connectorIds = reg.getConnectorIds()
     results.push({
@@ -26,9 +26,9 @@ app.get('/', async (c) => {
     })
 
     const echoResult = await reg.callTool({
-      connector_id: 'test-service',
-      tool_name: 'echo',
-      tool_input: { message: 'Hello Connector Gateway!' },
+      connectorId: 'test-service',
+      toolName: 'echo',
+      input: { message: 'Hello Connector Gateway!' },
     })
     results.push({
       step: '2-test-echo-mock',
@@ -37,9 +37,9 @@ app.get('/', async (c) => {
     })
 
     const userResult = await reg.callTool({
-      connector_id: 'test-service',
-      tool_name: 'get_user_info',
-      tool_input: { userid: 'test-user-001' },
+      connectorId: 'test-service',
+      toolName: 'get_user_info',
+      input: { userid: 'test-user-001' },
     })
     results.push({
       step: '3-test-get-user-info',

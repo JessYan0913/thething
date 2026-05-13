@@ -32,6 +32,7 @@ export type { SkillLoaderConfig } from '../extensions/skills/types';
 // Connector（从 connector/types.ts 重新导出，不包括 init.ts 的 ConnectorGatewayConfig）
 export type {
   ConnectorDefinition,
+  ConnectorRuntimeConfig,
   AuthConfig,
   ToolDefinition,
   SchemaProperty,
@@ -40,16 +41,6 @@ export type {
   ScriptExecutorConfig,
   MockExecutorConfig,
 } from '../extensions/connector/types';
-
-// Connector Gateway 配置（来自 init.ts）
-export type { ConnectorGatewayConfig } from '../extensions/connector/init';
-
-// Webhook 配置（来自 webhook-config.ts）
-export type {
-  WebhookConfigLoaded,
-  WechatWebhookConfig,
-  FeishuWebhookConfig,
-} from '../extensions/connector/webhook-config';
 
 // MCP
 export type { McpServerConfig } from '../extensions/mcp/types';

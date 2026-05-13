@@ -123,69 +123,16 @@ export class HttpExecutor {
     const now = new Date()
 
     return str
-      // 内置变量 - {{timestamp}} 格式
       .replace(/\{\{timestamp\}\}/g, () => String(Date.now()))
       .replace(/\{\{iso_timestamp\}\}/g, () => now.toISOString())
       .replace(/\{\{uuid\}\}/g, () => crypto.randomUUID())
-
-      // 内置变量 - ${timestamp} 格式（兼容）
-      .replace(/\$\{timestamp\}/g, () => String(Date.now()))
-      .replace(/\$\{iso_timestamp\}/g, () => now.toISOString())
-
-      // 输入变量 - {{input.xxx}} 格式
-      .replace(/\{\{input\.(\w+)\}\}/g, (_, key) => {
-        const val = input[key]
-        if (Array.isArray(val)) {
-          return JSON.stringify(val)
-        }
-        return String(val ?? '')
+      .replace(/\{\{input\.([\w.]+)\}\}/g, (_, path) => {
+        return stringifyTemplateValue(resolvePath(input, path))
       })
-
-      // 输入变量 - ${input.xxx} 格式（兼容 feishu.yaml）
-      .replace(/\$\{input\.(\w+)\}/g, (_, key) => {
-        const val = input[key]
-        if (Array.isArray(val)) {
-          return JSON.stringify(val)
-        }
-        return String(val ?? '')
+      .replace(/\{\{credentials\.([\w.]+)\}\}/g, (_, path) => {
+        return stringifyTemplateValue(resolvePath(credentials, path))
       })
-
-      // 输入变量带默认值 - ${input.xxx|default} 格式
-      // 当变量缺失或为空时使用默认值
-      .replace(/\$\{input\.(\w+)\|([^}]+)\}/g, (_, key, defaultVal) => {
-        const val = input[key]
-        if (val === undefined || val === null || val === '') {
-          return defaultVal
-        }
-        if (Array.isArray(val)) {
-          return JSON.stringify(val)
-        }
-        return String(val)
-      })
-
-      // 输入变量嵌套 - ${input.xxx.yyy} 格式
-      .replace(/\$\{input\.(\w+)\.(\w+)\}/g, (_, key1, key2) => {
-        const obj = input[key1] as Record<string, unknown> | undefined
-        return String(obj?.[key2] ?? '')
-      })
-
-      // Credentials 变量 - {{credentials.xxx}} 格式
-      .replace(/\{\{credentials\.(\w+)\}\}/g, (_, key) => {
-        return credentials[key] || ''
-      })
-
-      // Credentials 变量 - ${credentials.xxx} 格式（兼容）
-      .replace(/\$\{credentials\.(\w+)\}/g, (_, key) => {
-        return credentials[key] || ''
-      })
-
-      // Token 变量 - {{token}} 格式
       .replace(/\{\{token\}\}/g, () => {
-        return token || ''
-      })
-
-      // Token 变量 - ${token} 格式（兼容）
-      .replace(/\$\{token\}/g, () => {
         return token || ''
       })
   }
@@ -203,14 +150,6 @@ export class HttpExecutor {
         const directRefMatch = value.match(/^\$input\.(\w+)$/)
         if (directRefMatch) {
           const inputKey = directRefMatch[1]
-          result[key] = input[inputKey] ?? value
-          continue
-        }
-
-        // 特殊语法 @input.xxx - 直接引用输入值（兼容语法）
-        const altRefMatch = value.match(/^@input\.(\w+)$/)
-        if (altRefMatch) {
-          const inputKey = altRefMatch[1]
           result[key] = input[inputKey] ?? value
           continue
         }
@@ -293,4 +232,18 @@ const tokenCache = new Map<string, string>()
 
 export function setTokenCache(connectorId: string, token: string): void {
   tokenCache.set(connectorId, token)
+}
+
+function resolvePath(source: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, part) => {
+    if (!current || typeof current !== 'object') return undefined
+    return (current as Record<string, unknown>)[part]
+  }, source)
+}
+
+function stringifyTemplateValue(value: unknown): string {
+  if (Array.isArray(value) || (value && typeof value === 'object')) {
+    return JSON.stringify(value)
+  }
+  return String(value ?? '')
 }

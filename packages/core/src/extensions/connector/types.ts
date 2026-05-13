@@ -4,10 +4,8 @@
 
 // 前向声明类型（避免循环导入）
 import type { ConnectorRegistry } from './registry'
-import type { IdempotencyGuard } from './idempotency'
 import type { AuditLogger } from './audit-logger'
-import type { InboundEventQueue } from './inbound/event-queue'
-import type { InboundEventProcessor } from './inbound/inbound-processor'
+import type { ConnectorInboundRuntime, InboundEvent } from './inbound/types'
 
 /**
  * Connector 定义（单一 YAML 配置文件）
@@ -23,8 +21,10 @@ export interface ConnectorDefinition {
   // 入站配置（Webhook）
   inbound?: {
     enabled: boolean
-    webhook_path: string
-    handler: string  // wecom | feishu | test-service | custom
+    webhookPath?: string
+    protocol: string
+    transports?: Array<'http' | 'websocket' | 'test' | string>
+    reply?: ConnectorReplyDefinition
     // 处理状态指示器：收到消息时显示"正在处理"状态
     processing_indicator?: {
       enabled: boolean
@@ -48,6 +48,15 @@ export interface ConnectorDefinition {
 
   // 工具定义
   tools: ToolDefinition[]
+}
+
+/**
+ * 入站回复映射。
+ * Responder 使用该配置把 replyAddress + message 映射为标准 connector tool call。
+ */
+export interface ConnectorReplyDefinition {
+  tool: string
+  input: Record<string, unknown>
 }
 
 /**
@@ -143,43 +152,12 @@ export interface MockExecutorConfig {
 }
 
 /**
- * 入站消息事件（Webhook 接收后转换的统一格式）
+ * core 内部标准工具调用模型。
  */
-export interface InboundMessageEvent {
-  event_id: string           // 唯一 ID，用于幂等
-  connector_type: string      // "wecom" | "feishu" | "test-service"
-  channel_id: string          // 群聊 ID 或用户 ID
-  sender: {
-    id: string
-    name?: string
-    type: 'user' | 'bot'
-  }
-  message: {
-    id: string
-    type: 'text' | 'image' | 'file' | 'event'
-    text?: string
-    raw: unknown
-  }
-  timestamp: number
-  reply_context: ReplyContext
-}
-
-/**
- * 回复上下文
- */
-export interface ReplyContext {
-  connector_type: string
-  channel_id: string
-  reply_to_message_id?: string
-}
-
-/**
- * 工具调用请求
- */
-export interface ToolCallRequest {
-  connector_id: string
-  tool_name: string
-  tool_input: Record<string, unknown>
+export interface ConnectorToolCall {
+  connectorId: string
+  toolName: string
+  input: Record<string, unknown>
 }
 
 /**
@@ -190,9 +168,9 @@ export interface ToolCallResponse {
   result?: unknown
   error?: string
   metadata?: {
-    duration_ms: number
-    connector_id: string
-    tool_name: string
+    durationMs: number
+    connectorId: string
+    toolName: string
   }
 }
 
@@ -247,6 +225,12 @@ export interface ConnectorRuntimeConfig {
 
   /** 模型配置（用于 inbound handler） */
   model?: ConnectorModelConfig
+
+  /** 环境变量快照，由 server/cli 显式传入；core 不自行读取 process.env */
+  env?: Record<string, string | undefined>
+
+  /** 显式允许不安全 script executor；默认 false */
+  allowUnsafeScriptExecutor?: boolean
 }
 
 /**
@@ -259,15 +243,14 @@ export interface ConnectorRuntime {
   /** Connector 注册表 */
   registry: ConnectorRegistry
 
-  /** 幂等守卫 */
-  idempotencyGuard: IdempotencyGuard
-
   /** 审计日志器 */
   auditLogger: AuditLogger
 
-  /** 入站事件队列 */
-  eventQueue: InboundEventQueue
+  /** 入站运行时（标准事件、网关、收件箱、回复器） */
+  inbound: ConnectorInboundRuntime
 
-  /** 入站事件处理器 */
-  eventProcessor: InboundEventProcessor
+  /** 入站应用服务（消费标准事件） */
+  inboundService: {
+    handle(event: InboundEvent): Promise<void>
+  }
 }

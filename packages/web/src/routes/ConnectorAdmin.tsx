@@ -14,52 +14,52 @@ interface ConnectorInfo {
   name: string
   version: string
   description: string
-  tool_count: number
-  inbound_enabled: boolean
-  inbound_webhook: string | null
-  auth_type: string
+  toolCount: number
+  inboundEnabled: boolean
+  inboundWebhook: string | null
+  authType: string
   credentials: Record<string, string>
-  custom_settings: Record<string, unknown>
+  customSettings: Record<string, unknown>
   error?: boolean
 }
 
 interface ConnectorDetail {
-  registry_entry: { id: string; enabled: boolean }
+  registryEntry: { id: string; enabled: boolean }
   manifest: any
   config: any
-  raw_config_path: string
-  raw_manifest_path: string
+  rawConfigPath: string
+  rawManifestPath: string
 }
 
 interface ToolInfo {
   name: string
   description: string
-  input_schema: {
+  inputSchema: {
     type: 'object'
     properties: Record<string, any>
     required?: string[]
   }
   executor: string
-  timeout_ms?: number
+  timeoutMs?: number
   retryable?: boolean
 }
 
 interface CallLog {
   id: string
   timestamp: string
-  connector_id: string
-  tool_name: string
+  connectorId: string
+  toolName: string
   success: boolean
-  duration_ms: number
+  durationMs: number
   input: Record<string, unknown>
   error?: string
 }
 
 interface Stats {
-  total_calls: number
-  success_rate: string
-  avg_duration_ms: number
-  by_connector: Record<string, { total: number; success: number; avg_ms: number }>
+  totalCalls: number
+  successRate: string
+  avgDurationMs: number
+  byConnector: Record<string, { total: number; success: number; avgMs: number }>
 }
 
 // ============================================================
@@ -96,7 +96,7 @@ async function testTool(
   const res = await fetch(`${API_BASE}/test-tool`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ connector_id: connectorId, tool_name: toolName, tool_input: toolInput }),
+    body: JSON.stringify({ connectorId, toolName, input: toolInput }),
   })
   const data = await res.json()
   return data.data || data
@@ -107,10 +107,10 @@ async function fetchLogs(
   limit = 50
 ): Promise<{ logs: CallLog[]; stats: Stats }> {
   const params = new URLSearchParams({ limit: String(limit) })
-  if (connectorId) params.set('connector_id', connectorId)
+  if (connectorId) params.set('connectorId', connectorId)
   const res = await fetch(`${API_BASE}/logs?${params}`)
   const data = await res.json()
-  return data.data || { logs: [], stats: { total_calls: 0, success_rate: '0%', avg_duration_ms: 0, by_connector: {} } }
+  return data.data || { logs: [], stats: { totalCalls: 0, successRate: '0%', avgDurationMs: 0, byConnector: {} } }
 }
 
 // ============================================================
@@ -196,11 +196,11 @@ function ConnectorCard({
           </p>
           <p className="text-sm text-gray-600 mt-2 line-clamp-2">{connector.description}</p>
           <div className="flex items-center gap-3 mt-3">
-            <AuthTypeBadge type={connector.auth_type} />
+            <AuthTypeBadge type={connector.authType} />
             <span className="text-xs text-gray-400">
-              {connector.tool_count} 个工具
+              {connector.toolCount} 个工具
             </span>
-            {connector.inbound_enabled && (
+            {connector.inboundEnabled && (
               <span className="text-xs text-green-600">
                 入站 ●
               </span>
@@ -269,7 +269,7 @@ function ToolTester({
     setError(null)
 
     // 生成默认输入模板
-    const properties = tool.input_schema?.properties || {}
+    const properties = tool.inputSchema?.properties || {}
     const defaultInput: Record<string, unknown> = {}
     for (const [key, prop] of Object.entries(properties)) {
       if (prop.default !== undefined) {
@@ -346,8 +346,8 @@ function ToolTester({
             <p className="text-sm text-gray-600 mt-1">{selectedTool.description}</p>
             <div className="mt-2 text-xs text-gray-500">
               <span>类型: {selectedTool.executor}</span>
-              {selectedTool.timeout_ms && (
-                <span className="ml-2">超时: {selectedTool.timeout_ms}ms</span>
+              {selectedTool.timeoutMs && (
+                <span className="ml-2">超时: {selectedTool.timeoutMs}ms</span>
               )}
             </div>
           </div>
@@ -391,7 +391,7 @@ function ToolTester({
               <h4 className="font-medium text-green-800">成功</h4>
               {result.timing && (
                 <p className="text-xs text-green-600 mt-1">
-                  耗时: {result.timing.duration_ms}ms
+                  耗时: {result.timing.durationMs}ms
                 </p>
               )}
               <pre className="text-sm text-green-700 mt-2 overflow-auto max-h-64">
@@ -440,19 +440,19 @@ function LogsViewer() {
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-500">总调用次数</p>
-            <p className="text-2xl font-bold">{stats.total_calls}</p>
+            <p className="text-2xl font-bold">{stats.totalCalls}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-500">成功率</p>
-            <p className="text-2xl font-bold">{stats.success_rate}</p>
+            <p className="text-2xl font-bold">{stats.successRate}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-500">平均耗时</p>
-            <p className="text-2xl font-bold">{stats.avg_duration_ms}ms</p>
+            <p className="text-2xl font-bold">{stats.avgDurationMs}ms</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-500">Connector 数</p>
-            <p className="text-2xl font-bold">{Object.keys(stats.by_connector).length}</p>
+            <p className="text-2xl font-bold">{Object.keys(stats.byConnector).length}</p>
           </div>
         </div>
       )}
@@ -499,8 +499,8 @@ function LogsViewer() {
                   <td className="px-4 py-2 text-xs text-gray-500">
                     {new Date(log.timestamp).toLocaleString()}
                   </td>
-                  <td className="px-4 py-2 text-sm">{log.connector_id}</td>
-                  <td className="px-4 py-2 text-sm font-mono">{log.tool_name}</td>
+                  <td className="px-4 py-2 text-sm">{log.connectorId}</td>
+                  <td className="px-4 py-2 text-sm font-mono">{log.toolName}</td>
                   <td className="px-4 py-2">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
@@ -512,7 +512,7 @@ function LogsViewer() {
                       {log.success ? '成功' : '失败'}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-sm text-gray-500">{log.duration_ms}ms</td>
+                  <td className="px-4 py-2 text-sm text-gray-500">{log.durationMs}ms</td>
                 </tr>
               ))
             )}
@@ -837,7 +837,7 @@ function ConnectorDetailPanel({
             <div>
               <dt className="text-sm text-gray-500">认证方式</dt>
               <dd className="text-sm">
-                <AuthTypeBadge type={connector.auth_type} />
+                <AuthTypeBadge type={connector.authType} />
               </dd>
             </div>
             <div>
@@ -846,11 +846,11 @@ function ConnectorDetailPanel({
                 <StatusBadge enabled={connector.enabled} />
               </dd>
             </div>
-            {connector.inbound_enabled && (
+            {connector.inboundEnabled && (
               <div>
                 <dt className="text-sm text-gray-500">Webhook</dt>
                 <dd className="text-sm font-mono text-blue-600">
-                  {connector.inbound_webhook}
+                  {connector.inboundWebhook}
                 </dd>
               </div>
             )}
@@ -867,13 +867,13 @@ function ConnectorDetailPanel({
               <div>
                 <dt className="text-xs text-gray-400">Manifest 路径</dt>
                 <dd className="text-xs font-mono text-gray-600">
-                  {detail.raw_manifest_path}
+                  {detail.rawManifestPath}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-400">Config 路径</dt>
                 <dd className="text-xs font-mono text-gray-600">
-                  {detail.raw_config_path}
+                  {detail.rawConfigPath}
                 </dd>
               </div>
               <div>

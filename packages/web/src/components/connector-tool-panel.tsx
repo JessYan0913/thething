@@ -7,17 +7,17 @@ import { useState, useEffect, useCallback } from 'react'
 // ============================================================
 
 interface ToolInfo {
-  connector_id: string
-  connector_name: string
-  tool_name: string
-  tool_description: string
-  input_schema: {
+  connectorId: string
+  connectorName: string
+  toolName: string
+  toolDescription: string
+  inputSchema: {
     type: 'object'
     properties: Record<string, any>
     required?: string[]
   }
   executor: string
-  timeout_ms?: number
+  timeoutMs?: number
   retryable?: boolean
 }
 
@@ -25,7 +25,7 @@ interface ConnectorInfo {
   id: string
   name: string
   enabled: boolean
-  tool_count: number
+  toolCount: number
 }
 
 interface ToolResult {
@@ -33,7 +33,7 @@ interface ToolResult {
   result?: any
   error?: string
   timing?: {
-    duration_ms: number
+    durationMs: number
     timestamp: string
   }
 }
@@ -59,9 +59,9 @@ async function executeTool(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      connector_id: connectorId,
-      tool_name: toolName,
-      tool_input: toolInput,
+      connectorId,
+      toolName,
+      input: toolInput,
     }),
   })
   const data = await res.json()
@@ -109,7 +109,7 @@ export function ConnectorToolPanel() {
 
     try {
       const input = JSON.parse(inputJson)
-      const res = await executeTool(selectedTool.connector_id, selectedTool.tool_name, input)
+      const res = await executeTool(selectedTool.connectorId, selectedTool.toolName, input)
       setResult(res)
       if (!res.success && res.error) {
         setError(res.error)
@@ -127,7 +127,7 @@ export function ConnectorToolPanel() {
     setError(null)
 
     // 生成默认输入模板
-    const properties = tool.input_schema.properties || {}
+    const properties = tool.inputSchema.properties || {}
     const defaultInput: Record<string, unknown> = {}
     for (const [key, prop] of Object.entries(properties)) {
       if (prop.default !== undefined) {
@@ -139,10 +139,10 @@ export function ConnectorToolPanel() {
 
   // 按 connector 分组工具
   const toolsByConnector = tools.reduce((acc, tool) => {
-    if (!acc[tool.connector_id]) {
-      acc[tool.connector_id] = []
+    if (!acc[tool.connectorId]) {
+      acc[tool.connectorId] = []
     }
-    acc[tool.connector_id].push(tool)
+    acc[tool.connectorId].push(tool)
     return acc
   }, {} as Record<string, ToolInfo[]>)
 
@@ -197,18 +197,18 @@ export function ConnectorToolPanel() {
                   <div className="bg-gray-50">
                     {connectorTools.map(tool => (
                       <button
-                        key={tool.tool_name}
+                        key={tool.toolName}
                         onClick={() => handleToolSelect(tool)}
                         className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 ${
-                          selectedTool?.tool_name === tool.tool_name && 
-                          selectedTool?.connector_id === tool.connector_id
+                          selectedTool?.toolName === tool.toolName && 
+                          selectedTool?.connectorId === tool.connectorId
                             ? 'bg-blue-50 text-blue-700'
                             : ''
                         }`}
                       >
-                        <div className="font-mono text-xs">{tool.tool_name}</div>
+                        <div className="font-mono text-xs">{tool.toolName}</div>
                         <div className="text-xs text-gray-500 truncate mt-0.5">
-                          {tool.tool_description.slice(0, 40)}...
+                          {tool.toolDescription.slice(0, 40)}...
                         </div>
                       </button>
                     ))}
@@ -228,7 +228,7 @@ export function ConnectorToolPanel() {
             <div className="p-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center gap-2 mb-2">
                 <span className="font-mono text-sm bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                  {selectedTool.connector_id}/{selectedTool.tool_name}
+                  {selectedTool.connectorId}/{selectedTool.toolName}
                 </span>
                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                   selectedTool.retryable 
@@ -238,10 +238,10 @@ export function ConnectorToolPanel() {
                   {selectedTool.retryable ? '可重试' : '不可重试'}
                 </span>
               </div>
-              <p className="text-sm text-gray-600">{selectedTool.tool_description}</p>
+              <p className="text-sm text-gray-600">{selectedTool.toolDescription}</p>
               <div className="text-xs text-gray-400 mt-1">
                 类型: {selectedTool.executor}
-                {selectedTool.timeout_ms && ` · 超时: ${selectedTool.timeout_ms}ms`}
+                {selectedTool.timeoutMs && ` · 超时: ${selectedTool.timeoutMs}ms`}
               </div>
             </div>
 
@@ -283,7 +283,7 @@ export function ConnectorToolPanel() {
                     <h4 className="font-medium text-green-800 text-sm">执行成功</h4>
                     {result.timing && (
                       <span className="text-xs text-green-600">
-                        耗时: {result.timing.duration_ms}ms
+                        耗时: {result.timing.durationMs}ms
                       </span>
                     )}
                   </div>

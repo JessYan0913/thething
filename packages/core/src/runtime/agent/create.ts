@@ -133,6 +133,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     sessionState,
     enableMcp,
     enableConnector,
+    connectorRegistry: preloadedData.connectorRegistry,
     writerRef,
     model: wrappedModel,
     provider,

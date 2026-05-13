@@ -18,7 +18,7 @@ import {
 import { createTaskToolsForConversation, getGlobalTaskStore } from '../tasks'
 import { registerBuiltinAgents, scanAgentDirs, createAgentTool, globalAgentRegistry } from '../../extensions/subagents'
 import { getMcpServerConfigs, createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../extensions/mcp'
-import { getConnectorRegistry, getAllConnectorTools } from '../../extensions/connector'
+import { getAllConnectorTools } from '../../extensions/connector'
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
 import type { LoadToolsConfig } from './types'
 
@@ -112,7 +112,11 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   if (config.enableConnector) {
     try {
-      const registry = await getConnectorRegistry(config.sessionState.projectDir)
+      const registry = config.connectorRegistry
+      if (!registry) {
+        console.warn('[Connector] connectorRegistry not provided; skipping connector tools')
+        return { tools, mcpRegistry }
+      }
       // ✅ 新增：传递 sessionContext 用于输出持久化
       const sessionContext = {
         sessionId: config.conversationId,

@@ -8,17 +8,17 @@ import { XIcon, ChevronRightIcon, PlayIcon, LoaderIcon } from 'lucide-react'
 // ============================================================
 
 interface ToolInfo {
-  connector_id: string
-  connector_name: string
-  tool_name: string
-  tool_description: string
-  input_schema: {
+  connectorId: string
+  connectorName: string
+  toolName: string
+  toolDescription: string
+  inputSchema: {
     type: 'object'
     properties: Record<string, any>
     required?: string[]
   }
   executor: string
-  timeout_ms?: number
+  timeoutMs?: number
   retryable?: boolean
 }
 
@@ -27,7 +27,7 @@ interface ToolResult {
   result?: any
   error?: string
   timing?: {
-    duration_ms: number
+    durationMs: number
     timestamp: string
   }
 }
@@ -53,9 +53,9 @@ async function executeTool(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      connector_id: connectorId,
-      tool_name: toolName,
-      tool_input: toolInput,
+      connectorId,
+      toolName,
+      input: toolInput,
     }),
   })
   const data = await res.json()
@@ -113,7 +113,7 @@ export function ConnectorToolSelector() {
     setError(null)
 
     // 生成默认输入模板
-    const properties = tool.input_schema.properties || {}
+    const properties = tool.inputSchema.properties || {}
     const defaultInput: Record<string, unknown> = {}
     for (const [key, prop] of Object.entries(properties)) {
       if (prop.default !== undefined) {
@@ -132,7 +132,7 @@ export function ConnectorToolSelector() {
 
     try {
       const input = JSON.parse(inputJson)
-      const res = await executeTool(selectedTool.connector_id, selectedTool.tool_name, input)
+      const res = await executeTool(selectedTool.connectorId, selectedTool.toolName, input)
       setResult(res)
       if (!res.success && res.error) {
         setError(res.error)
@@ -149,8 +149,8 @@ export function ConnectorToolSelector() {
 
     // 将结果格式化为可以插入到聊天输入框的文本
     const text = `【Connector 工具执行结果】
-Connector: ${selectedTool?.connector_id}
-Tool: ${selectedTool?.tool_name}
+Connector: ${selectedTool?.connectorId}
+Tool: ${selectedTool?.toolName}
 结果: ${JSON.stringify(result.result, null, 2)}`
 
     // 复制到剪贴板
@@ -205,20 +205,20 @@ Tool: ${selectedTool?.tool_name}
                 <div className="w-48 border-r border-gray-200 overflow-y-auto max-h-[50vh]">
                   {tools.map((tool, index) => (
                     <button
-                      key={`${tool.connector_id}-${tool.tool_name}`}
+                      key={`${tool.connectorId}-${tool.toolName}`}
                       onClick={() => handleToolSelect(tool)}
                       className={`w-full px-3 py-2 text-left border-b border-gray-100 hover:bg-gray-50 ${
-                        selectedTool?.tool_name === tool.tool_name &&
-                        selectedTool?.connector_id === tool.connector_id
+                        selectedTool?.toolName === tool.toolName &&
+                        selectedTool?.connectorId === tool.connectorId
                           ? 'bg-blue-50 border-l-2 border-l-blue-500'
                           : ''
                       }`}
                     >
                       <div className="font-mono text-xs text-gray-600">
-                        {tool.connector_id}
+                        {tool.connectorId}
                       </div>
                       <div className="text-sm font-medium truncate">
-                        {tool.tool_name}
+                        {tool.toolName}
                       </div>
                     </button>
                   ))}
@@ -229,9 +229,9 @@ Tool: ${selectedTool?.tool_name}
                   {selectedTool ? (
                     <div className="p-4 space-y-3">
                       <div>
-                        <div className="font-medium text-sm">{selectedTool.tool_name}</div>
+                        <div className="font-medium text-sm">{selectedTool.toolName}</div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {selectedTool.tool_description}
+                          {selectedTool.toolDescription}
                         </div>
                       </div>
 
@@ -281,7 +281,7 @@ Tool: ${selectedTool?.tool_name}
                             </span>
                             {result.timing && (
                               <span className="text-gray-500">
-                                {result.timing.duration_ms}ms
+                                {result.timing.durationMs}ms
                               </span>
                             )}
                           </div>

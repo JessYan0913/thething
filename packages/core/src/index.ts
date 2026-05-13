@@ -302,22 +302,26 @@ export {
 // Connector types
 export type { ConnectorFrontmatter } from './extensions/connector/loader';
 export {
-  getConnectorRegistry,
-  initConnectorGateway,
-  shutdownConnectorGateway,
-  createWebhookHandler,
-  getInboundEventQueue,
-  getWebhookConfigByHandler,
-  buildWechatWebhookConfig,
-  buildFeishuWebhookConfig,
-  getIdempotencyGuard,
-  InboundEventQueue,
   InboundEventProcessor,
   createConnectorRuntime,
   initializeConnectorRuntime,
+  configureConnectorInboundRuntime,
   disposeConnectorRuntime,
 } from './extensions/connector';
-export type { ToolCallRequest, InboundMessageEvent, ConnectorRuntime, ConnectorRuntimeConfig } from './extensions/connector/types';
+export type { ConnectorToolCall, ConnectorRuntime, ConnectorRuntimeConfig } from './extensions/connector/types';
+export type { ConfigureConnectorInboundOptions } from './extensions/connector';
+export type {
+  InboundEvent,
+  ReplyAddress,
+  ConnectorInboundRuntime,
+  InboundAcceptResult,
+  ExternalInboundInput,
+  OutboundMessage,
+  RespondResult,
+} from './extensions/connector/inbound/types';
+export { ConnectorInboundGateway, ConnectorResponder } from './extensions/connector/inbound';
+export { DefaultConversationResolver, DefaultInboundAgentService } from './application/inbound-agent';
+export type { ConversationResolver, InboundAgentService, PendingApproval } from './application/inbound-agent';
 
 // Permission types
 export type { PermissionRule, PermissionBehavior } from './extensions/permissions/types';

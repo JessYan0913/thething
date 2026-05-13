@@ -2,11 +2,11 @@
 // 入站事件处理器 - 与 Agent Core 集成
 // ============================================================
 
-import type { InboundMessageEvent } from '../types'
-import type { InboundEventQueue } from './event-queue'
 import { ConnectorRegistry } from '../registry'
 import type { AuditLogger } from '../audit-logger'
 import { debugLog, debugWarn, debugError } from '../debug'
+import type { InboundEvent } from './types'
+import { ConnectorResponder } from './responder/responder'
 
 /**
  * 入站事件处理结果
@@ -28,7 +28,7 @@ export interface InboundEventHandler {
    * @param event 入站消息事件
    * @returns 处理结果
    */
-  handle(event: InboundMessageEvent): Promise<InboundEventResult>
+  handle(event: InboundEvent): Promise<InboundEventResult>
 }
 
 /**
@@ -36,11 +36,12 @@ export interface InboundEventHandler {
  * 实际部署时应替换为真实的 Agent 集成
  */
 class DefaultInboundHandler implements InboundEventHandler {
-  async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
+  async handle(event: InboundEvent): Promise<InboundEventResult> {
     debugLog('[DefaultInboundHandler] Received event:', {
-      eventId: event.event_id,
-      connectorType: event.connector_type,
-      channelId: event.channel_id,
+      eventId: event.id,
+      connectorId: event.connectorId,
+      protocol: event.protocol,
+      channelId: event.channel.id,
       senderId: event.sender.id,
       messageText: event.message.text?.substring(0, 50),
     })
@@ -59,17 +60,8 @@ class DefaultInboundHandler implements InboundEventHandler {
 export class InboundEventProcessor {
   private handler: InboundEventHandler = new DefaultInboundHandler()
   private registry?: ConnectorRegistry
-  private queue?: InboundEventQueue
   private auditLoggerInstance?: AuditLogger
-  private eventCallback?: (event: InboundMessageEvent) => Promise<void>
-
-  /**
-   * 设置事件队列
-   */
-  setQueue(queue: InboundEventQueue): void {
-    this.queue = queue
-    debugLog('[InboundEventProcessor] Queue registered')
-  }
+  private responder?: ConnectorResponder
 
   /**
    * 设置审计日志器
@@ -92,87 +84,67 @@ export class InboundEventProcessor {
    */
   setRegistry(registry: ConnectorRegistry): void {
     this.registry = registry
+    this.responder = new ConnectorResponder({ registry })
     debugLog('[InboundEventProcessor] Registry registered')
   }
 
-  /**
-   * 启动处理（注册到事件队列）
-   */
-  start(): void {
-    if (!this.queue) {
-      debugWarn('[InboundEventProcessor] No queue set, cannot start')
-      return
-    }
-
-    // 保存回调引用，用于 stop()
-    this.eventCallback = async (event) => {
-      debugLog('[InboundEventProcessor] Processing event:', event.event_id)
-
-      // 处理状态指示器：添加"正在处理"表情
-      let indicatorResultId: string | null = null
-      if (this.registry) {
-        indicatorResultId = await this.addProcessingIndicator(event)
-      }
-
-      try {
-        const result = await this.handler.handle(event)
-
-        // 如果有回复，通过 Connector 发送
-        if (result.success && result.response && this.registry) {
-          await this.sendReply(event, result.response)
-        }
-
-        // 处理完成：移除"正在处理"表情
-        if (indicatorResultId && this.registry) {
-          await this.removeProcessingIndicator(event, indicatorResultId)
-        }
-
-        // 记录处理结果
-        this.auditLoggerInstance?.logInboundMessage(
-          event.connector_type,
-          event.event_id,
-          result.success ? 'success' : 'failure',
-          result.response || result.error || ''
-        )
-
-      } catch (error) {
-        // 失败：移除"正在处理"表情
-        if (indicatorResultId && this.registry) {
-          await this.removeProcessingIndicator(event, indicatorResultId)
-        }
-
-        debugError('[InboundEventProcessor] Processing error:', event.event_id, error)
-        this.auditLoggerInstance?.logInboundMessage(
-          event.connector_type,
-          event.event_id,
-          'failure',
-          error instanceof Error ? error.message : String(error)
-        )
-      }
-    }
-
-    this.queue.onEvent(this.eventCallback)
-    debugLog('[InboundEventProcessor] Started')
+  async handle(event: InboundEvent): Promise<void> {
+    await this.processEvent(event)
   }
 
-  /**
-   * 停止处理（移除事件队列回调）
-   */
-  stop(): void {
-    if (this.queue && this.eventCallback) {
-      this.queue.offEvent(this.eventCallback)
-      this.eventCallback = undefined
-      debugLog('[InboundEventProcessor] Stopped')
+  private async processEvent(event: InboundEvent): Promise<void> {
+    debugLog('[InboundEventProcessor] Processing event:', event.id)
+
+    // 处理状态指示器：添加"正在处理"表情
+    let indicatorResultId: string | null = null
+    if (this.registry) {
+      indicatorResultId = await this.addProcessingIndicator(event)
+    }
+
+    try {
+      const result = await this.handler.handle(event)
+
+      // 如果有回复，通过 Connector 发送
+      if (result.success && result.response && this.registry) {
+        await this.sendReply(event, result.response)
+      }
+
+      // 处理完成：移除"正在处理"表情
+      if (indicatorResultId && this.registry) {
+        await this.removeProcessingIndicator(event, indicatorResultId)
+      }
+
+      // 记录处理结果
+      this.auditLoggerInstance?.logInboundMessage(
+        event.connectorId,
+        event.id,
+        result.success ? 'success' : 'failure',
+        result.response || result.error || ''
+      )
+
+    } catch (error) {
+      // 失败：移除"正在处理"表情
+      if (indicatorResultId && this.registry) {
+        await this.removeProcessingIndicator(event, indicatorResultId)
+      }
+
+      debugError('[InboundEventProcessor] Processing error:', event.id, error)
+      this.auditLoggerInstance?.logInboundMessage(
+        event.connectorId,
+        event.id,
+        'failure',
+        error instanceof Error ? error.message : String(error)
+      )
     }
   }
 
   /**
    * 添加处理状态指示器
    */
-  private async addProcessingIndicator(event: InboundMessageEvent): Promise<string | null> {
+  private async addProcessingIndicator(event: InboundEvent): Promise<string | null> {
     if (!this.registry) return null
 
-    const connector = this.registry.getDefinition(event.connector_type)
+    const connector = this.registry.getDefinition(event.connectorId)
     const indicator = connector?.inbound?.processing_indicator
 
     if (!indicator?.enabled) return null
@@ -185,9 +157,9 @@ export class InboundEventProcessor {
 
     try {
       const result = await this.registry.callTool({
-        connector_id: event.connector_type,
-        tool_name: indicator.add_tool,
-        tool_input: {
+        connectorId: event.connectorId,
+        toolName: indicator.add_tool,
+        input: {
           message_id: messageId,
           ...indicator.add_input,
         },
@@ -239,10 +211,10 @@ export class InboundEventProcessor {
   /**
    * 移除处理状态指示器
    */
-  private async removeProcessingIndicator(event: InboundMessageEvent, resultId: string): Promise<void> {
+  private async removeProcessingIndicator(event: InboundEvent, resultId: string): Promise<void> {
     if (!this.registry || !resultId) return
 
-    const connector = this.registry.getDefinition(event.connector_type)
+    const connector = this.registry.getDefinition(event.connectorId)
     const indicator = connector?.inbound?.processing_indicator
 
     if (!indicator?.enabled) return
@@ -252,9 +224,9 @@ export class InboundEventProcessor {
 
     try {
       const result = await this.registry.callTool({
-        connector_id: event.connector_type,
-        tool_name: indicator.remove_tool,
-        tool_input: {
+        connectorId: event.connectorId,
+        toolName: indicator.remove_tool,
+        input: {
           message_id: messageId,
           reaction_id: resultId,
         },
@@ -273,118 +245,33 @@ export class InboundEventProcessor {
   /**
    * 发送回复到外部系统
    */
-  private async sendReply(event: InboundMessageEvent, response: string): Promise<void> {
+  private async sendReply(event: InboundEvent, response: string): Promise<void> {
     if (!this.registry) {
       debugWarn('[InboundEventProcessor] No registry, cannot send reply')
       return
     }
 
-    // 根据 connector_type 选择发送工具
-    const toolName = this.getReplyToolName(event.connector_type)
-    const connectorId = this.getReplyConnectorId(event.connector_type)
-
-    if (!toolName || !connectorId) {
-      debugWarn('[InboundEventProcessor] No reply tool for connector type:', event.connector_type)
+    if (!this.responder) {
+      debugWarn('[InboundEventProcessor] No responder, cannot send reply')
       return
     }
 
-    // 调用 Connector 发送回复
-    const result = await this.registry.callTool({
-      connector_id: connectorId,
-      tool_name: toolName,
-      tool_input: {
-        reply_context: event.reply_context,
-        text: response,
-      },
+    const result = await this.responder.respond({
+      connectorId: event.replyAddress.connectorId,
+      protocol: event.replyAddress.protocol,
+      channelId: event.replyAddress.channelId,
+      messageId: event.replyAddress.messageId,
+      threadId: event.replyAddress.threadId,
+      raw: event.replyAddress.raw,
+    }, {
+      type: 'text',
+      text: response,
     })
 
     if (!result.success) {
       debugError('[InboundEventProcessor] Reply failed:', result.error)
     } else {
-      debugLog('[InboundEventProcessor] Reply sent:', event.connector_type, event.channel_id)
+      debugLog('[InboundEventProcessor] Reply sent:', event.connectorId, event.channel.id)
     }
-  }
-
-  /**
-   * 获取回复工具名称
-   */
-  private getReplyToolName(connectorType: string): string | null {
-    switch (connectorType) {
-      case 'wecom':
-      case 'wechat-mp':
-      case 'wechat-kf':
-        return 'send_message'
-
-      case 'feishu':
-        return 'reply_message'
-
-      default:
-        return null
-    }
-  }
-
-  /**
-   * 获取回复 Connector ID
-   */
-  private getReplyConnectorId(connectorType: string): string | null {
-    // 通常 connector_type 与 connector_id 相同
-    // 但有些场景可能需要映射（如多个微信应用）
-    return connectorType
-  }
-
-  /**
-   * 获取队列统计
-   */
-  getStats() {
-    return this.queue?.getStats()
-  }
-
-  /**
-   * 获取待处理事件
-   */
-  getPendingEvents(limit = 10) {
-    return this.queue?.getQueue({ status: 'pending', limit })
   }
 }
-
-/**
- * Agent Core 集成示例
- *
- * 在 Agent Core 中实现 InboundEventHandler 并注册：
- *
- * ```typescript
- * import { InboundEventProcessor, InboundEventHandler, InboundEventResult } from '@/connector'
- *
- * class AgentInboundHandler implements InboundEventHandler {
- *   async handle(event: InboundMessageEvent): Promise<InboundEventResult> {
- *     // 1. 查找或创建对话
- *     const conversation = await this.findOrCreateConversation(event)
- *
- *     // 2. 将消息添加到对话历史
- *     await this.addMessageToConversation(conversation.id, {
- *       role: 'user',
- *       content: event.message.text || '',
- *       metadata: {
- *         sender: event.sender,
- *         channel: event.channel_id,
- *         connector: event.connector_type,
- *       }
- *     })
- *
- *     // 3. 调用 LLM 生成回复
- *     const response = await this.generateResponse(conversation, event)
- *
- *     return {
- *       success: true,
- *       response,
- *       conversationId: conversation.id,
- *     }
- *   }
- * }
- *
- * // 注册处理器（使用工厂模式创建的实例）
- * const processor = runtime.eventProcessor
- * processor.setHandler(new AgentInboundHandler())
- * processor.start()
- * ```
- */

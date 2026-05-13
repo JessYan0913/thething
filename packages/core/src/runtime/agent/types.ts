@@ -16,6 +16,7 @@ import type { PermissionRule } from '../../extensions/permissions/types'
 import type { MemoryEntry } from '../../api/loaders/memory'
 import type { DataStore } from '../../foundation/datastore/types'
 import type { BehaviorConfig } from '../../config/behavior'
+import type { ConnectorRegistry } from '../../extensions/connector'
 
 export interface AgentContextConfig {
   userId?: string
@@ -32,6 +33,7 @@ export interface LoadToolsConfig {
   sessionState: SessionState
   enableMcp?: boolean
   enableConnector?: boolean
+  connectorRegistry?: ConnectorRegistry
   writerRef?: { current: SubAgentStreamWriter | null }
   model: any // LanguageModelV3
   /** Model provider for creating sub-agent models (fast/smart) */
@@ -52,6 +54,8 @@ export interface PreloadedData {
   memory: MemoryEntry[]
   /** DataStore 实例（来自 CoreRuntime，必填） */
   dataStore: DataStore
+  /** ConnectorRegistry 实例（来自 CoreRuntime） */
+  connectorRegistry?: ConnectorRegistry
 }
 
 export interface CreateAgentConfig {

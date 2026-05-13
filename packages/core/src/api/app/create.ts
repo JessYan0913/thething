@@ -78,6 +78,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       permissions: effectivePermissions,
       memory: [...memory],
       dataStore: context.runtime.dataStore,
+      connectorRegistry: context.runtime.connectorRegistry,
     },
     // 新增：传递行为配置
     behaviorDefaults: behavior,

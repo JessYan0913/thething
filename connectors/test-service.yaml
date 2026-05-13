@@ -12,8 +12,19 @@ enabled: true
 # 入站配置（Webhook 接收消息）
 inbound:
   enabled: true
-  webhook_path: /api/connector/webhooks/test-service
-  handler: test-service
+  webhookPath: /api/connector/webhooks/test-service
+  protocol: test-service
+  transports: [http]
+  reply:
+    tool: send_message
+    input:
+      reply_context:
+        connector_type: "$replyAddress.protocol"
+        channel_id: "$replyAddress.channelId"
+        reply_to_message_id: "$replyAddress.messageId"
+        thread_id: "$replyAddress.threadId"
+        raw: "$replyAddress.raw"
+      text: "$message.text"
 
 # 认证配置（测试环境无需认证）
 auth:
@@ -41,7 +52,7 @@ tools:
     executor_config:
       response:
         success: true
-        message_id: "test-msg-${timestamp}"
+        message_id: "test-msg-{{timestamp}}"
         delivered: true
       delay_ms: 100
 
@@ -58,7 +69,7 @@ tools:
     executor: mock
     executor_config:
       response:
-        userid: "${input.userid}"
+        userid: "{{input.userid}}"
         name: "测试用户"
         avatar: "https://example.com/avatar.png"
         department: "测试部门"
@@ -76,5 +87,5 @@ tools:
     executor: mock
     executor_config:
       response:
-        echoed: "${input.message}"
-        timestamp: "${timestamp}"
+        echoed: "{{input.message}}"
+        timestamp: "{{timestamp}}"

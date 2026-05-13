@@ -7,8 +7,8 @@ import path from 'path'
 import yaml from 'js-yaml'
 import type {
   ConnectorDefinition,
-  ToolCallRequest,
   ToolCallResponse,
+  ConnectorToolCall,
   ToolDefinition,
   HttpExecutorConfig,
   MockExecutorConfig,
@@ -25,6 +25,8 @@ export interface ConnectorRegistryOptions {
   getDbPath?: (connectionId: string) => Promise<string>
   enableRetry?: boolean
   enableCircuitBreaker?: boolean
+  env?: Record<string, string | undefined>
+  allowUnsafeScriptExecutor?: boolean
 }
 
 export class ConnectorRegistry {
@@ -47,6 +49,8 @@ export class ConnectorRegistry {
       getDbPath: options?.getDbPath ?? (async () => { throw new Error('getDbPath not configured') }),
       enableRetry: options?.enableRetry ?? true,
       enableCircuitBreaker: options?.enableCircuitBreaker ?? true,
+      env: options?.env ?? {},
+      allowUnsafeScriptExecutor: options?.allowUnsafeScriptExecutor ?? false,
     }
   }
 
@@ -149,7 +153,7 @@ export class ConnectorRegistry {
     const missingVars: string[] = []
 
     const result = str.replace(/\$\{(\w+)\}/g, (_, varName) => {
-      const envValue = process.env[varName]
+      const envValue = this.options.env[varName]
       if (envValue === undefined) {
         missingVars.push(varName)
         return '' // 替换为空字符串，允许 connector 加载
@@ -209,53 +213,53 @@ export class ConnectorRegistry {
   /**
    * 调用 Connector 的工具
    */
-  async callTool(request: ToolCallRequest): Promise<ToolCallResponse> {
+  async callTool(request: ConnectorToolCall): Promise<ToolCallResponse> {
     const startTime = Date.now()
-    const { connector_id, tool_name, tool_input } = request
+    const { connectorId, toolName, input } = request
 
     // 1. 获取 connector 定义
-    const connector = this.connectors.get(connector_id)
+    const connector = this.connectors.get(connectorId)
 
     if (!connector) {
       return {
         success: false,
-        error: `Connector not found: ${connector_id}`,
+        error: `Connector not found: ${connectorId}`,
       }
     }
 
     if (!connector.enabled) {
       return {
         success: false,
-        error: `Connector disabled: ${connector_id}`,
+        error: `Connector disabled: ${connectorId}`,
       }
     }
 
     // 2. 查找工具定义
-    const toolDef = connector.tools.find(t => t.name === tool_name)
+    const toolDef = connector.tools.find(t => t.name === toolName)
     if (!toolDef) {
       return {
         success: false,
-        error: `Tool not found: ${tool_name} in connector ${connector_id}`,
+        error: `Tool not found: ${toolName} in connector ${connectorId}`,
       }
     }
 
     // 3. 检查熔断器
     if (this.options.enableCircuitBreaker) {
-      const breaker = this.circuitBreakers.get(connector_id)
+      const breaker = this.circuitBreakers.get(connectorId)
       try {
         return await breaker.execute(async () => {
-          return this.executeWithRetry(toolDef, connector, tool_input, startTime)
+          return this.executeWithRetry(toolDef, connector, input, startTime)
         })
       } catch (error) {
         if (error instanceof CircuitBreakerError) {
-          this.auditLogger.logCircuitBreakerTrip(connector_id, error.message)
+          this.auditLogger.logCircuitBreakerTrip(connectorId, error.message)
           return {
             success: false,
-            error: `Circuit breaker open for connector ${connector_id}`,
+            error: `Circuit breaker open for connector ${connectorId}`,
             metadata: {
-              duration_ms: Date.now() - startTime,
-              connector_id,
-              tool_name,
+              durationMs: Date.now() - startTime,
+              connectorId,
+              toolName,
             },
           }
         }
@@ -263,7 +267,11 @@ export class ConnectorRegistry {
       }
     }
 
-    return this.executeWithRetry(toolDef, connector, tool_input, startTime)
+    return this.executeWithRetry(toolDef, connector, input, startTime)
+  }
+
+  async invokeTool(request: ConnectorToolCall): Promise<ToolCallResponse> {
+    return this.callTool(request)
   }
 
   private async executeWithRetry(
@@ -289,9 +297,9 @@ export class ConnectorRegistry {
           success: false,
           error: error instanceof Error ? error.message : String(error),
           metadata: {
-            duration_ms: Date.now() - startTime,
-            connector_id: connector.id,
-            tool_name: toolDef.name,
+            durationMs: Date.now() - startTime,
+            connectorId: connector.id,
+            toolName: toolDef.name,
           },
         }
       }
@@ -385,9 +393,9 @@ export class ConnectorRegistry {
         success: true,
         result,
         metadata: {
-          duration_ms: durationMs,
-          connector_id: connector.id,
-          tool_name: toolDef.name,
+          durationMs,
+          connectorId: connector.id,
+          toolName: toolDef.name,
         },
       }
     } catch (error) {
@@ -399,9 +407,9 @@ export class ConnectorRegistry {
         success: false,
         error: errorMsg,
         metadata: {
-          duration_ms: durationMs,
-          connector_id: connector.id,
-          tool_name: toolDef.name,
+          durationMs,
+          connectorId: connector.id,
+          toolName: toolDef.name,
         },
       }
     }
@@ -427,9 +435,7 @@ export class ConnectorRegistry {
     // - Use 'sql' executor for database operations
     // - Use 'mock' executor for testing
     // ============================================================
-    const enableScriptExecutor = process.env.CONNECTOR_ENABLE_SCRIPT_EXECUTOR === 'true'
-
-    if (!enableScriptExecutor) {
+    if (!this.options.allowUnsafeScriptExecutor) {
       throw new Error(
         `[ScriptExecutor] DISABLED for security reasons.\n` +
         `Connector: ${connectorId}\n` +

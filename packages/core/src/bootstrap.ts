@@ -7,7 +7,15 @@
 // 确保依赖显式、顺序可推断。
 
 import { createSQLiteDataStore, type DataStore, type SQLiteDataStoreConfig } from './foundation/datastore';
-import { getConnectorRegistry, shutdownConnectorGateway, initConnectorGateway, type ConnectorGatewayConfig, type ConnectorRegistry } from './extensions/connector';
+import {
+  createConnectorRuntime,
+  initializeConnectorRuntime,
+  disposeConnectorRuntime,
+  type ConnectorRuntime,
+  type ConnectorRuntimeConfig,
+  type ConnectorRegistry,
+} from './extensions/connector';
+import type { ConnectorInboundRuntime } from './extensions/connector/inbound/types';
 import { initPermissions } from './extensions/permissions';
 import { resolveProjectDir, setResolvedConfigDirName, setResolvedCwd } from './foundation/paths';
 import {
@@ -93,8 +101,8 @@ export interface BootstrapOptions {
   dataStore?: DataStore;
   /** 数据库配置（可选，仅当使用默认 SQLite 时生效） */
   databaseConfig?: SQLiteDataStoreConfig;
-  /** Connector Gateway 配置（可选） */
-  connectorConfig?: ConnectorGatewayConfig;
+  /** Connector Runtime 配置（可选） */
+  connectorConfig?: Partial<ConnectorRuntimeConfig>;
   /** Tokenizer 配置（可选） */
   tokenizerConfig?: TokenizerConfig;
 
@@ -131,6 +139,10 @@ export interface CoreRuntime {
   readonly dataStore: DataStore;
   /** Connector Registry 实例 */
   readonly connectorRegistry: ConnectorRegistry;
+  /** Connector Runtime 实例 */
+  readonly connectorRuntime: ConnectorRuntime;
+  /** Connector 入站运行时 */
+  readonly connectorInbound: ConnectorInboundRuntime | null;
   /** 销毁所有资源（关闭数据库连接、停止 gateway 等） */
   dispose(): Promise<void>;
 }
@@ -207,18 +219,25 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     console.error('[Bootstrap] Permissions init failed:', err);
   });
 
-  // 7. 初始化 Connector Gateway（仅 Registry，Inbound 在应用层初始化）
-  await initConnectorGateway({
-    enableInbound: false,  // Bootstrap 只初始化 Registry，Inbound 需要 AppContext
+  // 7. 初始化 Connector Runtime（只加载 Registry；Inbound handler 在应用层有 AppContext 后绑定）
+  const connectorConfigDir = options.connectorConfig?.configDir
+    ?? layout.resources.connectors[layout.resources.connectors.length - 1]
+    ?? path.join(layout.resourceRoot, layout.configDirName, 'connectors');
+  const connectorRuntime = createConnectorRuntime({
     cwd: layout.resourceRoot,
-    idempotencyDbPath: path.join(layout.dataDir, '.connector-idempotency.db'),
-    ...options.connectorConfig,
-  }).catch((err) => {
-    console.error('[Bootstrap] ConnectorGateway init failed:', err);
+    configDir: connectorConfigDir,
+    dataDir: layout.dataDir,
+    userId: options.connectorConfig?.userId,
+    model: options.connectorConfig?.model,
+    appContext: options.connectorConfig?.appContext,
+    env: options.connectorConfig?.env,
+    allowUnsafeScriptExecutor: options.connectorConfig?.allowUnsafeScriptExecutor,
+  });
+  await initializeConnectorRuntime(connectorRuntime, { startConsumer: false }).catch((err) => {
+    console.error('[Bootstrap] ConnectorRuntime init failed:', err);
   });
 
-  // 8. 获取 Connector Registry（使用全局 configDirName）
-  const connectorRegistry = await getConnectorRegistry(layout.resourceRoot);
+  const connectorRegistry = connectorRuntime.registry;
 
   // 9. 初始化 Tokenizer（显式配置，不依赖环境变量）
   initTokenizer(options.tokenizerConfig);
@@ -228,12 +247,14 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     behavior,
     dataStore,
     connectorRegistry,
+    connectorRuntime,
+    connectorInbound: connectorRuntime.inbound,
     async dispose() {
       // 1. 等待所有后台压缩完成，避免关闭数据库时写入失败
       await waitForAllCompactions();
 
-      // 2. 关闭 Connector Gateway
-      await shutdownConnectorGateway();
+      // 2. 关闭 Connector Runtime
+      await disposeConnectorRuntime(connectorRuntime);
 
       // 3. 关闭数据库连接
       dataStore.close();
