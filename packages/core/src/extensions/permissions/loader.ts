@@ -39,6 +39,10 @@ function getPermissionsFilePath(dir: string, filename: string = PERMISSIONS_FILE
   return path.join(dir, filename);
 }
 
+function getPermissionDirs(cwd: string, dirs?: readonly string[]): string[] {
+  return dirs ? [...dirs] : [getUserConfigDir('permissions'), getProjectConfigDir(cwd, 'permissions')];
+}
+
 /**
  * 创建空配置
  */
@@ -100,10 +104,11 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  *
  * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
-export async function loadRules(cwd?: string, filename?: string): Promise<PermissionConfig> {
+export async function loadRules(cwd?: string, filename?: string, dirs?: readonly string[]): Promise<PermissionConfig> {
   const effectiveCwd = cwd ?? process.cwd();
   const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
-  const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}`;
+  const effectiveDirs = getPermissionDirs(effectiveCwd, dirs);
+  const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}:${effectiveDirs.join('|')}`;
 
   // 检查缓存
   const cached = permissionsCache.get(cacheKey);
@@ -111,30 +116,19 @@ export async function loadRules(cwd?: string, filename?: string): Promise<Permis
     return cached;
   }
 
-  // 使用全局 configDirName（通过 setResolvedConfigDirName 设置）
-  const userDir = getUserConfigDir('permissions');
-  const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
-
-  // 加载用户级配置
-  const userConfig = await loadConfigFile(getPermissionsFilePath(userDir, effectiveFilename));
-  const userRules = userConfig?.rules ?? [];
-
-  // 标记用户级规则的来源
-  for (const rule of userRules) {
-    rule.source = 'user';
-  }
-
-  // 加载项目级配置
-  const projectConfig = await loadConfigFile(getPermissionsFilePath(projectDir, effectiveFilename));
-  const projectRules = projectConfig?.rules ?? [];
-
-  // 标记项目级规则的来源
-  for (const rule of projectRules) {
-    rule.source = 'project';
+  const loadedRules: PermissionRule[][] = [];
+  for (const [index, dir] of effectiveDirs.entries()) {
+    const config = await loadConfigFile(getPermissionsFilePath(dir, effectiveFilename));
+    const source: PermissionRule['source'] = index === effectiveDirs.length - 1 ? 'project' : 'user';
+    const rules = config?.rules ?? [];
+    for (const rule of rules) {
+      rule.source = source;
+    }
+    loadedRules.push(rules);
   }
 
   // 合并规则：项目级覆盖同 id 的用户级规则
-  const mergedRules = mergeRules(userRules, projectRules);
+  const mergedRules = loadedRules.reduce<PermissionRule[]>((acc, rules) => mergeRules(acc, rules), []);
 
   const mergedConfig: PermissionConfig = {
     rules: mergedRules,
@@ -143,6 +137,8 @@ export async function loadRules(cwd?: string, filename?: string): Promise<Permis
 
   // 更新缓存
   permissionsCache.set(cacheKey, mergedConfig);
+  // 同步 needsApproval 使用的旧 key；AppContext 是当前对话的配置快照。
+  permissionsCache.set(`permissions:${effectiveCwd}:${effectiveFilename}`, mergedConfig);
 
   return mergedConfig;
 }

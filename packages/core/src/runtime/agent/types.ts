@@ -17,6 +17,7 @@ import type { MemoryEntry } from '../../api/loaders/memory'
 import type { DataStore } from '../../foundation/datastore/types'
 import type { BehaviorConfig } from '../../config/behavior'
 import type { ConnectorRegistry } from '../../extensions/connector'
+import type { ResolvedLayout } from '../../config/layout'
 
 export interface AgentContextConfig {
   userId?: string
@@ -38,6 +39,12 @@ export interface LoadToolsConfig {
   model: any // LanguageModelV3
   /** Model provider for creating sub-agent models (fast/smart) */
   provider?: (modelName: string) => any
+  /** 预加载的 Agent 定义（来自 AppContext 快照） */
+  agents?: AgentDefinition[]
+  /** 预加载的 MCP 配置（来自 AppContext 快照） */
+  mcps?: McpServerConfig[]
+  /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
+  modelAliases?: BehaviorConfig['modelAliases']
 }
 
 /**
@@ -79,6 +86,8 @@ export interface CreateAgentConfig {
   preloadedData: PreloadedData
   /** 行为配置（来自 AppContext.behavior），用于消除硬编码 */
   behaviorDefaults?: BehaviorConfig
+  /** 布局配置（来自 AppContext.layout），用于消除路径硬编码 */
+  layout?: ResolvedLayout
 }
 
 export interface CreateAgentResult {

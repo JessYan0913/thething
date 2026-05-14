@@ -3,8 +3,16 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validateWritePath } from '../../extensions/permissions';
+import type { PathValidationOptions } from '../../extensions/permissions';
+import type { FileToolOptions } from './read';
 
-export const editFileTool = tool({
+export function createEditFileTool(options: FileToolOptions = {}) {
+  const pathValidationOptions: PathValidationOptions = {
+    workingDir: options.cwd,
+    extraSensitivePaths: options.extraSensitivePaths,
+  };
+
+  return tool({
   description:
     '使用搜索替换方式编辑文件。指定要查找的原文字符串和替换后的新字符串。若原文出现多次可设置 replaceFirst 控制替换范围。',
   inputSchema: z.object({
@@ -29,7 +37,7 @@ export const editFileTool = tool({
   },
   execute: async ({ filePath, oldString, newString, replaceAll = false }) => {
     // Step 1: 路径安全检查（移到 execute 中，返回错误结果而非抛出错误）
-    const pathCheck = validateWritePath(filePath);
+    const pathCheck = validateWritePath(filePath, pathValidationOptions);
     if (!pathCheck.allowed) {
       return {
         error: true,
@@ -48,7 +56,7 @@ export const editFileTool = tool({
       };
     }
 
-    const absolutePath = filePath.startsWith('/') ? filePath : path.resolve(filePath);
+    const absolutePath = pathCheck.resolvedPath;
 
     const content = await fs.readFile(absolutePath, 'utf-8');
 
@@ -85,7 +93,10 @@ export const editFileTool = tool({
       newString: newString.length > 100 ? newString.slice(0, 100) + '...' : newString,
     };
   },
-});
+  });
+}
+
+export const editFileTool = createEditFileTool();
 
 function escapeRegex(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

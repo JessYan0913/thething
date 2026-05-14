@@ -13,6 +13,7 @@ import {
   DEFAULT_SESSION_MEMORY_CONFIG,
   DEFAULT_MICRO_COMPACT_CONFIG_RAW,
   DEFAULT_POST_COMPACT_CONFIG,
+  AUTOCOMPACT_BUFFER_TOKENS,
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULT_TOKENS,
   MAX_TOOL_RESULT_BYTES,
@@ -92,6 +93,8 @@ export interface PostCompactConfig {
  * Compaction 配置
  */
 export interface CompactionConfig {
+  /** 自动压缩提前触发的上下文缓冲区（Token） */
+  bufferTokens: number;
   /** Session Memory Compact 配置 */
   sessionMemory: SessionMemoryCompactConfig;
   /** Micro Compact 配置 */
@@ -310,6 +313,7 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     extraSensitivePaths: partial?.extraSensitivePaths ?? [],
     // 新增：压缩配置
     compaction: partial?.compaction ?? {
+      bufferTokens: AUTOCOMPACT_BUFFER_TOKENS,
       sessionMemory: {
         minTokens: DEFAULT_SESSION_MEMORY_CONFIG.minTokens,
         maxTokens: DEFAULT_SESSION_MEMORY_CONFIG.maxTokens,

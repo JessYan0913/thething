@@ -28,6 +28,11 @@ const tracker = new RecursionTracker();
  */
 export function createAgentTool(config: AgentToolConfig) {
   const cwd = config.cwd ?? process.cwd();
+  for (const agent of config.agents ?? []) {
+    if (!globalAgentRegistry.has(agent.agentType)) {
+      globalAgentRegistry.register(agent);
+    }
+  }
 
   // 动态获取配置目录名（使用全局单例）
   const configDirName = getResolvedConfigDirName();
@@ -88,8 +93,8 @@ If no agentType specified, will auto-route based on task keywords (find→explor
           };
         }
 
-        // 动态加载 Agent（如果指定了类型但未注册）
-        if (agentType && !globalAgentRegistry.has(agentType)) {
+        // 动态加载 Agent（显式开启 dynamicReload 时才重新扫描）
+        if (config.dynamicReload && agentType && !globalAgentRegistry.has(agentType)) {
           const customAgents = await scanAgentDirs(cwd);
           for (const agent of customAgents) {
             if (!globalAgentRegistry.has(agent.agentType)) {
@@ -118,6 +123,7 @@ If no agentType specified, will auto-route based on task keywords (find→explor
           taskStore: config.taskStore,
           taskId: config.taskId,
           provider: config.provider,
+          modelAliases: config.modelAliases,
           cwd,
         };
 

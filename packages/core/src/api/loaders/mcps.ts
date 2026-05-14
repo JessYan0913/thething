@@ -33,6 +33,8 @@ const mcpsCache = new LoadingCache<McpServerConfig[]>();
 export interface LoadMcpsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
+  /** 显式扫描目录（来自 ResolvedLayout.resources.mcps） */
+  dirs?: readonly string[];
 }
 
 // ============================================================
@@ -47,21 +49,24 @@ export interface LoadMcpsOptions {
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
+  const explicitDirs = options?.dirs;
 
   // 检查缓存
-  const cacheKey = `mcps:${cwd}`;
+  const cacheKey = `mcps:${cwd}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
   const cached = mcpsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   // 构建扫描目录（使用全局 configDirName）
-  const dirs: string[] = [];
-  if (sources.includes('user')) {
-    dirs.push(getUserConfigDir('mcps'));
-  }
-  if (sources.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'mcps'));
+  const dirs: string[] = explicitDirs ? [...explicitDirs] : [];
+  if (!explicitDirs) {
+    if (sources.includes('user')) {
+      dirs.push(getUserConfigDir('mcps'));
+    }
+    if (sources.includes('project')) {
+      dirs.push(getProjectConfigDir(cwd, 'mcps'));
+    }
   }
 
   // 扫描文件

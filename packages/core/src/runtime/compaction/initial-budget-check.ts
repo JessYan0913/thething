@@ -16,7 +16,7 @@ import {
 } from './token-counter';
 import { getEffectiveContextBudget, getModelContextLimit } from '../../foundation/model';
 import { microCompactMessages } from './micro-compact';
-import { compactMessagesIfNeeded } from './index';
+import { compactMessagesIfNeeded, type CompactOptions } from './index';
 import { tryPtlDegradation } from './ptl-degradation';
 
 // ============================================================
@@ -90,6 +90,7 @@ export async function checkInitialBudget(
   modelName: string,
   dataStore: DataStore,
   conversationId?: string,
+  compactOptions?: CompactOptions,
 ): Promise<InitialBudgetCheckResult> {
   // 第一次估算（使用异步精确估算）
   const initialEstimation = await estimateFullRequest(messages, instructions, tools, modelName);
@@ -116,11 +117,12 @@ export async function checkInitialBudget(
   let currentMessages = messages;
   let currentTools = tools;
   let currentEstimation = initialEstimation;
+  const compactionEnabled = compactOptions?.enabled !== false;
 
   // ============================================================
   // 策略 1: MicroCompact - 清除旧工具输出
   // ============================================================
-  if (currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
+  if (compactionEnabled && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
     const microResult = await microCompactMessages(currentMessages);
     if (microResult.executed && microResult.tokensFreed > 500) {
       currentMessages = microResult.messages;
@@ -169,9 +171,14 @@ export async function checkInitialBudget(
   // ============================================================
   // 策略 3: API Compact - LLM 压缩消息（仅在有 conversationId 时）
   // ============================================================
-  if (conversationId && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.3) {
+  if (compactionEnabled && conversationId && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.3) {
     try {
-      const compactResult = await compactMessagesIfNeeded(currentMessages, conversationId, dataStore);
+      const compactResult = await compactMessagesIfNeeded(
+        currentMessages,
+        conversationId,
+        dataStore,
+        compactOptions,
+      );
       if (compactResult.executed && compactResult.tokensFreed > 1000) {
         currentMessages = compactResult.messages;
         actions.push(`API Compact: freed ${compactResult.tokensFreed} tokens`);

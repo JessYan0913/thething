@@ -33,6 +33,8 @@ const connectorsCache = new LoadingCache<ConnectorFrontmatter[]>();
 export interface LoadConnectorsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
+  /** 显式扫描目录（来自 ResolvedLayout.resources.connectors） */
+  dirs?: readonly string[];
 }
 
 // ============================================================
@@ -50,21 +52,24 @@ export interface LoadConnectorsOptions {
 export async function loadConnectors(options?: LoadConnectorsOptions): Promise<ConnectorFrontmatter[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
+  const explicitDirs = options?.dirs;
 
   // 检查缓存
-  const cacheKey = `connectors:${cwd}`;
+  const cacheKey = `connectors:${cwd}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
   const cached = connectorsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   // 构建扫描目录（使用全局 configDirName）
-  const dirs: string[] = [];
-  if (sources.includes('user')) {
-    dirs.push(getUserConfigDir('connectors'));
-  }
-  if (sources.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'connectors'));
+  const dirs: string[] = explicitDirs ? [...explicitDirs] : [];
+  if (!explicitDirs) {
+    if (sources.includes('user')) {
+      dirs.push(getUserConfigDir('connectors'));
+    }
+    if (sources.includes('project')) {
+      dirs.push(getProjectConfigDir(cwd, 'connectors'));
+    }
   }
 
   // 扫描 YAML 文件

@@ -12,13 +12,23 @@ import type { SystemPromptSection } from '../types';
  */
 const BASE_CONTEXT_MARKERS = ['THING.md', 'CONTEXT.md'] as const;
 
+export interface ProjectContextLoadOptions {
+  /** 项目上下文文件名列表（来自 ResolvedLayout.contextFileNames） */
+  contextFileNames?: readonly string[];
+  /** 配置目录名（来自 ResolvedLayout.configDirName） */
+  configDirName?: string;
+}
+
 /**
- * Get all context marker files (including dynamic configDirName-based marker).
+ * Get all context marker files.
  *
  * @returns Array of marker file names to check
  */
-function getContextMarkers(): string[] {
-  const configDirName = getResolvedConfigDirName();
+function getContextMarkers(options?: ProjectContextLoadOptions): string[] {
+  if (options?.contextFileNames) {
+    return [...options.contextFileNames];
+  }
+  const configDirName = options?.configDirName ?? getResolvedConfigDirName();
   // 动态生成配置目录名对应的标记文件（如 .thething.md 或 .siact.md）
   const configMarker = `${configDirName}.md`;
   return [...BASE_CONTEXT_MARKERS, configMarker];
@@ -95,9 +105,13 @@ async function loadContextFile(
 /**
  * Search for context files in a directory.
  */
-async function searchContextFilesInDir(dir: string, cwd: string): Promise<LoadedContextFile[]> {
+async function searchContextFilesInDir(
+  dir: string,
+  cwd: string,
+  options?: ProjectContextLoadOptions,
+): Promise<LoadedContextFile[]> {
   const results: LoadedContextFile[] = [];
-  const markers = getContextMarkers();
+  const markers = getContextMarkers(options);
 
   for (const marker of markers) {
     const filePath = path.join(dir, marker);
@@ -125,9 +139,11 @@ async function searchContextFilesInDir(dir: string, cwd: string): Promise<Loaded
  */
 export async function loadProjectContext(
   cwd: string = process.cwd(),
+  options?: ProjectContextLoadOptions,
 ): Promise<LoadedProjectContext> {
-  const configDirName = getResolvedConfigDirName();
-  const cacheKey = `${cwd}:${configDirName}`;
+  const configDirName = options?.configDirName ?? getResolvedConfigDirName();
+  const markers = getContextMarkers({ ...options, configDirName });
+  const cacheKey = `${cwd}:${configDirName}:${markers.join('|')}`;
 
   // Check cache first
   const cached = contextCache.get(cacheKey);
@@ -148,15 +164,17 @@ export async function loadProjectContext(
   while (!reachedRoot && currentDir !== '/') {
     // Check for user-level context (in ~/${configDirName} directory)
     if (currentDir === userHome || currentDir === userContextDir) {
-      const userContextPath = path.join(userContextDir, 'THING.md');
-      const loaded = await loadContextFile(userContextPath, cwd, 'THING.md');
-      if (loaded) {
-        userLevel.push(loaded);
+      for (const marker of markers) {
+        const userContextPath = path.join(userContextDir, marker);
+        const loaded = await loadContextFile(userContextPath, cwd, marker);
+        if (loaded) {
+          userLevel.push(loaded);
+        }
       }
     }
 
     // Check for project-level context files
-    const dirContexts = await searchContextFilesInDir(currentDir, cwd);
+    const dirContexts = await searchContextFilesInDir(currentDir, cwd, { ...options, configDirName });
     for (const ctx of dirContexts) {
       // Skip if this is the user-level context we already loaded
       if (ctx.path.startsWith(userContextDir) && userLevel.some((u) => u.path === ctx.path)) {
@@ -201,9 +219,10 @@ export function clearProjectContextCache(): void {
  */
 export async function reloadProjectContext(
   cwd: string = process.cwd(),
+  options?: ProjectContextLoadOptions,
 ): Promise<LoadedProjectContext> {
   clearProjectContextCache();
-  return loadProjectContext(cwd);
+  return loadProjectContext(cwd, options);
 }
 
 // ============================================================================
@@ -218,8 +237,9 @@ export async function reloadProjectContext(
  */
 export async function createProjectContextSection(
   cwd?: string,
+  options?: ProjectContextLoadOptions,
 ): Promise<SystemPromptSection> {
-  const context = await loadProjectContext(cwd);
+  const context = await loadProjectContext(cwd, options);
 
   return {
     name: 'project-context',

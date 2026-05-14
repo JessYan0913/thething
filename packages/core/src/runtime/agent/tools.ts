@@ -16,8 +16,8 @@ import {
   skillTool,
 } from '../tools'
 import { createTaskToolsForConversation, getGlobalTaskStore } from '../tasks'
-import { registerBuiltinAgents, scanAgentDirs, createAgentTool, globalAgentRegistry } from '../../extensions/subagents'
-import { getMcpServerConfigs, createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../extensions/mcp'
+import { registerBuiltinAgents, createAgentTool, globalAgentRegistry } from '../../extensions/subagents'
+import { createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../extensions/mcp'
 import { getAllConnectorTools } from '../../extensions/connector'
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
 import type { LoadToolsConfig } from './types'
@@ -56,10 +56,12 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   // 1. 注册内置 Agent
   registerBuiltinAgents()
 
-  // 2. 加载并注册用户/项目自定义 Agent
-  const customAgents = await scanAgentDirs(config.sessionState.projectDir)
+  // 2. 注册 AppContext 快照中的用户/项目自定义 Agent
+  globalAgentRegistry.clearBySource('user')
+  globalAgentRegistry.clearBySource('project')
+  const customAgents = config.agents ?? []
   if (customAgents.length > 0) {
-    console.log(`[AgentLoader] Loaded ${customAgents.length} custom agents: ${customAgents.map(a => a.agentType).join(', ')}`)
+    console.log(`[AgentLoader] Registered ${customAgents.length} preloaded agents: ${customAgents.map(a => a.agentType).join(', ')}`)
   }
   for (const agent of customAgents) {
     globalAgentRegistry.register(agent)
@@ -77,11 +79,14 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     writerRef: config.writerRef ?? { current: null },
     cwd: config.sessionState.projectDir,
     provider: config.provider,
+    modelAliases: config.modelAliases,
+    agents: customAgents,
+    dynamicReload: false,
   })
 
   if (config.enableMcp) {
     try {
-      const mcpConfigs = await getMcpServerConfigs(config.sessionState.projectDir)
+      const mcpConfigs = config.mcps ?? []
       if (mcpConfigs.length > 0) {
         mcpRegistry = createMcpRegistry(mcpConfigs)
         await mcpRegistry.connectAll()
@@ -94,6 +99,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
             sessionId: config.conversationId,
             projectDir: config.sessionState.projectDir,
             contentReplacementState: config.sessionState.contentReplacementState,
+            toolOutputConfig: config.sessionState.toolOutputConfig,
           }
         )
 
@@ -122,6 +128,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         sessionId: config.conversationId,
         projectDir: config.sessionState.projectDir,
         contentReplacementState: config.sessionState.contentReplacementState,
+        toolOutputConfig: config.sessionState.toolOutputConfig,
       }
       const connectorTools = await getAllConnectorTools(registry, sessionContext)
       for (const [toolName, toolDef] of Object.entries(connectorTools)) {

@@ -13,7 +13,7 @@ import { join, dirname } from 'path'
 import {
   PERSISTED_OUTPUT_TAG,
   PERSISTED_OUTPUT_CLOSING_TAG,
-  PREVIEW_SIZE_CHARS,
+  getPreviewSizeLimit,
   type PersistedToolResult,
 } from './tool-output-manager'
 import { getResolvedConfigDirName } from '../../foundation/paths'
@@ -104,7 +104,8 @@ export async function persistToolResult(
   }
 
   // 生成预览
-  const { preview, hasMore } = generatePreview(content, PREVIEW_SIZE_CHARS)
+  const previewSizeChars = getPreviewSizeLimit()
+  const { preview, hasMore } = generatePreview(content, previewSizeChars)
 
   return {
     filepath,
@@ -167,7 +168,7 @@ export function buildPersistedOutputMessage(result: PersistedToolResult, isTempo
   } else {
     message += `\nYou can read the complete output using the read_file tool.\n`
   }
-  message += `\nPreview (first ${formatSize(PREVIEW_SIZE_CHARS)}):\n`
+  message += `\nPreview (first ${formatSize(getPreviewSizeLimit())}):\n`
   message += result.preview
   if (result.hasMore) {
     message += '\n...\n'

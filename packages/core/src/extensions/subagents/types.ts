@@ -182,6 +182,13 @@ export interface AgentExecutionContext {
   /** 模型提供者（用于创建子代理模型） */
   provider?: (modelName: string) => LanguageModel;
 
+  /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
+  modelAliases?: {
+    fast: string;
+    smart: string;
+    default: string;
+  };
+
   /** 工作目录 */
   cwd?: string;
 }
@@ -275,6 +282,19 @@ export interface AgentToolConfig {
 
   /** 模型提供者 */
   provider?: (modelName: string) => LanguageModel;
+
+  /** 模型别名映射 */
+  modelAliases?: {
+    fast: string;
+    smart: string;
+    default: string;
+  };
+
+  /** 预加载的 Agent 定义 */
+  agents?: AgentDefinition[];
+
+  /** 是否允许动态重新扫描 Agent 配置 */
+  dynamicReload?: boolean;
 }
 
 // ============================================================

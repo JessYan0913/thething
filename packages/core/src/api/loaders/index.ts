@@ -106,12 +106,12 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
 
   // 并行加载所有模块（使用全局 configDirName）
   const [skills, agents, mcps, connectors, permissions, memory] = await Promise.all([
-    loadSkills({ cwd, ...options?.skills }),
-    loadAgents({ cwd, ...options?.agents }),
-    loadMcpServers({ cwd, ...options?.mcps }),
-    loadConnectors({ cwd, ...options?.connectors }),
-    loadPermissions({ cwd, ...options?.permissions }),
-    loadMemory({ cwd, ...options?.memory }),
+    loadSkills({ cwd, dirs: options?.resourceDirs?.skills, ...options?.skills }),
+    loadAgents({ cwd, dirs: options?.resourceDirs?.agents, ...options?.agents }),
+    loadMcpServers({ cwd, dirs: options?.resourceDirs?.mcps, ...options?.mcps }),
+    loadConnectors({ cwd, dirs: options?.resourceDirs?.connectors, ...options?.connectors }),
+    loadPermissions({ cwd, dirs: options?.resourceDirs?.permissions, ...options?.permissions }),
+    loadMemory({ cwd, dirs: options?.resourceDirs?.memory, ...options?.memory }),
   ]);
 
   return {

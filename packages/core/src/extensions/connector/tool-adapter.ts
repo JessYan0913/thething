@@ -9,7 +9,7 @@ import { ConnectorRegistry } from './registry'
 import {
   processToolOutput,
 } from '../../runtime/budget/tool-output-manager'
-import type { ContentReplacementState } from '../../runtime/budget/tool-output-manager'
+import type { ContentReplacementState, ToolOutputOverrides } from '../../runtime/budget/tool-output-manager'
 
 export interface ConnectorToolOptions {
   registry: ConnectorRegistry
@@ -19,6 +19,8 @@ export interface ConnectorToolOptions {
     sessionId: string
     projectDir: string
     contentReplacementState: ContentReplacementState
+    /** per-session 工具输出配置（来自 SessionState.toolOutputConfig） */
+    toolOutputConfig?: ToolOutputOverrides
   }
 }
 
@@ -138,6 +140,7 @@ export function convertConnectorToolToAItool(
             sessionId: options.sessionContext.sessionId,
             projectDir: options.sessionContext.projectDir,
             state: options.sessionContext.contentReplacementState,
+            config: options.sessionContext.toolOutputConfig,
           }
         )
 

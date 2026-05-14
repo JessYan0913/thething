@@ -10,6 +10,7 @@ import {
   getMessageBudgetLimit,
   type ContentReplacementState,
   type ContentReplacementRecord,
+  type ToolOutputOverrides,
   TOOL_RESULT_CLEARED_MESSAGE,
 } from './tool-output-manager'
 import { persistToolResult, buildPersistedOutputMessage, formatSize } from './tool-result-storage'
@@ -63,9 +64,10 @@ export async function enforceToolResultBudget(
   state: ContentReplacementState,
   sessionId: string,
   projectDir: string,
-  skipToolNames: ReadonlySet<string> = new Set()
+  skipToolNames: ReadonlySet<string> = new Set(),
+  sessionConfig?: ToolOutputOverrides,
 ): Promise<BudgetCheckResult> {
-  const limit = getMessageBudgetLimit()
+  const limit = getMessageBudgetLimit(sessionConfig)
   const candidates = collectCandidatesByMessage(messages)
   const newlyPersisted: ContentReplacementRecord[] = []
   let tokensSaved = 0
@@ -269,7 +271,10 @@ function applyReplacements(
  * 快速估算消息的工具结果总额
  * 用于提前预警
  */
-export function estimateToolResultsTotal(messages: UIMessage[]): {
+export function estimateToolResultsTotal(
+  messages: UIMessage[],
+  sessionConfig?: ToolOutputOverrides,
+): {
   totalChars: number
   totalTokens: number
   isOverBudget: boolean
@@ -278,7 +283,7 @@ export function estimateToolResultsTotal(messages: UIMessage[]): {
   const candidates = collectCandidatesByMessage(messages)
   const totalChars = candidates.reduce((sum, c) => sum + c.size, 0)
   const totalTokens = Math.ceil(totalChars / 3.5) // 粗略估算
-  const limit = getMessageBudgetLimit()
+  const limit = getMessageBudgetLimit(sessionConfig)
   const isOverBudget = totalChars > limit
   const percentUsed = Math.min(100, (totalChars / limit) * 100)
 

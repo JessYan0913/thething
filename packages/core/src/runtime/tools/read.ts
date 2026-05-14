@@ -3,8 +3,20 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validatePath } from '../../extensions/permissions';
+import type { PathValidationOptions } from '../../extensions/permissions';
 
-export const readFileTool = tool({
+export interface FileToolOptions {
+  cwd?: string;
+  extraSensitivePaths?: readonly string[];
+}
+
+export function createReadFileTool(options: FileToolOptions = {}) {
+  const pathValidationOptions: PathValidationOptions = {
+    workingDir: options.cwd,
+    extraSensitivePaths: options.extraSensitivePaths,
+  };
+
+  return tool({
   description: '读取文件内容并返回带行号的文本。用于查看源代码、配置文件或文本文件。',
   inputSchema: z.object({
     filePath: z.string().describe('要读取的文件路径（相对于工作目录）'),
@@ -25,7 +37,7 @@ export const readFileTool = tool({
   },
   execute: async ({ filePath }) => {
     // Step 1: 路径安全检查（移到 execute 中，返回错误结果而非抛出错误）
-    const pathCheck = validatePath(filePath);
+    const pathCheck = validatePath(filePath, pathValidationOptions);
     if (!pathCheck.allowed) {
       return {
         error: true,
@@ -44,7 +56,7 @@ export const readFileTool = tool({
       };
     }
 
-    const absolutePath = path.resolve(filePath);
+    const absolutePath = pathCheck.resolvedPath;
 
     const stat = await fs.stat(absolutePath);
     if (!stat.isFile()) {
@@ -65,4 +77,7 @@ export const readFileTool = tool({
       encoding: 'utf-8',
     };
   },
-});
+  });
+}
+
+export const readFileTool = createReadFileTool();

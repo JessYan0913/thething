@@ -76,6 +76,9 @@ export {
   reloadProjectContext,
   getCachedProjectContext,
 } from "./sections/project-context";
+export {
+  createPermissionsSection,
+} from "./sections/permissions";
 // createSkillsSection 已移除 - 技能元数据现在通过消息附件注入
 export {
   createSessionGuidanceSection,

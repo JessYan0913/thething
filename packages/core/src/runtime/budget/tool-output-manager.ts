@@ -57,17 +57,27 @@ export const TOOL_RESULT_CLEARED_MESSAGE = '[Old tool result content cleared]'
  * 应用层注入，用于动态调整阈值
  */
 export interface ToolOutputOverrides {
+  /** 默认最大结果字符数覆盖 */
+  maxResultSizeChars?: number
+  /** 默认最大结果 Token 数覆盖 */
+  maxToolResultTokens?: number
   /** 工具阈值覆盖（工具名 -> 最大字符数） */
   thresholds?: Record<string, number>
   /** 消息预算覆盖（总额上限字符数） */
   messageBudget?: number
+  /** 持久化预览内容大小覆盖（字符） */
+  previewSizeChars?: number
 }
 
-/** 当前配置覆盖（全局单例，由应用层设置） */
+/** 当前配置覆盖（全局单例，向后兼容 fallback）
+ * 新代码应通过 processToolOutput/getMessageBudgetLimit/getPreviewSizeLimit 的
+ * sessionConfig 参数传入 per-session 配置，避免不同会话互相覆盖。
+ */
 let currentOverrides: ToolOutputOverrides = {}
 
 /**
  * 设置配置覆盖（由应用层调用）
+ * @deprecated 新代码应通过 SessionState.toolOutputConfig 传入 per-session 配置
  */
 export function setToolOutputOverrides(overrides: ToolOutputOverrides): void {
   currentOverrides = overrides
@@ -75,6 +85,7 @@ export function setToolOutputOverrides(overrides: ToolOutputOverrides): void {
 
 /**
  * 获取当前配置覆盖
+ * @deprecated 新代码应通过 SessionState.toolOutputConfig 获取
  */
 export function getToolOutputOverrides(): ToolOutputOverrides {
   return currentOverrides
@@ -82,28 +93,58 @@ export function getToolOutputOverrides(): ToolOutputOverrides {
 
 /**
  * 应用配置覆盖
+ * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
  */
 function applyConfigOverride(
   toolName: string,
-  baseConfig: ToolOutputConfig
+  baseConfig: ToolOutputConfig,
+  sessionConfig?: ToolOutputOverrides,
 ): ToolOutputConfig {
-  const thresholdOverride = currentOverrides.thresholds?.[toolName]
+  const effective = sessionConfig ?? currentOverrides;
+  const thresholdOverride = effective.thresholds?.[toolName]
   if (typeof thresholdOverride === 'number' && thresholdOverride > 0) {
     return { ...baseConfig, maxResultSizeChars: thresholdOverride }
+  }
+  const defaultThresholdOverride = effective.maxResultSizeChars
+  if (typeof defaultThresholdOverride === 'number' && defaultThresholdOverride > 0) {
+    return { ...baseConfig, maxResultSizeChars: defaultThresholdOverride }
   }
   return baseConfig
 }
 
+function getMaxToolResultTokens(sessionConfig?: ToolOutputOverrides): number {
+  const effective = sessionConfig ?? currentOverrides;
+  const override = effective.maxToolResultTokens
+  if (typeof override === 'number' && override > 0) {
+    return override
+  }
+  return MAX_TOOL_RESULT_TOKENS
+}
+
 /**
  * 获取消息级预算限制
- * 支持应用层覆盖
+ * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
  */
-export function getMessageBudgetLimit(): number {
-  const override = currentOverrides.messageBudget
+export function getMessageBudgetLimit(sessionConfig?: ToolOutputOverrides): number {
+  const effective = sessionConfig ?? currentOverrides;
+  const override = effective.messageBudget
   if (typeof override === 'number' && override > 0) {
     return override
   }
   return MAX_TOOL_RESULTS_PER_MESSAGE_CHARS
+}
+
+/**
+ * 获取持久化预览大小限制
+ * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
+ */
+export function getPreviewSizeLimit(sessionConfig?: ToolOutputOverrides): number {
+  const effective = sessionConfig ?? currentOverrides;
+  const override = effective.previewSizeChars
+  if (typeof override === 'number' && override > 0) {
+    return override
+  }
+  return PREVIEW_SIZE_CHARS
 }
 
 // ============================================================
@@ -117,6 +158,8 @@ export function getMessageBudgetLimit(): number {
 export interface ToolOutputConfig {
   /** 最大字符数 */
   maxResultSizeChars: number
+  /** 最大 Token 数 */
+  maxResultTokens?: number
   /** 是否持久化到磁盘（默认 true，现在可选） */
   shouldPersistToDisk?: boolean
 }
@@ -220,24 +263,25 @@ export function matchesToolPrefix(toolName: string): string | null {
 /**
  * 获取工具输出配置
  * 支持：精确匹配 → 前缀匹配 → 配置覆盖 → 默认配置
+ * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
  */
-export function getToolOutputConfig(toolName: string): ToolOutputConfig {
+export function getToolOutputConfig(toolName: string, sessionConfig?: ToolOutputOverrides): ToolOutputConfig {
   // 1. 精确匹配
   if (TOOL_OUTPUT_CONFIGS[toolName]) {
-    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS[toolName])
+    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS[toolName], sessionConfig)
   }
 
   // 2. 前缀匹配
   const prefix = matchesToolPrefix(toolName)
   if (prefix === 'mcp' && TOOL_OUTPUT_CONFIGS['mcp_default']) {
-    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['mcp_default'])
+    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['mcp_default'], sessionConfig)
   }
   if (prefix === 'connector' && TOOL_OUTPUT_CONFIGS['connector_default']) {
-    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['connector_default'])
+    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['connector_default'], sessionConfig)
   }
 
   // 3. 默认配置
-  return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['default'])
+  return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['default'], sessionConfig)
 }
 
 
@@ -348,6 +392,8 @@ export async function processToolOutput(
     sessionId?: string
     projectDir?: string
     state?: ContentReplacementState
+    /** per-session 配置覆盖（来自 SessionState.toolOutputConfig） */
+    config?: ToolOutputOverrides
   }
 ): Promise<{
   content: string
@@ -355,12 +401,15 @@ export async function processToolOutput(
   filepath?: string
   originalSize: number
 }> {
-  const config = getToolOutputConfig(toolName)
+  const sessionConfig = options?.config;
+  const config = getToolOutputConfig(toolName, sessionConfig)
   const content = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
   const originalSize = content.length
+  const originalTokens = estimateContentTokens(content)
+  const maxResultTokens = config.maxResultTokens ?? getMaxToolResultTokens(sessionConfig)
 
   // 检查是否需要处理
-  if (originalSize <= config.maxResultSizeChars) {
+  if (originalSize <= config.maxResultSizeChars && originalTokens <= maxResultTokens) {
     // 不需要处理，直接返回
     if (options?.state) {
       options.state.seenIds.add(toolUseId)

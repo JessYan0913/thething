@@ -1,8 +1,13 @@
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import path from 'path';
+import { tmpdir } from 'os';
 import { describe, it, expect } from 'vitest';
 import {
   ENTRYPOINT_NAME,
   MAX_ENTRYPOINT_LINES,
   MAX_ENTRYPOINT_BYTES,
+  appendToEntrypoint,
+  rebuildEntrypoint,
   truncateEntrypointContent,
 } from '../memdir';
 
@@ -69,6 +74,42 @@ describe('memory', () => {
         const content = lines.join('\n');
         const result = truncateEntrypointContent(content);
         expect(result).toBe(content);
+      });
+    });
+
+    describe('entrypoint limits', () => {
+      it('applies custom limits when appending to entrypoint', async () => {
+        const memoryDir = path.join(tmpdir(), `thething-memory-${Date.now()}`);
+        await mkdir(memoryDir, { recursive: true });
+        await writeFile(path.join(memoryDir, ENTRYPOINT_NAME), '# MEMORY.md\n\n', 'utf-8');
+
+        await appendToEntrypoint(memoryDir, {
+          filename: 'user_long.md',
+          name: 'Long memory',
+          description: 'x'.repeat(200),
+          type: 'user',
+        }, {
+          maxLines: 4,
+          maxBytes: 120,
+        });
+
+        const content = await readFile(path.join(memoryDir, ENTRYPOINT_NAME), 'utf-8');
+        expect(content.split('\n').length).toBeLessThanOrEqual(4);
+        expect(content.length).toBeLessThanOrEqual(120);
+      });
+
+      it('applies custom limits when rebuilding entrypoint', async () => {
+        const memoryDir = path.join(tmpdir(), `thething-memory-rebuild-${Date.now()}`);
+        await mkdir(memoryDir, { recursive: true });
+
+        await rebuildEntrypoint(memoryDir, {
+          maxLines: 3,
+          maxBytes: 80,
+        });
+
+        const content = await readFile(path.join(memoryDir, ENTRYPOINT_NAME), 'utf-8');
+        expect(content.split('\n').length).toBeLessThanOrEqual(3);
+        expect(content.length).toBeLessThanOrEqual(80);
       });
     });
   });

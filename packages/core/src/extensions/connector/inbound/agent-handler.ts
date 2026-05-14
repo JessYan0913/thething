@@ -847,7 +847,11 @@ export class AgentInboundHandler implements InboundEventHandler {
     const cwd = this.config.context.cwd
     setImmediate(() => {
       const userId = this.config.userId || event.sender.id
-      extractMemoriesInBackground(finalMessages, userId, conversationId, model, cwd).catch(
+      const memoryLimits = this.config.context.behavior?.memory
+      extractMemoriesInBackground(finalMessages, userId, conversationId, model, cwd, {
+        maxLines: memoryLimits?.entrypointMaxLines,
+        maxBytes: memoryLimits?.entrypointMaxBytes,
+      }).catch(
         (err: Error) => console.error('[Memory Extraction] Error:', err)
       )
       if (isFirstMessage) {

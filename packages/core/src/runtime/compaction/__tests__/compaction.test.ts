@@ -34,6 +34,7 @@ import {
   recordCompactSuccess,
   getAutoCompactStatus,
   shouldTriggerAutoCompact,
+  autoCompactIfNeeded,
 } from '../auto-compact';
 import { COMPACT_TOKEN_THRESHOLD, DEFAULT_MICRO_COMPACT_CONFIG, isCompactableTool as isCompactableToolFromTypes } from '../types';
 import { quickBudgetCheck } from '../initial-budget-check';
@@ -558,6 +559,16 @@ describe('auto-compact', () => {
       expect(status.triggerThreshold).toBeDefined();
       expect(status.shouldTrigger).toBeDefined();
       expect(status.circuitBreakerTripped).toBeDefined();
+    });
+  });
+
+  describe('autoCompactIfNeeded', () => {
+    it('should await trigger check before returning', async () => {
+      const messages: UIMessage[] = [
+        { id: '1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
+      ];
+
+      await expect(autoCompactIfNeeded(messages, 'test-conv-await')).resolves.toBe(false);
     });
   });
 });

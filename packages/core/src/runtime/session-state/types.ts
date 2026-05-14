@@ -35,6 +35,8 @@ export interface SessionStateOptions {
   autoDowngradeCostThreshold?: number;
   /** Compaction 配置（来自 BehaviorConfig.compaction） */
   compactionConfig?: CompactionConfig;
+  /** 是否启用普通自动压缩（modules.compaction !== false） */
+  compactionEnabled?: boolean;
 }
 
 /**
@@ -63,6 +65,8 @@ export interface SessionState {
   aborted: boolean;
   /** 项目目录 */
   projectDir: string;
+  /** 工具输出配置覆盖（来自 BehaviorConfig.toolOutput，替代全局单例） */
+  toolOutputConfig?: ToolOutputOverrides;
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
 

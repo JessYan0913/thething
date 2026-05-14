@@ -7,6 +7,7 @@ import {
   setToolOutputOverrides,
   getToolOutputOverrides,
   getMessageBudgetLimit,
+  getPreviewSizeLimit,
   createContentReplacementState,
   cloneContentReplacementState,
   estimateContentTokens,
@@ -15,6 +16,7 @@ import {
   processToolOutput,
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
+  PREVIEW_SIZE_CHARS,
   PERSISTED_OUTPUT_TAG,
   PERSISTED_OUTPUT_CLOSING_TAG,
   TOOL_RESULT_CLEARED_MESSAGE,
@@ -127,6 +129,20 @@ describe('tool-output-manager', () => {
       expect(config.maxResultSizeChars).toBe(100_000);
       setToolOutputOverrides({});
     });
+
+    it('should apply default max result override to all tools', () => {
+      setToolOutputOverrides({ maxResultSizeChars: 12_345 });
+      expect(getToolOutputConfig('bash').maxResultSizeChars).toBe(12_345);
+      expect(getToolOutputConfig('unknown_tool').maxResultSizeChars).toBe(12_345);
+      setToolOutputOverrides({});
+    });
+
+    it('should persist output when token override is exceeded', async () => {
+      setToolOutputOverrides({ maxResultSizeChars: 1_000_000, maxToolResultTokens: 10 });
+      const result = await processToolOutput('a'.repeat(100), 'bash', 'tool-token-limit');
+      expect(result.persisted).toBe(true);
+      setToolOutputOverrides({});
+    });
   });
 
   describe('ToolOutputOverrides', () => {
@@ -174,6 +190,25 @@ describe('tool-output-manager', () => {
       expect(getMessageBudgetLimit()).toBe(MAX_TOOL_RESULTS_PER_MESSAGE_CHARS);
       setToolOutputOverrides({ messageBudget: -100 });
       expect(getMessageBudgetLimit()).toBe(MAX_TOOL_RESULTS_PER_MESSAGE_CHARS);
+    });
+  });
+
+  describe('getPreviewSizeLimit', () => {
+    beforeEach(() => {
+      setToolOutputOverrides({});
+    });
+
+    afterEach(() => {
+      setToolOutputOverrides({});
+    });
+
+    it('should return default preview size without override', () => {
+      expect(getPreviewSizeLimit()).toBe(PREVIEW_SIZE_CHARS);
+    });
+
+    it('should return override preview size when set', () => {
+      setToolOutputOverrides({ previewSizeChars: 512 });
+      expect(getPreviewSizeLimit()).toBe(512);
     });
   });
 

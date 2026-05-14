@@ -14,6 +14,7 @@ export {
   getToolOutputConfig,
   matchesToolPrefix,
   getMessageBudgetLimit,
+  getPreviewSizeLimit,
   createContentReplacementState,
   cloneContentReplacementState,
   estimateContentTokens,

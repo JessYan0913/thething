@@ -10,7 +10,7 @@ import {
   processToolOutput,
   getToolOutputConfig,
 } from '../../runtime/budget/tool-output-manager'
-import type { ContentReplacementState } from '../../runtime/budget/tool-output-manager'
+import type { ContentReplacementState, ToolOutputOverrides } from '../../runtime/budget/tool-output-manager'
 
 /**
  * MCP 工具包装配置
@@ -19,6 +19,8 @@ export interface McpToolWrapperOptions {
   sessionId: string
   projectDir: string
   contentReplacementState: ContentReplacementState
+  /** per-session 工具输出配置（来自 SessionState.toolOutputConfig） */
+  toolOutputConfig?: ToolOutputOverrides
 }
 
 /**
@@ -56,6 +58,7 @@ export function wrapMcpToolWithOutputHandler(
           sessionId: options.sessionId,
           projectDir: options.projectDir,
           state: options.contentReplacementState,
+          config: options.toolOutputConfig,
         }
       )
 
@@ -101,5 +104,6 @@ export async function processMcpToolResult(
     sessionId: options.sessionId,
     projectDir: options.projectDir,
     state: options.contentReplacementState,
+    config: options.toolOutputConfig,
   })
 }

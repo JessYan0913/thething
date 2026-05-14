@@ -134,6 +134,7 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
       return createContext({
         runtime,
         cwd: reloadOptions?.cwd ?? cwd,
+        dataDir,
         verbose: reloadOptions?.verbose ?? verbose,
         onLoad,
       });

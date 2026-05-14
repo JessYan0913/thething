@@ -33,6 +33,8 @@ const agentsCache = new LoadingCache<AgentDefinition[]>();
 export interface LoadAgentsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
+  /** 显式扫描目录（来自 ResolvedLayout.resources.agents） */
+  dirs?: readonly string[];
 }
 
 // ============================================================
@@ -76,21 +78,24 @@ function extractAgentType(data: { name?: string; agentType?: string; displayName
 export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefinition[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
+  const explicitDirs = options?.dirs;
 
   // 检查缓存
-  const cacheKey = `agents:${cwd}`;
+  const cacheKey = `agents:${cwd}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
   const cached = agentsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   // 构建扫描目录（使用全局 configDirName）
-  const dirs: string[] = [];
-  if (sources.includes('user')) {
-    dirs.push(getUserConfigDir('agents'));
-  }
-  if (sources.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'agents'));
+  const dirs: string[] = explicitDirs ? [...explicitDirs] : [];
+  if (!explicitDirs) {
+    if (sources.includes('user')) {
+      dirs.push(getUserConfigDir('agents'));
+    }
+    if (sources.includes('project')) {
+      dirs.push(getProjectConfigDir(cwd, 'agents'));
+    }
   }
 
   // 扫描文件

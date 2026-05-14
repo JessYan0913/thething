@@ -23,6 +23,7 @@ import {
 // Skills section 已移除 - 技能元数据现在通过消息附件注入
 // import { createSkillsSection } from "./sections/skills";
 import { createMemorySection, createRecalledMemorySection } from "./sections/memory";
+import { createPermissionsSection } from "./sections/permissions";
 
 // ============================================================================
 // Default Options
@@ -137,6 +138,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   // Skills section 已移除 - 技能元数据现在通过消息附件注入
   // 参考: docs/skill-metadata-loading-refactoring-plan.md
   {
+    name: "permissions",
+    create: (options) => createPermissionsSection(options.permissions),
+    cacheStrategy: "session",
+  },
+  {
     name: "memory-guidelines",
     create: async (options) => {
       if (options.memoryContext?.userId) {
@@ -209,6 +215,7 @@ const PRIORITY = {
   RESPONSE_STYLE: 15,
   USER_PREFERENCES: 20,
   TOOLS: 30,
+  PERMISSIONS: 35,
   MEMORY_GUIDELINES: 45,
   RECALLED_MEMORIES: 46,
   DYNAMIC_BOUNDARY: 50,

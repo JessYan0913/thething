@@ -173,6 +173,7 @@ export interface CreateAgentOptions {
       totalBudget?: number;
       maxFilesToRestore?: number;
       maxTokensPerFile?: number;
+      maxTokensPerSkill?: number;
       skillsTokenBudget?: number;
     };
   };

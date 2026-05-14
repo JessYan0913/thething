@@ -123,6 +123,48 @@ describe('subagents/model-resolver', () => {
 
         expect(getModelId(result)).toBe(MODEL_MAPPING.smart);
       });
+
+      it('should resolve shortcuts from BehaviorConfig model aliases when provided', () => {
+        const definition: AgentDefinition = {
+          agentType: 'test',
+          description: 'Test',
+          instructions: 'Test',
+          model: 'fast',
+          source: 'builtin',
+        };
+        const context = createMockContext({
+          modelAliases: {
+            fast: 'custom-fast',
+            smart: 'custom-smart',
+            default: 'custom-default',
+          },
+        });
+
+        const result = resolveModelForAgent(definition, context);
+
+        expect(getModelId(result)).toBe('custom-fast');
+      });
+
+      it('should resolve "default" alias from BehaviorConfig model aliases', () => {
+        const definition: AgentDefinition = {
+          agentType: 'test',
+          description: 'Test',
+          instructions: 'Test',
+          model: 'default',
+          source: 'builtin',
+        };
+        const context = createMockContext({
+          modelAliases: {
+            fast: 'custom-fast',
+            smart: 'custom-smart',
+            default: 'custom-default',
+          },
+        });
+
+        const result = resolveModelForAgent(definition, context);
+
+        expect(getModelId(result)).toBe('custom-default');
+      });
     });
 
     describe('specific model name', () => {

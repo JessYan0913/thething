@@ -6,7 +6,7 @@
 
 import * as path from 'path';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
-import type { PathValidationResult } from './types';
+import type { PathValidationOptions, PathValidationResult } from './types';
 
 // 敏感路径列表 - 任何模式下都不可绕过
 const SENSITIVE_PATHS = [
@@ -33,17 +33,55 @@ const SENSITIVE_DIRS = [
   'node_modules/.cache',
 ];
 
+type PathValidationInput = string | PathValidationOptions;
+
+function normalizeForMatch(filePath: string): string {
+  return path.normalize(filePath).replace(/\\/g, '/').toLowerCase();
+}
+
+function resolveInputPath(filePath: string, workingDir: string): string {
+  return path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(workingDir, filePath);
+}
+
+function isSameOrDescendant(filePath: string, parentPath: string): boolean {
+  const relative = path.relative(parentPath, filePath);
+  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function resolveValidationOptions(input?: PathValidationInput): Required<PathValidationOptions> {
+  if (typeof input === 'string') {
+    return {
+      workingDir: input,
+      extraSensitivePaths: [],
+    };
+  }
+
+  return {
+    workingDir: input?.workingDir ?? process.cwd(),
+    extraSensitivePaths: input?.extraSensitivePaths ?? [],
+  };
+}
+
 /**
  * 检查路径是否匹配敏感路径
  */
-function isSensitivePath(filePath: string): boolean {
-  const normalized = path.normalize(filePath);
-  const basename = path.basename(normalized);
-  const ext = path.extname(normalized);
+function isSensitivePath(
+  filePath: string,
+  workingDir: string,
+  extraSensitivePaths: readonly string[] = [],
+): boolean {
+  const resolvedPath = resolveInputPath(filePath, workingDir);
+  const normalized = normalizeForMatch(filePath);
+  const normalizedResolved = normalizeForMatch(resolvedPath);
+  const basename = path.basename(resolvedPath);
+  const ext = path.extname(resolvedPath);
 
   // 检查敏感目录
   for (const dir of SENSITIVE_DIRS) {
-    if (normalized.includes(dir)) {
+    const normalizedDir = normalizeForMatch(dir);
+    if (normalized.includes(normalizedDir) || normalizedResolved.includes(normalizedDir)) {
       return true;
     }
   }
@@ -55,7 +93,12 @@ function isSensitivePath(filePath: string): boolean {
       return true;
     }
     // 路径在敏感目录下
-    if (normalized.includes(`/${sensitive}/`) || normalized.startsWith(`${sensitive}/`) || normalized.includes(`\\${sensitive}\\`) || normalized.startsWith(`${sensitive}\\`)) {
+    if (
+      normalized.includes(`/${sensitive}/`) ||
+      normalized.startsWith(`${sensitive}/`) ||
+      normalizedResolved.includes(`/${sensitive}/`) ||
+      normalizedResolved.endsWith(`/${sensitive}`)
+    ) {
       return true;
     }
   }
@@ -72,21 +115,30 @@ function isSensitivePath(filePath: string): boolean {
     return true;
   }
 
+  for (const sensitive of extraSensitivePaths) {
+    if (!sensitive.trim()) continue;
+    const sensitivePath = path.isAbsolute(sensitive)
+      ? path.resolve(sensitive)
+      : path.resolve(workingDir, sensitive);
+    if (isSameOrDescendant(resolvedPath, sensitivePath)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
 /**
  * 检查路径是否在工作目录内
  */
-function isWithinWorkingDir(filePath: string, workingDir: string): boolean {
-  const resolved = path.resolve(filePath);
+function isWithinWorkingDir(resolvedPath: string, workingDir: string): boolean {
   const resolvedWorkingDir = path.resolve(workingDir);
 
   // macOS/Linux 和 Windows 的路径比较
-  const normalizedPath = resolved.toLowerCase().replace(/\\/g, '/');
+  const normalizedPath = resolvedPath.toLowerCase().replace(/\\/g, '/');
   const normalizedWorkingDir = resolvedWorkingDir.toLowerCase().replace(/\\/g, '/');
 
-  return normalizedPath.startsWith(normalizedWorkingDir);
+  return normalizedPath === normalizedWorkingDir || normalizedPath.startsWith(`${normalizedWorkingDir}/`);
 }
 
 /**
@@ -114,10 +166,10 @@ function hasShellExpansion(filePath: string): boolean {
  */
 export function validatePath(
   filePath: string,
-  workingDir?: string,
+  options?: PathValidationInput,
 ): PathValidationResult {
-  const cwd = workingDir || process.cwd();
-  const resolved = path.resolve(filePath);
+  const { workingDir, extraSensitivePaths } = resolveValidationOptions(options);
+  const resolved = resolveInputPath(filePath, workingDir);
 
   // 1. 检查 shell 展开（防止注入）
   if (hasShellExpansion(filePath)) {
@@ -129,7 +181,7 @@ export function validatePath(
   }
 
   // 2. 检查敏感路径（bypass-immune）
-  if (isSensitivePath(filePath)) {
+  if (isSensitivePath(filePath, workingDir, extraSensitivePaths)) {
     return {
       allowed: false,
       reason: '敏感路径被保护，不允许访问',
@@ -140,9 +192,9 @@ export function validatePath(
   // 3. 检查工作目录越界
   // 注意：对于绝对路径，我们允许访问，但会检查敏感路径
   // 对于相对路径，要求在工作目录内
-  if (!filePath.startsWith('/') && !filePath.startsWith('\\') && !filePath.match(/^([A-Za-z]:)/)) {
+  if (!path.isAbsolute(filePath)) {
     // 相对路径，检查是否在工作目录内
-    if (!isWithinWorkingDir(filePath, cwd)) {
+    if (!isWithinWorkingDir(resolved, workingDir)) {
       return {
         allowed: false,
         reason: '路径越界：相对路径必须在工作目录内',
@@ -163,9 +215,9 @@ export function validatePath(
  */
 export function validateWritePath(
   filePath: string,
-  workingDir?: string,
+  options?: PathValidationInput,
 ): PathValidationResult {
-  const result = validatePath(filePath, workingDir);
+  const result = validatePath(filePath, options);
 
   if (!result.allowed) {
     return result;

@@ -30,6 +30,11 @@ export interface PathValidationResult {
   resolvedPath: string;
 }
 
+export interface PathValidationOptions {
+  workingDir?: string;
+  extraSensitivePaths?: readonly string[];
+}
+
 export interface RuleMatchResult {
   matched: boolean;
   rule?: PermissionRule;

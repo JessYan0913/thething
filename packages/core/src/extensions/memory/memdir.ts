@@ -132,8 +132,19 @@ export async function buildMemorySection(
   return parts.join('\n');
 }
 
-export async function ensureEntrypointExists(memoryDir: string): Promise<void> {
+function resolveEntrypointLimits(limits?: EntrypointLimits): Required<EntrypointLimits> {
+  return {
+    maxLines: limits?.maxLines ?? MAX_ENTRYPOINT_LINES,
+    maxBytes: limits?.maxBytes ?? MAX_ENTRYPOINT_BYTES,
+  };
+}
+
+export async function ensureEntrypointExists(
+  memoryDir: string,
+  limits?: EntrypointLimits,
+): Promise<void> {
   const entrypointPath = path.join(memoryDir, ENTRYPOINT_NAME);
+  const resolvedLimits = resolveEntrypointLimits(limits);
 
   try {
     await fs.access(entrypointPath);
@@ -141,7 +152,7 @@ export async function ensureEntrypointExists(memoryDir: string): Promise<void> {
     const initialContent = `# MEMORY.md - 记忆入口索引
 
 > 本文件是记忆系统的入口点。每次对话从这里开始。
-> 限制: ${MAX_ENTRYPOINT_LINES} 行 / ${MAX_ENTRYPOINT_BYTES} 字节
+> 限制: ${resolvedLimits.maxLines} 行 / ${resolvedLimits.maxBytes} 字节
 
 ## 用户记忆 (user)
 
@@ -157,16 +168,18 @@ export async function ensureEntrypointExists(memoryDir: string): Promise<void> {
 
 export async function rebuildEntrypoint(
   memoryDir: string,
+  limits?: EntrypointLimits,
 ): Promise<void> {
   const { scanMemoryFiles } = await import('./memory-scan');
   const memories = await scanMemoryFiles(memoryDir);
+  const resolvedLimits = resolveEntrypointLimits(limits);
 
   if (memories.length === 0) {
-    const emptyContent = `# MEMORY.md - 记忆入口索引
+    const emptyContent = truncateEntrypointContent(`# MEMORY.md - 记忆入口索引
 
 > 本文件是记忆系统的入口点。每次对话从这里开始。
-> 限制: ${MAX_ENTRYPOINT_LINES} 行 / ${MAX_ENTRYPOINT_BYTES} 字节
-`;
+> 限制: ${resolvedLimits.maxLines} 行 / ${resolvedLimits.maxBytes} 字节
+`, resolvedLimits.maxLines, resolvedLimits.maxBytes);
     await fs.writeFile(path.join(memoryDir, ENTRYPOINT_NAME), emptyContent, 'utf-8');
     return;
   }
@@ -195,7 +208,7 @@ export async function rebuildEntrypoint(
     '# MEMORY.md - 记忆入口索引',
     '',
     `> 本文件是记忆系统的入口点。每次对话从这里开始。`,
-    `> 限制: ${MAX_ENTRYPOINT_LINES} 行 / ${MAX_ENTRYPOINT_BYTES} 字节`,
+    `> 限制: ${resolvedLimits.maxLines} 行 / ${resolvedLimits.maxBytes} 字节`,
     '',
   ];
 
@@ -212,7 +225,7 @@ export async function rebuildEntrypoint(
   }
 
   let content = lines.join('\n');
-  content = truncateEntrypointContent(content);
+  content = truncateEntrypointContent(content, resolvedLimits.maxLines, resolvedLimits.maxBytes);
 
   await fs.writeFile(path.join(memoryDir, ENTRYPOINT_NAME), content, 'utf-8');
 }
@@ -220,6 +233,7 @@ export async function rebuildEntrypoint(
 export async function deleteMemoryFile(
   memoryDir: string,
   filename: string,
+  limits?: EntrypointLimits,
 ): Promise<void> {
   const filePath = path.join(memoryDir, filename);
   try {
@@ -228,14 +242,16 @@ export async function deleteMemoryFile(
     // 文件可能不存在
   }
 
-  await rebuildEntrypoint(memoryDir);
+  await rebuildEntrypoint(memoryDir, limits);
 }
 
 export async function appendToEntrypoint(
   memoryDir: string,
   memoryInfo: { filename: string; name: string; description: string; type: string },
+  limits?: EntrypointLimits,
 ): Promise<void> {
   const entrypointPath = path.join(memoryDir, ENTRYPOINT_NAME);
+  const resolvedLimits = resolveEntrypointLimits(limits);
 
   let content: string;
   try {
@@ -275,7 +291,7 @@ export async function appendToEntrypoint(
     newContent = content.trimEnd() + '\n\n' + sectionHeader + '\n\n' + entryLine + '\n';
   }
 
-  newContent = truncateEntrypointContent(newContent);
+  newContent = truncateEntrypointContent(newContent, resolvedLimits.maxLines, resolvedLimits.maxBytes);
 
   await fs.writeFile(entrypointPath, newContent, 'utf-8');
 }

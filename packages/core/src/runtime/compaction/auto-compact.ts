@@ -209,7 +209,7 @@ export async function autoCompactIfNeeded(
   messages: UIMessage[],
   conversationId: string,
 ): Promise<boolean> {
-  if (!shouldTriggerAutoCompact(messages, conversationId)) {
+  if (!(await shouldTriggerAutoCompact(messages, conversationId))) {
     return false;
   }
 

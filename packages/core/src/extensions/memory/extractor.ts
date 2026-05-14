@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getUserMemoryDir, ensureMemoryDirExists } from "./paths";
 import { formatMemoryFrontmatter, type MemoryType } from "./types";
 import { scanMemoryFiles } from "./memory-scan";
-import { appendToEntrypoint, rebuildEntrypoint, deleteMemoryFile } from "./memdir";
+import { appendToEntrypoint, rebuildEntrypoint, deleteMemoryFile, type EntrypointLimits } from "./memdir";
 import { removeMemoryUsage } from "./usage-tracker";
 import type { UIMessage } from "ai";
 
@@ -140,6 +140,7 @@ export async function extractMemoriesFromConversation(
   conversationId?: string,
   model?: LanguageModelV3,
   cwd?: string,
+  entrypointLimits?: EntrypointLimits,
 ): Promise<MemoryExtractionResult> {
   if (messages.length < 2) {
     return { memories: [], count: 0 };
@@ -224,7 +225,7 @@ ${conversationText}`;
             name: memory.name,
             description: memory.description,
             type: memory.type,
-          });
+          }, entrypointLimits);
         } else if (memory.action === "update" && memory.targetFilename) {
           // 更新：删除旧文件，创建新文件，重建索引
           const oldFilePath = path.join(userDir, memory.targetFilename);
@@ -243,11 +244,11 @@ ${conversationText}`;
             memory.content;
 
           await fs.writeFile(newFilePath, fileContent, "utf-8");
-          await rebuildEntrypoint(userDir);
+          await rebuildEntrypoint(userDir, entrypointLimits);
         } else if (memory.action === "delete" && memory.targetFilename) {
           // 删除：删除文件，清除使用记录，重建索引
           await removeMemoryUsage(userDir, memory.targetFilename);
-          await deleteMemoryFile(userDir, memory.targetFilename);
+          await deleteMemoryFile(userDir, memory.targetFilename, entrypointLimits);
         } else if (memory.action === "invalidate" && memory.targetFilename) {
           // 标记过期：在内容前添加过期标记
           const filePath = path.join(userDir, memory.targetFilename);
@@ -258,7 +259,7 @@ ${conversationText}`;
               "---\nstatus: invalidated\ninvalidated_reason: ",
             ) + `\n\n[此记忆已过期，原因: ${memory.content}]`;
             await fs.writeFile(filePath, invalidatedContent, "utf-8");
-            await rebuildEntrypoint(userDir);
+            await rebuildEntrypoint(userDir, entrypointLimits);
           } catch {
             // 文件不存在，跳过
           }
@@ -295,6 +296,7 @@ export async function extractMemoriesInBackground(
   conversationId?: string,
   model?: LanguageModelV3,
   cwd?: string,
+  entrypointLimits?: EntrypointLimits,
 ): Promise<void> {
   setImmediate(async () => {
     try {
@@ -307,6 +309,7 @@ export async function extractMemoriesInBackground(
         conversationId,
         model,
         cwd,
+        entrypointLimits,
       );
       if (result.count > 0) {
         console.log(

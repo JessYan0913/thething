@@ -45,7 +45,7 @@ export { resolveAgentRoute } from './router';
 // Agent 执行
 export { executeRoutedAgent } from './executor';
 export { resolveToolsForAgent } from './tool-resolver';
-export { resolveModelForAgent } from './model-resolver';
+export { resolveModelForAgent, resolveModelAlias } from './model-resolver';
 export { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
 
 // Agent Tool

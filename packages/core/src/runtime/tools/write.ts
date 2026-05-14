@@ -3,8 +3,16 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validateWritePath } from '../../extensions/permissions';
+import type { PathValidationOptions } from '../../extensions/permissions';
+import type { FileToolOptions } from './read';
 
-export const writeFileTool = tool({
+export function createWriteFileTool(options: FileToolOptions = {}) {
+  const pathValidationOptions: PathValidationOptions = {
+    workingDir: options.cwd,
+    extraSensitivePaths: options.extraSensitivePaths,
+  };
+
+  return tool({
   description: '创建或覆盖文件内容。自动创建父目录。如需追加内容请使用 append 模式。',
   inputSchema: z.object({
     filePath: z.string().describe('目标文件路径（相对于工作目录）'),
@@ -27,7 +35,7 @@ export const writeFileTool = tool({
   },
   execute: async ({ filePath, content, mode = 'overwrite' }) => {
     // Step 1: 路径安全检查（移到 execute 中，返回错误结果而非抛出错误）
-    const pathCheck = validateWritePath(filePath);
+    const pathCheck = validateWritePath(filePath, pathValidationOptions);
     if (!pathCheck.allowed) {
       return {
         error: true,
@@ -46,7 +54,7 @@ export const writeFileTool = tool({
       };
     }
 
-    const absolutePath = path.resolve(filePath);
+    const absolutePath = pathCheck.resolvedPath;
     const dir = path.dirname(absolutePath);
 
     await fs.mkdir(dir, { recursive: true });
@@ -75,4 +83,7 @@ export const writeFileTool = tool({
       created: isNewFile,
     };
   },
-});
+  });
+}
+
+export const writeFileTool = createWriteFileTool();

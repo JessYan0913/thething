@@ -33,6 +33,8 @@ const skillsCache = new LoadingCache<Skill[]>();
 export interface LoadSkillsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
+  /** 显式扫描目录（来自 ResolvedLayout.resources.skills） */
+  dirs?: readonly string[];
 }
 
 // ============================================================
@@ -47,21 +49,24 @@ export interface LoadSkillsOptions {
 export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> {
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
+  const explicitDirs = options?.dirs;
 
   // 检查缓存
-  const cacheKey = `skills:${cwd}`;
+  const cacheKey = `skills:${cwd}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
   const cached = skillsCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   // 构建扫描目录（使用全局 configDirName）
-  const dirs: string[] = [];
-  if (sources.includes('user')) {
-    dirs.push(getUserConfigDir('skills'));
-  }
-  if (sources.includes('project')) {
-    dirs.push(getProjectConfigDir(cwd, 'skills'));
+  const dirs: string[] = explicitDirs ? [...explicitDirs] : [];
+  if (!explicitDirs) {
+    if (sources.includes('user')) {
+      dirs.push(getUserConfigDir('skills'));
+    }
+    if (sources.includes('project')) {
+      dirs.push(getProjectConfigDir(cwd, 'skills'));
+    }
   }
 
   // 扫描目录 - 使用 scanConfigDirs 支持 dirPattern

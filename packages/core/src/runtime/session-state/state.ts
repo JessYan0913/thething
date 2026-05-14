@@ -41,9 +41,11 @@ export function createSessionState(
     availableModels = DEFAULT_MODEL_SPECS,
     autoDowngradeCostThreshold = 80,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
+    compactionEnabled = true,
   } = options;
 
   // 应用工具输出配置覆盖（如果有）
+  // 同时存入 SessionState 作为 per-session config，逐步替代全局单例
   if (toolOutputOverrides) {
     setToolOutputOverrides(toolOutputOverrides);
   }
@@ -68,6 +70,7 @@ export function createSessionState(
 
   // 构建压缩选项（从 BehaviorConfig 传入）
   const compactOptions: CompactOptions = {
+    enabled: compactionEnabled,
     compactionConfig,
     compactionThreshold: compactThreshold,
   };
@@ -79,6 +82,7 @@ export function createSessionState(
     aborted: false,
     model,
     projectDir,
+    toolOutputConfig: toolOutputOverrides,
     tokenBudget,
     costTracker,
     denialTracker,

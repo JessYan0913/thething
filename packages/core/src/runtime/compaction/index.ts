@@ -14,6 +14,8 @@ import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
  * Compaction 函数选项
  */
 export interface CompactOptions {
+  /** 是否启用普通自动压缩 */
+  enabled?: boolean;
   /** Compaction 配置（来自 BehaviorConfig.compaction） */
   compactionConfig?: CompactionConfig;
   /** 压缩阈值（来自 BehaviorConfig.compactionThreshold） */
@@ -26,6 +28,10 @@ export async function compactMessagesIfNeeded(
   dataStore: DataStore,
   options?: CompactOptions,
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  if (options?.enabled === false) {
+    return { messages, executed: false, tokensFreed: 0 };
+  }
+
   // 使用传入的阈值，否则使用 fallback
   const threshold = options?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
 

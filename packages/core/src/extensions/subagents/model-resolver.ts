@@ -4,6 +4,13 @@ import { MODEL_MAPPING } from '../../config/defaults';
 // 重新导出供其他模块使用
 export { MODEL_MAPPING };
 
+export function resolveModelAlias(modelName: string, aliases?: AgentExecutionContext['modelAliases']): string {
+  if (modelName === 'fast') return aliases?.fast ?? MODEL_MAPPING.fast;
+  if (modelName === 'smart') return aliases?.smart ?? MODEL_MAPPING.smart;
+  if (modelName === 'default') return aliases?.default ?? MODEL_MAPPING.default;
+  return modelName;
+}
+
 /**
  * 解析 Agent 使用的模型
  *
@@ -23,7 +30,7 @@ export function resolveModelForAgent(
   context: AgentExecutionContext,
 ): LanguageModel {
   const { model: modelConfig } = definition;
-  const { provider, parentModel } = context;
+  const { provider, parentModel, modelAliases } = context;
 
   // 未指定或 inherit - 使用父模型
   if (!modelConfig || modelConfig === 'inherit') {
@@ -35,25 +42,14 @@ export function resolveModelForAgent(
     return modelConfig;
   }
 
-  // fast / smart 或具体模型名 - 需要 provider
+  // fast / smart / default 或具体模型名 - 需要 provider
   if ((modelConfig === 'fast' || modelConfig === 'smart' || typeof modelConfig === 'string') && !provider) {
     console.warn('[ModelResolver] Provider is required for model shortcuts. Falling back to parent model.');
     return parentModel;
   }
 
-  // fast 模型
-  if (modelConfig === 'fast' && provider) {
-    return provider(MODEL_MAPPING.fast);
-  }
-
-  // smart 模型
-  if (modelConfig === 'smart' && provider) {
-    return provider(MODEL_MAPPING.smart);
-  }
-
-  // 具体模型名
   if (typeof modelConfig === 'string' && provider) {
-    return provider(modelConfig);
+    return provider(resolveModelAlias(modelConfig, modelAliases));
   }
 
   // 默认使用父模型

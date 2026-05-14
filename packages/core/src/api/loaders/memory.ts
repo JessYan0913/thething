@@ -41,6 +41,8 @@ const memoryCache = new LoadingCache<MemoryEntry[]>();
 
 export interface LoadMemoryOptions {
   cwd?: string;
+  /** 显式扫描目录（来自 ResolvedLayout.resources.memory） */
+  dirs?: readonly string[];
   /** MEMORY.md 最大行数（来自 BehaviorConfig.memory.mdMaxLines） */
   maxLines?: number;
   /** MEMORY.md 最大大小 KB（来自 BehaviorConfig.memory.mdMaxSizeKb） */
@@ -64,66 +66,66 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
   // 使用传入的限制，否则使用 fallback
   const maxLines = options?.maxLines ?? MEMORY_MD_MAX_LINES;
   const maxSizeKb = options?.maxSizeKb ?? MEMORY_MD_MAX_SIZE_KB;
+  const dirs = options?.dirs ? [...options.dirs] : [getProjectConfigDir(cwd, 'memory')];
 
   // 检查缓存（包含限制参数）
-  const cacheKey = `memory:${cwd}:${maxLines}:${maxSizeKb}`;
+  const cacheKey = `memory:${cwd}:${dirs.join('|')}:${maxLines}:${maxSizeKb}`;
   const cached = memoryCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // 使用全局 configDirName
-  const memoryDir = getProjectConfigDir(cwd, 'memory');
-
   // 加载 MEMORY.md
   const entries: MemoryEntry[] = [];
 
-  const memoryFile = path.join(memoryDir, 'MEMORY.md');
-  try {
-    const content = await fs.readFile(memoryFile, 'utf-8');
-    const lines = content.split('\n').length;
-    const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
+  for (const memoryDir of dirs) {
+    const memoryFile = path.join(memoryDir, 'MEMORY.md');
+    try {
+      const content = await fs.readFile(memoryFile, 'utf-8');
+      const lines = content.split('\n').length;
+      const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
 
-    // 截断超长内容
-    const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
+      // 截断超长内容
+      const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
 
-    entries.push({
-      content: truncatedContent,
-      filePath: memoryFile,
-      lines: truncatedContent.split('\n').length,
-      sizeKb: Buffer.byteLength(truncatedContent, 'utf-8') / 1024,
-    });
-  } catch {
-    // MEMORY.md 不存在
-  }
-
-  // 加载 memories/ 目录下的其他文件
-  const memoriesDir = path.join(memoryDir, 'memories');
-  try {
-    const files = await fs.readdir(memoriesDir);
-    for (const file of files) {
-      if (!file.endsWith('.md')) continue;
-
-      const filePath = path.join(memoriesDir, file);
-      try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        const lines = content.split('\n').length;
-        const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
-
-        const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
-
-        entries.push({
-          content: truncatedContent,
-          filePath,
-          lines: truncatedContent.split('\n').length,
-          sizeKb: Buffer.byteLength(truncatedContent, 'utf-8') / 1024,
-        });
-      } catch {
-        // 单个文件读取失败
-      }
+      entries.push({
+        content: truncatedContent,
+        filePath: memoryFile,
+        lines: truncatedContent.split('\n').length,
+        sizeKb: Buffer.byteLength(truncatedContent, 'utf-8') / 1024,
+      });
+    } catch {
+      // MEMORY.md 不存在
     }
-  } catch {
-    // memories/ 目录不存在
+
+    // 加载 memories/ 目录下的其他文件
+    const memoriesDir = path.join(memoryDir, 'memories');
+    try {
+      const files = await fs.readdir(memoriesDir);
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+
+        const filePath = path.join(memoriesDir, file);
+        try {
+          const content = await fs.readFile(filePath, 'utf-8');
+          const lines = content.split('\n').length;
+          const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
+
+          const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
+
+          entries.push({
+            content: truncatedContent,
+            filePath,
+            lines: truncatedContent.split('\n').length,
+            sizeKb: Buffer.byteLength(truncatedContent, 'utf-8') / 1024,
+          });
+        } catch {
+          // 单个文件读取失败
+        }
+      }
+    } catch {
+      // memories/ 目录不存在
+    }
   }
 
   // 更新缓存

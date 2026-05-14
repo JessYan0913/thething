@@ -35,6 +35,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     writerRef,
     preloadedData,
     behaviorDefaults,
+    layout,
   } = config
 
   const dataStore = preloadedData.dataStore
@@ -79,9 +80,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   }
 
   const sessionState = createSessionState(conversationId, {
-    maxContextTokens: sessionOptions?.maxContextTokens ?? 128_000,
-    compactThreshold: sessionOptions?.compactThreshold ?? 25_000,
-    maxBudgetUsd: sessionOptions?.maxBudgetUsd ?? 5.0,
+    ...sessionOptions,
     model: modelConfig.modelName ?? sessionOptions?.model,
     projectDir: cwd,
     dataStore,
@@ -106,7 +105,10 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   }
 
   // 加载项目上下文（THING.md）
-  const projectContext = await loadProjectContext(cwd)
+  const projectContext = await loadProjectContext(cwd, {
+    contextFileNames: layout?.contextFileNames,
+    configDirName: layout?.configDirName,
+  })
 
   const instructions = await buildAgentInstructions(skillResolution, memoryContext, {
     cwd,  // 传递工作目录给系统提示（让 Agent 知道正确的执行路径）
@@ -137,6 +139,9 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     writerRef,
     model: wrappedModel,
     provider,
+    agents: loadedData.agents,
+    mcps: loadedData.mcps,
+    modelAliases: behaviorDefaults?.modelAliases,
   })
 
   // ============================================================
@@ -151,6 +156,11 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     modelName,
     dataStore,
     conversationId,
+    {
+      enabled: sessionOptions?.compactionEnabled,
+      compactionConfig: sessionOptions?.compactionConfig,
+      compactionThreshold: sessionOptions?.compactThreshold,
+    },
   )
 
   // 记录预算检查结果

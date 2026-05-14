@@ -51,6 +51,17 @@ class AgentRegistry {
   }
 
   /**
+   * 清除指定来源的 Agent
+   */
+  clearBySource(source: string): void {
+    for (const [agentType, agent] of this.agents.entries()) {
+      if (agent.source === source) {
+        this.agents.delete(agentType);
+      }
+    }
+  }
+
+  /**
    * 获取注册表大小
    */
   size(): number {

@@ -22,6 +22,8 @@ export interface LoadPermissionsOptions {
   cwd?: string;
   /** Permissions 配置文件名（来自 ResolvedLayout.filenames.permissions） */
   filename?: string;
+  /** 显式扫描目录（来自 ResolvedLayout.resources.permissions） */
+  dirs?: readonly string[];
 }
 
 // ============================================================
@@ -42,7 +44,7 @@ export async function loadPermissions(options?: LoadPermissionsOptions): Promise
   const filename = options?.filename ?? PERMISSIONS_FILENAME;
 
   // 使用统一的 loader，共享缓存
-  const config = await loadRules(cwd, filename);
+  const config = await loadRules(cwd, filename, options?.dirs);
   return config.rules;
 }
 
