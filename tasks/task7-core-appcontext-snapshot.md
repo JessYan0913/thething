@@ -18,6 +18,12 @@
 - 必要时的显式 `dynamicReload` 入口
 - snapshot 一致性测试
 
+## 当前执行情况
+- 当前状态：implemented-pending-verification
+- 已完成：`preloadedData` 已进入 `createChatAgent` 和 `loadAllTools`，默认工具加载路径已明显转向快照数据
+- 待完成：动态扫描边界与快照一致性测试还需进一步验证
+- 验收状态：not-accepted
+
 ## 验收清单
 - 默认工具加载路径使用预加载的 agents / mcps / connectors 数据
 - 不会因为 runtime 重新扫描而绕过 layout 资源配置
@@ -29,4 +35,3 @@
 - 后置关联：task8、task10
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

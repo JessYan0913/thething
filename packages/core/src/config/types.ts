@@ -65,6 +65,8 @@ export type {
   LoadToolsConfig,
   CreateAgentConfig,
   CreateAgentResult,
+  AgentModules,
+  ResolvedAgentConfig,
 } from '../runtime/agent/types';
 
 // Memory（来自 memory/paths.ts）

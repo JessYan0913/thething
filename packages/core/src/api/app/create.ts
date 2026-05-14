@@ -2,16 +2,10 @@
 // App Create - Agent 创建入口（新 API）
 // ============================================================
 
-import type { CreateAgentOptions, CreateAgentResult, AppContext } from './types';
+import type { CreateAgentOptions, CreateAgentResult } from './types';
 import type { SubAgentStreamWriter } from '../../extensions/subagents';
 import { createChatAgent } from '../../runtime/agent/create';
-import {
-  resolveAgentCompactThreshold,
-  resolveAgentCompactionConfig,
-  resolveAgentModelConfig,
-  resolveAgentModules,
-  resolveToolOutputOverrides,
-} from './resolve-agent-config';
+import { resolveAgentConfig } from './resolve-agent-config';
 
 // ============================================================
 // createAgent - 消费 AppContext
@@ -31,58 +25,30 @@ import {
  */
 export async function createAgent(options: CreateAgentOptions): Promise<CreateAgentResult> {
   const { context, conversationId, messages = [], userId = 'default' } = options;
-  const { behavior } = context;
-
-  // 直接从 context 取数据，不重复加载
   const { skills, mcps, memory, permissions, agents, cwd } = context;
-  const modules = resolveAgentModules(options.modules);
-  const compactionConfig = resolveAgentCompactionConfig(behavior, options.compaction);
-  const compactThreshold = resolveAgentCompactThreshold(behavior, {
-    session: options.session,
-    compaction: options.compaction,
-  });
+
+  // 统一解析配置 — 一次性产出 ResolvedAgentConfig，不再逐字段拼装
+  const resolved = resolveAgentConfig(options);
 
   // 权限规则完全来自 permissions.json，不合并额外规则
-  // Connector 场景和 UI 场景保持一致，统一由 permissions.json 控制
-  const effectivePermissions = modules.permissions ? [...permissions] : [];
+  const effectivePermissions = resolved.modules.permissions ? [...permissions] : [];
 
-  // 创建 Agent，传递 preloadedData 和 behaviorDefaults
+  // 创建 Agent，传递 preloadedData 和 resolvedConfig
   const result = await createChatAgent({
     conversationId,
     messages,
     userId,
-    modelConfig: resolveAgentModelConfig(options.model),
-    sessionOptions: {
-      projectDir: cwd,
-      // 从 behavior 取默认值，支持 options.session 覆盖
-      maxContextTokens: options.session?.maxContextTokens ?? behavior.maxContextTokens,
-      maxBudgetUsd: options.session?.maxBudgetUsd ?? behavior.maxBudgetUsdPerSession,
-      compactThreshold,
-      maxDenialsPerTool: options.session?.maxDenialsPerTool ?? behavior.maxDenialsPerTool,
-      model: options.model.modelName,
-      dataStore: context.runtime.dataStore,
-      // 新增：模型列表和降级阈值
-      availableModels: behavior.availableModels,
-      autoDowngradeCostThreshold: behavior.autoDowngradeCostThreshold,
-      compactionConfig,
-      compactionEnabled: modules.compaction,
-      toolOutputOverrides: resolveToolOutputOverrides(behavior.toolOutput),
-    },
     // 传递对话元数据（用于控制技能附件注入等行为）
     conversationMeta: options.conversationMeta ? {
       messageCount: messages.length,
       isNewConversation: options.conversationMeta.isNewConversation,
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
     } : undefined,
-    enableMcp: modules.mcps,
-    enableSkills: modules.skills,
-    enableMemory: modules.memory,
-    enableConnector: modules.connectors,
     writerRef: options.writerRef as { current: SubAgentStreamWriter | null } | undefined,
     // 传递预加载数据，避免重复 loadAll
     preloadedData: {
       cwd,
-      skills: [...skills], // 转换为可变数组
+      skills: [...skills],
       agents: [...agents],
       mcps: [...mcps],
       connectors: [...context.connectors],
@@ -91,9 +57,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       dataStore: context.runtime.dataStore,
       connectorRegistry: context.runtime.connectorRegistry,
     },
-    // 新增：传递行为配置
-    behaviorDefaults: behavior,
-    layout: context.layout,
+    // 统一解析后的配置 — runtime 原样消费
+    resolvedConfig: resolved,
   });
 
   return result as CreateAgentResult;

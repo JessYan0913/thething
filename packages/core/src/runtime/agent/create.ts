@@ -25,18 +25,14 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     conversationId,
     messages,
     userId = 'default',
-    modelConfig,
-    sessionOptions,
     conversationMeta,
-    enableMcp = true,
-    enableSkills = true,
-    enableMemory = true,
-    enableConnector = true,
     writerRef,
     preloadedData,
-    behaviorDefaults,
-    layout,
+    resolvedConfig,
   } = config
+
+  // 从 resolvedConfig 取配置 — 不再逐字段从白名单重建
+  const { modelConfig, modules, sessionOptions, behavior, layout } = resolvedConfig
 
   const dataStore = preloadedData.dataStore
 
@@ -44,7 +40,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const isTurnZero = conversationMeta?.isNewConversation ?? false
 
   // 加载配置数据：优先使用 preloadedData（来自 AppContext），避免重复 loadAll
-  const cwd = sessionOptions?.projectDir ?? preloadedData?.cwd
+  const cwd = sessionOptions.projectDir ?? preloadedData?.cwd
   const loadedData = preloadedData ?? await loadAll({ cwd })
 
   // ============================================================
@@ -59,11 +55,11 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   let messagesWithAttachments = messages || []
   let attachmentInfo = { hasSkillListing: false, skillListingCount: 0 }
 
-  if (enableSkills && messages && messages.length > 0) {
+  if (modules.skills && messages && messages.length > 0) {
     const attachmentResult = await injectMessageAttachments(messages, {
       sessionKey: conversationId,
       skills: loadedData.skills,
-      contextWindowTokens: sessionOptions?.maxContextTokens ?? 128_000,
+      contextWindowTokens: sessionOptions.maxContextTokens ?? 128_000,
     })
     messagesWithAttachments = attachmentResult.messages
     attachmentInfo = {
@@ -81,13 +77,13 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   const sessionState = createSessionState(conversationId, {
     ...sessionOptions,
-    model: modelConfig.modelName ?? sessionOptions?.model,
+    model: modelConfig.modelName ?? sessionOptions.model,
     projectDir: cwd,
     dataStore,
   })
 
   let skillResolution: SkillResolution | null = null
-  if (enableSkills && messagesWithAttachments.length > 0) {
+  if (modules.skills && messagesWithAttachments.length > 0) {
     skillResolution = await resolveActiveSkills(messagesWithAttachments, loadedData.skills)
     if (skillResolution?.activeModelOverride) {
       sessionState.model = skillResolution.activeModelOverride
@@ -100,18 +96,18 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   }
 
   let memoryContext: MemoryContext | null = null
-  if (enableMemory && messagesWithAttachments.length > 0) {
+  if (modules.memory && messagesWithAttachments.length > 0) {
     memoryContext = await loadMemoryContext(messagesWithAttachments, userId, cwd)
   }
 
   // 加载项目上下文（THING.md）
   const projectContext = await loadProjectContext(cwd, {
-    contextFileNames: layout?.contextFileNames,
-    configDirName: layout?.configDirName,
+    contextFileNames: layout.contextFileNames,
+    configDirName: layout.configDirName,
   })
 
   const instructions = await buildAgentInstructions(skillResolution, memoryContext, {
-    cwd,  // 传递工作目录给系统提示（让 Agent 知道正确的执行路径）
+    cwd,
     skills: loadedData.skills,
     permissions: loadedData.permissions,
     memoryEntries: loadedData.memory,
@@ -133,22 +129,21 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const { tools, mcpRegistry } = await loadAllTools({
     conversationId,
     sessionState,
-    enableMcp,
-    enableConnector,
+    enableMcp: modules.mcps,
+    enableConnector: modules.connectors,
     connectorRegistry: preloadedData.connectorRegistry,
     writerRef,
     model: wrappedModel,
     provider,
     agents: loadedData.agents,
     mcps: loadedData.mcps,
-    modelAliases: behaviorDefaults?.modelAliases,
+    modelAliases: behavior.modelAliases,
   })
 
   // ============================================================
-  // ✅ 新增：初始预算检查
-  // 参考 ClaudeCode 在第一次调用前估算完整请求
+  // ✅ 初始预算检查
   // ============================================================
-  const modelName = modelConfig.modelName || 'qwen-max'  // 默认模型名
+  const modelName = modelConfig.modelName || 'qwen-max'
   const budgetCheck = await checkInitialBudget(
     messagesWithAttachments,
     instructions,
@@ -157,9 +152,9 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     dataStore,
     conversationId,
     {
-      enabled: sessionOptions?.compactionEnabled,
-      compactionConfig: sessionOptions?.compactionConfig,
-      compactionThreshold: sessionOptions?.compactThreshold,
+      enabled: sessionOptions.compactionEnabled,
+      compactionConfig: sessionOptions.compactionConfig,
+      compactionThreshold: sessionOptions.compactThreshold,
     },
   )
 
@@ -171,7 +166,6 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   }
 
   // 如果仍未通过（极端情况），记录警告但继续执行
-  // 让 API 返回实际错误以便触发恢复链
   if (!budgetCheck.passed) {
     console.warn(
       `[Agent Create] ⚠️ Budget check failed after all strategies. ` +
@@ -187,13 +181,13 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   type ChatToolsType = Record<string, any>
 
-  // 从 behaviorDefaults 取值（消除硬编码）
-  const maxSteps = behaviorDefaults?.maxStepsPerSession ?? 50;
+  // 从 behavior 取值（消除硬编码）
+  const maxSteps = behavior.maxStepsPerSession
 
   const prepareStep = createAgentPipeline<ChatToolsType>({
     sessionState,
     maxSteps,
-    maxBudgetUsd: behaviorDefaults?.maxBudgetUsdPerSession ?? 5.0,
+    maxBudgetUsd: behavior.maxBudgetUsdPerSession,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {
@@ -244,9 +238,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     adjustedMessages: finalMessages,
     budgetActions: budgetCheck.actions,
     model: modelInstance,
-    // 新增：附件注入信息
     attachmentInfo,
-    // 新增：dispose 方法
     dispose: createDispose(),
   }
 }

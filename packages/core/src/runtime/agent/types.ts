@@ -18,6 +18,43 @@ import type { DataStore } from '../../foundation/datastore/types'
 import type { BehaviorConfig } from '../../config/behavior'
 import type { ConnectorRegistry } from '../../extensions/connector'
 import type { ResolvedLayout } from '../../config/layout'
+import type { ToolOutputOverrides } from '../budget/tool-output-manager'
+
+// ============================================================
+// AgentModules - 模块开关（已解析，全部 required boolean）
+// ============================================================
+
+export interface AgentModules {
+  skills: boolean
+  mcps: boolean
+  memory: boolean
+  connectors: boolean
+  permissions: boolean
+  compaction: boolean
+}
+
+// ============================================================
+// ResolvedAgentConfig - 统一解析后的配置
+// ============================================================
+// 把 CreateAgentOptions + BehaviorConfig 收敛成一份明确的解析结果，
+// 让 api/app/create.ts 到 runtime/agent/create.ts 的链路不再手写白名单截断。
+// 公开配置新增字段时，只需在 resolveAgentConfig() 中补逻辑，
+// 不需要在多层对象里重复补拷贝。
+
+export interface ResolvedAgentConfig {
+  /** 模型配置（已从 ModelConfig 转换为 ModelProviderConfig） */
+  modelConfig: ModelProviderConfig
+  /** 模块开关（全部已解析为 boolean，默认 true） */
+  modules: AgentModules
+  /** Session 参数（已完整组装：behavior 默认值 + session 覆盖 + compaction 合并） */
+  sessionOptions: SessionStateOptions
+  /** 行为配置（完整 BehaviorConfig，供 runtime 消费点直接取值） */
+  behavior: BehaviorConfig
+  /** 布局配置（已解析为绝对路径） */
+  layout: ResolvedLayout
+  /** 工具输出覆盖（已从 ToolOutputLimitsConfig 转换为 ToolOutputOverrides） */
+  toolOutputOverrides: ToolOutputOverrides
+}
 
 export interface AgentContextConfig {
   userId?: string
@@ -70,24 +107,16 @@ export interface CreateAgentConfig {
   messages?: UIMessage[]
   userId?: string
   teamId?: string
-  modelConfig: ModelProviderConfig
-  sessionOptions?: SessionStateOptions
   conversationMeta?: {
     messageCount: number
     isNewConversation: boolean
     conversationStartTime: number
   }
-  enableMcp?: boolean
-  enableSkills?: boolean
-  enableMemory?: boolean
-  enableConnector?: boolean
   writerRef?: { current: SubAgentStreamWriter | null }
   /** 预加载的数据（来自 AppContext），必须提供 */
   preloadedData: PreloadedData
-  /** 行为配置（来自 AppContext.behavior），用于消除硬编码 */
-  behaviorDefaults?: BehaviorConfig
-  /** 布局配置（来自 AppContext.layout），用于消除路径硬编码 */
-  layout?: ResolvedLayout
+  /** 统一解析后的配置（包含模型、模块、session、行为、布局） */
+  resolvedConfig: ResolvedAgentConfig
 }
 
 export interface CreateAgentResult {

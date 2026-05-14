@@ -19,6 +19,12 @@
 - 对应的运行时条件分支
 - 公开说明和测试覆盖
 
+## 当前执行情况
+- 当前状态：implemented-pending-verification
+- 已完成：`modules.permissions=false` 可跳过权限提示注入，`modules.compaction=false` 可关闭普通自动压缩
+- 待完成：权限注入与底层安全拦截的边界说明还需要更明确的回归验证
+- 验收状态：not-accepted
+
 ## 验收清单
 - `modules.permissions = false` 时，不再把权限规则注入 system prompt
 - `modules.compaction = false` 时，普通自动压缩被禁用
@@ -30,4 +36,3 @@
 - 后置关联：task10
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

@@ -16,6 +16,12 @@
 - 配置来源与最终值的可视化输出
 - 公开配置字段的行为测试矩阵
 
+## 当前执行情况
+- 当前状态：in-progress
+- 已完成：`config-parameter-passing` 等行为测试已经覆盖了多个公开配置字段
+- 待完成：`traceResolvedAgentConfig()` 仍未实现，配置来源输出还没有成为统一入口
+- 验收状态：not-accepted
+
 ## 验收清单
 - trace 能输出字段来源、最终值和消费模块
 - `enableThinking`、`maxDenialsPerTool`、`availableModels`、`autoDowngradeCostThreshold` 都有行为测试
@@ -27,4 +33,3 @@
 - 后置关联：无后置关联
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

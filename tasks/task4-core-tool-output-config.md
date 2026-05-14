@@ -18,6 +18,12 @@
 - 全局覆盖模式的隔离或降级
 - 对应行为测试
 
+## 当前执行情况
+- 当前状态：in-progress
+- 已完成：session 级 `toolOutputConfig` 已进入 MCP、connector 和输出处理链路
+- 待完成：全局 `setToolOutputOverrides()` 仍作为 fallback 存在，尚未完全去单例
+- 验收状态：not-accepted
+
 ## 验收清单
 - `maxResultSizeChars`、`maxToolResultsPerMessageChars`、`previewSizeChars` 都能影响实际输出处理
 - 多个 session 之间不会互相污染工具输出限制
@@ -29,4 +35,3 @@
 - 后置关联：task10
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

@@ -20,6 +20,12 @@
 - loader 的 `dirs` 入参支持
 - 自定义资源目录生效的行为测试
 
+## 当前执行情况
+- 当前状态：implemented-pending-verification
+- 已完成：`loadAll()` 已将 `resourceDirs` 分发到 skills、agents、mcps、connectors、permissions、memory
+- 待完成：各 loader 的目录行为和测试结果仍需要进一步验证
+- 验收状态：not-accepted
+
 ## 验收清单
 - `layout.resources.skills`、`agents`、`mcps`、`connectors`、`permissions`、`memory` 都能影响对应加载路径
 - `loadAll()` 不再依赖隐式默认扫描来补齐已声明目录
@@ -31,4 +37,3 @@
 - 后置关联：task6、task7
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

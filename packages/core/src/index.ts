@@ -61,7 +61,7 @@
 // 高层 API（推荐入口）
 // ============================================================
 export { bootstrap, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './bootstrap';
-export { createAgent, createContext } from './api/app';
+export { createAgent, createContext, resolveAgentConfig } from './api/app';
 export type {
   AppContext,
   CreateAgentOptions,
@@ -73,6 +73,10 @@ export type {
   LoadSourceInfo,
   LoadError,
 } from './api/app/types';
+export type {
+  ResolvedAgentConfig,
+  AgentModules,
+} from './runtime/agent/types';
 export { type ConnectorRegistry } from './extensions/connector';
 
 // ============================================================

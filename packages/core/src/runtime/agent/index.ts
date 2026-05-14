@@ -13,4 +13,6 @@ export type {
   SkillResolution,
   MemoryContext,
   AgentContextConfig,
+  AgentModules,
+  ResolvedAgentConfig,
 } from './types'

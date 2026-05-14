@@ -17,6 +17,12 @@
 - `reload()` 保留 `dataDir` override
 - 对应行为测试
 
+## 当前执行情况
+- 当前状态：in-progress
+- 已完成：`contextFileNames` 已接入 `loadProjectContext`，`reload()` 也保留了 `dataDir`
+- 待完成：缓存键与 reload 路径的一致性还需要继续收口
+- 验收状态：not-accepted
+
 ## 验收清单
 - 自定义上下文文件名能被正常识别并进入加载结果
 - `reload()` 前后 `dataDir` 保持一致，不会静默回退
@@ -28,4 +34,3 @@
 - 后置关联：task7、task10
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

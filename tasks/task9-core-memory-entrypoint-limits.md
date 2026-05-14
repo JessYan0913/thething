@@ -17,6 +17,12 @@
 - 读取 / 追加 / 重建流程的统一约束
 - 超限处理行为的测试
 
+## 当前执行情况
+- 当前状态：in-progress
+- 已完成：`loadEntrypoint`、`appendToEntrypoint`、`rebuildEntrypoint`、`deleteMemoryFile` 都支持 limits
+- 待完成：应用层行为配置到 memory 限制参数的全链路传递仍需核实
+- 验收状态：not-accepted
+
 ## 验收清单
 - `entrypointMaxLines` 能限制 entrypoint 的行数
 - `entrypointMaxBytes` 能限制 entrypoint 的字节数
@@ -28,4 +34,3 @@
 - 后置关联：task10
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

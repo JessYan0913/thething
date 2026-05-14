@@ -18,6 +18,12 @@
 - compaction 默认值与 override 的合并规则
 - 压缩行为覆盖测试
 
+## 当前执行情况
+- 当前状态：in-progress
+- 已完成：`resolveAgentCompactionConfig`、`compactionConfig` 传入 `SessionState`、`compactionEnabled` 开关已接入
+- 待完成：micro compact、post compact 和自动压缩触发逻辑还未完全统一到同一配置源
+- 验收状态：not-accepted
+
 ## 验收清单
 - `behavior.compaction` 与 `options.compaction` 的合并结果可预测
 - `sessionOptions.compactionConfig` 能被 runtime 原样消费
@@ -29,4 +35,3 @@
 - 后置关联：task3、task10
 
 本任务完成后，及时更新任务进度总跟踪文档对应任务的进度和验收状态，确保信息一致。
-

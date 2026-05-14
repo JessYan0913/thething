@@ -4,6 +4,7 @@
 
 export { createContext } from './context';
 export { createAgent } from './create';
+export { resolveAgentConfig } from './resolve-agent-config';
 
 // 向后兼容：createChatAgent 从 runtime/agent 导出
 export { createChatAgent } from '../../runtime/agent/create';
@@ -19,3 +20,8 @@ export type {
   LoadSourceInfo,
   LoadError,
 } from './types';
+
+export type {
+  ResolvedAgentConfig,
+  AgentModules,
+} from '../../runtime/agent/types';
