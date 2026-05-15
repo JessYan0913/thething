@@ -146,7 +146,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     name: "memory-guidelines",
     create: async (options) => {
       if (options.memoryContext?.userId) {
-        const section = await createMemorySection(options.memoryContext.userId, options.memoryContext.teamId, options.cwd);
+        const section = await createMemorySection(
+          options.memoryContext.userId,
+          options.memoryContext.teamId,
+          options.memoryBaseDir,
+        );
         return section ?? { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
       }
       return { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };

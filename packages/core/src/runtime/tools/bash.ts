@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { exec as execCallback, ChildProcess } from 'child_process';
 import { z } from 'zod';
 import { checkPermissionRules } from '../../extensions/permissions';
+import type { PermissionRule } from '../../extensions/permissions/types';
 
 // Node.js maxBuffer 保护（防止进程内存溢出）
 const BASH_MAX_BUFFER = 200_000;
@@ -70,6 +71,11 @@ const SAFE_COMMANDS = [
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+export interface BashToolOptions {
+  cwd: string;
+  permissionRules?: readonly PermissionRule[];
+}
+
 /**
  * 检查命令是否匹配危险模式
  */
@@ -127,12 +133,14 @@ function isCommandSafe(command: string): boolean {
 function execWithAbort(
   command: string,
   options: { timeout: number; maxBuffer: number; encoding: string; signal?: AbortSignal },
+  cwd: string,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child: ChildProcess = execCallback(command, {
       encoding: options.encoding as BufferEncoding,
       timeout: options.timeout,
       maxBuffer: options.maxBuffer,
+      cwd,
     }, (error, stdout, stderr) => {
       if (error) {
         reject(error);
@@ -160,99 +168,91 @@ function execWithAbort(
   });
 }
 
-export const bashTool = tool({
-  description:
-    '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。部分命令需要用户审批后才能执行。',
-  inputSchema: z.object({
-    command: z.string().describe('要执行的 shell 命令'),
-    timeoutMs: z.number().min(1000).max(120000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒'),
-  }),
-  needsApproval: async ({ command }) => {
-    // Step 0: 检查持久化规则（Always allow）
-    const matchedRule = checkPermissionRules('bash', { command });
-    if (matchedRule?.behavior === 'allow') {
-      return false;  // 自动放行
-    }
-    if (matchedRule?.behavior === 'deny') {
-      // 不抛出错误，返回 true 让审批流程处理，或让 execute 返回错误结果
+export function createBashTool(options: BashToolOptions) {
+  return tool({
+    description:
+      '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。部分命令需要用户审批后才能执行。',
+    inputSchema: z.object({
+      command: z.string().describe('要执行的 shell 命令'),
+      timeoutMs: z.number().min(1000).max(120000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒'),
+    }),
+    needsApproval: async ({ command }) => {
+      const matchedRule = checkPermissionRules('bash', { command }, options.permissionRules);
+      if (matchedRule?.behavior === 'allow') {
+        return false;
+      }
+      if (matchedRule?.behavior === 'deny') {
+        return true;
+      }
+      const dangerCheck = isCommandDangerous(command);
+      if (dangerCheck.dangerous) {
+        return true;
+      }
+      if (isCommandSafe(command)) {
+        return false;
+      }
       return true;
-    }
-
-    // Step 1: 检查危险命令黑名单 - 需要审批（让 execute 返回错误结果）
-    const dangerCheck = isCommandDangerous(command);
-    if (dangerCheck.dangerous) {
-      return true;
-    }
-
-    // Step 2: 检查安全命令白名单 - 自动放行，不需要审批
-    if (isCommandSafe(command)) {
-      return false;
-    }
-
-    // Step 3: 其他命令需要用户审批
-    return true;
-  },
-  execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, options) => {
-    // Step 1: 检查危险命令黑名单（返回错误结果而非抛出错误）
-    const safety = isCommandDangerous(command);
-    if (safety.dangerous) {
-      return {
-        error: true,
-        command,
-        message: `安全阻止: ${safety.reason}\n\n该命令包含危险操作，已被安全策略拒绝。`,
-      };
-    }
-
-    // Step 2: 检查 deny 规则
-    const matchedRule = checkPermissionRules('bash', { command });
-    if (matchedRule?.behavior === 'deny') {
-      return {
-        error: true,
-        command,
-        message: `操作被拒绝: ${matchedRule.pattern}`,
-      };
-    }
-
-    try {
-      const { stdout, stderr } = await execWithAbort(command, {
-        encoding: 'utf-8',
-        timeout: timeoutMs,
-        maxBuffer: BASH_MAX_BUFFER,
-        signal: options?.abortSignal,
-      });
-
-      return {
-        stdout,
-        stderr,
-        exitCode: 0,
-        command,
-        timedOut: false,
-      };
-    } catch (error: unknown) {
-      const execError = error as Error & { killed?: boolean; code?: string | number; status?: number; stdout?: string; stderr?: string };
-      if (execError?.name === 'AbortError') {
-        throw new Error('命令执行被用户中止。');
+    },
+    execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, execOptions) => {
+      const safety = isCommandDangerous(command);
+      if (safety.dangerous) {
+        return {
+          error: true,
+          command,
+          message: `安全阻止: ${safety.reason}\n\n该命令包含危险操作，已被安全策略拒绝。`,
+        };
       }
 
-      if (execError.killed || execError.code === 'ETIMEDOUT') {
-        throw new Error(`命令执行超时 (${timeoutMs}ms)。请增加 timeoutMs 或优化命令。`);
+      const matchedRule = checkPermissionRules('bash', { command }, options.permissionRules);
+      if (matchedRule?.behavior === 'deny') {
+        return {
+          error: true,
+          command,
+          message: `操作被拒绝: ${matchedRule.pattern}`,
+        };
       }
 
-      if (execError.code === 'E2BIG' || (execError.stdout?.length ?? 0) + (execError.stderr?.length ?? 0) > BASH_MAX_BUFFER) {
-        throw new Error(`命令输出过大。请重定向到文件或缩小输出范围。`);
+      try {
+        const { stdout, stderr } = await execWithAbort(command, {
+          encoding: 'utf-8',
+          timeout: timeoutMs,
+          maxBuffer: BASH_MAX_BUFFER,
+          signal: execOptions?.abortSignal,
+        }, options.cwd);
+
+        return {
+          stdout,
+          stderr,
+          exitCode: 0,
+          command,
+          timedOut: false,
+        };
+      } catch (error: unknown) {
+        const execError = error as Error & { killed?: boolean; code?: string | number; status?: number; stdout?: string; stderr?: string };
+        if (execError?.name === 'AbortError') {
+          throw new Error('命令执行被用户中止。');
+        }
+
+        if (execError.killed || execError.code === 'ETIMEDOUT') {
+          throw new Error(`命令执行超时 (${timeoutMs}ms)。请增加 timeoutMs 或优化命令。`);
+        }
+
+        if (execError.code === 'E2BIG' || (execError.stdout?.length ?? 0) + (execError.stderr?.length ?? 0) > BASH_MAX_BUFFER) {
+          throw new Error(`命令输出过大。请重定向到文件或缩小输出范围。`);
+        }
+
+        const stdout = (execError.stdout || '').toString();
+        const stderr = (execError.stderr || '').toString();
+        const exitCode = execError.code || execError.status || 1;
+
+        return {
+          stdout,
+          stderr,
+          exitCode,
+          command,
+          timedOut: false,
+        };
       }
-
-      const stdout = (execError.stdout || '').toString();
-      const stderr = (execError.stderr || '').toString();
-      const exitCode = execError.code || execError.status || 1;
-
-      return {
-        stdout,
-        stderr,
-        exitCode,
-        command,
-        timedOut: false,
-      };
-    }
-  },
-});
+    },
+  });
+}

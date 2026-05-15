@@ -95,7 +95,7 @@ If no agentType specified, will auto-route based on task keywords (find→explor
 
         // 动态加载 Agent（显式开启 dynamicReload 时才重新扫描）
         if (config.dynamicReload && agentType && !globalAgentRegistry.has(agentType)) {
-          const customAgents = await scanAgentDirs(cwd);
+          const customAgents = await scanAgentDirs(cwd, { dirs: config.agentsLayoutDirs });
           for (const agent of customAgents) {
             if (!globalAgentRegistry.has(agent.agentType)) {
               globalAgentRegistry.register(agent);

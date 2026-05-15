@@ -16,8 +16,7 @@ import {
   type ConnectorRegistry,
 } from './extensions/connector';
 import type { ConnectorInboundRuntime } from './extensions/connector/inbound/types';
-import { initPermissions } from './extensions/permissions';
-import { resolveProjectDir, setResolvedConfigDirName, setResolvedCwd } from './foundation/paths';
+import { setResolvedConfigDirName } from './foundation/paths';
 import {
   registerTokenizer,
   setTokenizerDir,
@@ -105,20 +104,6 @@ export interface BootstrapOptions {
   connectorConfig?: Partial<ConnectorRuntimeConfig>;
   /** Tokenizer 配置（可选） */
   tokenizerConfig?: TokenizerConfig;
-
-  // ── 向后兼容（deprecated）──────────────────────────────────
-
-  /**
-   * @deprecated 使用 layout.resourceRoot 代替
-   * 项目目录（可选，默认使用 resolveProjectDir）
-   */
-  cwd?: string;
-
-  /**
-   * @deprecated 使用 layout.dataDir 代替
-   * 数据目录（必填，现改为 layout 配置）
-   */
-  dataDir?: string;
 }
 
 // ============================================================
@@ -164,37 +149,22 @@ export interface CoreRuntime {
  * await runtime.dispose();
  *
  * @example
- * // 向后兼容 API（deprecated）
+ * // 兼容旧字段写法（建议迁移到 layout）
  * const runtime = await bootstrap({
  *   dataDir: './data',
  *   cwd: process.cwd()
  * });
  */
 export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime> {
-  // ── 处理向后兼容 ──────────────────────────────────────────
-  // 如果使用旧的 dataDir/cwd 参数，自动转换为 layout
-  let layoutConfig: LayoutConfig;
-  if (options.layout) {
-    layoutConfig = options.layout;
-  } else if (options.dataDir) {
-    // 向后兼容：从旧参数构建 layout
-    layoutConfig = {
-      resourceRoot: options.cwd ?? resolveProjectDir(),
-      dataDir: options.dataDir,
-    };
-  } else {
-    // 必须提供 layout
+  // 1. 解析布局
+  if (!options.layout) {
     throw new Error('[Bootstrap] layout is required. Provide layout: { resourceRoot: ... }');
   }
+  const layout = resolveLayout(options.layout);
 
-  // 1. 解析布局
-  const layout = resolveLayout(layoutConfig);
-
-  // 1.1. 设置全局 configDirName 和 cwd（让所有 get* 便捷函数使用正确的值）
+  // 1.1. 设置全局 configDirName（兼容仍依赖便捷路径函数的模块）
   setResolvedConfigDirName(layout.configDirName);
-  setResolvedCwd(layout.resourceRoot);
   console.log(`[Bootstrap] configDirName set to: ${layout.configDirName}`);
-  console.log(`[Bootstrap] cwd set to: ${layout.resourceRoot}`);
 
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);
@@ -214,12 +184,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 5. 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
   initGlobalTaskStoreFromDataStore(dataStore);
 
-  // 6. 初始化权限系统（使用全局 configDirName，传入 filename）
-  await initPermissions(layout.resourceRoot, layout.filenames.permissions).catch((err) => {
-    console.error('[Bootstrap] Permissions init failed:', err);
-  });
-
-  // 7. 初始化 Connector Runtime（只加载 Registry；Inbound handler 在应用层有 AppContext 后绑定）
+  // 6. 初始化 Connector Runtime（只加载 Registry；Inbound handler 在应用层有 AppContext 后绑定）
   const connectorConfigDir = options.connectorConfig?.configDir
     ?? layout.resources.connectors[layout.resources.connectors.length - 1]
     ?? path.join(layout.resourceRoot, layout.configDirName, 'connectors');
@@ -239,7 +204,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
   const connectorRegistry = connectorRuntime.registry;
 
-  // 9. 初始化 Tokenizer（显式配置，不依赖环境变量）
+  // 7. 初始化 Tokenizer（显式配置，不依赖环境变量）
   initTokenizer(options.tokenizerConfig);
 
   return {

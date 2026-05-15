@@ -5,13 +5,13 @@ import { buildMemoryPrompt } from '../../memory/memdir';
 export async function createMemorySection(
   userId?: string,
   teamId?: string,
-  cwd?: string,
+  memoryBaseDir?: string,
 ): Promise<SystemPromptSection | null> {
-  if (!userId) {
+  if (!userId || !memoryBaseDir) {
     return null;
   }
 
-  const userDir = getUserMemoryDir(userId, cwd);
+  const userDir = getUserMemoryDir(userId, memoryBaseDir);
 
   if (!(await directoryExists(userDir))) {
     return null;

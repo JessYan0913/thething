@@ -31,6 +31,8 @@ export interface McpServerConfig {
       schema: unknown,
     ) => Promise<{ action: 'accept' | 'decline' | 'cancel'; content?: Record<string, unknown> }>;
   };
+  /** 加载来源文件路径（由 loader 设置） */
+  sourcePath?: string;
 }
 
 /**

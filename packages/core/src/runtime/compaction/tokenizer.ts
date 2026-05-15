@@ -27,6 +27,7 @@ import {
   MODEL_TO_HF_REPO_MAPPING,
   DEFAULT_TOKENIZER_REPO,
 } from "../../config/defaults";
+import { DEFAULT_MODEL_ALIASES } from "../../config/behavior";
 
 // ============================================================
 // TokenCounter - 核心 Token 管理类
@@ -592,7 +593,7 @@ export function setAutoDownload(enabled: boolean): void {
  * 预加载 tokenizer
  */
 export async function preloadTokenizer(modelName?: string): Promise<void> {
-  const model = modelName || "qwen-plus";
+  const model = modelName || DEFAULT_MODEL_ALIASES.default;
 
   try {
     await tokenCounter.getTokenizer(model);
@@ -606,7 +607,7 @@ export async function preloadTokenizer(modelName?: string): Promise<void> {
  * 检查 tokenizer 是否已加载
  */
 export function isTokenizerReady(modelName?: string): boolean {
-  return tokenCounter.isReady(modelName || "qwen-plus");
+  return tokenCounter.isReady(modelName || DEFAULT_MODEL_ALIASES.default);
 }
 
 /**
@@ -614,7 +615,7 @@ export function isTokenizerReady(modelName?: string): boolean {
  */
 export async function hasTokenizerFile(modelName?: string): Promise<boolean> {
   // 简化实现，检查是否已加载
-  return tokenCounter.isReady(modelName || "qwen-plus");
+  return tokenCounter.isReady(modelName || DEFAULT_MODEL_ALIASES.default);
 }
 
 /**
@@ -665,28 +666,28 @@ export function getTokenizerConfig() {
  * 计算 token 数量
  */
 export async function countTokens(text: string, modelName?: string): Promise<number> {
-  return tokenCounter.count(text, modelName || "qwen-plus");
+  return tokenCounter.count(text, modelName || DEFAULT_MODEL_ALIASES.default);
 }
 
 /**
  * 批量计算 token 数量
  */
 export async function countTokensBatch(texts: string[], modelName?: string): Promise<number[]> {
-  return tokenCounter.countBatch(texts, modelName || "qwen-plus");
+  return tokenCounter.countBatch(texts, modelName || DEFAULT_MODEL_ALIASES.default);
 }
 
 /**
  * 同步计算 token 数量
  */
 export function countTokensSync(text: string, modelName?: string): number {
-  return tokenCounter.countSync(text, modelName || "qwen-plus");
+  return tokenCounter.countSync(text, modelName || DEFAULT_MODEL_ALIASES.default);
 }
 
 /**
  * 尝试同步计算
  */
 export function tryCountTokensSync(text: string, modelName?: string): number | null {
-  return tokenCounter.tryCountSync(text, modelName || "qwen-plus");
+  return tokenCounter.tryCountSync(text, modelName || DEFAULT_MODEL_ALIASES.default);
 }
 
 /**

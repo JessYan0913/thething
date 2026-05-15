@@ -104,7 +104,7 @@ describe('runtime/agent/context', () => {
         { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
       ];
 
-      const result = await loadMemoryContext(messages, 'user1');
+      const result = await loadMemoryContext(messages, 'user1', '/memory');
 
       expect(result.userId).toBe('user1');
       expect(result.recalledMemoriesContent).toBe('');
@@ -113,7 +113,7 @@ describe('runtime/agent/context', () => {
     it('should return user ID correctly', async () => {
       const messages: any[] = [];
 
-      const result = await loadMemoryContext(messages, 'test-user');
+      const result = await loadMemoryContext(messages, 'test-user', '/memory');
 
       expect(result.userId).toBe('test-user');
     });

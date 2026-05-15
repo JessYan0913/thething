@@ -68,7 +68,6 @@ export type {
   CreateAgentResult,
   CreateContextOptions,
   ModelConfig,
-  ReloadOptions,
   LoadEvent,
   LoadSourceInfo,
   LoadError,
@@ -92,85 +91,10 @@ export {
 
 export {
   resolveLayout,
-  buildDefaultResourceLayout,
   type LayoutConfig,
   type ResolvedLayout,
   type ResourceDirs,
 } from './config/layout';
-
-// ============================================================
-// 配置常量（白名单导出）
-// ============================================================
-// ============================================================
-// 默认值常量（已迁移到 BehaviorConfig/ResolvedLayout）
-// ============================================================
-// 注意：以下常量已迁移，此处保留导出仅为向后兼容
-// 建议从 runtime.behavior 或 runtime.layout 获取配置
-// ============================================================
-
-// 模型能力（已迁移到 BehaviorConfig）
-/** @deprecated 使用 BehaviorConfig.maxContextTokens 或 foundation/model/capabilities 接收配置参数代替 */
-export {
-  DEFAULT_CONTEXT_LIMIT,
-  DEFAULT_OUTPUT_TOKENS,
-  AUTOCOMPACT_BUFFER_TOKENS,
-} from './config/defaults';
-
-// Session 预算（已迁移到 BehaviorConfig）
-/** @deprecated 使用 BehaviorConfig.maxBudgetUsdPerSession 代替 */
-export { DEFAULT_MAX_BUDGET_USD } from './config/defaults';
-/** @deprecated 使用 BehaviorConfig.maxDenialsPerTool 代替 */
-export { DEFAULT_MAX_DENIALS_PER_TOOL } from './config/defaults';
-
-// 压缩配置（已迁移到 BehaviorConfig.compaction）
-/** @deprecated 使用 BehaviorConfig.compactionThreshold 代替 */
-export {
-  COMPACT_TOKEN_THRESHOLD,
-} from './config/defaults';
-/** @deprecated 使用 BehaviorConfig.compaction.sessionMemory 代替 */
-export {
-  DEFAULT_SESSION_MEMORY_CONFIG,
-  DEFAULT_POST_COMPACT_CONFIG,
-} from './config/defaults';
-
-// Micro Compact（已迁移到 BehaviorConfig.compaction.micro）
-/** @deprecated 使用 BehaviorConfig.compaction.micro 代替 */
-export { DEFAULT_MICRO_COMPACT_CONFIG } from './runtime/compaction/types';
-/** @deprecated 使用 BehaviorConfig.compaction.micro 代替 */
-export { DEFAULT_MICRO_COMPACT_CONFIG_RAW } from './config/defaults';
-
-// 工具输出（已迁移到 BehaviorConfig.toolOutput）
-/** @deprecated 未使用 */
-export {
-  DEFAULT_MAX_OUTPUT_CHARS,
-  DEFAULT_MAX_OUTPUT_TOKENS,
-} from './config/defaults';
-/** @deprecated 使用 BehaviorConfig.toolOutput.* 代替 */
-export {
-  DEFAULT_MAX_RESULT_SIZE_CHARS,
-  MAX_TOOL_RESULT_TOKENS,
-  MAX_TOOL_RESULT_BYTES,
-  MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
-  PREVIEW_SIZE_CHARS,
-} from './config/defaults';
-/** @deprecated 纯计算常量，可保留使用 */
-export {
-  BYTES_PER_TOKEN,
-} from './config/defaults';
-
-// 数据存储（已迁移到 ResolvedLayout）
-/** @deprecated 使用 resolveLayout().dataDir 代替 */
-export {
-  DEFAULT_DATA_DIR,
-} from './config/defaults';
-/** @deprecated 使用 resolveLayout().filenames.db 代替 */
-export {
-  DEFAULT_DB_FILENAME,
-} from './config/defaults';
-// 项目配置目录（保留 - foundation 层全局单例 fallback）
-export {
-  DEFAULT_PROJECT_CONFIG_DIR_NAME,
-} from './config/defaults';
 
 // ============================================================
 // Foundation Layer（白名单导出）

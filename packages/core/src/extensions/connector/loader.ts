@@ -81,6 +81,8 @@ export const ConnectorFrontmatterSchema = z.object({
   custom_settings: z.record(z.string(), z.unknown()).optional(),
   base_url: z.string().optional(),
   tools: z.array(ToolDefinitionSchema).optional().default([]),
+  /** 加载来源文件路径（由 loader 设置，不在 YAML 文件中声明） */
+  sourcePath: z.string().optional(),
 });
 
 export type ConnectorFrontmatter = z.infer<typeof ConnectorFrontmatterSchema>;

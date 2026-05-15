@@ -286,9 +286,9 @@ export async function loadAgentMarkdown(filePath: string): Promise<AgentDefiniti
  */
 export async function scanAgentDirs(
   cwd?: string,
-  _config?: Partial<AgentLoaderConfig>,
+  config?: Partial<AgentLoaderConfig> & { dirs?: readonly string[] },
 ): Promise<AgentDefinition[]> {
-  return loadAgents({ cwd });
+  return loadAgents({ cwd, sources: config?.sources, dirs: config?.dirs });
 }
 
 /**

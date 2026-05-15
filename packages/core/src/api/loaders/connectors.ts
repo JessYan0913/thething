@@ -103,7 +103,7 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
     (c) => c.id,
   );
 
-  // 去除 source 和 filePath 字段
+  // 去除 source 和 filePath 字段，保留 sourcePath 用于来源追踪
   const result: ConnectorFrontmatter[] = merged.map((c) => ({
     id: c.id,
     name: c.name,
@@ -116,6 +116,7 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
     custom_settings: c.custom_settings,
     base_url: c.base_url,
     tools: c.tools,
+    sourcePath: c.filePath,
   }));
 
   // 更新缓存

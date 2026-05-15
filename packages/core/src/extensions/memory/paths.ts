@@ -1,68 +1,32 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { getResolvedConfigDirName } from '../../foundation/paths';
+import type { ResolvedLayout } from '../../config/layout';
 
-// ============================================================================
-// Memory Configuration
-// ============================================================================
-
-export interface MemoryConfig {
-  /** Base directory for memory storage. Defaults to cwd/${configDirName}/memory */
-  baseDir?: string;
-  /** Project directory (cwd), used to compute default baseDir */
-  cwd?: string;
-}
-
-// 环境变量名称: THETHING_MEMORY_DIR
-// 允许用户自定义项目内存存储目录
-let configuredMemoryBaseDir: string | null = null;
-
-/**
- * Configure the memory base directory.
- * Must be called before other memory operations if custom path needed.
- */
-export function configureMemory(config: MemoryConfig): void {
-  const cwd = config.cwd ?? process.cwd();
-  const configDirName = getResolvedConfigDirName();
-  const defaultBaseDir = path.join(cwd, configDirName, 'memory');
-  configuredMemoryBaseDir =
-    config.baseDir || process.env.THETHING_MEMORY_DIR || defaultBaseDir;
-}
-
-/**
- * Get memory base directory.
- * If not configured, computes from cwd parameter or process.cwd().
- *
- * @param cwd - Project directory (optional, defaults to process.cwd())
- */
-export function getMemoryBaseDir(cwd?: string): string {
-  if (configuredMemoryBaseDir) {
-    return configuredMemoryBaseDir;
-  }
-  // 未配置时，使用参数计算
-  const effectiveCwd = cwd ?? process.cwd();
-  const configDirName = getResolvedConfigDirName();
-  return process.env.THETHING_MEMORY_DIR || path.join(effectiveCwd, configDirName, 'memory');
+export function getPrimaryMemoryDir(
+  layout: Pick<ResolvedLayout, 'resources' | 'resourceRoot' | 'configDirName'>,
+): string {
+  return layout.resources.memory[layout.resources.memory.length - 1]
+    ?? path.join(layout.resourceRoot, layout.configDirName, 'memory');
 }
 
 /**
  * Get user memory directory.
  *
  * @param userId - User ID
- * @param cwd - Project directory (optional)
+ * @param memoryBaseDir - Base memory directory
  */
-export function getUserMemoryDir(userId: string, cwd?: string): string {
-  return path.join(getMemoryBaseDir(cwd), 'users', userId, 'memory');
+export function getUserMemoryDir(userId: string, memoryBaseDir: string): string {
+  return path.join(memoryBaseDir, 'users', userId, 'memory');
 }
 
 /**
  * Get team memory directory.
  *
  * @param teamId - Team ID
- * @param cwd - Project directory (optional)
+ * @param memoryBaseDir - Base memory directory
  */
-export function getTeamMemoryDir(teamId: string, cwd?: string): string {
-  return path.join(getMemoryBaseDir(cwd), 'teams', teamId, 'memory');
+export function getTeamMemoryDir(teamId: string, memoryBaseDir: string): string {
+  return path.join(memoryBaseDir, 'teams', teamId, 'memory');
 }
 
 export async function ensureMemoryDirExists(dirPath: string): Promise<void> {

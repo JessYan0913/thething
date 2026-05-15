@@ -69,9 +69,6 @@ export type {
   ResolvedAgentConfig,
 } from '../runtime/agent/types';
 
-// Memory（来自 memory/paths.ts）
-export type { MemoryConfig } from '../extensions/memory/paths';
-
 // ============================================================
 // 仅在 config 中定义的类型（未被其他模块定义）
 // ============================================================

@@ -1,6 +1,8 @@
 import type { UIMessage } from "ai";
+import type { MicroCompactConfig } from "./types";
 import { estimateMessagesTokens, estimateMessageTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
+import { COMPACT_TOKEN_THRESHOLD } from "./types";
 
 /**
  * PTL (Prompt Too Long) Emergency Degradation.
@@ -12,15 +14,34 @@ import { microCompactMessages } from "./micro-compact";
  * Reference: CCB reactive compact + truncateHeadForPTLRetry
  */
 
-const PTL_RETRY_THRESHOLD = 30_000;
-const PTL_HARD_TRUNCATE_TARGET = 20_000;
+interface PtlDegradationOptions {
+  /** 是否启用（默认 true；Level 2 紧急路径，仅在作为 Level 1 子路径时可能传 false） */
+  enabled?: boolean;
+  microConfig?: MicroCompactConfig;
+  retryThreshold?: number;
+  hardTruncateTarget?: number;
+}
+
+const DEFAULT_PTL_RETRY_THRESHOLD = 30_000;
+const DEFAULT_PTL_HARD_TRUNCATE_TARGET = 20_000;
 
 export async function tryPtlDegradation(
-  messages: UIMessage[]
+  messages: UIMessage[],
+  options?: PtlDegradationOptions,
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+  // [Level 2] 紧急恢复路径：默认始终生效
+  // enabled=false 仅在作为 compactMessagesIfNeeded 的子路径时传入
+  // 直接调用时 enabled 未指定，PTL 降级始终可用
+  if (options?.enabled === false) {
+    return { messages, executed: false, tokensFreed: 0 };
+  }
+
+  const retryThreshold = options?.retryThreshold ?? DEFAULT_PTL_RETRY_THRESHOLD;
+  const hardTruncateTarget = options?.hardTruncateTarget ?? DEFAULT_PTL_HARD_TRUNCATE_TARGET;
+
   const currentTokens = await estimateMessagesTokens(messages);
 
-  if (currentTokens < PTL_RETRY_THRESHOLD) {
+  if (currentTokens < retryThreshold) {
     return { messages, executed: false, tokensFreed: 0 };
   }
 
@@ -29,10 +50,10 @@ export async function tryPtlDegradation(
   );
 
   // Step 1: Try micro-compact first (fast, no API call)
-  const microResult = await microCompactMessages(messages);
+  const microResult = await microCompactMessages(messages, options?.microConfig);
   const afterMicro = await estimateMessagesTokens(microResult.messages);
 
-  if (afterMicro < PTL_RETRY_THRESHOLD) {
+  if (afterMicro < retryThreshold) {
     console.log(
       `[PTL Degradation] Micro-compact resolved the issue: ${currentTokens} → ${afterMicro} tokens`
     );
@@ -43,7 +64,7 @@ export async function tryPtlDegradation(
   console.warn(
     `[PTL Degradation] Micro-compact insufficient (${afterMicro} tokens), falling back to hard truncation`
   );
-  return hardTruncateToTarget(messages, PTL_HARD_TRUNCATE_TARGET);
+  return hardTruncateToTarget(messages, hardTruncateTarget);
 }
 
 /**

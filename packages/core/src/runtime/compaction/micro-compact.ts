@@ -114,7 +114,7 @@ async function maybeTimeBasedMicrocompact(
   }
 
   const { gapMinutes } = trigger;
-  const compactableIds = collectCompactableToolIds(messages);
+  const compactableIds = collectCompactableToolIds(messages, config.compactableTools);
 
   const keepRecent = Math.max(1, config.keepRecent);
   const keepSet = new Set(compactableIds.slice(-keepRecent));
@@ -162,7 +162,7 @@ async function maybeTimeBasedMicrocompact(
   return { messages: result, executed: true, tokensFreed: tokensSaved };
 }
 
-function collectCompactableToolIds(messages: UIMessage[]): string[] {
+function collectCompactableToolIds(messages: UIMessage[], compactableTools: Set<string> = DEFAULT_MICRO_COMPACT_CONFIG.compactableTools): string[] {
   const ids: string[] = [];
   for (const message of messages) {
     if (message.role === "assistant" && Array.isArray(message.parts)) {
@@ -170,7 +170,7 @@ function collectCompactableToolIds(messages: UIMessage[]): string[] {
         const p = part as unknown as Record<string, unknown>;
         if (
           p.type === "tool_use" &&
-          DEFAULT_MICRO_COMPACT_CONFIG.compactableTools.has(
+          compactableTools.has(
             (p.name as string) || ""
           )
         ) {

@@ -97,6 +97,7 @@ export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServ
     enabled: m.enabled,
     tools: m.tools,
     elicitation: m.elicitation,
+    sourcePath: m.filePath,
   }));
 
   // 更新缓存

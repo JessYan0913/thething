@@ -19,7 +19,7 @@ import type { InboundEvent } from './types'
 import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
 import { createAgent, type AppContext } from '../../../api/app'
 import { generateConversationTitle } from '../../../runtime/compaction'
-import { extractMemoriesInBackground } from '../../../extensions/memory'
+import { extractMemoriesInBackground, getPrimaryMemoryDir } from '../../../extensions/memory'
 import { ConnectorRegistry } from '../registry'
 import type { ConnectorModelConfig } from '../types'
 import type { DataStore } from '../../../foundation/datastore/types'
@@ -265,6 +265,8 @@ export interface AgentHandlerConfig {
     skills?: boolean
     memory?: boolean
     connectors?: boolean
+    permissions?: boolean
+    compaction?: boolean
   }
   modelConfig?: ConnectorModelConfig
   conversationResolver?: ConversationResolver
@@ -673,7 +675,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       const pendingApprovalRequests: typeof approvalRequests = []
 
       for (const req of approvalRequests) {
-        const rule = checkPermissionRules(req.toolName, req.input)
+        const rule = checkPermissionRules(req.toolName, req.input, this.config.context.permissions)
 
         if (rule?.behavior === 'allow') {
           console.log('[AgentInboundHandler] Auto-approved by permissions.json:', req.toolName)
@@ -844,11 +846,11 @@ export class AgentInboundHandler implements InboundEventHandler {
     store.messageStore.saveMessages(conversationId, finalMessages)
 
     // ── 后台：记忆提取 / 标题生成 / 成本持久化 ──
-    const cwd = this.config.context.cwd
+    const memoryBaseDir = getPrimaryMemoryDir(this.config.context.layout)
     setImmediate(() => {
       const userId = this.config.userId || event.sender.id
       const memoryLimits = this.config.context.behavior?.memory
-      extractMemoriesInBackground(finalMessages, userId, conversationId, model, cwd, {
+      extractMemoriesInBackground(finalMessages, userId, conversationId, model, memoryBaseDir, {
         maxLines: memoryLimits?.entrypointMaxLines,
         maxBytes: memoryLimits?.entrypointMaxBytes,
       }).catch(
@@ -906,6 +908,8 @@ export class AgentInboundHandler implements InboundEventHandler {
         skills: this.config.modules?.skills ?? true,
         memory: this.config.modules?.memory ?? true,
         connectors: this.config.modules?.connectors ?? false,
+        permissions: this.config.modules?.permissions ?? true,
+        compaction: this.config.modules?.compaction ?? true,
       },
     })
   }

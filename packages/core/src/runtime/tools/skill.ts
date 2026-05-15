@@ -9,10 +9,6 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import fs from 'fs/promises';
-import path from 'path';
-import { loadSkillFile } from '../../api/loaders/skills';
-import { computeUserConfigDir, computeProjectConfigDir, getResolvedConfigDirName } from '../../foundation/paths';
 import type { Skill } from '../../extensions/skills/types';
 
 // ============================================================
@@ -29,10 +25,6 @@ const SkillToolInputSchema = z.object({
     .string()
     .optional()
     .describe('Optional arguments for the skill. Will be substituted into $ARGUMENTS placeholders'),
-  cwd: z
-    .string()
-    .optional()
-    .describe('Optional working directory. If not provided, uses current project directory'),
 });
 
 // ============================================================
@@ -49,125 +41,8 @@ interface SkillToolResult {
   error?: string;
 }
 
-// ============================================================
-// 技能加载辅助函数
-// ============================================================
-
-/**
- * 向上搜索技能目录
- *
- * 从 cwd 开始，向上搜索技能目录，
- * 直到找到或到达用户 home 目录。
- *
- * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
- *
- * @param cwd - 当前工作目录
- * @returns 找到的技能目录列表
- */
-async function findSkillDirs(cwd: string): Promise<string[]> {
-  const configDirName = getResolvedConfigDirName();
-  const skillDirs: string[] = [];
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const userSkillDir = computeUserConfigDir(homeDir, 'skills', configDirName);
-
-  // 1. 添加用户级技能目录（如果存在）
-  try {
-    const stat = await fs.stat(userSkillDir);
-    if (stat.isDirectory()) {
-      skillDirs.push(userSkillDir);
-    }
-  } catch {
-    // 用户级目录不存在，继续
-  }
-
-  // 2. 向上搜索项目级技能目录
-  let currentDir = cwd;
-  while (currentDir) {
-    const projectSkillDir = computeProjectConfigDir(currentDir, 'skills', configDirName);
-    try {
-      const stat = await fs.stat(projectSkillDir);
-      if (stat.isDirectory()) {
-        skillDirs.push(projectSkillDir);
-        // 找到后停止向上搜索（假设最近的是正确的）
-        break;
-      }
-    } catch {
-      // 目录不存在，继续向上
-    }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir || parentDir === homeDir) {
-      // 到达根目录或用户 home 目录，停止
-      break;
-    }
-    currentDir = parentDir;
-  }
-
-  return skillDirs;
-}
-
-/**
- * 在技能目录中查找指定技能
- *
- * @param skillDirs - 技能目录列表
- * @param skillName - 技能名称
- * @returns 技能数据或 null
- */
-async function searchSkillInDirs(skillDirs: string[], skillName: string): Promise<Skill | null> {
-  const configDirName = getResolvedConfigDirName();
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const userSkillDir = computeUserConfigDir(homeDir, 'skills', configDirName);
-
-  for (const skillDir of skillDirs) {
-    try {
-      const skillSubDir = path.join(skillDir, skillName);
-      const skillFile = path.join(skillSubDir, 'SKILL.md');
-
-      const stat = await fs.stat(skillFile);
-      if (!stat.isFile()) continue;
-
-      // 确定来源：用户目录为 user，其他为 project
-      const source = skillDir.startsWith(userSkillDir) ? 'user' : 'project';
-
-      const skill = await loadSkillFile(skillFile, source as 'user' | 'project');
-      if (skill.name === skillName) {
-        return skill;
-      }
-    } catch (error) {
-      // 技能文件不存在或加载失败，继续搜索下一个目录
-      console.debug(`[SkillTool] Skill ${skillName} not found in ${skillDir}`);
-    }
-  }
-
-  return null;
-}
-
-/**
- * 加载指定技能
- *
- * @param skillName - 技能名称
- * @param cwd - 当前工作目录
- * @returns 技能数据或 null
- */
-async function findSkill(skillName: string, cwd: string): Promise<Skill | null> {
-  // 搜索所有可能的技能目录
-  const skillDirs = await findSkillDirs(cwd);
-
-  if (skillDirs.length === 0) {
-    console.warn(`[SkillTool] No skill directories found for cwd: ${cwd}`);
-    return null;
-  }
-
-  // 在各目录中查找技能
-  const skill = await searchSkillInDirs(skillDirs, skillName);
-
-  if (skill) {
-    console.log(`[SkillTool] Found skill ${skillName} in ${skill.sourcePath}`);
-  } else {
-    console.warn(`[SkillTool] Skill ${skillName} not found in any skill directory`);
-  }
-
-  return skill;
+function findSkill(skillName: string, skills: readonly Skill[]): Skill | null {
+  return skills.find(skill => skill.name === skillName) ?? null;
 }
 
 /**
@@ -227,8 +102,9 @@ function formatSkillOutput(skill: Skill, args?: string): string {
 // Skill Tool 定义
 // ============================================================
 
-export const skillTool = tool({
-  description: `Execute a skill within the main conversation.
+export function createSkillTool(options: { skills: readonly Skill[] }) {
+  return tool({
+    description: `Execute a skill within the main conversation.
 
 When users reference a "slash command" or "/<something>", they are referring to a skill. Use this tool to invoke it.
 
@@ -244,56 +120,51 @@ IMPORTANT:
 - Do not invoke a skill that is already running
 - If you see a <skill> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again`,
 
-  inputSchema: SkillToolInputSchema,
+    inputSchema: SkillToolInputSchema,
 
-  execute: async ({ skill, args, cwd: inputCwd }, options) => {
-    // 使用传入的 cwd，或使用当前工作目录
-    const cwd = inputCwd ?? process.cwd();
+    execute: async ({ skill, args }) => {
+      const trimmedSkill = skill.trim().replace(/^\/+/, '');
 
-    const trimmedSkill = skill.trim().replace(/^\/+/, '');  // 移除开头的斜杠
+      console.log(`[SkillTool] Invoking skill: ${trimmedSkill}${args ? ` with args: ${args}` : ''}`);
 
-    console.log(`[SkillTool] Invoking skill: ${trimmedSkill}${args ? ` with args: ${args}` : ''}`);
+      const skillData = findSkill(trimmedSkill, options.skills);
 
-    // 加载技能（使用全局 configDirName）
-    const skillData = await findSkill(trimmedSkill, cwd);
+      if (!skillData) {
+        return {
+          success: false,
+          skillName: trimmedSkill,
+          allowedTools: [],
+          error: `Unknown skill: ${trimmedSkill}. Check available skills in system-reminder messages.`,
+        } as SkillToolResult;
+      }
 
-    if (!skillData) {
+      const output = formatSkillOutput(skillData, args);
+
+      console.log(`[SkillTool] Skill loaded from AppContext snapshot: ${skillData.name} (${skillData.body?.length || 0} chars)`);
+      console.log(`[SkillTool] Allowed tools: ${skillData.allowedTools?.join(', ') || 'none'}`);
+
       return {
-        success: false,
-        skillName: trimmedSkill,
-        allowedTools: [],
-        error: `Unknown skill: ${trimmedSkill}. Check available skills in system-reminder messages.`,
-      } as SkillToolResult;
-    }
+        success: true,
+        skillName: skillData.name,
+        skillPath: skillData.sourcePath,
+        allowedTools: skillData.allowedTools || [],
+        model: skillData.model,
+        effort: skillData.effort,
+        _skillOutput: output,
+      } as SkillToolResult & { _skillOutput: string };
+    },
 
-    // 格式化技能指令
-    const output = formatSkillOutput(skillData, args);
-
-    console.log(`[SkillTool] Skill loaded: ${skillData.name} (${skillData.body?.length || 0} chars)`);
-    console.log(`[SkillTool] Allowed tools: ${skillData.allowedTools?.join(', ') || 'none'}`);
-
-    return {
-      success: true,
-      skillName: skillData.name,
-      skillPath: skillData.sourcePath,
-      allowedTools: skillData.allowedTools || [],
-      model: skillData.model,
-      effort: skillData.effort,
-      _skillOutput: output,  // 内部字段，供 toModelOutput 使用
-    } as SkillToolResult & { _skillOutput: string };
-  },
-
-  toModelOutput: ({ output }) => {
-    // 如果加载成功，返回完整技能指令
-    if (output && typeof output === 'object') {
-      const result = output as SkillToolResult & { _skillOutput?: string };
-      if (result.success && result._skillOutput) {
-        return { type: 'text' as const, value: result._skillOutput };
+    toModelOutput: ({ output }) => {
+      if (output && typeof output === 'object') {
+        const result = output as SkillToolResult & { _skillOutput?: string };
+        if (result.success && result._skillOutput) {
+          return { type: 'text' as const, value: result._skillOutput };
+        }
+        if (!result.success && result.error) {
+          return { type: 'text' as const, value: `❌ ${result.error}` };
+        }
       }
-      if (!result.success && result.error) {
-        return { type: 'text' as const, value: `❌ ${result.error}` };
-      }
-    }
-    return { type: 'text' as const, value: 'Skill invocation completed.' };
-  },
-});
+      return { type: 'text' as const, value: 'Skill invocation completed.' };
+    },
+  });
+}

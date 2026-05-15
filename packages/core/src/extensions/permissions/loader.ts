@@ -118,11 +118,13 @@ export async function loadRules(cwd?: string, filename?: string, dirs?: readonly
 
   const loadedRules: PermissionRule[][] = [];
   for (const [index, dir] of effectiveDirs.entries()) {
-    const config = await loadConfigFile(getPermissionsFilePath(dir, effectiveFilename));
+    const filePath = getPermissionsFilePath(dir, effectiveFilename);
+    const config = await loadConfigFile(filePath);
     const source: PermissionRule['source'] = index === effectiveDirs.length - 1 ? 'project' : 'user';
     const rules = config?.rules ?? [];
     for (const rule of rules) {
       rule.source = source;
+      rule.filePath = filePath;
     }
     loadedRules.push(rules);
   }

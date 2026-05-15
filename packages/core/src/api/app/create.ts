@@ -25,13 +25,10 @@ import { resolveAgentConfig } from './resolve-agent-config';
  */
 export async function createAgent(options: CreateAgentOptions): Promise<CreateAgentResult> {
   const { context, conversationId, messages = [], userId = 'default' } = options;
-  const { skills, mcps, memory, permissions, agents, cwd } = context;
+  const { skills, mcps, memory, permissions, agents, layout } = context;
 
   // 统一解析配置 — 一次性产出 ResolvedAgentConfig，不再逐字段拼装
   const resolved = resolveAgentConfig(options);
-
-  // 权限规则完全来自 permissions.json，不合并额外规则
-  const effectivePermissions = resolved.modules.permissions ? [...permissions] : [];
 
   // 创建 Agent，传递 preloadedData 和 resolvedConfig
   const result = await createChatAgent({
@@ -47,12 +44,12 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     writerRef: options.writerRef as { current: SubAgentStreamWriter | null } | undefined,
     // 传递预加载数据，避免重复 loadAll
     preloadedData: {
-      cwd,
+      layout,
       skills: [...skills],
       agents: [...agents],
       mcps: [...mcps],
       connectors: [...context.connectors],
-      permissions: effectivePermissions,
+      permissions: [...permissions],
       memory: [...memory],
       dataStore: context.runtime.dataStore,
       connectorRegistry: context.runtime.connectorRegistry,

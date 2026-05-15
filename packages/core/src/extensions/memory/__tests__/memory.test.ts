@@ -2,10 +2,9 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
 import { describe, it, expect } from 'vitest';
+import { DEFAULT_MEMORY_ENTRYPOINT_LIMITS } from '../../../config/behavior';
 import {
   ENTRYPOINT_NAME,
-  MAX_ENTRYPOINT_LINES,
-  MAX_ENTRYPOINT_BYTES,
   appendToEntrypoint,
   rebuildEntrypoint,
   truncateEntrypointContent,
@@ -22,11 +21,11 @@ describe('memory', () => {
       });
 
       it('should have correct max lines', () => {
-        expect(MAX_ENTRYPOINT_LINES).toBe(200);
+        expect(DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxLines).toBe(200);
       });
 
       it('should have correct max bytes', () => {
-        expect(MAX_ENTRYPOINT_BYTES).toBe(25_000);
+        expect(DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxBytes).toBe(25_000);
       });
     });
 
@@ -40,7 +39,7 @@ describe('memory', () => {
       it('should truncate by bytes', () => {
         const content = 'a'.repeat(30_000);
         const result = truncateEntrypointContent(content);
-        expect(result.length).toBeLessThanOrEqual(MAX_ENTRYPOINT_BYTES);
+        expect(result.length).toBeLessThanOrEqual(DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxBytes);
       });
 
       it('should truncate at newline when truncating by bytes', () => {
@@ -55,7 +54,7 @@ describe('memory', () => {
         const content = lines.join('\n');
         const result = truncateEntrypointContent(content);
         const resultLines = result.split('\n');
-        expect(resultLines.length).toBeLessThanOrEqual(MAX_ENTRYPOINT_LINES);
+        expect(resultLines.length).toBeLessThanOrEqual(DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxLines);
       });
 
       it('should handle empty content', () => {

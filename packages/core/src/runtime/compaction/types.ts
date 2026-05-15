@@ -1,16 +1,28 @@
+// ============================================================
+// modules.compaction 两级语义定义
+// ============================================================
+//
+// Level 1 - 普通自动压缩（Ordinary Auto-Compaction）:
+//   modules.compaction === false → compactOptions.enabled = false
+//   → compactMessagesIfNeeded 早期返回（不触发任何自动压缩）
+//   → checkInitialBudget 跳过策略 1（MicroCompact）和策略 3（API Compact）
+//   覆盖路径：auto-compact trigger, session-memory compact,
+//              micro-compact, PTL degradation（仅在 compactMessagesIfNeeded 内）
+//
+// Level 2 - 紧急恢复路径（Emergency Recovery Paths）:
+//   不受 modules.compaction 开关控制，始终生效：
+//   → checkInitialBudget 策略 2（工具过滤）
+//   → checkInitialBudget 策略 4（紧急截断）
+//   → compactMessagesWithCustomInstructions（用户手动触发）
+//   → PTL degradation（仅在直接调用时，不经过 compactMessagesIfNeeded）
+//
+// 因此 modules.compaction=false 的含义是：
+//   "不主动压缩对话，但紧急情况仍可截断/降级"
+// ============================================================
+
 import type { UIMessage } from "ai";
 
-// ============================================================
-// Compaction 配置来源说明
-// ============================================================
-// 重要：以下配置常量已迁移到 BehaviorConfig.compaction
-// - DEFAULT_SESSION_MEMORY_CONFIG → behavior.compaction.sessionMemory
-// - DEFAULT_MICRO_COMPACT_CONFIG_RAW → behavior.compaction.micro
-// - DEFAULT_POST_COMPACT_CONFIG → behavior.compaction.postCompact
-//
-// 调用方应从 runtime.behavior 获取配置并传入 compaction 函数参数
-// 此处保留 defaults 导入作为 fallback 和向后兼容
-// ============================================================
+import type { CompactionConfig as BehaviorCompactionConfig } from '../../config/behavior';
 
 // 从统一配置模块导入常量（作为 fallback）
 import {
@@ -79,6 +91,34 @@ export interface PostCompactConfig {
   maxTokensPerFile: number;
   maxTokensPerSkill: number;
   skillsTokenBudget: number;
+}
+
+/**
+ * Runtime Compaction Config — 行为层 CompactionConfig 的运行时版本
+ * 关键区别：micro.compactableTools 从 string[] 转为 Set<string>，
+ * 因为运行时函数需要 Set.has() 的 O(1) 查找。
+ */
+export interface RuntimeCompactionConfig {
+  bufferTokens: number;
+  sessionMemory: SessionMemoryCompactConfig;
+  micro: MicroCompactConfig;
+  postCompact: PostCompactConfig;
+}
+
+/**
+ * 将 BehaviorConfig.compaction 转换为 RuntimeCompactionConfig
+ * 处理 compactableTools 的 string[] → Set<string> 转换
+ */
+export function toRuntimeCompactionConfig(config: BehaviorCompactionConfig): RuntimeCompactionConfig {
+  return {
+    bufferTokens: config.bufferTokens,
+    sessionMemory: config.sessionMemory,
+    micro: {
+      ...config.micro,
+      compactableTools: new Set(config.micro.compactableTools),
+    },
+    postCompact: config.postCompact,
+  };
 }
 
 export interface StoredSummary {

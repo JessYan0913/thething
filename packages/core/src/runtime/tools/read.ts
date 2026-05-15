@@ -1,13 +1,14 @@
 import { tool } from 'ai';
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validatePath } from '../../extensions/permissions';
+import type { PermissionRule } from '../../extensions/permissions/types';
 import type { PathValidationOptions } from '../../extensions/permissions';
 
 export interface FileToolOptions {
   cwd?: string;
   extraSensitivePaths?: readonly string[];
+  permissionRules?: readonly PermissionRule[];
 }
 
 export function createReadFileTool(options: FileToolOptions = {}) {
@@ -23,7 +24,7 @@ export function createReadFileTool(options: FileToolOptions = {}) {
   }),
   needsApproval: async ({ filePath }) => {
     // Step 1: 检查持久化规则（Always allow）
-    const matchedRule = checkPermissionRules('read_file', { filePath });
+    const matchedRule = checkPermissionRules('read_file', { filePath }, options.permissionRules);
     if (matchedRule?.behavior === 'allow') {
       return false;  // 自动放行
     }
@@ -47,7 +48,7 @@ export function createReadFileTool(options: FileToolOptions = {}) {
     }
 
     // Step 2: 检查 deny 规则
-    const matchedRule = checkPermissionRules('read_file', { filePath });
+    const matchedRule = checkPermissionRules('read_file', { filePath }, options.permissionRules);
     if (matchedRule?.behavior === 'deny') {
       return {
         error: true,
@@ -79,5 +80,3 @@ export function createReadFileTool(options: FileToolOptions = {}) {
   },
   });
 }
-
-export const readFileTool = createReadFileTool();

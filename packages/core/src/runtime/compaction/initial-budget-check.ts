@@ -121,9 +121,10 @@ export async function checkInitialBudget(
 
   // ============================================================
   // 策略 1: MicroCompact - 清除旧工具输出
+  // [Level 1] 受 compactionEnabled 控制：modules.compaction=false 时跳过
   // ============================================================
   if (compactionEnabled && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
-    const microResult = await microCompactMessages(currentMessages);
+    const microResult = await microCompactMessages(currentMessages, compactOptions?.compactionConfig?.micro);
     if (microResult.executed && microResult.tokensFreed > 500) {
       currentMessages = microResult.messages;
       actions.push(`MicroCompact: freed ${microResult.tokensFreed} tokens`);
@@ -144,6 +145,7 @@ export async function checkInitialBudget(
 
   // ============================================================
   // 策略 2: 工具过滤 - 移除低优先级工具
+  // [Level 2] 不受 compactionEnabled 控制：紧急降级始终生效
   // ============================================================
   if (currentEstimation.toolsTokens > currentEstimation.modelLimit * TOOL_BUDGET_RATIO) {
     const filteredTools = await filterToolsByPriority(currentTools, currentEstimation);
@@ -170,6 +172,7 @@ export async function checkInitialBudget(
 
   // ============================================================
   // 策略 3: API Compact - LLM 压缩消息（仅在有 conversationId 时）
+  // [Level 1] 受 compactionEnabled 控制：modules.compaction=false 时跳过
   // ============================================================
   if (compactionEnabled && conversationId && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.3) {
     try {
@@ -203,6 +206,7 @@ export async function checkInitialBudget(
 
   // ============================================================
   // 策略 4: 紧急截断 - 直接丢弃最早的消息
+  // [Level 2] 不受 compactionEnabled 控制：紧急截断始终生效
   // ============================================================
   const targetMessagesBudget = currentEstimation.modelLimit * MESSAGE_BUDGET_RATIO;
   const currentMessagesTokens = await estimateMessagesTokens(currentMessages);

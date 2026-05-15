@@ -13,6 +13,8 @@ export const PermissionRuleSchema = z.object({
   behavior: z.enum(['allow', 'ask', 'deny']),
   createdAt: z.number(),
   source: z.enum(['user', 'project']).optional(),
+  /** 加载来源文件路径（由 loader 设置） */
+  filePath: z.string().optional(),
 });
 
 export type PermissionRule = z.infer<typeof PermissionRuleSchema>;

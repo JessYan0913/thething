@@ -52,11 +52,6 @@ export interface AppContext {
   readonly layout: ResolvedLayout;
   /** 行为配置（所有字段已填充默认值） */
   readonly behavior: BehaviorConfig;
-  /** 项目工作目录（别名：layout.resourceRoot） */
-  readonly cwd: string;
-  /** 数据目录（别名：layout.dataDir） */
-  readonly dataDir: string;
-
   // 加载结果（只读快照）
   readonly skills: readonly Skill[];
   readonly agents: readonly AgentDefinition[];
@@ -75,7 +70,7 @@ export interface AppContext {
    * 重新加载所有资源，返回新的 AppContext 快照。
    * 原 context 实例保持不变（不可变设计）。
    */
-  reload(options?: ReloadOptions): Promise<AppContext>;
+  reload(options?: { verbose?: boolean; onLoad?: (event: LoadEvent) => void }): Promise<AppContext>;
 }
 
 // ============================================================
@@ -85,21 +80,10 @@ export interface AppContext {
 export interface CreateContextOptions {
   /** 运行时实例（必填） */
   runtime: CoreRuntime;
-  /** 项目工作目录（可选，默认使用 runtime.cwd） */
-  cwd?: string;
-  /** 数据目录（可选，默认使用 runtime.dataDir） */
-  dataDir?: string;
   /** 详细日志 */
   verbose?: boolean;
   /** 加载事件回调 */
   onLoad?: (event: LoadEvent) => void;
-}
-
-export interface ReloadOptions {
-  /** 重新加载的 cwd（可选） */
-  cwd?: string;
-  /** 详细日志 */
-  verbose?: boolean;
 }
 
 export interface LoadEvent {
@@ -130,8 +114,7 @@ export interface ModelConfig {
 
 export interface CreateAgentOptions {
   /**
-   * 必须提供 context（已加载配置快照），
-   * 或同时提供 runtime + cwd（内部自动创建 context）。
+   * 必须提供 context（已加载配置快照）。
    */
   context: AppContext;
 
@@ -190,6 +173,15 @@ export interface CreateAgentOptions {
 
   /** 高级参数 */
   writerRef?: { current: unknown };
+
+  /**
+   * 动态重载控制（默认 false）。
+   *
+   * 设为 true 时，agent tool 在运行中可重新扫描目录加载新的子 agent 配置，
+   * 绕过 AppContext 快照。
+   * 仅用于需要热更新的特殊场景；正常流程应使用 AppContext.reload() 创建新快照。
+   */
+  dynamicReload?: boolean;
 
   /** 对话元数据（用于控制技能附件注入等行为） */
   conversationMeta?: {

@@ -5,9 +5,11 @@
 import type { UIMessage } from 'ai';
 import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
-import type { ContentReplacementState, ToolOutputOverrides } from '../budget/tool-output-manager';
+import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { DataStore } from '../../foundation/datastore/types';
 import type { ModelSpec, CompactionConfig } from '../../config/behavior';
+import type { ResolvedLayout } from '../../config/layout';
+import type { PermissionRule } from '../../extensions/permissions/types';
 
 /**
  * Session 状态选项
@@ -23,20 +25,28 @@ export interface SessionStateOptions {
   model?: string;
   /** 每工具最大拒绝次数 */
   maxDenialsPerTool?: number;
-  /** 项目目录，用于工具结果持久化 */
-  projectDir?: string;
-  /** 工具输出配置覆盖（由应用层注入） */
-  toolOutputOverrides?: ToolOutputOverrides;
+  /** 项目根目录，用于工具执行与项目上下文 */
+  projectRoot?: string;
+  /** 解析后的布局快照 */
+  layout: ResolvedLayout;
+  /** 工具输出配置 */
+  toolOutputConfig?: ToolOutputConfig;
   /** DataStore 实例（来自 CoreRuntime，必填） */
   dataStore: DataStore;
   /** 可用模型列表（来自 BehaviorConfig） */
   availableModels?: ModelSpec[];
   /** 自动降级成本阈值（来自 BehaviorConfig） */
   autoDowngradeCostThreshold?: number;
+  /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
+  modelAliases?: { fast: string; smart: string; default: string };
   /** Compaction 配置（来自 BehaviorConfig.compaction） */
   compactionConfig?: CompactionConfig;
   /** 是否启用普通自动压缩（modules.compaction !== false） */
   compactionEnabled?: boolean;
+  /** AppContext 快照中的权限规则 */
+  permissionRules?: readonly PermissionRule[];
+  /** 来自 BehaviorConfig.extraSensitivePaths */
+  extraSensitivePaths?: readonly string[];
 }
 
 /**
@@ -63,10 +73,16 @@ export interface SessionState {
   model: string;
   /** 是否中止 */
   aborted: boolean;
-  /** 项目目录 */
-  projectDir: string;
-  /** 工具输出配置覆盖（来自 BehaviorConfig.toolOutput，替代全局单例） */
-  toolOutputConfig?: ToolOutputOverrides;
+  /** 项目根目录 */
+  projectRoot: string;
+  /** 解析后的布局 */
+  layout: ResolvedLayout;
+  /** 工具输出配置 */
+  toolOutputConfig: ToolOutputConfig;
+  /** AppContext 快照中的权限规则 */
+  permissionRules: readonly PermissionRule[];
+  /** 额外敏感路径 */
+  extraSensitivePaths: readonly string[];
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
 

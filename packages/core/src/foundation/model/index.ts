@@ -10,9 +10,6 @@ export type { ModelProviderConfig, ModelProviderFn } from './provider-types';
 
 // Capabilities
 export {
-  DEFAULT_CONTEXT_LIMIT,
-  DEFAULT_OUTPUT_TOKENS,
-  AUTOCOMPACT_BUFFER_TOKENS,
   getModelContextLimit,
   getDefaultOutputTokens,
   getModelCapabilities,

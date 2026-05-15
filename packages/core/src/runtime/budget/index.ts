@@ -21,13 +21,10 @@ export {
   estimateObjectTokens,
   calculateOutputSize,
   processToolOutput,
-  setToolOutputOverrides,
-  getToolOutputOverrides,
   type ToolOutputConfig,
   type ContentReplacementState,
   type PersistedToolResult,
   type ContentReplacementRecord,
-  type ToolOutputOverrides,
 } from './tool-output-manager';
 
 export {

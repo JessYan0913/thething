@@ -49,7 +49,6 @@ export {
 // 统一加载
 // ============================================================
 
-import { getUserDataDir } from '../../foundation/paths';
 import type { ResourceDirs } from '../../config/layout';
 import type { Skill } from '../../extensions/skills/types';
 import type { AgentDefinition } from '../../extensions/subagents/types';
@@ -66,7 +65,6 @@ import { loadMemory, clearMemoryCache } from './memory';
 
 export interface LoadAllOptions {
   cwd?: string;
-  dataDir?: string;
   /** 已解析的资源目录（可选，直接使用而不重新计算） */
   resourceDirs?: ResourceDirs;
   skills?: LoadSkillsOptions;
@@ -79,7 +77,6 @@ export interface LoadAllOptions {
 
 export interface LoadAllResult {
   cwd: string;
-  dataDir: string;
   skills: Skill[];
   agents: AgentDefinition[];
   mcps: McpServerConfig[];
@@ -102,7 +99,6 @@ export type LoadedData = LoadAllResult;
  */
 export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> {
   const cwd = options?.cwd ?? process.cwd();
-  const dataDir = options?.dataDir ?? getUserDataDir();
 
   // 并行加载所有模块（使用全局 configDirName）
   const [skills, agents, mcps, connectors, permissions, memory] = await Promise.all([
@@ -116,7 +112,6 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
 
   return {
     cwd,
-    dataDir,
     skills,
     agents,
     mcps,

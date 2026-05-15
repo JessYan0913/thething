@@ -1,13 +1,13 @@
 import type { AgentDefinition, AgentExecutionContext, LanguageModel } from './types';
-import { MODEL_MAPPING } from '../../config/defaults';
+import { DEFAULT_MODEL_ALIASES } from '../../config/behavior';
 
-// 重新导出供其他模块使用
-export { MODEL_MAPPING };
+// 重新导出默认别名映射供其他模块使用
+export { DEFAULT_MODEL_ALIASES as MODEL_MAPPING };
 
 export function resolveModelAlias(modelName: string, aliases?: AgentExecutionContext['modelAliases']): string {
-  if (modelName === 'fast') return aliases?.fast ?? MODEL_MAPPING.fast;
-  if (modelName === 'smart') return aliases?.smart ?? MODEL_MAPPING.smart;
-  if (modelName === 'default') return aliases?.default ?? MODEL_MAPPING.default;
+  if (modelName === 'fast') return aliases?.fast ?? DEFAULT_MODEL_ALIASES.fast;
+  if (modelName === 'smart') return aliases?.smart ?? DEFAULT_MODEL_ALIASES.smart;
+  if (modelName === 'default') return aliases?.default ?? DEFAULT_MODEL_ALIASES.default;
   return modelName;
 }
 

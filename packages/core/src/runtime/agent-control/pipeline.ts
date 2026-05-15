@@ -81,7 +81,9 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         messages as unknown as UIMessage[],
         sessionState.contentReplacementState,
         sessionState.conversationId,
-        sessionState.projectDir
+        sessionState.layout.dataDir,
+        new Set(),
+        sessionState.toolOutputConfig,
       );
 
       if (budgetResult.newlyPersisted.length > 0) {

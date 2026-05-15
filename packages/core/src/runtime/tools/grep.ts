@@ -123,42 +123,44 @@ async function searchWithNode(
   return matches;
 }
 
-export const grepTool = tool({
-  description:
-    '在代码库中搜索文本。支持正则表达式、忽略大小写、按文件类型过滤。自动使用 ripgrep（如果可用）以获得最佳性能。',
-  inputSchema: z.object({
-    pattern: z.string().describe('搜索的正则表达式或文本'),
-    path: z.string().optional().describe('搜索目录（默认为当前工作目录）'),
-    ignoreCase: z.boolean().optional().default(true).describe('是否忽略大小写'),
-    include: z.string().optional().describe('文件类型过滤，如 "*.ts"、"*.py"'),
-  }),
-  execute: async ({ pattern, path: searchPath, ignoreCase = true, include }) => {
-    const absolutePath = searchPath ? path.resolve(searchPath) : process.cwd();
+export function createGrepTool(options: { cwd: string }) {
+  return tool({
+    description:
+      '在代码库中搜索文本。支持正则表达式、忽略大小写、按文件类型过滤。自动使用 ripgrep（如果可用）以获得最佳性能。',
+    inputSchema: z.object({
+      pattern: z.string().describe('搜索的正则表达式或文本'),
+      path: z.string().optional().describe('搜索目录（默认为当前工作目录）'),
+      ignoreCase: z.boolean().optional().default(true).describe('是否忽略大小写'),
+      include: z.string().optional().describe('文件类型过滤，如 "*.ts"、"*.py"'),
+    }),
+    execute: async ({ pattern, path: searchPath, ignoreCase = true, include }) => {
+      const absolutePath = searchPath ? path.resolve(searchPath) : options.cwd;
 
-    try {
-      await fs.stat(absolutePath);
-    } catch {
-      throw new Error(`搜索路径不存在: ${absolutePath}`);
-    }
+      try {
+        await fs.stat(absolutePath);
+      } catch {
+        throw new Error(`搜索路径不存在: ${absolutePath}`);
+      }
 
-    const useRg = await checkRgAvailable();
-    const matches = useRg
-      ? await searchWithRipgrep(pattern, absolutePath, ignoreCase, include)
-      : await searchWithNode(pattern, absolutePath, ignoreCase, include);
+      const useRg = await checkRgAvailable();
+      const matches = useRg
+        ? await searchWithRipgrep(pattern, absolutePath, ignoreCase, include)
+        : await searchWithNode(pattern, absolutePath, ignoreCase, include);
 
-    const searchEngine = useRg ? 'ripgrep' : 'node.js';
-    const maxDisplay = 200;
+      const searchEngine = useRg ? 'ripgrep' : 'node.js';
+      const maxDisplay = 200;
 
-    const result = {
-      pattern,
-      searchPath: absolutePath,
-      totalMatches: matches.length,
-      matches: matches.slice(0, maxDisplay),
-      truncated: matches.length > maxDisplay,
-      searchEngine,
-      flags: { ignoreCase, include },
-    };
+      const result = {
+        pattern,
+        searchPath: absolutePath,
+        totalMatches: matches.length,
+        matches: matches.slice(0, maxDisplay),
+        truncated: matches.length > maxDisplay,
+        searchEngine,
+        flags: { ignoreCase, include },
+      };
 
-    return JSON.stringify(result, null, 2);
-  },
-});
+      return JSON.stringify(result, null, 2);
+    },
+  });
+}

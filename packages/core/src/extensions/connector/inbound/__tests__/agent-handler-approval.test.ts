@@ -6,6 +6,8 @@ import type { ConnectorRegistry } from '../../registry'
 import type { InboundEvent } from '../types'
 import { AgentInboundHandler } from '../agent-handler'
 import { clearAllSuspendedStates, getSuspendedState } from '../../approval-context'
+import { resolveLayout } from '../../../../config/layout'
+import { buildBehaviorConfig } from '../../../../config/behavior'
 
 const mocks = vi.hoisted(() => ({
   createAgent: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock('../../../permissions/rules', () => ({
 
 vi.mock('../../../memory', () => ({
   extractMemoriesInBackground: mocks.extractMemoriesInBackground,
+  getPrimaryMemoryDir: vi.fn(() => '/tmp/test-memory'),
 }))
 
 vi.mock('../../../../runtime/compaction', () => ({
@@ -238,9 +241,30 @@ describe('AgentInboundHandler approval resume', () => {
 
 function createHandler(): { handler: AgentInboundHandler; store: DataStore } {
   const store = createStore()
+  const layout = resolveLayout({
+    resourceRoot: process.cwd(),
+    dataDir: '/tmp/test-data',
+  })
+  const behavior = buildBehaviorConfig()
   const context = {
-    cwd: process.cwd(),
     runtime: { dataStore: store },
+    layout,
+    behavior,
+    skills: [],
+    agents: [],
+    mcps: [],
+    connectors: [],
+    permissions: [],
+    memory: [],
+    loadedFrom: {
+      skills: { path: '', source: 'project' as const, count: 0 },
+      agents: { path: '', source: 'project' as const, count: 0 },
+      mcps: { path: '', source: 'project' as const, count: 0 },
+      connectors: { path: '', source: 'project' as const, count: 0 },
+      permissions: { userPath: '', userCount: 0, projectPath: '', projectCount: 0 },
+      memory: { path: '', count: 0 },
+    },
+    reload: vi.fn(),
   } as unknown as AppContext
 
   return {

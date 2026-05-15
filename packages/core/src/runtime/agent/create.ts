@@ -12,12 +12,13 @@ import { loadAllTools } from './tools'
 import { checkInitialBudget } from '../compaction/initial-budget-check'
 import { formatEstimationResult } from '../compaction/token-counter'
 import { waitForConversationCompaction } from '../compaction/background-queue'
-import { loadAll } from '../../api/loaders'
+import { toRuntimeCompactionConfig } from '../compaction/types'
 import { loadProjectContext } from '../../extensions/system-prompt/sections/project-context'
 import {
   injectMessageAttachments,
   clearMessageAttachmentState,
 } from '../../extensions/attachments'
+import { getPrimaryMemoryDir } from '../../extensions/memory'
 import type { CreateAgentConfig, CreateAgentResult, SkillResolution, MemoryContext } from './types'
 
 export async function createChatAgent(config: CreateAgentConfig): Promise<CreateAgentResult> {
@@ -39,9 +40,9 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   // 判断是否是首次对话
   const isTurnZero = conversationMeta?.isNewConversation ?? false
 
-  // 加载配置数据：优先使用 preloadedData（来自 AppContext），避免重复 loadAll
-  const cwd = sessionOptions.projectDir ?? preloadedData?.cwd
-  const loadedData = preloadedData ?? await loadAll({ cwd })
+  // 使用 preloadedData（来自 AppContext 快照），不再有 loadAll fallback
+  const projectRoot = sessionOptions.projectRoot ?? preloadedData.layout.resourceRoot
+  const memoryBaseDir = getPrimaryMemoryDir(preloadedData.layout)
 
   // ============================================================
   // ✅ 技能附件注入（由 core 内部处理）
@@ -58,7 +59,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   if (modules.skills && messages && messages.length > 0) {
     const attachmentResult = await injectMessageAttachments(messages, {
       sessionKey: conversationId,
-      skills: loadedData.skills,
+      skills: preloadedData.skills,
       contextWindowTokens: sessionOptions.maxContextTokens ?? 128_000,
     })
     messagesWithAttachments = attachmentResult.messages
@@ -78,13 +79,13 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const sessionState = createSessionState(conversationId, {
     ...sessionOptions,
     model: modelConfig.modelName ?? sessionOptions.model,
-    projectDir: cwd,
     dataStore,
+    modelAliases: behavior.modelAliases,
   })
 
   let skillResolution: SkillResolution | null = null
   if (modules.skills && messagesWithAttachments.length > 0) {
-    skillResolution = await resolveActiveSkills(messagesWithAttachments, loadedData.skills)
+    skillResolution = await resolveActiveSkills(messagesWithAttachments, preloadedData.skills)
     if (skillResolution?.activeModelOverride) {
       sessionState.model = skillResolution.activeModelOverride
     }
@@ -97,20 +98,24 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   let memoryContext: MemoryContext | null = null
   if (modules.memory && messagesWithAttachments.length > 0) {
-    memoryContext = await loadMemoryContext(messagesWithAttachments, userId, cwd)
+    memoryContext = await loadMemoryContext(messagesWithAttachments, userId, memoryBaseDir, {
+      entrypointMaxLines: behavior.memory.entrypointMaxLines,
+      entrypointMaxBytes: behavior.memory.entrypointMaxBytes,
+    })
   }
 
   // 加载项目上下文（THING.md）
-  const projectContext = await loadProjectContext(cwd, {
+  const projectContext = await loadProjectContext(projectRoot, {
     contextFileNames: layout.contextFileNames,
     configDirName: layout.configDirName,
   })
 
   const instructions = await buildAgentInstructions(skillResolution, memoryContext, {
-    cwd,
-    skills: loadedData.skills,
-    permissions: loadedData.permissions,
-    memoryEntries: loadedData.memory,
+    cwd: projectRoot,
+    memoryBaseDir,
+    skills: preloadedData.skills,
+    permissions: modules.permissions ? preloadedData.permissions : [],
+    memoryEntries: preloadedData.memory,
     projectContext,
     conversationMeta,
   })
@@ -135,15 +140,17 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     writerRef,
     model: wrappedModel,
     provider,
-    agents: loadedData.agents,
-    mcps: loadedData.mcps,
+    skills: preloadedData.skills,
+    agents: preloadedData.agents,
+    mcps: preloadedData.mcps,
     modelAliases: behavior.modelAliases,
+    dynamicReload: resolvedConfig.dynamicReload,
   })
 
   // ============================================================
   // ✅ 初始预算检查
   // ============================================================
-  const modelName = modelConfig.modelName || 'qwen-max'
+  const modelName = modelConfig.modelName || behavior.modelAliases.default
   const budgetCheck = await checkInitialBudget(
     messagesWithAttachments,
     instructions,
@@ -153,7 +160,9 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     conversationId,
     {
       enabled: sessionOptions.compactionEnabled,
-      compactionConfig: sessionOptions.compactionConfig,
+      compactionConfig: sessionOptions.compactionConfig
+      ? toRuntimeCompactionConfig(sessionOptions.compactionConfig)
+      : undefined,
       compactionThreshold: sessionOptions.compactThreshold,
     },
   )
@@ -187,7 +196,6 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const prepareStep = createAgentPipeline<ChatToolsType>({
     sessionState,
     maxSteps,
-    maxBudgetUsd: behavior.maxBudgetUsdPerSession,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

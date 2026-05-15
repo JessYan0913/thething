@@ -18,8 +18,8 @@
 // - DEFAULT_PROJECT_CONFIG_DIR_NAME（foundation 层全局单例 fallback）
 //
 // 导出策略：
-// - 大部分常量已标记 @deprecated，建议使用配置系统代替
-// - 仅被 behavior.ts/layout.ts 内部使用的常量可不导出
+// - 本文件只给 behavior.ts/layout.ts/runtime 内部消费
+// - 公共入口不再重导出旧的默认值常量
 // ============================================================
 
 // 设计原则（保留原有说明）：
@@ -92,17 +92,6 @@ export const DEFAULT_POST_COMPACT_CONFIG = {
   skillsTokenBudget: 25_000,
 };
 
-// ============================================================
-// 工具输出限制默认值
-// ============================================================
-
-/** 默认最大输出字符数 */
-export const DEFAULT_MAX_OUTPUT_CHARS = 50_000;
-
-/** 默认最大输出 Token 数 */
-export const DEFAULT_MAX_OUTPUT_TOKENS = 15_000;
-
-// ============================================================
 // 项目配置目录名称
 // ============================================================
 
@@ -132,29 +121,12 @@ export const DEFAULT_SKILL_LOADER_CONFIG = {
   enableUsageTracking: true,
 };
 
-// ============================================================
-// MCP 配置默认值
-// ============================================================
-
-/** 默认 MCP 配置目录 */
-export const DEFAULT_MCP_CONFIG_DIR = `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/mcps`;
-
-// ============================================================
-// Permissions 配置默认值
-// ============================================================
-
-/** 默认 Permissions 配置目录 */
-export const DEFAULT_PERMISSIONS_DIR = `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/permissions`;
-
 /** Permissions 配置文件名 */
 export const PERMISSIONS_FILENAME = 'permissions.json';
 
 // ============================================================
 // Connector 配置默认值
 // ============================================================
-
-/** 默认 Connector 配置目录 */
-export const DEFAULT_CONNECTORS_DIR = `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/connectors`;
 
 /** 电路断路器阈值 */
 export const CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -166,29 +138,6 @@ export const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000;
 // Agent 配置默认值
 // ============================================================
 
-/** Agent 扫描目录 */
-export const DEFAULT_AGENT_SCAN_DIRS = [
-  `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents`,
-];
-
-/** Agent 加载默认配置 */
-export const DEFAULT_AGENT_LOADER_CONFIG = {
-  sources: ['user', 'project'] as const,
-  maxAgents: 50,
-  enableCache: true,
-};
-
-/** 模型切换成本阈值（百分比） */
-export const MODEL_SWITCH_COST_THRESHOLD = 80;
-
-/** 可用模型列表默认配置 */
-export const DEFAULT_AVAILABLE_MODELS = [
-  { id: 'qwen-max', name: 'Qwen Max', costMultiplier: 1.0, capabilityTier: 3 },
-  { id: 'qwen-plus', name: 'Qwen Plus', costMultiplier: 0.4, capabilityTier: 2 },
-  { id: 'qwen-turbo', name: 'Qwen Turbo', costMultiplier: 0.1, capabilityTier: 1 },
-];
-
-// ============================================================
 // 系统提示词默认值
 // ============================================================
 
@@ -239,17 +188,6 @@ export const MAX_ENTRYPOINT_LINES = 200;
 
 /** Memory 入口文件最大字节（25KB） */
 export const MAX_ENTRYPOINT_BYTES = 25_000;
-
-// ============================================================
-// 模型映射常量（用于子代理）
-// ============================================================
-
-/** 模型快捷映射 */
-export const MODEL_MAPPING = {
-  fast: 'qwen-turbo',
-  smart: 'qwen-max',
-  default: 'qwen-plus',
-};
 
 // ============================================================
 // Tokenizer 远程加载配置

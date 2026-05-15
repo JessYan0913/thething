@@ -4,7 +4,7 @@
 
 import { resolveHomeDir } from '../../foundation/paths';
 import { loadAll, type LoadAllOptions } from '../loaders';
-import type { AppContext, CreateContextOptions, ReloadOptions, LoadSourceInfo } from './types';
+import type { AppContext, CreateContextOptions, LoadSourceInfo } from './types';
 
 // ============================================================
 // CreateContext
@@ -23,29 +23,28 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   const { runtime, verbose, onLoad } = options;
   const layout = runtime.layout;
   const behavior = runtime.behavior;
-
-  // 从 layout 取值（支持 cwd/dataDir 参数覆盖，向后兼容）
-  const cwd = options.cwd ?? layout.resourceRoot;
-  const dataDir = options.dataDir ?? layout.dataDir;
+  const cwd = layout.resourceRoot;
   const homeDir = resolveHomeDir();
 
   // 加载所有配置（configDirName 使用全局单例，已在 bootstrap 时设置）
   // 从 layout.filenames 和 behavior.memory 获取配置参数
   const loadOptions: LoadAllOptions = {
     cwd,
-    dataDir,
     resourceDirs: layout.resources,
     permissions: {
-      cwd,
-      filename: layout.filenames.permissions,  // 从 ResolvedLayout 传入
+      filename: layout.filenames.permissions,
+      dirs: layout.resources.permissions,
     },
     memory: {
       cwd,
-      maxLines: behavior.memory.mdMaxLines,    // 从 BehaviorConfig 传入
+      maxLines: behavior.memory.mdMaxLines,
       maxSizeKb: behavior.memory.mdMaxSizeKb,
     },
   };
   const loaded = await loadAll(loadOptions);
+
+  // 将 connector 快照数据同步到 ConnectorRegistry，确保 runtime 使用与快照一致的定义
+  runtime.connectorRegistry.initializeFromDefinitions(loaded.connectors);
 
   // 构建加载来源信息（使用 layout.resources）
   const loadedFrom: LoadSourceInfo = {
@@ -85,7 +84,7 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   if (verbose) {
     console.log('[AppContext] Configuration loaded:');
     console.log(`  cwd: ${cwd}`);
-    console.log(`  dataDir: ${dataDir}`);
+    console.log(`  dataDir: ${layout.dataDir}`);
     console.log(`  configDirName: ${layout.configDirName}`);
     console.log(`  skills: ${loaded.skills.length}`);
     console.log(`  agents: ${loaded.agents.length}`);
@@ -121,8 +120,6 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     runtime,
     layout,
     behavior,
-    cwd,
-    dataDir,
     skills: Object.freeze([...loaded.skills]),
     agents: Object.freeze([...loaded.agents]),
     mcps: Object.freeze([...loaded.mcps]),
@@ -130,13 +127,11 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     permissions: Object.freeze([...loaded.permissions]),
     memory: Object.freeze([...loaded.memory]),
     loadedFrom,
-    reload: async (reloadOptions?: ReloadOptions) => {
+    reload: async (reloadOptions?: { verbose?: boolean; onLoad?: (event: import('./types').LoadEvent) => void }) => {
       return createContext({
         runtime,
-        cwd: reloadOptions?.cwd ?? cwd,
-        dataDir,
         verbose: reloadOptions?.verbose ?? verbose,
-        onLoad,
+        onLoad: reloadOptions?.onLoad ?? onLoad,
       });
     },
   };

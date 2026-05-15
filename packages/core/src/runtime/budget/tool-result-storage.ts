@@ -4,19 +4,15 @@
 // 参考 Claude Code toolResultStorage.ts
 // 大工具输出持久化到磁盘，返回预览 + 文件路径
 // ============================================================
-//
-// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
-// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
-
 import { mkdir, writeFile, readdir, stat, rm } from 'fs/promises'
-import { join, dirname } from 'path'
+import { join } from 'path'
 import {
   PERSISTED_OUTPUT_TAG,
   PERSISTED_OUTPUT_CLOSING_TAG,
   getPreviewSizeLimit,
   type PersistedToolResult,
+  type ToolOutputConfig,
 } from './tool-output-manager'
-import { getResolvedConfigDirName } from '../../foundation/paths'
 
 // ============================================================
 // 存储目录配置
@@ -33,13 +29,10 @@ export const TOOL_RESULTS_SUBDIR = 'tool-results'
  * 获取工具结果存储目录
  *
  * @param sessionId 会话 ID
- * @param projectDir 项目目录
- *
- * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ * @param dataDir 运行时数据目录
  */
-export function getToolResultsDir(sessionId: string, projectDir: string): string {
-  const configDirName = getResolvedConfigDirName();
-  return join(projectDir, configDirName, TOOL_RESULTS_SUBDIR, sessionId)
+export function getToolResultsDir(sessionId: string, dataDir: string): string {
+  return join(dataDir, TOOL_RESULTS_SUBDIR, sessionId)
 }
 
 /**
@@ -47,17 +40,17 @@ export function getToolResultsDir(sessionId: string, projectDir: string): string
  *
  * @param toolUseId 工具调用 ID
  * @param sessionId 会话 ID
- * @param projectDir 项目目录
+ * @param dataDir 运行时数据目录
  * @param isJson 是否为 JSON 格式
  */
 export function getToolResultPath(
   toolUseId: string,
   sessionId: string,
-  projectDir: string,
+  dataDir: string,
   isJson: boolean = false
 ): string {
   const ext = isJson ? 'json' : 'txt'
-  return join(getToolResultsDir(sessionId, projectDir), `${toolUseId}.${ext}`)
+  return join(getToolResultsDir(sessionId, dataDir), `${toolUseId}.${ext}`)
 }
 
 // ============================================================
@@ -70,22 +63,23 @@ export function getToolResultPath(
  * @param content 工具结果内容
  * @param toolUseId 工具调用 ID
  * @param sessionId 会话 ID
- * @param projectDir 项目目录
+ * @param dataDir 运行时数据目录
  * @returns 持久化结果信息
  */
 export async function persistToolResult(
   content: string,
   toolUseId: string,
   sessionId: string,
-  projectDir: string,
+  dataDir: string,
+  sessionConfig?: ToolOutputConfig,
 ): Promise<PersistedToolResult> {
   // 确保目录存在
-  const dir = getToolResultsDir(sessionId, projectDir)
+  const dir = getToolResultsDir(sessionId, dataDir)
   await ensureDir(dir)
 
   // 确定文件类型
   const isJson = content.trim().startsWith('{') || content.trim().startsWith('[')
-  const filepath = getToolResultPath(toolUseId, sessionId, projectDir, isJson)
+  const filepath = getToolResultPath(toolUseId, sessionId, dataDir, isJson)
 
   // 写入文件（使用 'wx' 避免覆盖已存在的文件）
   try {
@@ -104,7 +98,7 @@ export async function persistToolResult(
   }
 
   // 生成预览
-  const previewSizeChars = getPreviewSizeLimit()
+  const previewSizeChars = getPreviewSizeLimit(sessionConfig)
   const { preview, hasMore } = generatePreview(content, previewSizeChars)
 
   return {
@@ -159,7 +153,7 @@ export function generatePreview(
  * 构建持久化输出消息
  * 参考 Claude Code 格式
  */
-export function buildPersistedOutputMessage(result: PersistedToolResult, isTemporary: boolean = false): string {
+export function buildPersistedOutputMessage(result: PersistedToolResult, isTemporary: boolean = false, sessionConfig?: ToolOutputConfig): string {
   let message = `${PERSISTED_OUTPUT_TAG}\n`
   message += `Output size: ${formatSize(result.originalSize)}.\n`
   message += `Full output saved to: ${result.filepath}\n`
@@ -168,7 +162,7 @@ export function buildPersistedOutputMessage(result: PersistedToolResult, isTempo
   } else {
     message += `\nYou can read the complete output using the read_file tool.\n`
   }
-  message += `\nPreview (first ${formatSize(getPreviewSizeLimit())}):\n`
+  message += `\nPreview (first ${formatSize(getPreviewSizeLimit(sessionConfig))}):\n`
   message += result.preview
   if (result.hasMore) {
     message += '\n...\n'
@@ -186,13 +180,13 @@ export function buildPersistedOutputMessage(result: PersistedToolResult, isTempo
  * 在会话结束时调用
  *
  * @param sessionId 会话 ID
- * @param projectDir 项目目录
+ * @param dataDir 运行时数据目录
  */
 export async function cleanupSessionToolResults(
   sessionId: string,
-  projectDir: string,
+  dataDir: string,
 ): Promise<void> {
-  const dir = getToolResultsDir(sessionId, projectDir)
+  const dir = getToolResultsDir(sessionId, dataDir)
 
   try {
     // 检查目录是否存在
@@ -214,15 +208,14 @@ export async function cleanupSessionToolResults(
  * 清理所有超过指定天数的工具结果
  * 可用于定期清理
  *
- * @param projectDir 项目目录
+ * @param dataDir 运行时数据目录
  * @param maxAgeDays 最大保留天数
  */
 export async function cleanupOldToolResults(
-  projectDir: string,
+  dataDir: string,
   maxAgeDays: number = 7
 ): Promise<{ cleanedSessions: number; cleanedFiles: number }> {
-  const configDirName = getResolvedConfigDirName();
-  const toolResultsDir = join(projectDir, configDirName, TOOL_RESULTS_SUBDIR)
+  const toolResultsDir = join(dataDir, TOOL_RESULTS_SUBDIR)
 
   try {
     const sessions = await readdir(toolResultsDir)
@@ -236,11 +229,9 @@ export async function cleanupOldToolResults(
         const sessionStat = await stat(sessionDir)
 
         if (sessionStat.mtimeMs < cutoffTime) {
+          const files = await readdir(sessionDir).catch(() => [])
           await rm(sessionDir, { recursive: true, force: true })
           cleanedSessions++
-
-          // 估算文件数（从目录名推断）
-          const files = await readdir(sessionDir).catch(() => [])
           cleanedFiles += files.length
         }
       } catch {

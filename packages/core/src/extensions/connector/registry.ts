@@ -15,6 +15,7 @@ import type {
   SqlExecutorConfig,
   ScriptExecutorConfig,
 } from './types'
+import type { ConnectorFrontmatter } from './loader'
 import { TokenManager } from './token-manager'
 import { CircuitBreakerRegistry, CircuitBreakerError } from './circuit-breaker'
 import { AuditLogger } from './audit-logger'
@@ -81,6 +82,25 @@ export class ConnectorRegistry {
     }
 
     console.log(`[ConnectorRegistry] Initialized ${this.connectors.size} connectors:`, this.connectors.keys())
+  }
+
+  /**
+   * 从 AppContext 快照数据初始化，替代目录扫描。
+   *
+   * 由 createContext() 调用，确保 Registry 使用与快照一致的 connector 定义，
+   * 避免因目录扫描路径差异导致 Registry 和 AppContext 数据不一致。
+   */
+  initializeFromDefinitions(defs: ConnectorFrontmatter[]): void {
+    this.connectors.clear()
+    for (const def of defs) {
+      // ConnectorFrontmatter 和 ConnectorDefinition 结构相同，
+      // 仅 auth.config 和 tools 的 TypeScript 类型表示有细微差异
+      // （Zod schema 用 z.unknown() / z.any()，runtime 接口用精确联合类型）。
+      // 数据经 Zod 校验，运行时保证有效。
+      const connector = def as unknown as ConnectorDefinition
+      this.connectors.set(connector.id, connector)
+    }
+    console.log(`[ConnectorRegistry] Initialized from snapshot: ${this.connectors.size} connectors`, this.connectors.keys())
   }
 
   /**

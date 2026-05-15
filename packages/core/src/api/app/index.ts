@@ -15,7 +15,6 @@ export type {
   CreateAgentOptions,
   CreateAgentResult,
   ModelConfig,
-  ReloadOptions,
   LoadEvent,
   LoadSourceInfo,
   LoadError,

@@ -13,21 +13,16 @@ import {
   getUserMemoryDir,
   ensureMemoryDirExists,
 } from '../../extensions/memory'
+import { truncateEntrypointContent } from '../../extensions/memory/memdir'
 import { buildSystemPrompt } from '../../extensions/system-prompt'
 import type { SkillResolution, MemoryContext } from './types'
 
-/**
- * 解析激活的 Skills
- *
- * 简化版：不再使用 TF-IDF 自动发现技能。
- * Agent 通过 Skill 工具主动调用技能。
- *
- * @param messages 消息列表
- * @param skills 已加载的 Skill 列表
- * @returns SkillResolution（空结果，技能通过工具调用）
- */
+export interface MemoryLoadOptions {
+  entrypointMaxLines?: number
+  entrypointMaxBytes?: number
+}
+
 export async function resolveActiveSkills(messages: UIMessage[], skills: Skill[]): Promise<SkillResolution> {
-  // 技能现在通过 Skill 工具主动调用，不再自动激活
   return {
     activeSkillNames: new Set<string>(),
     activeSkills: [],
@@ -39,9 +34,10 @@ export async function resolveActiveSkills(messages: UIMessage[], skills: Skill[]
 export async function loadMemoryContext(
   messages: UIMessage[],
   userId: string,
-  cwd?: string,
+  memoryBaseDir: string,
+  options?: MemoryLoadOptions,
 ): Promise<MemoryContext> {
-  const userMemDir = getUserMemoryDir(userId, cwd)
+  const userMemDir = getUserMemoryDir(userId, memoryBaseDir)
   await ensureMemoryDirExists(userMemDir)
 
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
@@ -57,7 +53,11 @@ export async function loadMemoryContext(
     })
 
     if (relevantMemories.length > 0) {
-      recalledMemoriesContent = await buildMemorySection(relevantMemories, userMemDir)
+      let content = await buildMemorySection(relevantMemories, userMemDir)
+      if (options?.entrypointMaxBytes || options?.entrypointMaxLines) {
+        content = truncateEntrypointContent(content, options?.entrypointMaxLines, options?.entrypointMaxBytes)
+      }
+      recalledMemoriesContent = content
     }
   }
 
@@ -78,6 +78,7 @@ export async function loadMemoryContext(
  */
 export interface BuildInstructionsOptions {
   cwd?: string  // 工作目录，用于告诉 Agent 正确的执行路径
+  memoryBaseDir?: string
   skills?: Skill[]
   permissions?: PermissionRule[]
   memoryEntries?: MemoryEntry[]
@@ -103,6 +104,7 @@ export async function buildAgentInstructions(
     includeProjectContext: true,
     conversationMeta: options?.conversationMeta ?? undefined,
     memoryContext: memoryContext ?? undefined,
+    memoryBaseDir: options?.memoryBaseDir,
   })
 
   // 技能指令现在通过 Skill 工具注入，不再拼接到系统提示词

@@ -133,7 +133,8 @@ async function searchContextFilesInDir(
  * - Project level: /project/THING.md (team shared)
  * - Module level: /project/src/THING.md (module specific)
  *
- * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ * 注意：configDirName 和 contextFileNames 从 ProjectContextLoadOptions 获取，
+ * 默认回退到全局单例 getResolvedConfigDirName()
  *
  * @param cwd - Current working directory
  */
@@ -143,7 +144,7 @@ export async function loadProjectContext(
 ): Promise<LoadedProjectContext> {
   const configDirName = options?.configDirName ?? getResolvedConfigDirName();
   const markers = getContextMarkers({ ...options, configDirName });
-  const cacheKey = `${cwd}:${configDirName}:${markers.join('|')}`;
+  const cacheKey = buildCacheKey(cwd, { ...options, configDirName });
 
   // Check cache first
   const cached = contextCache.get(cacheKey);
@@ -252,15 +253,22 @@ export async function createProjectContextSection(
 }
 
 /**
+ * Build cache key from cwd and load options.
+ * Must match the format used in loadProjectContext().
+ */
+function buildCacheKey(cwd: string, options?: ProjectContextLoadOptions): string {
+  const configDirName = options?.configDirName ?? getResolvedConfigDirName();
+  const markers = getContextMarkers(options);
+  return `${cwd}:${configDirName}:${markers.join('|')}`;
+}
+
+/**
  * Synchronous version that returns the cached context if available.
  * Returns null if no context is cached.
- *
- * @param cwd - Current working directory
  */
-export function getCachedProjectContext(cwd?: string): string | null {
+export function getCachedProjectContext(cwd?: string, options?: ProjectContextLoadOptions): string | null {
   const effectiveCwd = cwd ?? process.cwd();
-  const configDirName = getResolvedConfigDirName();
-  const cacheKey = `${effectiveCwd}:${configDirName}`;
+  const cacheKey = buildCacheKey(effectiveCwd, options);
 
   const cached = contextCache.get(cacheKey);
   if (!cached) {

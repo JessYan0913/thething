@@ -24,7 +24,7 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
       .describe('写入模式: overwrite（覆盖/创建）, create（仅创建，存在则报错）, append（追加到末尾）'),
   }),
   needsApproval: async ({ filePath }) => {
-    const matchedRule = checkPermissionRules('write_file', { filePath });
+    const matchedRule = checkPermissionRules('write_file', { filePath }, options.permissionRules);
     console.log(`[write_file needsApproval] filePath=${filePath}, matchedRule=${matchedRule ? JSON.stringify(matchedRule) : 'null'}`);
     if (matchedRule?.behavior === 'allow') {
       console.log(`[write_file needsApproval] ✅ Auto-approved by permissions.json`);
@@ -45,7 +45,7 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
     }
 
     // Step 2: 检查 deny 规则
-    const matchedRule = checkPermissionRules('write_file', { filePath });
+    const matchedRule = checkPermissionRules('write_file', { filePath }, options.permissionRules);
     if (matchedRule?.behavior === 'deny') {
       return {
         error: true,
@@ -85,5 +85,3 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
   },
   });
 }
-
-export const writeFileTool = createWriteFileTool();

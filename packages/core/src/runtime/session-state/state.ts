@@ -3,21 +3,25 @@
 // ============================================================
 
 import type { UIMessage } from 'ai';
-import type { CompactionConfig } from '../../config/behavior';
 import { DenialTracker } from '../agent-control/denial-tracking';
 import { ModelSwapper } from '../agent-control/model-switching';
 import { compactMessagesIfNeeded, type CompactOptions } from '../compaction';
+import { toRuntimeCompactionConfig } from '../compaction/types';
 import type { CompactionResult } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
 import {
   createContentReplacementState,
-  setToolOutputOverrides,
 } from '../budget/tool-output-manager';
 import { cleanupSessionToolResults } from '../budget/tool-result-storage';
 import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
 import type { SessionState, SessionStateOptions } from './types';
 import { DEFAULT_MODEL_SPECS } from '../../config/behavior';
+import {
+  DEFAULT_CONTEXT_LIMIT,
+  COMPACT_TOKEN_THRESHOLD,
+  DEFAULT_MAX_BUDGET_USD,
+} from '../../config/defaults';
 
 export type { SessionState, SessionStateOptions };
 
@@ -31,24 +35,21 @@ export function createSessionState(
   options: SessionStateOptions,
 ): SessionState {
   const {
-    maxContextTokens = 128_000,
-    compactThreshold = 25_000,
-    maxBudgetUsd = 5.0,
+    maxContextTokens = DEFAULT_CONTEXT_LIMIT,
+    compactThreshold = COMPACT_TOKEN_THRESHOLD,
+    maxBudgetUsd = DEFAULT_MAX_BUDGET_USD,
     model = 'unknown',
-    projectDir = process.cwd(),
-    toolOutputOverrides,
+    projectRoot = options.layout.resourceRoot,
+    layout,
+    toolOutputConfig,
     dataStore,
     availableModels = DEFAULT_MODEL_SPECS,
     autoDowngradeCostThreshold = 80,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
     compactionEnabled = true,
+    permissionRules = [],
+    extraSensitivePaths = [],
   } = options;
-
-  // 应用工具输出配置覆盖（如果有）
-  // 同时存入 SessionState 作为 per-session config，逐步替代全局单例
-  if (toolOutputOverrides) {
-    setToolOutputOverrides(toolOutputOverrides);
-  }
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
   const costTracker = new CostTracker(conversationId, dataStore.costStore, { model, maxBudgetUsd });
@@ -66,12 +67,13 @@ export function createSessionState(
     currentModel: model,
     autoDowngradeCostThreshold,
     notifyOnSwitch: true,
+    modelAliases: options?.modelAliases,
   });
 
-  // 构建压缩选项（从 BehaviorConfig 传入）
+  // 构建压缩选项（从 BehaviorConfig 传入，转换 compactableTools 为 Set）
   const compactOptions: CompactOptions = {
     enabled: compactionEnabled,
-    compactionConfig,
+    compactionConfig: compactionConfig ? toRuntimeCompactionConfig(compactionConfig) : undefined,
     compactionThreshold: compactThreshold,
   };
 
@@ -81,8 +83,13 @@ export function createSessionState(
     turnCount: 0,
     aborted: false,
     model,
-    projectDir,
-    toolOutputConfig: toolOutputOverrides,
+    projectRoot,
+    layout,
+    toolOutputConfig: toolOutputConfig ?? {
+      maxResultSizeChars: 50_000,
+    },
+    permissionRules: [...permissionRules],
+    extraSensitivePaths: [...extraSensitivePaths],
     tokenBudget,
     costTracker,
     denialTracker,
@@ -108,7 +115,7 @@ export function createSessionState(
     },
 
     async cleanupToolResults(): Promise<void> {
-      await cleanupSessionToolResults(conversationId, projectDir);
+      await cleanupSessionToolResults(conversationId, layout.dataDir);
     },
   };
 

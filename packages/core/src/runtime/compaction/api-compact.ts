@@ -14,6 +14,8 @@ import { DEFAULT_SESSION_MEMORY_CONFIG } from "../../config/defaults";
 import {
   type CompactBoundaryMessage,
   type CompactionResult,
+  type SessionMemoryCompactConfig,
+  type MicroCompactConfig,
   SYSTEM_COMPACT_BOUNDARY_MARKER,
 } from "./types";
 import {
@@ -82,8 +84,9 @@ const COMPACT_SUMMARY_PROMPT = `你是一个对话摘要助手。请用简洁的
 
 async function calculateMessagesToKeepIndex(
   messages: UIMessage[],
-  config = DEFAULT_SESSION_MEMORY_CONFIG
+  config?: SessionMemoryCompactConfig
 ): Promise<number> {
+  const resolvedConfig = { ...DEFAULT_SESSION_MEMORY_CONFIG, ...config };
   let totalTokens = 0;
   let textBlockMessageCount = 0;
   let startIndex = messages.length - 1;
@@ -95,10 +98,10 @@ async function calculateMessagesToKeepIndex(
 
     startIndex = i;
 
-    if (totalTokens >= config.maxTokens) break;
+    if (totalTokens >= resolvedConfig.maxTokens) break;
     if (
-      totalTokens >= config.minTokens &&
-      textBlockMessageCount >= config.minTextBlockMessages
+      totalTokens >= resolvedConfig.minTokens &&
+      textBlockMessageCount >= resolvedConfig.minTextBlockMessages
     ) {
       break;
     }
@@ -258,13 +261,14 @@ export async function compactViaAPI(
   conversationId: string,
   dataStore: DataStore,
   model?: LanguageModelV3,
+  options?: { sessionMemory?: SessionMemoryCompactConfig; micro?: MicroCompactConfig },
 ): Promise<CompactionResult> {
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
-  const microResult = await microCompactMessages(messages);
+  const microResult = await microCompactMessages(messages, options?.micro);
   const messagesForCompact = microResult.messages;
 
-  const keepFromIndex = await calculateMessagesToKeepIndex(messagesForCompact);
+  const keepFromIndex = await calculateMessagesToKeepIndex(messagesForCompact, options?.sessionMemory);
   const startIndex = preserveToolPairs(messagesForCompact, keepFromIndex);
 
   const messagesToSummarize = messagesForCompact.slice(0, startIndex);
@@ -404,13 +408,14 @@ export async function compactWithCustomInstructions(
   customInstructions: string,
   dataStore: DataStore,
   model?: LanguageModelV3,
+  options?: { sessionMemory?: SessionMemoryCompactConfig; micro?: MicroCompactConfig },
 ): Promise<CompactionResult> {
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
-  const microResult = await microCompactMessages(messages);
+  const microResult = await microCompactMessages(messages, options?.micro);
   const messagesForCompact = microResult.messages;
 
-  const keepFromIndex = await calculateMessagesToKeepIndex(messagesForCompact);
+  const keepFromIndex = await calculateMessagesToKeepIndex(messagesForCompact, options?.sessionMemory);
   const startIndex = preserveToolPairs(messagesForCompact, keepFromIndex);
 
   const messagesToSummarize = messagesForCompact.slice(0, startIndex);

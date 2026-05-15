@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai';
+import { resolveModelAlias } from '../../extensions/subagents/model-resolver';
 
 export interface ModelProvider {
   id: string;
@@ -12,6 +13,8 @@ export interface ModelSwitchConfig {
   currentModel: string;
   autoDowngradeCostThreshold?: number;
   notifyOnSwitch?: boolean;
+  /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
+  modelAliases?: { fast: string; smart: string; default: string };
 }
 
 export interface ModelSwitchResult {
@@ -33,7 +36,9 @@ const SWITCH_KEYWORDS = [
   'change model',
 ];
 
-export function detectModelSwitchIntent(messages: ModelMessage[], availableModels: ModelProvider[]): string | null {
+const ALIAS_KEYWORDS = ['fast', 'smart', 'default'];
+
+export function detectModelSwitchIntent(messages: ModelMessage[], availableModels: ModelProvider[], modelAliases?: { fast: string; smart: string; default: string }): string | null {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 
   if (!lastUserMessage) return null;
@@ -45,6 +50,19 @@ export function detectModelSwitchIntent(messages: ModelMessage[], availableModel
       const keywordIndex = content.indexOf(keyword.toLowerCase());
       const afterKeyword = content.slice(keywordIndex + keyword.length).trim();
 
+      // 1. Check alias keywords first (fast / smart / default)
+      for (const alias of ALIAS_KEYWORDS) {
+        if (afterKeyword === alias || afterKeyword.startsWith(alias)) {
+          const resolved = resolveModelAlias(alias, modelAliases);
+          // Verify resolved model is in availableModels
+          const match = availableModels.find(m => m.id.toLowerCase() === resolved.toLowerCase());
+          if (match && match.id !== currentModel) {
+            return match.id;
+          }
+        }
+      }
+
+      // 2. Check concrete model IDs and names
       for (const model of availableModels) {
         const modelId = model.id.toLowerCase();
         const modelName = model.name.toLowerCase();
@@ -96,7 +114,7 @@ export class ModelSwapper {
   }
 
   checkUserIntent(messages: ModelMessage[]): ModelSwitchResult {
-    const targetModel = detectModelSwitchIntent(messages, this._config.availableModels);
+    const targetModel = detectModelSwitchIntent(messages, this._config.availableModels, this._config.modelAliases);
 
     if (!targetModel) {
       return { switched: false };

@@ -3,6 +3,8 @@ import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { DataStore } from "../../foundation/datastore/types";
 import { compactViaAPI } from "./api-compact";
 import { estimateMessagesTokens } from "./token-counter";
+import { COMPACT_TOKEN_THRESHOLD } from "./types";
+import type { CompactOptions } from "./index";
 
 const compactQueue = new Map<string, Promise<void>>();
 
@@ -14,24 +16,42 @@ export function runCompactInBackground(
   messages: UIMessage[],
   conversationId: string,
   dataStore: DataStore,
-  model?: LanguageModelV3
+  model?: LanguageModelV3,
+  options?: CompactOptions,
 ): void {
+  // [Level 1] modules.compaction=false → 跳过后台压缩
+  if (options?.enabled === false) {
+    console.log(`[Background Compact] Compaction disabled, skipping ${conversationId}`);
+    return;
+  }
+
   if (compactQueue.has(conversationId)) {
     console.log(`[Background Compact] Already in progress for ${conversationId}, skipping`);
     return;
   }
 
+  const threshold = options?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
+
   const promise = (async () => {
     try {
       const tokenCount = await estimateMessagesTokens(messages);
-      if (tokenCount < 15_000) {
+      if (tokenCount < threshold * 0.6) {
         console.log(`[Background Compact] Skipping ${conversationId} (${tokenCount} tokens, below threshold)`);
         return;
       }
 
       console.log(`[Background Compact] Starting for ${conversationId} (${tokenCount} tokens)`);
 
-      const result = await compactViaAPI(messages, conversationId, dataStore, model);
+      const result = await compactViaAPI(
+        messages,
+        conversationId,
+        dataStore,
+        model,
+        {
+          sessionMemory: options?.compactionConfig?.sessionMemory,
+          micro: options?.compactionConfig?.micro,
+        },
+      );
 
       if (result.executed) {
         console.log(

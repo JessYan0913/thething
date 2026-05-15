@@ -5,6 +5,7 @@
 export { createChatAgent } from './create'
 export { loadAllTools } from './tools'
 export { resolveActiveSkills, loadMemoryContext, buildAgentInstructions } from './context'
+export type { MemoryLoadOptions } from './context'
 
 export type {
   CreateAgentConfig,

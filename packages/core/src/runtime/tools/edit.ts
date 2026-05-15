@@ -1,6 +1,5 @@
 import { tool } from 'ai';
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { z } from 'zod';
 import { checkPermissionRules, validateWritePath } from '../../extensions/permissions';
 import type { PathValidationOptions } from '../../extensions/permissions';
@@ -23,7 +22,7 @@ export function createEditFileTool(options: FileToolOptions = {}) {
   }),
   needsApproval: async ({ filePath }) => {
     // Step 1: 检查持久化规则（Always allow）
-    const matchedRule = checkPermissionRules('edit_file', { filePath });
+    const matchedRule = checkPermissionRules('edit_file', { filePath }, options.permissionRules);
     if (matchedRule?.behavior === 'allow') {
       return false;  // 自动放行
     }
@@ -47,7 +46,7 @@ export function createEditFileTool(options: FileToolOptions = {}) {
     }
 
     // Step 2: 检查 deny 规则
-    const matchedRule = checkPermissionRules('edit_file', { filePath });
+    const matchedRule = checkPermissionRules('edit_file', { filePath }, options.permissionRules);
     if (matchedRule?.behavior === 'deny') {
       return {
         error: true,
@@ -95,8 +94,6 @@ export function createEditFileTool(options: FileToolOptions = {}) {
   },
   });
 }
-
-export const editFileTool = createEditFileTool();
 
 function escapeRegex(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

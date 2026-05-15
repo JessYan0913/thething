@@ -1,19 +1,6 @@
 import type { UIMessage } from "ai";
 import { estimateMessagesTokens, estimateTextTokens } from "./token-counter";
-
-/**
- * Post-compact re-injection configuration.
- * After compaction, this budget is used to restore recently accessed
- * files, active skills, and other critical context.
- * Reference: CCB (claude-code-best) post-compact token budget design.
- */
-export const POST_COMPACT_CONFIG = {
-  totalBudget: 50_000,
-  maxFilesToRestore: 5,
-  maxTokensPerFile: 5_000,
-  maxTokensPerSkill: 5_000,
-  skillsTokenBudget: 25_000,
-};
+import { DEFAULT_POST_COMPACT_CONFIG, type PostCompactConfig } from "./types";
 
 export interface ReinjectContext {
   recentlyReadFiles: Array<{ path: string; content: string }>;
@@ -29,10 +16,13 @@ export interface ReinjectContext {
  */
 export async function reinjectAfterCompact(
   messages: UIMessage[],
-  context: ReinjectContext
+  context: ReinjectContext,
+  config?: PostCompactConfig,
 ): Promise<UIMessage[]> {
+  const resolvedConfig = { ...DEFAULT_POST_COMPACT_CONFIG, ...config };
+
   const currentTokens = await estimateMessagesTokens(messages);
-  const remainingBudget = POST_COMPACT_CONFIG.totalBudget - currentTokens;
+  const remainingBudget = resolvedConfig.totalBudget - currentTokens;
 
   if (remainingBudget <= 0) {
     console.log(
@@ -45,9 +35,9 @@ export async function reinjectAfterCompact(
   let usedTokens = 0;
 
   // 1. Restore recently read files (most recent first)
-  const filesToRestore = context.recentlyReadFiles.slice(0, POST_COMPACT_CONFIG.maxFilesToRestore);
+  const filesToRestore = context.recentlyReadFiles.slice(0, resolvedConfig.maxFilesToRestore);
   for (const file of filesToRestore) {
-    const truncated = truncateToTokens(file.content, POST_COMPACT_CONFIG.maxTokensPerFile);
+    const truncated = truncateToTokens(file.content, resolvedConfig.maxTokensPerFile);
     const tokenCost = await estimateTextTokens(truncated);
 
     if (usedTokens + tokenCost > remainingBudget) break;
@@ -62,13 +52,13 @@ export async function reinjectAfterCompact(
   // 2. Restore active skill instructions
   if (context.activeSkills.length > 0) {
     const skillBudget = Math.min(
-      POST_COMPACT_CONFIG.skillsTokenBudget,
+      resolvedConfig.skillsTokenBudget,
       remainingBudget - usedTokens
     );
     const tokenPerSkill = skillBudget / context.activeSkills.length;
 
     for (const skill of context.activeSkills) {
-      const truncated = truncateToTokens(skill.instructions, Math.min(tokenPerSkill, POST_COMPACT_CONFIG.maxTokensPerSkill));
+      const truncated = truncateToTokens(skill.instructions, Math.min(tokenPerSkill, resolvedConfig.maxTokensPerSkill));
       const tokenCost = await estimateTextTokens(truncated);
 
       if (usedTokens + tokenCost > remainingBudget) break;
@@ -83,7 +73,7 @@ export async function reinjectAfterCompact(
 
   // 3. Restore THING.md if available
   if (context.thingMdContent && usedTokens < remainingBudget) {
-    const truncated = truncateToTokens(context.thingMdContent, POST_COMPACT_CONFIG.maxTokensPerFile);
+    const truncated = truncateToTokens(context.thingMdContent, resolvedConfig.maxTokensPerFile);
     const tokenCost = await estimateTextTokens(truncated);
 
     if (usedTokens + tokenCost <= remainingBudget) {

@@ -1,8 +1,7 @@
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { DataStore } from "../../foundation/datastore/types";
-import type { CompactionConfig } from "../../config/behavior";
-import { COMPACT_TOKEN_THRESHOLD, type CompactionResult } from "./types";
+import { COMPACT_TOKEN_THRESHOLD, type RuntimeCompactionConfig, type CompactionResult } from "./types";
 import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
 import { trySessionMemoryCompact } from "./session-memory-compact";
@@ -16,8 +15,8 @@ import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
 export interface CompactOptions {
   /** 是否启用普通自动压缩 */
   enabled?: boolean;
-  /** Compaction 配置（来自 BehaviorConfig.compaction） */
-  compactionConfig?: CompactionConfig;
+  /** Compaction 配置（运行时版本，compactableTools 为 Set<string>） */
+  compactionConfig?: RuntimeCompactionConfig;
   /** 压缩阈值（来自 BehaviorConfig.compactionThreshold） */
   compactionThreshold?: number;
 }
@@ -36,7 +35,12 @@ export async function compactMessagesIfNeeded(
   const threshold = options?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
 
   // 检查是否需要自动压缩
-  const shouldAutoCompact = await autoCompactIfNeeded(messages, conversationId);
+  const shouldAutoCompact = await autoCompactIfNeeded(
+    messages,
+    conversationId,
+    threshold,
+    options?.compactionConfig?.bufferTokens,
+  );
   if (!shouldAutoCompact) {
     return { messages, executed: false, tokensFreed: 0 };
   }
@@ -95,7 +99,10 @@ export async function compactMessagesIfNeeded(
   }
 
   // Fast path 2: micro-compact (no LLM call)
-  const microResult = await microCompactMessages(messagesAfterBoundary);
+  const microResult = await microCompactMessages(
+    messagesAfterBoundary,
+    options?.compactionConfig?.micro,
+  );
 
   if (microResult.executed) {
     const tokensAfterMicro = await estimateMessagesTokens(microResult.messages);
@@ -114,7 +121,10 @@ export async function compactMessagesIfNeeded(
   }
 
   // Fast path 3: PTL emergency hard-truncation (no LLM call)
-  const ptlResult = await tryPtlDegradation(microResult.messages);
+  const ptlResult = await tryPtlDegradation(microResult.messages, {
+    enabled: options?.enabled,
+    microConfig: options?.compactionConfig?.micro,
+  });
   if (ptlResult.executed) {
     console.log(
       `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
@@ -158,6 +168,13 @@ export async function compactMessagesIfNeeded(
   };
 }
 
+/**
+ * Manual compact — 用户手动触发压缩
+ *
+ * [Level 2] 不受 modules.compaction 开关控制。
+ * 设计决策：用户主动请求压缩时，无论自动压缩是否启用，都应执行。
+ * 这与 compactMessagesIfNeeded（Level 1，受 enabled 控制）不同。
+ */
 export async function compactMessagesWithCustomInstructions(
   messages: UIMessage[],
   conversationId: string,
@@ -223,7 +240,6 @@ export {
 
 export {
   reinjectAfterCompact,
-  POST_COMPACT_CONFIG,
   type ReinjectContext,
 } from "./post-compact-reinject";
 
@@ -272,4 +288,7 @@ export type {
   SessionMemoryCompactConfig,
   MicroCompactConfig,
   PostCompactConfig,
+  RuntimeCompactionConfig,
 } from "./types";
+
+export { toRuntimeCompactionConfig } from "./types";

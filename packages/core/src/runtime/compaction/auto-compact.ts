@@ -22,18 +22,27 @@ const circuitBreakers = new Map<string, CircuitBreakerState>();
 const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000; // 5 分钟后重置
 
+const DEFAULT_BUFFER_TOKENS = 13_000;
+const DEFAULT_WARNING_BUFFER_TOKENS = 20_000;
+
 /**
- * 获取自动压缩配置（使用固定阈值）
+ * 获取自动压缩配置（从 resolved config 驱动）
  */
-function getAutoCompactConfig() {
-  // 基础阈值（指导文档：13,000 buffer）
-  const baseThreshold = COMPACT_TOKEN_THRESHOLD - 13_000;
+function getAutoCompactConfig(
+  compactionThreshold: number,
+  bufferTokens?: number,
+) {
+  const buffer = bufferTokens ?? DEFAULT_BUFFER_TOKENS;
+  const warningBuffer = DEFAULT_WARNING_BUFFER_TOKENS;
 
-  // 警告阈值（指导文档：20,000 buffer）
-  const warningThreshold = COMPACT_TOKEN_THRESHOLD - 20_000;
+  // 基础阈值（触发压缩）
+  const baseThreshold = compactionThreshold - buffer;
 
-  // 错误阈值（指导文档：20,000 buffer for blocking）
-  const errorThreshold = COMPACT_TOKEN_THRESHOLD - 20_000;
+  // 警告阈值（用户警告）
+  const warningThreshold = compactionThreshold - warningBuffer;
+
+  // 错误阈值（阻塞限制）
+  const errorThreshold = compactionThreshold - warningBuffer;
 
   return {
     baseThreshold: Math.max(0, baseThreshold),
@@ -131,8 +140,11 @@ export async function shouldTriggerAutoCompact(
   messages: UIMessage[],
   conversationId: string,
   snipTokensFreed: number = 0,
+  compactionThreshold?: number,
+  bufferTokens?: number,
 ): Promise<boolean> {
-  const config = getAutoCompactConfig();
+  const threshold = compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
+  const config = getAutoCompactConfig(threshold, bufferTokens);
 
   // 1. 检查电路断路器
   if (isCircuitBreakerTripped(conversationId)) {
@@ -145,7 +157,7 @@ export async function shouldTriggerAutoCompact(
   // 3. 计算当前 token 使用
   const currentUsage = await calculateTokenUsage(messages, snipTokensFreed);
 
-  // 4. 使用固定触发阈值
+  // 4. 使用 resolved 触发阈值
   const triggerThreshold = config.baseThreshold;
 
   // 5. 检查是否达到触发阈值
@@ -168,6 +180,8 @@ export async function getAutoCompactStatus(
   messages: UIMessage[],
   conversationId: string,
   snipTokensFreed: number = 0,
+  compactionThreshold?: number,
+  bufferTokens?: number,
 ): Promise<{
   currentUsage: number;
   triggerThreshold: number;
@@ -178,7 +192,8 @@ export async function getAutoCompactStatus(
   shouldTrigger: boolean;
   circuitBreakerTripped: boolean;
 }> {
-  const config = getAutoCompactConfig();
+  const threshold = compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
+  const config = getAutoCompactConfig(threshold, bufferTokens);
   const currentUsage = await calculateTokenUsage(messages, snipTokensFreed);
   const circuitBreakerTripped = isCircuitBreakerTripped(conversationId);
 
@@ -193,6 +208,8 @@ export async function getAutoCompactStatus(
       messages,
       conversationId,
       snipTokensFreed,
+      threshold,
+      bufferTokens,
     ),
     circuitBreakerTripped,
   };
@@ -203,13 +220,17 @@ export async function getAutoCompactStatus(
  *
  * @param messages - 当前消息数组
  * @param conversationId - 会话 ID
+ * @param compactionThreshold - 压缩阈值（来自 resolved config）
+ * @param bufferTokens - 缓冲区 token 数（来自 compactionConfig.bufferTokens）
  * @returns 是否应该执行压缩
  */
 export async function autoCompactIfNeeded(
   messages: UIMessage[],
   conversationId: string,
+  compactionThreshold?: number,
+  bufferTokens?: number,
 ): Promise<boolean> {
-  if (!(await shouldTriggerAutoCompact(messages, conversationId))) {
+  if (!(await shouldTriggerAutoCompact(messages, conversationId, 0, compactionThreshold, bufferTokens))) {
     return false;
   }
 

@@ -51,6 +51,8 @@ export interface BuildSystemPromptOptions {
 
   // 【新增】项目上下文（THING.md 等）
   projectContext?: LoadedProjectContext;
+  /** 记忆系统根目录（从 ResolvedLayout.resources.memory 派生） */
+  memoryBaseDir?: string;
 
   // 保留原有选项
   override?: string | null;

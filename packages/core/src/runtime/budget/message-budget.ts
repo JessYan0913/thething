@@ -10,8 +10,7 @@ import {
   getMessageBudgetLimit,
   type ContentReplacementState,
   type ContentReplacementRecord,
-  type ToolOutputOverrides,
-  TOOL_RESULT_CLEARED_MESSAGE,
+  type ToolOutputConfig,
 } from './tool-output-manager'
 import { persistToolResult, buildPersistedOutputMessage, formatSize } from './tool-result-storage'
 
@@ -56,16 +55,16 @@ export interface BudgetCheckResult {
  * @param messages 消息数组
  * @param state 内容替换状态
  * @param sessionId 会话 ID
- * @param projectDir 项目目录
- * @param skipToolNames 跳过的工具名称集合
- */
+  * @param dataDir 运行时数据目录
+  * @param skipToolNames 跳过的工具名称集合
+  */
 export async function enforceToolResultBudget(
   messages: UIMessage[],
   state: ContentReplacementState,
   sessionId: string,
-  projectDir: string,
+  dataDir: string,
   skipToolNames: ReadonlySet<string> = new Set(),
-  sessionConfig?: ToolOutputOverrides,
+  sessionConfig?: ToolOutputConfig,
 ): Promise<BudgetCheckResult> {
   const limit = getMessageBudgetLimit(sessionConfig)
   const candidates = collectCandidatesByMessage(messages)
@@ -95,8 +94,6 @@ export async function enforceToolResultBudget(
 
   // 处理候选，直到总额低于预算
   let currentTotal = totalBefore
-  const messagesToModify = new Map<number, Map<string, string>>()
-
   for (const candidate of sortedCandidates) {
     // 跳过已处理的（保证稳定性）
     if (state.seenIds.has(candidate.toolUseId)) {
@@ -117,14 +114,15 @@ export async function enforceToolResultBudget(
 
     // 如果仍在预算外，持久化此候选
     if (currentTotal > limit) {
-      const result = await persistToolResult(
-        candidate.content,
-        candidate.toolUseId,
-        sessionId,
-        projectDir
-      )
+        const result = await persistToolResult(
+          candidate.content,
+          candidate.toolUseId,
+          sessionId,
+          dataDir,
+          sessionConfig,
+        )
 
-      const message = buildPersistedOutputMessage(result)
+      const message = buildPersistedOutputMessage(result, false, sessionConfig)
       const savings = candidate.size - message.length
 
       // 记录状态
@@ -273,7 +271,7 @@ function applyReplacements(
  */
 export function estimateToolResultsTotal(
   messages: UIMessage[],
-  sessionConfig?: ToolOutputOverrides,
+  sessionConfig?: ToolOutputConfig,
 ): {
   totalChars: number
   totalTokens: number

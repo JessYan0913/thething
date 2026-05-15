@@ -5,15 +5,15 @@
 import type { Tool } from 'ai'
 import { wrapLanguageModel } from 'ai'
 import {
-  bashTool,
-  editFileTool,
+  createBashTool,
+  createEditFileTool,
   exaSearchTool,
-  globTool,
-  grepTool,
-  readFileTool,
-  writeFileTool,
+  createGlobTool,
+  createGrepTool,
+  createReadFileTool,
+  createWriteFileTool,
   askUserQuestionTool,
-  skillTool,
+  createSkillTool,
 } from '../tools'
 import { createTaskToolsForConversation, getGlobalTaskStore } from '../tasks'
 import { registerBuiltinAgents, createAgentTool, globalAgentRegistry } from '../../extensions/subagents'
@@ -41,14 +41,35 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   Object.assign(tools, {
     web_search: exaSearchTool,
-    read_file: readFileTool,
-    write_file: writeFileTool,
-    edit_file: editFileTool,
-    bash: bashTool,
-    grep: grepTool,
-    glob: globTool,
+    read_file: createReadFileTool({
+      cwd: config.sessionState.projectRoot,
+      extraSensitivePaths: config.sessionState.extraSensitivePaths,
+      permissionRules: config.sessionState.permissionRules,
+    }),
+    write_file: createWriteFileTool({
+      cwd: config.sessionState.projectRoot,
+      extraSensitivePaths: config.sessionState.extraSensitivePaths,
+      permissionRules: config.sessionState.permissionRules,
+    }),
+    edit_file: createEditFileTool({
+      cwd: config.sessionState.projectRoot,
+      extraSensitivePaths: config.sessionState.extraSensitivePaths,
+      permissionRules: config.sessionState.permissionRules,
+    }),
+    bash: createBashTool({
+      cwd: config.sessionState.projectRoot,
+      permissionRules: config.sessionState.permissionRules,
+    }),
+    grep: createGrepTool({
+      cwd: config.sessionState.projectRoot,
+    }),
+    glob: createGlobTool({
+      cwd: config.sessionState.projectRoot,
+    }),
     ask_user_question: askUserQuestionTool,
-    skill: skillTool,
+    skill: createSkillTool({
+      skills: config.skills ?? [],
+    }),
   })
 
   Object.assign(tools, createTaskToolsForConversation(getGlobalTaskStore(), config.conversationId))
@@ -77,11 +98,12 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     parentSystemPrompt: '',
     parentMessages: [],
     writerRef: config.writerRef ?? { current: null },
-    cwd: config.sessionState.projectDir,
+    cwd: config.sessionState.projectRoot,
+    agentsLayoutDirs: config.sessionState.layout.resources.agents,
     provider: config.provider,
     modelAliases: config.modelAliases,
     agents: customAgents,
-    dynamicReload: false,
+    dynamicReload: config.dynamicReload ?? false,
   })
 
   if (config.enableMcp) {
@@ -97,7 +119,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
           mcpTools as Record<string, Tool>,
           {
             sessionId: config.conversationId,
-            projectDir: config.sessionState.projectDir,
+            dataDir: config.sessionState.layout.dataDir,
             contentReplacementState: config.sessionState.contentReplacementState,
             toolOutputConfig: config.sessionState.toolOutputConfig,
           }
@@ -126,7 +148,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       // ✅ 新增：传递 sessionContext 用于输出持久化
       const sessionContext = {
         sessionId: config.conversationId,
-        projectDir: config.sessionState.projectDir,
+        dataDir: config.sessionState.layout.dataDir,
         contentReplacementState: config.sessionState.contentReplacementState,
         toolOutputConfig: config.sessionState.toolOutputConfig,
       }

@@ -191,6 +191,9 @@ export interface AgentExecutionContext {
 
   /** 工作目录 */
   cwd?: string;
+
+  /** 动态重载时使用的 agents 目录布局 */
+  agentsLayoutDirs?: readonly string[];
 }
 
 // ============================================================
@@ -292,6 +295,9 @@ export interface AgentToolConfig {
 
   /** 预加载的 Agent 定义 */
   agents?: AgentDefinition[];
+
+  /** 动态重载时使用的 agents 目录布局 */
+  agentsLayoutDirs?: readonly string[];
 
   /** 是否允许动态重新扫描 Agent 配置 */
   dynamicReload?: boolean;

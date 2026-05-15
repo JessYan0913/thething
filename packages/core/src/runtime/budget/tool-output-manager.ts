@@ -30,7 +30,7 @@ import {
   BYTES_PER_TOKEN,
 } from '../../config/defaults';
 
-// 重新导出供其他模块使用（向后兼容，后续将标记 deprecated）
+// 重新导出供预算模块内部和测试复用
 export {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULT_TOKENS,
@@ -52,101 +52,6 @@ export const TOOL_RESULT_CLEARED_MESSAGE = '[Old tool result content cleared]'
 // Core 只接收应用层注入的配置，不直接读取环境变量或远程配置
 // 应用层可根据需要从环境变量、配置文件、远程服务等获取配置
 
-/**
- * 工具输出配置覆盖
- * 应用层注入，用于动态调整阈值
- */
-export interface ToolOutputOverrides {
-  /** 默认最大结果字符数覆盖 */
-  maxResultSizeChars?: number
-  /** 默认最大结果 Token 数覆盖 */
-  maxToolResultTokens?: number
-  /** 工具阈值覆盖（工具名 -> 最大字符数） */
-  thresholds?: Record<string, number>
-  /** 消息预算覆盖（总额上限字符数） */
-  messageBudget?: number
-  /** 持久化预览内容大小覆盖（字符） */
-  previewSizeChars?: number
-}
-
-/** 当前配置覆盖（全局单例，向后兼容 fallback）
- * 新代码应通过 processToolOutput/getMessageBudgetLimit/getPreviewSizeLimit 的
- * sessionConfig 参数传入 per-session 配置，避免不同会话互相覆盖。
- */
-let currentOverrides: ToolOutputOverrides = {}
-
-/**
- * 设置配置覆盖（由应用层调用）
- * @deprecated 新代码应通过 SessionState.toolOutputConfig 传入 per-session 配置
- */
-export function setToolOutputOverrides(overrides: ToolOutputOverrides): void {
-  currentOverrides = overrides
-}
-
-/**
- * 获取当前配置覆盖
- * @deprecated 新代码应通过 SessionState.toolOutputConfig 获取
- */
-export function getToolOutputOverrides(): ToolOutputOverrides {
-  return currentOverrides
-}
-
-/**
- * 应用配置覆盖
- * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
- */
-function applyConfigOverride(
-  toolName: string,
-  baseConfig: ToolOutputConfig,
-  sessionConfig?: ToolOutputOverrides,
-): ToolOutputConfig {
-  const effective = sessionConfig ?? currentOverrides;
-  const thresholdOverride = effective.thresholds?.[toolName]
-  if (typeof thresholdOverride === 'number' && thresholdOverride > 0) {
-    return { ...baseConfig, maxResultSizeChars: thresholdOverride }
-  }
-  const defaultThresholdOverride = effective.maxResultSizeChars
-  if (typeof defaultThresholdOverride === 'number' && defaultThresholdOverride > 0) {
-    return { ...baseConfig, maxResultSizeChars: defaultThresholdOverride }
-  }
-  return baseConfig
-}
-
-function getMaxToolResultTokens(sessionConfig?: ToolOutputOverrides): number {
-  const effective = sessionConfig ?? currentOverrides;
-  const override = effective.maxToolResultTokens
-  if (typeof override === 'number' && override > 0) {
-    return override
-  }
-  return MAX_TOOL_RESULT_TOKENS
-}
-
-/**
- * 获取消息级预算限制
- * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
- */
-export function getMessageBudgetLimit(sessionConfig?: ToolOutputOverrides): number {
-  const effective = sessionConfig ?? currentOverrides;
-  const override = effective.messageBudget
-  if (typeof override === 'number' && override > 0) {
-    return override
-  }
-  return MAX_TOOL_RESULTS_PER_MESSAGE_CHARS
-}
-
-/**
- * 获取持久化预览大小限制
- * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
- */
-export function getPreviewSizeLimit(sessionConfig?: ToolOutputOverrides): number {
-  const effective = sessionConfig ?? currentOverrides;
-  const override = effective.previewSizeChars
-  if (typeof override === 'number' && override > 0) {
-    return override
-  }
-  return PREVIEW_SIZE_CHARS
-}
-
 // ============================================================
 // 类型定义
 // ============================================================
@@ -160,8 +65,51 @@ export interface ToolOutputConfig {
   maxResultSizeChars: number
   /** 最大 Token 数 */
   maxResultTokens?: number
+  /** 单轮消息中所有工具结果总额上限（字符） */
+  messageBudget?: number
+  /** 持久化预览内容大小（字符） */
+  previewSizeChars?: number
   /** 是否持久化到磁盘（默认 true，现在可选） */
   shouldPersistToDisk?: boolean
+}
+
+function getMaxToolResultTokens(sessionConfig?: ToolOutputConfig): number {
+  const override = sessionConfig?.maxResultTokens
+  if (typeof override === 'number' && override > 0) {
+    return override
+  }
+  return MAX_TOOL_RESULT_TOKENS
+}
+
+export function getMessageBudgetLimit(sessionConfig?: ToolOutputConfig): number {
+  const override = sessionConfig?.messageBudget
+  if (typeof override === 'number' && override > 0) {
+    return override
+  }
+  return MAX_TOOL_RESULTS_PER_MESSAGE_CHARS
+}
+
+export function getPreviewSizeLimit(sessionConfig?: ToolOutputConfig): number {
+  const override = sessionConfig?.previewSizeChars
+  if (typeof override === 'number' && override > 0) {
+    return override
+  }
+  return PREVIEW_SIZE_CHARS
+}
+
+function applyConfigOverride(baseConfig: ToolOutputConfig, sessionConfig?: ToolOutputConfig): ToolOutputConfig {
+  if (!sessionConfig) {
+    return baseConfig
+  }
+  return {
+    ...baseConfig,
+    maxResultSizeChars: sessionConfig.maxResultSizeChars > 0
+      ? sessionConfig.maxResultSizeChars
+      : baseConfig.maxResultSizeChars,
+    maxResultTokens: sessionConfig.maxResultTokens ?? baseConfig.maxResultTokens,
+    messageBudget: sessionConfig.messageBudget ?? baseConfig.messageBudget,
+    previewSizeChars: sessionConfig.previewSizeChars ?? baseConfig.previewSizeChars,
+  }
 }
 
 /**
@@ -262,26 +210,25 @@ export function matchesToolPrefix(toolName: string): string | null {
 
 /**
  * 获取工具输出配置
- * 支持：精确匹配 → 前缀匹配 → 配置覆盖 → 默认配置
- * 优先使用 sessionConfig（per-session），否则回退到全局 currentOverrides
+ * 支持：精确匹配 → 前缀匹配 → 默认配置，再叠加 session 级配置
  */
-export function getToolOutputConfig(toolName: string, sessionConfig?: ToolOutputOverrides): ToolOutputConfig {
+export function getToolOutputConfig(toolName: string, sessionConfig?: ToolOutputConfig): ToolOutputConfig {
   // 1. 精确匹配
   if (TOOL_OUTPUT_CONFIGS[toolName]) {
-    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS[toolName], sessionConfig)
+    return applyConfigOverride(TOOL_OUTPUT_CONFIGS[toolName], sessionConfig)
   }
 
   // 2. 前缀匹配
   const prefix = matchesToolPrefix(toolName)
   if (prefix === 'mcp' && TOOL_OUTPUT_CONFIGS['mcp_default']) {
-    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['mcp_default'], sessionConfig)
+    return applyConfigOverride(TOOL_OUTPUT_CONFIGS['mcp_default'], sessionConfig)
   }
   if (prefix === 'connector' && TOOL_OUTPUT_CONFIGS['connector_default']) {
-    return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['connector_default'], sessionConfig)
+    return applyConfigOverride(TOOL_OUTPUT_CONFIGS['connector_default'], sessionConfig)
   }
 
   // 3. 默认配置
-  return applyConfigOverride(toolName, TOOL_OUTPUT_CONFIGS['default'], sessionConfig)
+  return applyConfigOverride(TOOL_OUTPUT_CONFIGS['default'], sessionConfig)
 }
 
 
@@ -390,10 +337,10 @@ export async function processToolOutput(
   toolUseId: string,
   options?: {
     sessionId?: string
-    projectDir?: string
+    dataDir?: string
     state?: ContentReplacementState
-    /** per-session 配置覆盖（来自 SessionState.toolOutputConfig） */
-    config?: ToolOutputOverrides
+    /** per-session 工具输出配置 */
+    config?: ToolOutputConfig
   }
 ): Promise<{
   content: string
@@ -420,15 +367,16 @@ export async function processToolOutput(
   // ✅ 改进：始终持久化，不再截断
   // 如果没有 sessionContext，使用临时目录
   const sessionId = options?.sessionId ?? `temp-${Date.now()}`
-  const projectDir = options?.projectDir ?? process.cwd()
+  const dataDir = options?.dataDir ?? process.cwd()
 
   const persisted = await persistToDisk(
     content,
     toolUseId,
     sessionId,
-    projectDir,
+    dataDir,
     config.maxResultSizeChars,
-    !options?.sessionId  // isTemporary: 标记是否为临时持久化
+    !options?.sessionId,  // isTemporary: 标记是否为临时持久化
+    sessionConfig,
   )
 
   if (options?.state) {
@@ -452,15 +400,16 @@ async function persistToDisk(
   content: string,
   toolUseId: string,
   sessionId: string,
-  projectDir: string,
+  dataDir: string,
   _maxSize: number,
-  isTemporary: boolean = false
+  isTemporary: boolean = false,
+  sessionConfig?: ToolOutputConfig,
 ): Promise<{ filepath: string; message: string; preview: string }> {
   // 动态导入避免循环依赖
   const { persistToolResult, buildPersistedOutputMessage } = await import('./tool-result-storage')
 
-  const result = await persistToolResult(content, toolUseId, sessionId, projectDir)
-  const message = buildPersistedOutputMessage(result, isTemporary)
+  const result = await persistToolResult(content, toolUseId, sessionId, dataDir, sessionConfig)
+  const message = buildPersistedOutputMessage(result, isTemporary, sessionConfig)
 
   return {
     filepath: result.filepath,

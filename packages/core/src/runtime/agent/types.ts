@@ -18,7 +18,7 @@ import type { DataStore } from '../../foundation/datastore/types'
 import type { BehaviorConfig } from '../../config/behavior'
 import type { ConnectorRegistry } from '../../extensions/connector'
 import type { ResolvedLayout } from '../../config/layout'
-import type { ToolOutputOverrides } from '../budget/tool-output-manager'
+import type { ToolOutputConfig } from '../budget/tool-output-manager'
 
 // ============================================================
 // AgentModules - 模块开关（已解析，全部 required boolean）
@@ -52,8 +52,10 @@ export interface ResolvedAgentConfig {
   behavior: BehaviorConfig
   /** 布局配置（已解析为绝对路径） */
   layout: ResolvedLayout
-  /** 工具输出覆盖（已从 ToolOutputLimitsConfig 转换为 ToolOutputOverrides） */
-  toolOutputOverrides: ToolOutputOverrides
+  /** 工具输出配置（已从 ToolOutputLimitsConfig 转换为 runtime 可消费对象） */
+  toolOutputConfig: ToolOutputConfig
+  /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */
+  dynamicReload?: boolean
 }
 
 export interface AgentContextConfig {
@@ -82,6 +84,10 @@ export interface LoadToolsConfig {
   mcps?: McpServerConfig[]
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
   modelAliases?: BehaviorConfig['modelAliases']
+  /** 预加载的 skills（来自 AppContext 快照） */
+  skills?: Skill[]
+  /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */
+  dynamicReload?: boolean
 }
 
 /**
@@ -89,7 +95,7 @@ export interface LoadToolsConfig {
  * 用于避免 createChatAgent 内部重复调用 loadAll
  */
 export interface PreloadedData {
-  cwd: string
+  layout: ResolvedLayout
   skills: Skill[]
   agents: AgentDefinition[]
   mcps: McpServerConfig[]

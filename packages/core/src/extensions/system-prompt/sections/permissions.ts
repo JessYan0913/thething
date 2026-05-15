@@ -2,10 +2,22 @@
 // Permissions Section - 权限规则注入系统提示
 // ============================================================
 //
-// 将 BehaviorConfig 和 permissions.json 的规则注入系统提示，
-// 让 Agent 了解当前权限约束。
+// modules.permissions 两级语义定义：
 //
-// modules.permissions === false 时跳过注入（plan 3.4 语义）
+// Level 1 - 权限提示注入（Prompt Injection）:
+//   modules.permissions === false → effectivePermissions = []
+//   → createPermissionsSection 返回 null → 系统提示不包含权限规则
+//   → Agent 不知道权限约束存在
+//
+// Level 2 - 底层安全拦截（Security Enforcement）:
+//   tools 中的 checkPermissionRules 使用当前 AppContext 快照中的 permission rules
+//   → 规则由 createContext → loadAll → loadPermissions 加载后注入 SessionState
+//   → 独立于 modules.permissions 开关，始终生效
+//   → 即使 modules.permissions=false，工具的审批决策仍检查权限规则
+//
+// 因此 modules.permissions=false 的含义是：
+//   "不在系统提示中告诉 Agent 权限规则存在"
+//   不是 "不执行权限规则"
 
 import type { PermissionRule } from '../../permissions/types';
 import type { SystemPromptSection } from '../types';

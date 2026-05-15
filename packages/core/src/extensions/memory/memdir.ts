@@ -10,27 +10,7 @@ import { memoryFreshnessNote } from './memory-age';
 import type { RelevantMemory } from './find-relevant';
 import type { ScannedMemory } from './memory-scan';
 
-// ============================================================
-// 配置来源说明
-// ============================================================
-// 重要：以下常量已迁移到 BehaviorConfig.memory
-// - MAX_ENTRYPOINT_LINES → behavior.memory.entrypointMaxLines
-// - MAX_ENTRYPOINT_BYTES → behavior.memory.entrypointMaxBytes
-//
-// 调用方应传入配置参数，未传入时使用 fallback
-// ============================================================
-
-// 从统一配置模块导入常量（作为 fallback）
-import {
-  MAX_ENTRYPOINT_LINES,
-  MAX_ENTRYPOINT_BYTES,
-} from '../../config/defaults';
-
-// 重新导出供其他模块使用（已标记 deprecated）
-/** @deprecated 使用 BehaviorConfig.memory.entrypointMaxLines 代替 */
-export { MAX_ENTRYPOINT_LINES };
-/** @deprecated 使用 BehaviorConfig.memory.entrypointMaxBytes 代替 */
-export { MAX_ENTRYPOINT_BYTES };
+import { DEFAULT_MEMORY_ENTRYPOINT_LIMITS } from '../../config/behavior';
 
 export const ENTRYPOINT_NAME = 'MEMORY.md';
 
@@ -49,8 +29,8 @@ export async function loadEntrypoint(
   limits?: EntrypointLimits,
 ): Promise<string> {
   const entrypointPath = path.join(memoryDir, ENTRYPOINT_NAME);
-  const maxLines = limits?.maxLines ?? MAX_ENTRYPOINT_LINES;
-  const maxBytes = limits?.maxBytes ?? MAX_ENTRYPOINT_BYTES;
+  const maxLines = limits?.maxLines ?? DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxLines;
+  const maxBytes = limits?.maxBytes ?? DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxBytes;
 
   try {
     const content = await fs.readFile(entrypointPath, 'utf-8');
@@ -65,8 +45,8 @@ export function truncateEntrypointContent(
   maxLines?: number,
   maxBytes?: number,
 ): string {
-  const effectiveMaxLines = maxLines ?? MAX_ENTRYPOINT_LINES;
-  const effectiveMaxBytes = maxBytes ?? MAX_ENTRYPOINT_BYTES;
+  const effectiveMaxLines = maxLines ?? DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxLines;
+  const effectiveMaxBytes = maxBytes ?? DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxBytes;
 
   if (content.length > effectiveMaxBytes) {
     content = content.slice(0, effectiveMaxBytes);
@@ -134,8 +114,8 @@ export async function buildMemorySection(
 
 function resolveEntrypointLimits(limits?: EntrypointLimits): Required<EntrypointLimits> {
   return {
-    maxLines: limits?.maxLines ?? MAX_ENTRYPOINT_LINES,
-    maxBytes: limits?.maxBytes ?? MAX_ENTRYPOINT_BYTES,
+    maxLines: limits?.maxLines ?? DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxLines,
+    maxBytes: limits?.maxBytes ?? DEFAULT_MEMORY_ENTRYPOINT_LIMITS.maxBytes,
   };
 }
 

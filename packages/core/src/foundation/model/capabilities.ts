@@ -5,12 +5,9 @@
 // 应用层负责注入配置覆盖值。
 //
 // 重要变更（2026-04）：
-// - DEFAULT_CONTEXT_LIMIT 已迁移到 BehaviorConfig.maxContextTokens
-// - DEFAULT_OUTPUT_TOKENS 应通过函数参数传入
-// - AUTOCOMPACT_BUFFER_TOKENS 已迁移到 BehaviorConfig.compaction
-//
-// 调用方应从 runtime.behavior 获取配置并传入函数参数
-// 此处保留 defaults 导入作为 fallback
+// - runtime 行为配置统一由 BehaviorConfig 注入
+// - 本模块只保留纯函数能力计算，内部使用固定 fallback 默认值
+// - 调用方不应把这些默认值当作另一套公开配置入口
 // ============================================================
 
 import {
@@ -18,20 +15,6 @@ import {
   DEFAULT_OUTPUT_TOKENS,
   AUTOCOMPACT_BUFFER_TOKENS,
 } from '../../config/defaults';
-
-// 重新导出供其他模块使用（已标记 deprecated）
-/** @deprecated 使用 BehaviorConfig.maxContextTokens 代替 */
-export {
-  DEFAULT_CONTEXT_LIMIT,
-};
-/** @deprecated 通过函数参数传入代替 */
-export {
-  DEFAULT_OUTPUT_TOKENS,
-};
-/** @deprecated 使用 BehaviorConfig.compaction 相关配置代替 */
-export {
-  AUTOCOMPACT_BUFFER_TOKENS,
-};
 
 import type { ModelCapabilities } from './capabilities-types';
 

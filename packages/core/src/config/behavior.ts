@@ -10,10 +10,14 @@
 
 import type { ModelPricing } from '../foundation/model/pricing';
 import {
+  DEFAULT_CONTEXT_LIMIT,
   DEFAULT_SESSION_MEMORY_CONFIG,
   DEFAULT_MICRO_COMPACT_CONFIG_RAW,
   DEFAULT_POST_COMPACT_CONFIG,
   AUTOCOMPACT_BUFFER_TOKENS,
+  DEFAULT_MAX_BUDGET_USD,
+  DEFAULT_MAX_DENIALS_PER_TOOL,
+  COMPACT_TOKEN_THRESHOLD,
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULT_TOKENS,
   MAX_TOOL_RESULT_BYTES,
@@ -105,7 +109,7 @@ export interface CompactionConfig {
 
 /**
  * Memory 大小限制配置
- * 注意：与 extensions/memory/paths.ts 的 MemoryConfig（目录配置）不同
+ * 注意：这只描述限制，不描述 memory 目录位置
  */
 export interface MemoryLimitsConfig {
   /** MEMORY.md 最大行数 */
@@ -289,6 +293,14 @@ export const DEFAULT_MODEL_ALIASES = {
 };
 
 /**
+ * 默认 memory 入口限制
+ */
+export const DEFAULT_MEMORY_ENTRYPOINT_LIMITS = {
+  maxLines: 200,
+  maxBytes: 25_000,
+};
+
+/**
  * 构建完整的 BehaviorConfig
  *
  * @param partial - 部分配置（未提供的字段使用默认值）
@@ -302,10 +314,10 @@ export const DEFAULT_MODEL_ALIASES = {
 export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): BehaviorConfig {
   return {
     maxStepsPerSession: partial?.maxStepsPerSession ?? 50,
-    maxBudgetUsdPerSession: partial?.maxBudgetUsdPerSession ?? 5.0,
-    maxContextTokens: partial?.maxContextTokens ?? 128_000,
-    compactionThreshold: partial?.compactionThreshold ?? 25_000,
-    maxDenialsPerTool: partial?.maxDenialsPerTool ?? 3,
+    maxBudgetUsdPerSession: partial?.maxBudgetUsdPerSession ?? DEFAULT_MAX_BUDGET_USD,
+    maxContextTokens: partial?.maxContextTokens ?? DEFAULT_CONTEXT_LIMIT,
+    compactionThreshold: partial?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD,
+    maxDenialsPerTool: partial?.maxDenialsPerTool ?? DEFAULT_MAX_DENIALS_PER_TOOL,
     availableModels: partial?.availableModels ?? DEFAULT_MODEL_SPECS,
     modelAliases: partial?.modelAliases ?? DEFAULT_MODEL_ALIASES,
     autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
