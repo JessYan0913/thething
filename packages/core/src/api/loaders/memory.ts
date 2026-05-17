@@ -15,8 +15,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import { parseFrontmatterFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { getProjectConfigDir } from '../../foundation/paths';
-import { MEMORY_MD_MAX_LINES, MEMORY_MD_MAX_SIZE_KB } from '../../config/defaults';
+import { computeProjectConfigDir } from '../../foundation/paths';
+import {
+  DEFAULT_PROJECT_CONFIG_DIR_NAME,
+  MEMORY_MD_MAX_LINES,
+  MEMORY_MD_MAX_SIZE_KB,
+} from '../../config/defaults';
 
 // ============================================================
 // 类型
@@ -43,6 +47,8 @@ export interface LoadMemoryOptions {
   cwd?: string;
   /** 显式扫描目录（来自 ResolvedLayout.resources.memory） */
   dirs?: readonly string[];
+  /** 配置目录名（默认 '.thething'） */
+  configDirName?: string;
   /** MEMORY.md 最大行数（来自 BehaviorConfig.memory.mdMaxLines） */
   maxLines?: number;
   /** MEMORY.md 最大大小 KB（来自 BehaviorConfig.memory.mdMaxSizeKb） */
@@ -63,13 +69,14 @@ export interface LoadMemoryOptions {
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
   const cwd = options?.cwd ?? process.cwd();
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
   // 使用传入的限制，否则使用 fallback
   const maxLines = options?.maxLines ?? MEMORY_MD_MAX_LINES;
   const maxSizeKb = options?.maxSizeKb ?? MEMORY_MD_MAX_SIZE_KB;
-  const dirs = options?.dirs ? [...options.dirs] : [getProjectConfigDir(cwd, 'memory')];
+  const dirs = options?.dirs ? [...options.dirs] : [computeProjectConfigDir(cwd, 'memory', configDirName)];
 
   // 检查缓存（包含限制参数）
-  const cacheKey = `memory:${cwd}:${dirs.join('|')}:${maxLines}:${maxSizeKb}`;
+  const cacheKey = `memory:${cwd}:${configDirName}:${dirs.join('|')}:${maxLines}:${maxSizeKb}`;
   const cached = memoryCache.get(cacheKey);
   if (cached) {
     return cached;

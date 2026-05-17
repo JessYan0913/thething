@@ -12,6 +12,7 @@ import { persistToolResult, buildPersistedOutputMessage } from '../tool-result-s
 import { enforceToolResultBudget } from '../message-budget';
 import { createSessionState } from '../../session-state';
 import { resolveLayout } from '../../../config/layout';
+import { createPricingResolver } from '../../../foundation/model/pricing';
 import {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
@@ -118,12 +119,14 @@ describe('tool output config driven behavior', () => {
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 10_000, messageBudget: 30_000 },
       dataStore: createMockDataStore() as any,
+      pricingResolver: createPricingResolver(),
     });
     const state2 = createSessionState('session-2', {
       layout,
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 100_000, previewSizeChars: 500, messageBudget: 80_000 },
       dataStore: createMockDataStore() as any,
+      pricingResolver: createPricingResolver(),
     });
 
     expect(state1.toolOutputConfig).toEqual({ maxResultSizeChars: 10_000, messageBudget: 30_000 });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildBehaviorConfig, DEFAULT_MODEL_ALIASES, DEFAULT_MODEL_SPECS } from '../../../config/behavior';
 import { resolveLayout } from '../../../config/layout';
+import { createPricingResolver } from '../../../foundation/model/pricing';
 import { resolveAgentConfig, traceResolvedAgentConfig } from '../../app/resolve-agent-config';
 import type { CreateAgentOptions } from '../../app/types';
 
@@ -21,11 +22,13 @@ function createMockContext(behaviorOverrides?: Record<string, unknown>) {
         summaryStore: { saveSummary: vi.fn(), getSummaryByConversation: vi.fn().mockReturnValue(null) },
         messageStore: { saveMessages: vi.fn(), getMessages: vi.fn().mockResolvedValue([]) },
         conversationStore: { saveConversation: vi.fn(), getConversation: vi.fn().mockResolvedValue(null), updateConversationTitle: vi.fn() },
-      } as any,
-      connectorRegistry: {} as any,
-      connectorRuntime: {} as any,
-      connectorInbound: {} as any,
-      dispose: vi.fn(),
+        } as any,
+        connectorRegistry: {} as any,
+        connectorRuntime: {} as any,
+        env: {},
+        pricingResolver: createPricingResolver(),
+        connectorInbound: {} as any,
+        dispose: vi.fn(),
     },
     layout,
     behavior,

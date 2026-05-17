@@ -18,6 +18,7 @@ import { SQLiteInboundInbox } from './inbound/inbox/sqlite-inbox'
 import { ConnectorResponder } from './inbound/responder/responder'
 import { DefaultConnectorInboundRuntime } from './inbound/runtime'
 import type { AppContext } from '../../api/app'
+import { setConnectorDebugEnabled } from './debug'
 
 export interface ConfigureConnectorInboundOptions {
   userId?: string
@@ -33,6 +34,8 @@ export interface ConfigureConnectorInboundOptions {
  * @returns ConnectorRuntime 实例
  */
 export function createConnectorRuntime(config: ConnectorRuntimeConfig): ConnectorRuntime {
+  setConnectorDebugEnabled(Boolean(config.debugEnabled))
+
   // 1. 创建 Registry（不按 cwd 缓存，每次创建新实例）
   const registry = new ConnectorRegistry(config.configDir, {
     env: config.env,

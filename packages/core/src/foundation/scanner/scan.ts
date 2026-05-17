@@ -5,7 +5,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { minimatch } from 'minimatch';
-import { computeUserConfigDir, resolveHomeDir, getResolvedConfigDirName } from '../paths';
 import type { ScanOptions, ScanConfig, ScanResult } from './types';
 
 export type { ScanOptions, ScanConfig, ScanResult };
@@ -24,6 +23,7 @@ export type { ScanOptions, ScanConfig, ScanResult };
 export async function scanDir(
   dir: string,
   options: ScanOptions,
+  source?: 'user' | 'project',
 ): Promise<ScanResult[]> {
   const results: ScanResult[] = [];
 
@@ -36,11 +36,10 @@ export async function scanDir(
     const files = await scanDirForFiles(dir, options);
 
     for (const file of files) {
-      const source = determineSource(dir);
       results.push({
         filePath: file,
         dirPath: dir,
-        source,
+        source: source ?? 'project',
       });
     }
   } catch (error) {
@@ -60,12 +59,13 @@ export async function scanDir(
 export async function scanDirs(
   dirs: string[],
   options: ScanOptions,
+  sourceByDir?: ReadonlyMap<string, 'user' | 'project'>,
 ): Promise<ScanResult[]> {
   const results: ScanResult[] = [];
   const seenPaths = new Set<string>();
 
   for (const dir of dirs) {
-    const dirResults = await scanDir(dir, options);
+    const dirResults = await scanDir(dir, options, sourceByDir?.get(dir));
 
     for (const result of dirResults) {
       const resolved = path.resolve(result.filePath);
@@ -89,6 +89,7 @@ export async function scanDirs(
 export async function scanConfigDirs(
   cwd: string,
   config: ScanConfig,
+  sourceByDir?: ReadonlyMap<string, 'user' | 'project'>,
 ): Promise<ScanResult[]> {
   const results: ScanResult[] = [];
   const seenPaths = new Set<string>();
@@ -111,11 +112,10 @@ export async function scanConfigDirs(
         }
         seenPaths.add(resolved);
 
-        const source = determineSource(absoluteDir);
         results.push({
           filePath: resolved,
           dirPath: absoluteDir,
-          source,
+          source: sourceByDir?.get(dir) ?? sourceByDir?.get(absoluteDir) ?? 'project',
         });
       }
     } catch (error) {
@@ -236,14 +236,3 @@ function matchesPattern(name: string, pattern: string): boolean {
  * @param dir - Directory path
  * @returns 'user' or 'project'
  */
-function determineSource(dir: string): 'user' | 'project' {
-  const configDirName = getResolvedConfigDirName();
-  const userConfigDir = computeUserConfigDir(resolveHomeDir(), undefined, configDirName);
-
-  if (dir.startsWith(userConfigDir)) {
-    return 'user';
-  }
-
-  // 默认为 project
-  return 'project';
-}

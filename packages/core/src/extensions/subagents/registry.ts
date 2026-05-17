@@ -5,7 +5,7 @@ import type { AgentDefinition } from './types';
  *
  * 管理所有已注册的 Agent 定义，包括内置、用户自定义、项目级 Agent。
  */
-class AgentRegistry {
+export class AgentRegistry {
   private agents = new Map<string, AgentDefinition>();
 
   /**

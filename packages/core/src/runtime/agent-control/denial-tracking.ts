@@ -1,3 +1,5 @@
+import { DEFAULT_MAX_DENIALS_PER_TOOL } from '../../config/defaults';
+
 export interface DenialEntry {
   count: number;
   lastDeniedAt: number;
@@ -11,10 +13,8 @@ export interface DenialTrackerConfig {
   warningMessage?: string;
 }
 
-const DEFAULT_MAX_DENIALS = 3;
-
 const DEFAULT_CONFIG: Required<DenialTrackerConfig> = {
-  maxDenialsPerTool: DEFAULT_MAX_DENIALS,
+  maxDenialsPerTool: DEFAULT_MAX_DENIALS_PER_TOOL,
   cooldownPeriodMs: 5 * 60 * 1000,
   warningMessage: '⚠️ 你尝试使用的操作 "{{tool}}" 已被拒绝多次。请换用其他方法或工具，不要继续尝试同一操作。',
 };

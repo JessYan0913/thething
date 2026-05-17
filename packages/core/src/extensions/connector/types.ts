@@ -229,6 +229,9 @@ export interface ConnectorRuntimeConfig {
   /** 环境变量快照，由 server/cli 显式传入；core 不自行读取 process.env */
   env?: Record<string, string | undefined>
 
+  /** 是否开启调试日志 */
+  debugEnabled?: boolean
+
   /** 显式允许不安全 script executor；默认 false */
   allowUnsafeScriptExecutor?: boolean
 }

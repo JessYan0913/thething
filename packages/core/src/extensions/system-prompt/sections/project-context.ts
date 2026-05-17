@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { computeUserConfigDir, getResolvedConfigDirName } from '../../../foundation/paths';
+import { computeUserConfigDir, resolveHomeDir } from '../../../foundation/paths';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
 import type { SystemPromptSection } from '../types';
 
 // ============================================================================
@@ -28,7 +29,7 @@ function getContextMarkers(options?: ProjectContextLoadOptions): string[] {
   if (options?.contextFileNames) {
     return [...options.contextFileNames];
   }
-  const configDirName = options?.configDirName ?? getResolvedConfigDirName();
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
   // 动态生成配置目录名对应的标记文件（如 .thething.md 或 .siact.md）
   const configMarker = `${configDirName}.md`;
   return [...BASE_CONTEXT_MARKERS, configMarker];
@@ -142,7 +143,7 @@ export async function loadProjectContext(
   cwd: string = process.cwd(),
   options?: ProjectContextLoadOptions,
 ): Promise<LoadedProjectContext> {
-  const configDirName = options?.configDirName ?? getResolvedConfigDirName();
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
   const markers = getContextMarkers({ ...options, configDirName });
   const cacheKey = buildCacheKey(cwd, { ...options, configDirName });
 
@@ -152,7 +153,7 @@ export async function loadProjectContext(
     return cached.context;
   }
 
-  const userHome = process.env.HOME || process.env.USERPROFILE || '/';
+  const userHome = resolveHomeDir();
   const userContextDir = computeUserConfigDir(userHome, undefined, configDirName);
 
   const userLevel: LoadedContextFile[] = [];
@@ -257,7 +258,7 @@ export async function createProjectContextSection(
  * Must match the format used in loadProjectContext().
  */
 function buildCacheKey(cwd: string, options?: ProjectContextLoadOptions): string {
-  const configDirName = options?.configDirName ?? getResolvedConfigDirName();
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
   const markers = getContextMarkers(options);
   return `${cwd}:${configDirName}:${markers.join('|')}`;
 }

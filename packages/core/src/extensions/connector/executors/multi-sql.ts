@@ -8,6 +8,7 @@ import { DatabasePoolManager, type DatabaseConnectionConfig } from './database-p
 export interface MultiSqlExecutorConfig {
   poolManager?: DatabasePoolManager
   getConnectionConfig?: (connectionId: string) => Promise<DatabaseConnectionConfig | null>
+  env?: Record<string, string | undefined>
 }
 
 /**
@@ -17,11 +18,13 @@ export interface MultiSqlExecutorConfig {
 export class MultiSqlExecutor {
   private poolManager: DatabasePoolManager
   private getConnectionConfig: (connectionId: string) => Promise<DatabaseConnectionConfig | null>
+  private env: Record<string, string | undefined>
 
   constructor(config?: MultiSqlExecutorConfig) {
     // 创建新实例，不使用单例
     this.poolManager = config?.poolManager || new DatabasePoolManager()
-    this.getConnectionConfig = config?.getConnectionConfig || this.defaultGetConnectionConfig
+    this.env = { ...(config?.env ?? {}) }
+    this.getConnectionConfig = config?.getConnectionConfig || this.defaultGetConnectionConfig.bind(this)
   }
 
   /**
@@ -89,9 +92,10 @@ export class MultiSqlExecutor {
   private async defaultGetConnectionConfig(connectionId: string): Promise<DatabaseConnectionConfig | null> {
     // 尝试从环境变量读取
     const envKey = `DB_${connectionId.toUpperCase().replace(/-/g, '_')}`
+    const env = this.env
 
     // SQLite: 简单路径配置
-    const sqlitePath = process.env[`${envKey}_PATH`]
+    const sqlitePath = env[`${envKey}_PATH`]
     if (sqlitePath) {
       return {
         type: 'sqlite',
@@ -101,43 +105,43 @@ export class MultiSqlExecutor {
     }
 
     // PostgreSQL 配置
-    const pgHost = process.env[`${envKey}_HOST`]
+    const pgHost = env[`${envKey}_HOST`]
     if (pgHost) {
       return {
         type: 'postgresql',
         connection_id: connectionId,
         postgresql: {
           host: pgHost,
-          port: parseInt(process.env[`${envKey}_PORT`] || '5432'),
-          database: process.env[`${envKey}_DATABASE`] || '',
-          user: process.env[`${envKey}_USER`] || '',
-          password: process.env[`${envKey}_PASSWORD`] || '',
-          ssl: process.env[`${envKey}_SSL`] === 'true',
-          max_pool_size: parseInt(process.env[`${envKey}_POOL_SIZE`] || '10'),
+          port: parseInt(env[`${envKey}_PORT`] || '5432'),
+          database: env[`${envKey}_DATABASE`] || '',
+          user: env[`${envKey}_USER`] || '',
+          password: env[`${envKey}_PASSWORD`] || '',
+          ssl: env[`${envKey}_SSL`] === 'true',
+          max_pool_size: parseInt(env[`${envKey}_POOL_SIZE`] || '10'),
         },
       }
     }
 
     // MySQL 配置
-    const mysqlHost = process.env[`${envKey}_MYSQL_HOST`]
+    const mysqlHost = env[`${envKey}_MYSQL_HOST`]
     if (mysqlHost) {
       return {
         type: 'mysql',
         connection_id: connectionId,
         mysql: {
           host: mysqlHost,
-          port: parseInt(process.env[`${envKey}_MYSQL_PORT`] || '3306'),
-          database: process.env[`${envKey}_MYSQL_DATABASE`] || '',
-          user: process.env[`${envKey}_MYSQL_USER`] || '',
-          password: process.env[`${envKey}_MYSQL_PASSWORD`] || '',
-          ssl: process.env[`${envKey}_MYSQL_SSL`] === 'true',
-          max_pool_size: parseInt(process.env[`${envKey}_MYSQL_POOL_SIZE`] || '10'),
+          port: parseInt(env[`${envKey}_MYSQL_PORT`] || '3306'),
+          database: env[`${envKey}_MYSQL_DATABASE`] || '',
+          user: env[`${envKey}_MYSQL_USER`] || '',
+          password: env[`${envKey}_MYSQL_PASSWORD`] || '',
+          ssl: env[`${envKey}_MYSQL_SSL`] === 'true',
+          max_pool_size: parseInt(env[`${envKey}_MYSQL_POOL_SIZE`] || '10'),
         },
       }
     }
 
     // 尝试从 JSON 配置读取
-    const jsonConfig = process.env[`${envKey}_CONFIG`]
+    const jsonConfig = env[`${envKey}_CONFIG`]
     if (jsonConfig) {
       try {
         return JSON.parse(jsonConfig) as DatabaseConnectionConfig

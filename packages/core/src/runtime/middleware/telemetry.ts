@@ -37,9 +37,13 @@ function createState(): TelemetryState {
   };
 }
 
-function log(level: 'info' | 'warn' | 'error' | 'debug', message: string, meta?: Record<string, unknown>) {
-  // Only log when DEBUG environment variable is set
-  if (!process.env.DEBUG && level !== 'error') {
+function log(
+  debugEnabled: boolean | undefined,
+  level: 'info' | 'warn' | 'error' | 'debug',
+  message: string,
+  meta?: Record<string, unknown>,
+) {
+  if (!debugEnabled && level !== 'error') {
     return;
   }
   const timestamp = new Date().toISOString();
@@ -87,8 +91,9 @@ function accumulateUsage(state: TelemetryState, usage: LanguageModelV3Usage | un
   state.lastCachedTokens = cachedTokens;
 }
 
-export function telemetryMiddleware(): LanguageModelV3Middleware {
+export function telemetryMiddleware(options?: { debugEnabled?: boolean }): LanguageModelV3Middleware {
   const state = createState();
+  const debugEnabled = options?.debugEnabled;
 
   return {
     specificationVersion: 'v3',
@@ -97,7 +102,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
       const startTime = Date.now();
       const modelId = extractModelId(params);
 
-      log('info', 'doGenerate start', { model: modelId });
+      log(debugEnabled, 'info', 'doGenerate start', { model: modelId });
       state.callCount++;
 
       try {
@@ -114,7 +119,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
         state.lastDurationMs = duration;
         state.lastFinishReason = String(result.finishReason ?? 'unknown');
 
-        log('info', 'doGenerate ok', {
+        log(debugEnabled, 'info', 'doGenerate ok', {
           model: modelId,
           duration: `${duration}ms`,
           outputChars: outputLength,
@@ -130,7 +135,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
         state.errorCount++;
         state.lastDurationMs = duration;
 
-        log('error', 'doGenerate error', {
+        log(debugEnabled, 'error', 'doGenerate error', {
           model: modelId,
           duration: `${duration}ms`,
           error: (error as Error).message,
@@ -144,7 +149,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
       const startTime = Date.now();
       const modelId = extractModelId(params);
 
-      log('info', 'doStream start', { model: modelId });
+      log(debugEnabled, 'info', 'doStream start', { model: modelId });
       state.callCount++;
 
       const { stream, ...rest } = await doStream();
@@ -164,7 +169,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
               // 调试：记录tool call信息
               const tc = chunk as unknown as { toolCallId?: string; toolName?: string };
               toolCalls.push({ id: tc.toolCallId, name: tc.toolName });
-              log('debug', 'tool-call chunk received', {
+               log(debugEnabled, 'debug', 'tool-call chunk received', {
                 toolCallId: tc.toolCallId,
                 toolName: tc.toolName,
                 inputPreview: JSON.stringify(chunk).slice(0, 200)
@@ -173,7 +178,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
             case 'tool-input-start':
               // 调试：记录tool input开始
               const tis = chunk as unknown as { id?: string; toolName?: string };
-              log('debug', 'tool-input-start', { id: tis.id, toolName: tis.toolName });
+               log(debugEnabled, 'debug', 'tool-input-start', { id: tis.id, toolName: tis.toolName });
               break;
             case 'finish':
               finalUsage = chunk.usage;
@@ -193,7 +198,7 @@ export function telemetryMiddleware(): LanguageModelV3Middleware {
           state.lastDurationMs = duration;
           state.lastFinishReason = (finalFinishReason ?? 'unknown') as string;
 
-          log('info', 'doStream ok', {
+          log(debugEnabled, 'info', 'doStream ok', {
             model: modelId,
             duration: `${duration}ms`,
             outputChars: generatedText.length,

@@ -37,7 +37,7 @@ export {
 } from '../../api/loaders/agents';
 
 // Agent 注册
-export { globalAgentRegistry } from './registry';
+export { AgentRegistry, globalAgentRegistry } from './registry';
 
 // Agent 路由
 export { resolveAgentRoute } from './router';

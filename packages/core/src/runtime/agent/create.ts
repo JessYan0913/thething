@@ -28,6 +28,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     userId = 'default',
     conversationMeta,
     writerRef,
+    webSearchApiKey,
+    debugEnabled,
     preloadedData,
     resolvedConfig,
   } = config
@@ -125,10 +127,10 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
 
   const wrappedModel = wrapLanguageModel({
     model: modelInstance,
-    middleware: [
-      telemetryMiddleware(),
-      costTrackingMiddleware(sessionState.costTracker),
-    ],
+      middleware: [
+        telemetryMiddleware({ debugEnabled }),
+        costTrackingMiddleware(sessionState.costTracker),
+      ],
   })
 
   const { tools, mcpRegistry } = await loadAllTools({
@@ -143,6 +145,8 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     skills: preloadedData.skills,
     agents: preloadedData.agents,
     mcps: preloadedData.mcps,
+    webSearchApiKey,
+    debugEnabled,
     modelAliases: behavior.modelAliases,
     dynamicReload: resolvedConfig.dynamicReload,
   })
@@ -196,6 +200,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
   const prepareStep = createAgentPipeline<ChatToolsType>({
     sessionState,
     maxSteps,
+    debugEnabled,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

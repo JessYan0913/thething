@@ -1,6 +1,10 @@
 import type { UIMessage } from "ai";
 import { estimateMessagesTokens } from "./token-counter";
 import { COMPACT_TOKEN_THRESHOLD } from "./types";
+import {
+  CIRCUIT_BREAKER_RESET_TIMEOUT_MS,
+  CIRCUIT_BREAKER_THRESHOLD,
+} from "../../config/defaults";
 
 /**
  * Auto Compact 触发阈值配置
@@ -18,9 +22,6 @@ interface CircuitBreakerState {
 }
 
 const circuitBreakers = new Map<string, CircuitBreakerState>();
-
-const CIRCUIT_BREAKER_THRESHOLD = 3;
-const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 5 * 60 * 1000; // 5 分钟后重置
 
 const DEFAULT_BUFFER_TOKENS = 13_000;
 const DEFAULT_WARNING_BUFFER_TOKENS = 20_000;

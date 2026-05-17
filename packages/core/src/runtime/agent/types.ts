@@ -86,6 +86,10 @@ export interface LoadToolsConfig {
   modelAliases?: BehaviorConfig['modelAliases']
   /** 预加载的 skills（来自 AppContext 快照） */
   skills?: Skill[]
+  /** WebSearch API Key（由应用层显式传入） */
+  webSearchApiKey?: string
+  /** 是否开启调试日志 */
+  debugEnabled?: boolean
   /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */
   dynamicReload?: boolean
 }
@@ -119,6 +123,10 @@ export interface CreateAgentConfig {
     conversationStartTime: number
   }
   writerRef?: { current: SubAgentStreamWriter | null }
+  /** 应用层显式传入的 WebSearch API Key */
+  webSearchApiKey?: string
+  /** 是否开启调试日志 */
+  debugEnabled?: boolean
   /** 预加载的数据（来自 AppContext），必须提供 */
   preloadedData: PreloadedData
   /** 统一解析后的配置（包含模型、模块、session、行为、布局） */

@@ -17,6 +17,7 @@ import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
 import type { SessionState, SessionStateOptions } from './types';
 import { DEFAULT_MODEL_SPECS } from '../../config/behavior';
+import { createPricingResolver } from '../../foundation/model/pricing';
 import {
   DEFAULT_CONTEXT_LIMIT,
   COMPACT_TOKEN_THRESHOLD,
@@ -43,6 +44,8 @@ export function createSessionState(
     layout,
     toolOutputConfig,
     dataStore,
+    pricingResolver = createPricingResolver(),
+    taskStore = dataStore.taskStore,
     availableModels = DEFAULT_MODEL_SPECS,
     autoDowngradeCostThreshold = 80,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
@@ -52,7 +55,11 @@ export function createSessionState(
   } = options;
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
-  const costTracker = new CostTracker(conversationId, dataStore.costStore, { model, maxBudgetUsd });
+  const costTracker = new CostTracker(conversationId, dataStore.costStore, {
+    model,
+    maxBudgetUsd,
+    pricingResolver,
+  });
   const denialTracker = new DenialTracker({
     maxDenialsPerTool: options?.maxDenialsPerTool,
   });
@@ -90,6 +97,7 @@ export function createSessionState(
     },
     permissionRules: [...permissionRules],
     extraSensitivePaths: [...extraSensitivePaths],
+    taskStore,
     tokenBudget,
     costTracker,
     denialTracker,

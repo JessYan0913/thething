@@ -7,9 +7,10 @@
 
 import { parsePlainYamlFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader';
 import { ConnectorFrontmatterSchema } from '../../extensions/connector/loader';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // 扩展类型
@@ -35,6 +36,12 @@ export interface LoadConnectorsOptions {
   sources?: ('user' | 'project')[];
   /** 显式扫描目录（来自 ResolvedLayout.resources.connectors） */
   dirs?: readonly string[];
+  /** 配置目录名（默认 '.thething'） */
+  configDirName?: string;
+  /** 用户 home 目录（默认 resolveHomeDir()） */
+  homeDir?: string;
+  /** 环境变量快照，用于替换 ${VAR} */
+  env?: Record<string, string | undefined>;
 }
 
 // ============================================================
@@ -53,9 +60,14 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
   const explicitDirs = options?.dirs;
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const homeDir = options?.homeDir ?? resolveHomeDir();
+  const env = options?.env ?? {};
+  const userConfigBase = computeUserConfigDir(homeDir, undefined, configDirName);
 
   // 检查缓存
-  const cacheKey = `connectors:${cwd}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
+  const envKeys = Object.keys(env).sort().join(',');
+  const cacheKey = `connectors:${cwd}:${configDirName}:${homeDir}:${envKeys}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
   const cached = connectorsCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -63,18 +75,27 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
 
   // 构建扫描目录（使用全局 configDirName）
   const dirs: string[] = explicitDirs ? [...explicitDirs] : [];
+  const sourceByDir = new Map<string, 'user' | 'project'>();
   if (!explicitDirs) {
     if (sources.includes('user')) {
-      dirs.push(getUserConfigDir('connectors'));
+      const userDir = computeUserConfigDir(homeDir, 'connectors', configDirName);
+      dirs.push(userDir);
+      sourceByDir.set(userDir, 'user');
     }
     if (sources.includes('project')) {
-      dirs.push(getProjectConfigDir(cwd, 'connectors'));
+      const projectDir = computeProjectConfigDir(cwd, 'connectors', configDirName);
+      dirs.push(projectDir);
+      sourceByDir.set(projectDir, 'project');
+    }
+  } else {
+    for (const dir of dirs) {
+      sourceByDir.set(dir, dir.startsWith(userConfigBase) ? 'user' : 'project');
     }
   }
 
   // 扫描 YAML 文件
-  const yamlResults = await scanDirs(dirs, { pattern: '*.yaml' });
-  const ymlResults = await scanDirs(dirs, { pattern: '*.yml' });
+  const yamlResults = await scanDirs(dirs, { pattern: '*.yaml' }, sourceByDir);
+  const ymlResults = await scanDirs(dirs, { pattern: '*.yml' }, sourceByDir);
   const allResults = [...yamlResults, ...ymlResults];
 
   // 去重
@@ -89,7 +110,7 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
   const connectors: ConnectorWithSource[] = [];
   for (const result of uniqueResults) {
     try {
-      const connector = await loadConnectorFile(result.filePath, result.source);
+      const connector = await loadConnectorFile(result.filePath, result.source, env);
       connectors.push(connector);
     } catch (error) {
       console.warn(`[ConnectorsLoader] Failed to load ${result.filePath}: ${(error as Error).message}`);
@@ -135,11 +156,12 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
 export async function loadConnectorFile(
   filePath: string,
   source: 'user' | 'project',
+  env: Record<string, string | undefined> = {},
 ): Promise<ConnectorWithSource> {
   const result = await parsePlainYamlFile(filePath, ConnectorFrontmatterSchema);
 
   // 环境变量替换
-  const processed = replaceEnvVars(result.data as Record<string, unknown>);
+  const processed = replaceEnvVars(result.data as Record<string, unknown>, env);
 
   return {
     ...processed as ConnectorFrontmatter,
@@ -152,23 +174,26 @@ export async function loadConnectorFile(
 // 环境变量替换
 // ============================================================
 
-function replaceEnvVars(obj: Record<string, unknown>): Record<string, unknown> {
+function replaceEnvVars(
+  obj: Record<string, unknown>,
+  env: Record<string, string | undefined>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string') {
-      result[key] = replaceEnvVarInString(value);
+      result[key] = replaceEnvVarInString(value, env);
     } else if (Array.isArray(value)) {
       result[key] = value.map((item) => {
         if (typeof item === 'string') {
-          return replaceEnvVarInString(item);
+          return replaceEnvVarInString(item, env);
         } else if (typeof item === 'object' && item !== null) {
-          return replaceEnvVars(item as Record<string, unknown>);
+          return replaceEnvVars(item as Record<string, unknown>, env);
         }
         return item;
       });
     } else if (typeof value === 'object' && value !== null) {
-      result[key] = replaceEnvVars(value as Record<string, unknown>);
+      result[key] = replaceEnvVars(value as Record<string, unknown>, env);
     } else {
       result[key] = value;
     }
@@ -177,10 +202,10 @@ function replaceEnvVars(obj: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
-function replaceEnvVarInString(str: string): string {
+function replaceEnvVarInString(str: string, env: Record<string, string | undefined>): string {
   return str
     .replace(/\$\{(\w+)\}/g, (_, varName) => {
-      const envValue = process.env[varName];
+      const envValue = env[varName];
       if (envValue === undefined) {
         console.warn(`[ConnectorsLoader] Environment variable ${varName} not found`);
         return str;
@@ -188,7 +213,7 @@ function replaceEnvVarInString(str: string): string {
       return envValue;
     })
     .replace(/\$(\w+)/g, (_, varName) => {
-      const envValue = process.env[varName];
+      const envValue = env[varName];
       if (envValue === undefined) {
         return str;
       }

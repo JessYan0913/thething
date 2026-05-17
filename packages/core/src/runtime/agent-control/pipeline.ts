@@ -2,8 +2,8 @@ import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStep
 import type { SessionState } from '../session-state/state';
 import { enforceToolResultBudget } from '../budget/message-budget';
 
-function debugLog(...args: unknown[]): void {
-  if (process.env.DEBUG) {
+function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
+  if (debugEnabled) {
     console.log(...args);
   }
 }
@@ -12,10 +12,11 @@ export interface AgentPipelineConfig {
   sessionState: SessionState;
   maxSteps?: number;
   maxBudgetUsd?: number;
+  debugEnabled?: boolean;
 }
 
 export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipelineConfig): PrepareStepFunction<TOOLS> {
-  const { sessionState } = config;
+  const { sessionState, debugEnabled } = config;
 
   const prepareStep: PrepareStepFunction<TOOLS> = async ({ stepNumber, messages, steps }) => {
     if (sessionState.aborted) {
@@ -31,6 +32,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     const budgetSummary = sessionState.tokenBudget.getSummary();
     debugLog(
+      debugEnabled,
       `[Agent] Step ${stepNumber + 1} | Tokens: ${budgetSummary.totalTokens.toLocaleString()} (${budgetSummary.usagePercentage.toFixed(1)}%) | Compact: ${budgetSummary.shouldCompact ? 'YES' : 'no'}`,
     );
 
@@ -39,7 +41,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     if (sessionState.denialTracker.isThresholdExceeded()) {
       const injectMsg = sessionState.denialTracker.getInjectMessage();
       if (injectMsg) {
-        debugLog(`[Agent] Denial threshold exceeded, injecting warning message`);
+        debugLog(debugEnabled, `[Agent] Denial threshold exceeded, injecting warning message`);
         return {
           messages: [...messages, injectMsg as ModelMessageType],
         } as PrepareStepResult<TOOLS>;
@@ -48,10 +50,10 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     const modelSwitchResult = sessionState.modelSwapper.checkUserIntent(messages);
     if (modelSwitchResult.switched) {
-      debugLog(`[Agent] Model switched: ${sessionState.model} -> ${modelSwitchResult.newModel}`);
+      debugLog(debugEnabled, `[Agent] Model switched: ${sessionState.model} -> ${modelSwitchResult.newModel}`);
       sessionState.model = modelSwitchResult.newModel!;
       if (modelSwitchResult.notification) {
-        debugLog(`[Agent] ${modelSwitchResult.notification}`);
+        debugLog(debugEnabled, `[Agent] ${modelSwitchResult.notification}`);
       }
     }
 
@@ -59,15 +61,15 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     const costPercent = (costSummary.totalCostUsd / costSummary.maxBudgetUsd) * 100;
     const costSwitchResult = sessionState.modelSwapper.checkCostBudget(costPercent);
     if (costSwitchResult.switched) {
-      debugLog(`[Agent] Auto-downgrade model due to cost: ${costSwitchResult.newModel}`);
+      debugLog(debugEnabled, `[Agent] Auto-downgrade model due to cost: ${costSwitchResult.newModel}`);
       sessionState.model = costSwitchResult.newModel!;
     }
 
     if (sessionState.tokenBudget.shouldCompact()) {
-      debugLog(`[Agent] Token budget exceeded threshold, triggering compaction...`);
+      debugLog(debugEnabled, `[Agent] Token budget exceeded threshold, triggering compaction...`);
       const compactionResult = await sessionState.compact(messages as unknown as UIMessage[]);
       if (compactionResult.executed) {
-        debugLog(`[Agent] Compaction freed ${compactionResult.tokensFreed} tokens`);
+        debugLog(debugEnabled, `[Agent] Compaction freed ${compactionResult.tokensFreed} tokens`);
         return {
           messages: compactionResult.messages as unknown as ModelMessageType[],
         } as unknown as PrepareStepResult<TOOLS>;
@@ -88,6 +90,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
       if (budgetResult.newlyPersisted.length > 0) {
         debugLog(
+          debugEnabled,
           `[Agent] Tool result budget: persisted ${budgetResult.newlyPersisted.length} results, ` +
           `saved ${budgetResult.tokensSaved} tokens`
         );

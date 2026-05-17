@@ -69,39 +69,3 @@ export type {
   ResolvedAgentConfig,
 } from '../runtime/agent/types';
 
-// ============================================================
-// 仅在 config 中定义的类型（未被其他模块定义）
-// ============================================================
-
-/**
- * Agent 工具定义配置（用于定义 Agent 可用工具）
- * 注意：与 subagents/types.ts 的 AgentToolConfig 不同（那是执行上下文）
- */
-export interface AgentToolDefinitionConfig {
-  /** Agent 类型 */
-  agentType: string;
-  /** 描述 */
-  description: string;
-  /** 允许的工具 */
-  allowedTools?: string[];
-  /** 模型覆盖 */
-  modelOverride?: string;
-}
-
-/**
- * 任务调度器配置
- */
-export interface TaskSchedulerConfig {
-  /** 最大并发任务 */
-  maxConcurrentTasks?: number;
-  /** 任务超时（毫秒） */
-  taskTimeoutMs?: number;
-}
-
-/**
- * 任务同步配置
- */
-export interface TaskSyncConfig {
-  /** 同步间隔（毫秒） */
-  syncIntervalMs?: number;
-}

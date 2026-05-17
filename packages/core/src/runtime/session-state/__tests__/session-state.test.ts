@@ -4,6 +4,7 @@ import type { CompactionResult } from '../../compaction/types';
 import type { CostStore } from '../../../foundation/datastore/types';
 import { TokenBudgetTracker } from '../token-budget';
 import { CostTracker } from '../cost';
+import { createPricingResolver } from '../../../foundation/model/pricing';
 import { DEFAULT_PRICING } from '../../../foundation/model/pricing';
 
 // ============================================================
@@ -225,7 +226,11 @@ describe('cost', () => {
     let tracker: CostTracker;
 
     beforeEach(() => {
-      tracker = new CostTracker('test-conv-1', createMockCostStore(), { model: 'qwen-max', maxBudgetUsd: 5.0 });
+      tracker = new CostTracker('test-conv-1', createMockCostStore(), {
+        model: 'qwen-max',
+        maxBudgetUsd: 5.0,
+        pricingResolver: createPricingResolver(),
+      });
     });
 
     describe('constructor', () => {
@@ -251,7 +256,10 @@ describe('cost', () => {
       });
 
       it('should use default pricing for unknown model', () => {
-        const unknownTracker = new CostTracker('test-conv', createMockCostStore(), { model: 'unknown-model' });
+        const unknownTracker = new CostTracker('test-conv', createMockCostStore(), {
+          model: 'unknown-model',
+          pricingResolver: createPricingResolver(),
+        });
         const delta = unknownTracker.calculateDelta(100_000, 50_000, 0);
         // default pricing: input 1.5, output 4.5
         expect(delta.inputCost).toBeCloseTo(0.15, 2);

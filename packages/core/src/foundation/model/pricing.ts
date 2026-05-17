@@ -3,7 +3,6 @@
 // ============================================================
 //
 // 定价数据通过 bootstrap({ modelPricing }) 注入，
-// 或通过 configurePricing() 动态覆盖。
 // 内置定价表作为兜底默认值。
 // ============================================================
 
@@ -24,6 +23,11 @@ export interface ModelPricing {
  * 定价注册表类型
  */
 export type PricingRegistry = Record<string, ModelPricing>;
+
+export interface PricingResolver {
+  getModelPricing(model: string): ModelPricing;
+  getPricingRegistry(): PricingRegistry;
+}
 
 /**
  * 内置定价表（作为兜底默认值）
@@ -56,46 +60,19 @@ export const FALLBACK_PRICING: ModelPricing = {
 // 定价配置管理
 // ============================================================
 
-/**
- * 当前生效的定价注册表
- * 由 bootstrap 或 configurePricing 设置
- */
-let activePricing: PricingRegistry = { ...DEFAULT_PRICING };
-
-/**
- * 配置模型定价（覆盖默认值）
- *
- * @param overrides - 定价覆盖配置，与 DEFAULT_PRICING 合并
- *
- * @example
- * configurePricing({
- *   'qwen-max': { input: 3.5, output: 10, cached: 0.8 }
- * });
- */
-export function configurePricing(overrides: PricingRegistry): void {
-  activePricing = { ...DEFAULT_PRICING, ...overrides };
-}
-
-/**
- * 获取模型定价
- *
- * @param model - 模型名称（如 'qwen-max'）
- * @returns 定价配置，未找到时返回 FALLBACK_PRICING
- *
- * 匹配策略：
- * 1. 精确匹配（如 'qwen-max'）
- * 2. 前缀模糊匹配（处理带日期后缀的模型名，如 'qwen-max-2025-01-01'）
- */
-export function getModelPricing(model: string): ModelPricing {
+function resolvePricing(
+  registry: PricingRegistry,
+  model: string,
+): ModelPricing {
   // 精确匹配
-  if (activePricing[model]) {
-    return activePricing[model];
+  if (registry[model]) {
+    return registry[model];
   }
 
   // 前缀模糊匹配（处理 'qwen-max-2025-01-01' 这类带日期后缀的模型名）
-  const prefix = Object.keys(activePricing).find(k => model.startsWith(k));
+  const prefix = Object.keys(registry).find(k => model.startsWith(k));
   if (prefix) {
-    return activePricing[prefix];
+    return registry[prefix];
   }
 
   // 未找到，返回默认定价
@@ -103,15 +80,20 @@ export function getModelPricing(model: string): ModelPricing {
 }
 
 /**
- * 获取完整定价注册表（只读副本）
+ * 创建定价解析器（实例级，不共享进程全局状态）
  */
-export function getPricingRegistry(): PricingRegistry {
-  return { ...activePricing };
-}
+export function createPricingResolver(overrides?: PricingRegistry): PricingResolver {
+  const registry: PricingRegistry = {
+    ...DEFAULT_PRICING,
+    ...(overrides ?? {}),
+  };
 
-/**
- * 重置为默认定价
- */
-export function resetPricing(): void {
-  activePricing = { ...DEFAULT_PRICING };
+  return {
+    getModelPricing(model: string): ModelPricing {
+      return resolvePricing(registry, model);
+    },
+    getPricingRegistry(): PricingRegistry {
+      return { ...registry };
+    },
+  };
 }

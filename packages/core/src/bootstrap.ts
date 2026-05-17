@@ -16,16 +16,14 @@ import {
   type ConnectorRegistry,
 } from './extensions/connector';
 import type { ConnectorInboundRuntime } from './extensions/connector/inbound/types';
-import { setResolvedConfigDirName } from './foundation/paths';
 import {
   registerTokenizer,
   setTokenizerDir,
   setAutoDownload,
   preloadTokenizer,
 } from './runtime/compaction/tokenizer';
-import { configurePricing } from './foundation/model/pricing';
+import { createPricingResolver, type PricingResolver } from './foundation/model/pricing';
 import { waitForAllCompactions } from './runtime/compaction/background-queue';
-import { initGlobalTaskStoreFromDataStore } from './runtime/tasks/store';
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from './config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from './config/behavior';
 import path from 'path';
@@ -96,6 +94,8 @@ export interface BootstrapOptions {
   layout: LayoutConfig;
   /** 行为配置（可选，不传则全部使用默认值） */
   behavior?: Partial<BehaviorConfig>;
+  /** 环境变量快照（由应用层显式传入） */
+  env?: Record<string, string | undefined>;
   /** 自定义 DataStore 实例（可选，替换默认 SQLite 实现） */
   dataStore?: DataStore;
   /** 数据库配置（可选，仅当使用默认 SQLite 时生效） */
@@ -126,6 +126,10 @@ export interface CoreRuntime {
   readonly connectorRegistry: ConnectorRegistry;
   /** Connector Runtime 实例 */
   readonly connectorRuntime: ConnectorRuntime;
+  /** 环境变量快照 */
+  readonly env: Record<string, string | undefined>;
+  /** 定价解析器实例 */
+  readonly pricingResolver: PricingResolver;
   /** Connector 入站运行时 */
   readonly connectorInbound: ConnectorInboundRuntime | null;
   /** 销毁所有资源（关闭数据库连接、停止 gateway 等） */
@@ -161,18 +165,13 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     throw new Error('[Bootstrap] layout is required. Provide layout: { resourceRoot: ... }');
   }
   const layout = resolveLayout(options.layout);
-
-  // 1.1. 设置全局 configDirName（兼容仍依赖便捷路径函数的模块）
-  setResolvedConfigDirName(layout.configDirName);
-  console.log(`[Bootstrap] configDirName set to: ${layout.configDirName}`);
+  const env = Object.freeze({ ...(options.env ?? {}) });
 
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);
 
-  // 3. 定价配置注入（必须最先执行，确保后续所有 CostTracker 使用正确数据）
-  if (behavior.modelPricing) {
-    configurePricing(behavior.modelPricing);
-  }
+  // 3. 创建定价解析器（实例级，避免多次 bootstrap 互相污染）
+  const pricingResolver = createPricingResolver(behavior.modelPricing);
 
   // 4. 初始化数据存储
   // 如果传入自定义 DataStore，直接使用；否则创建默认 SQLite 实现
@@ -181,10 +180,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     ...options.databaseConfig,
   });
 
-  // 5. 初始化全局 TaskStore（使用 DataStore 的持久化 taskStore）
-  initGlobalTaskStoreFromDataStore(dataStore);
-
-  // 6. 初始化 Connector Runtime（只加载 Registry；Inbound handler 在应用层有 AppContext 后绑定）
+  // 5. 初始化 Connector Runtime（只加载 Registry；Inbound handler 在应用层有 AppContext 后绑定）
   const connectorConfigDir = options.connectorConfig?.configDir
     ?? layout.resources.connectors[layout.resources.connectors.length - 1]
     ?? path.join(layout.resourceRoot, layout.configDirName, 'connectors');
@@ -195,7 +191,8 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     userId: options.connectorConfig?.userId,
     model: options.connectorConfig?.model,
     appContext: options.connectorConfig?.appContext,
-    env: options.connectorConfig?.env,
+    env: options.connectorConfig?.env ?? env,
+    debugEnabled: options.connectorConfig?.debugEnabled ?? Boolean(env.DEBUG),
     allowUnsafeScriptExecutor: options.connectorConfig?.allowUnsafeScriptExecutor,
   });
   await initializeConnectorRuntime(connectorRuntime, { startConsumer: false }).catch((err) => {
@@ -204,16 +201,18 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
   const connectorRegistry = connectorRuntime.registry;
 
-  // 7. 初始化 Tokenizer（显式配置，不依赖环境变量）
+  // 6. 初始化 Tokenizer（显式配置，不依赖环境变量）
   initTokenizer(options.tokenizerConfig);
 
   return {
     layout,
     behavior,
     dataStore,
-    connectorRegistry,
-    connectorRuntime,
-    connectorInbound: connectorRuntime.inbound,
+      connectorRegistry,
+      connectorRuntime,
+      env,
+      pricingResolver,
+      connectorInbound: connectorRuntime.inbound,
     async dispose() {
       // 1. 等待所有后台压缩完成，避免关闭数据库时写入失败
       await waitForAllCompactions();

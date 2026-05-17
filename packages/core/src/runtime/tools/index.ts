@@ -1,6 +1,6 @@
 export { createBashTool } from './bash';
 export { createEditFileTool } from './edit';
-export { exaSearchTool } from './exa-search';
+export { createExaSearchTool } from './exa-search';
 export { createGlobTool } from './glob';
 export { createGrepTool } from './grep';
 export { createReadFileTool } from './read';

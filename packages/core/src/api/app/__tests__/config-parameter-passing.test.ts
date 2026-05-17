@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildBehaviorConfig } from '../../../config/behavior';
 import { resolveLayout } from '../../../config/layout';
+import { createPricingResolver } from '../../../foundation/model/pricing';
 import { resolveAgentConfig, resolveAgentModelConfig, resolveToolOutputConfig } from '../../app/resolve-agent-config';
 import { createSessionState } from '../../../runtime/session-state';
 import {
@@ -55,6 +56,8 @@ function createMockContext(behaviorOverrides?: Parameters<typeof buildBehaviorCo
       dataStore: createMockDataStore() as any,
       connectorRegistry: {} as any,
       connectorRuntime: {} as any,
+      env: {},
+      pricingResolver: createPricingResolver(),
       connectorInbound: {} as any,
       dispose: vi.fn(),
     },
@@ -101,6 +104,7 @@ describe('config parameter passing', () => {
       autoDowngradeCostThreshold: 50,
       maxDenialsPerTool: 5,
       dataStore: createMockDataStore() as any,
+      pricingResolver: createPricingResolver(),
     });
 
     expect(state.modelSwapper).toBeDefined();

@@ -22,9 +22,6 @@ export type { ModelCapabilities } from './capabilities-types';
 export {
   DEFAULT_PRICING,
   FALLBACK_PRICING,
-  configurePricing,
-  getModelPricing,
-  getPricingRegistry,
-  resetPricing,
+  createPricingResolver,
 } from './pricing';
-export type { ModelPricing, PricingRegistry } from './pricing';
+export type { ModelPricing, PricingRegistry, PricingResolver } from './pricing';

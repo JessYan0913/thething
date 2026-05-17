@@ -1,5 +1,5 @@
 import { checkRecursionGuard } from './recursion-guard';
-import { globalAgentRegistry } from './registry';
+import { AgentRegistry } from './registry';
 import type { AgentDefinition, AgentExecutionContext, AgentRouteDecision } from './types';
 
 // ============================================================
@@ -99,6 +99,8 @@ export function resolveAgentRoute(
   input: { agentType?: string; task: string },
   context: AgentExecutionContext,
 ): AgentRouteDecision {
+  const registry = context.agentRegistry ?? new AgentRegistry();
+
   // 1. 递归检查
   if (checkRecursionGuard({ recursionDepth: context.recursionDepth })) {
     return {
@@ -110,7 +112,7 @@ export function resolveAgentRoute(
 
   // 2. 显式指定 AgentType
   if (input.agentType) {
-    const def = globalAgentRegistry.get(input.agentType);
+    const def = registry.get(input.agentType);
     if (def) {
       return { type: 'named', definition: def, reason: 'Explicitly specified' };
     }
@@ -125,21 +127,21 @@ export function resolveAgentRoute(
 
   // 3. 自动路由（基于任务关键词）
   if (isExploreTask(input.task)) {
-    const exploreDef = globalAgentRegistry.get('explore');
+    const exploreDef = registry.get('explore');
     if (exploreDef) {
       return { type: 'named', definition: exploreDef, reason: 'Auto: explore keywords' };
     }
   }
 
   if (isResearchTask(input.task)) {
-    const researchDef = globalAgentRegistry.get('research');
+    const researchDef = registry.get('research');
     if (researchDef) {
       return { type: 'named', definition: researchDef, reason: 'Auto: research keywords' };
     }
   }
 
   if (isPlanTask(input.task)) {
-    const planDef = globalAgentRegistry.get('plan');
+    const planDef = registry.get('plan');
     if (planDef) {
       return { type: 'named', definition: planDef, reason: 'Auto: plan keywords' };
     }
@@ -147,7 +149,7 @@ export function resolveAgentRoute(
 
   // 4. 检查是否需要父上下文
   if (needsParentContext(input.task, context)) {
-    const planDef = globalAgentRegistry.get('plan');
+    const planDef = registry.get('plan');
     if (planDef) {
       return { type: 'named', definition: planDef, reason: 'Needs parent context' };
     }

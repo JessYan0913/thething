@@ -30,6 +30,9 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   // 从 layout.filenames 和 behavior.memory 获取配置参数
   const loadOptions: LoadAllOptions = {
     cwd,
+    configDirName: layout.configDirName,
+    homeDir,
+    env: runtime.env,
     resourceDirs: layout.resources,
     permissions: {
       filename: layout.filenames.permissions,

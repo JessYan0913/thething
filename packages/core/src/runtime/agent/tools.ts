@@ -7,7 +7,7 @@ import { wrapLanguageModel } from 'ai'
 import {
   createBashTool,
   createEditFileTool,
-  exaSearchTool,
+  createExaSearchTool,
   createGlobTool,
   createGrepTool,
   createReadFileTool,
@@ -15,8 +15,8 @@ import {
   askUserQuestionTool,
   createSkillTool,
 } from '../tools'
-import { createTaskToolsForConversation, getGlobalTaskStore } from '../tasks'
-import { registerBuiltinAgents, createAgentTool, globalAgentRegistry } from '../../extensions/subagents'
+import { createTaskToolsForConversation } from '../tasks'
+import { AgentRegistry, registerBuiltinAgents, createAgentTool } from '../../extensions/subagents'
 import { createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../extensions/mcp'
 import { getAllConnectorTools } from '../../extensions/connector'
 import { telemetryMiddleware, costTrackingMiddleware } from '../middleware'
@@ -30,17 +30,18 @@ export interface LoadedToolsResult {
 export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedToolsResult> {
   const tools: Record<string, Tool> = {}
   let mcpRegistry: McpRegistry | undefined
+  const agentRegistry = new AgentRegistry()
 
   const wrappedModel = wrapLanguageModel({
     model: config.model,
     middleware: [
-      telemetryMiddleware(),
+      telemetryMiddleware({ debugEnabled: config.debugEnabled }),
       costTrackingMiddleware(config.sessionState.costTracker),
     ],
   })
 
   Object.assign(tools, {
-    web_search: exaSearchTool,
+    web_search: createExaSearchTool({ apiKey: config.webSearchApiKey }),
     read_file: createReadFileTool({
       cwd: config.sessionState.projectRoot,
       extraSensitivePaths: config.sessionState.extraSensitivePaths,
@@ -72,24 +73,22 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     }),
   })
 
-  Object.assign(tools, createTaskToolsForConversation(getGlobalTaskStore(), config.conversationId))
+  Object.assign(tools, createTaskToolsForConversation(config.sessionState.taskStore, config.conversationId))
 
   // 1. 注册内置 Agent
-  registerBuiltinAgents()
+  registerBuiltinAgents(agentRegistry)
 
   // 2. 注册 AppContext 快照中的用户/项目自定义 Agent
-  globalAgentRegistry.clearBySource('user')
-  globalAgentRegistry.clearBySource('project')
   const customAgents = config.agents ?? []
   if (customAgents.length > 0) {
     console.log(`[AgentLoader] Registered ${customAgents.length} preloaded agents: ${customAgents.map(a => a.agentType).join(', ')}`)
   }
   for (const agent of customAgents) {
-    globalAgentRegistry.register(agent)
+    agentRegistry.register(agent)
   }
 
   // Log total registered agents
-  console.log(`[AgentRegistry] Total registered: ${globalAgentRegistry.getAll().map(a => `${a.agentType}(${a.source})`).join(', ')}`)
+  console.log(`[AgentRegistry] Total registered: ${agentRegistry.getAll().map(a => `${a.agentType}(${a.source})`).join(', ')}`)
 
   // 3. 创建统一的 agent 工具
   tools.agent = createAgentTool({
@@ -103,6 +102,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     provider: config.provider,
     modelAliases: config.modelAliases,
     agents: customAgents,
+    agentRegistry,
+    configDirName: config.sessionState.layout.configDirName,
     dynamicReload: config.dynamicReload ?? false,
   })
 

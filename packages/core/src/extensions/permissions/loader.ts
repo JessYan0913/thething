@@ -19,8 +19,8 @@
 import path from 'path';
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir, getResolvedCwd } from '../../foundation/paths';
-import { PERMISSIONS_FILENAME } from '../../config/defaults';
+import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME, PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
 
@@ -39,8 +39,24 @@ function getPermissionsFilePath(dir: string, filename: string = PERMISSIONS_FILE
   return path.join(dir, filename);
 }
 
-function getPermissionDirs(cwd: string, dirs?: readonly string[]): string[] {
-  return dirs ? [...dirs] : [getUserConfigDir('permissions'), getProjectConfigDir(cwd, 'permissions')];
+function getPermissionDirs(
+  cwd: string,
+  dirs?: readonly string[],
+  options?: {
+    configDirName?: string;
+    homeDir?: string;
+  },
+): string[] {
+  if (dirs) {
+    return [...dirs];
+  }
+
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const homeDir = options?.homeDir ?? resolveHomeDir();
+  return [
+    computeUserConfigDir(homeDir, 'permissions', configDirName),
+    computeProjectConfigDir(cwd, 'permissions', configDirName),
+  ];
 }
 
 /**
@@ -104,10 +120,18 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
  *
  * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
  */
-export async function loadRules(cwd?: string, filename?: string, dirs?: readonly string[]): Promise<PermissionConfig> {
+export async function loadRules(
+  cwd?: string,
+  filename?: string,
+  dirs?: readonly string[],
+  options?: {
+    configDirName?: string;
+    homeDir?: string;
+  },
+): Promise<PermissionConfig> {
   const effectiveCwd = cwd ?? process.cwd();
   const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
-  const effectiveDirs = getPermissionDirs(effectiveCwd, dirs);
+  const effectiveDirs = getPermissionDirs(effectiveCwd, dirs, options);
   const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}:${effectiveDirs.join('|')}`;
 
   // 检查缓存
@@ -156,7 +180,7 @@ export async function loadRules(cwd?: string, filename?: string, dirs?: readonly
  * @param filename 配置文件名（可选，默认 PERMISSIONS_FILENAME）
  */
 export function loadRulesSync(cwd?: string, filename?: string): PermissionConfig {
-  const effectiveCwd = cwd ?? getResolvedCwd();
+  const effectiveCwd = cwd ?? process.cwd();
   const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
   const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}`;
 

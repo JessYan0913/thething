@@ -4,7 +4,6 @@
 
 export {
   CredentialStore,
-  credentialStore,
   type EncryptedCredential,
   type CredentialData,
   type CredentialStoreOptions,

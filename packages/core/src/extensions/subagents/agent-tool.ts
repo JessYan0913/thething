@@ -1,11 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { globalAgentRegistry } from './registry';
+import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from '../../api/loaders/agents';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
-import { getResolvedConfigDirName } from '../../foundation/paths';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
 
 // ============================================================
@@ -28,14 +28,14 @@ const tracker = new RecursionTracker();
  */
 export function createAgentTool(config: AgentToolConfig) {
   const cwd = config.cwd ?? process.cwd();
+  const agentRegistry = config.agentRegistry ?? new AgentRegistry();
   for (const agent of config.agents ?? []) {
-    if (!globalAgentRegistry.has(agent.agentType)) {
-      globalAgentRegistry.register(agent);
+    if (!agentRegistry.has(agent.agentType)) {
+      agentRegistry.register(agent);
     }
   }
 
-  // 动态获取配置目录名（使用全局单例）
-  const configDirName = getResolvedConfigDirName();
+  const configDirName = config.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
 
   // 动态生成 input schema（使用正确的 configDirName）
   const AgentToolInputSchema = z.object({
@@ -49,7 +49,7 @@ export function createAgentTool(config: AgentToolConfig) {
   });
 
   // 动态生成 agent 列表描述
-  const registeredAgents = globalAgentRegistry.getAll();
+  const registeredAgents = agentRegistry.getAll();
   const agentList = registeredAgents
     .map(a => {
       const sourceTag = a.source === 'builtin' ? '' : ` (${a.source})`;
@@ -94,11 +94,11 @@ If no agentType specified, will auto-route based on task keywords (find→explor
         }
 
         // 动态加载 Agent（显式开启 dynamicReload 时才重新扫描）
-        if (config.dynamicReload && agentType && !globalAgentRegistry.has(agentType)) {
+        if (config.dynamicReload && agentType && !agentRegistry.has(agentType)) {
           const customAgents = await scanAgentDirs(cwd, { dirs: config.agentsLayoutDirs });
           for (const agent of customAgents) {
-            if (!globalAgentRegistry.has(agent.agentType)) {
-              globalAgentRegistry.register(agent);
+            if (!agentRegistry.has(agent.agentType)) {
+              agentRegistry.register(agent);
             }
           }
         }
@@ -125,6 +125,7 @@ If no agentType specified, will auto-route based on task keywords (find→explor
           provider: config.provider,
           modelAliases: config.modelAliases,
           cwd,
+          agentRegistry,
         };
 
         // 路由决策

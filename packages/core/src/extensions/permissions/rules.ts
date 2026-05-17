@@ -7,7 +7,8 @@
 
 import * as fs from 'fs/promises';
 import { nanoid } from 'nanoid';
-import { getProjectConfigDir } from '../../foundation/paths';
+import { computeProjectConfigDir } from '../../foundation/paths';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule, RuleMatchResult } from './types';
 import {
   loadRules,
@@ -39,8 +40,7 @@ export { loadRules, loadRulesSync, clearPermissionsCache, initPermissions } from
  */
 async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void> {
   const effectiveCwd = cwd ?? process.cwd();
-  // 使用全局 configDirName
-  const projectDir = getProjectConfigDir(effectiveCwd, 'permissions');
+  const projectDir = computeProjectConfigDir(effectiveCwd, 'permissions', DEFAULT_PROJECT_CONFIG_DIR_NAME);
 
   await ensurePermissionsDir(projectDir);
   const filePath = getPermissionsFilePath(projectDir);

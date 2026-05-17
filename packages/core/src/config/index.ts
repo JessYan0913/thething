@@ -101,13 +101,6 @@ export type {
   ModelSwitchConfig,
 } from './types';
 
-// 跨模块组合类型（仅在 config/types.ts 定义）
-export type {
-  AgentToolDefinitionConfig,
-  TaskSchedulerConfig,
-  TaskSyncConfig,
-} from './types';
-
 // 从 runtime/budget 导出的类型
 export type {
   ToolOutputConfig,

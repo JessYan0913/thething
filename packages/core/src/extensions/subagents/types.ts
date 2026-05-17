@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
 import type { TaskStore } from '../../runtime/tasks';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import type { AgentRegistry } from './registry';
 
 // ============================================================
 // Agent Frontmatter Schema（用于解析 .md 文件）
@@ -194,6 +195,9 @@ export interface AgentExecutionContext {
 
   /** 动态重载时使用的 agents 目录布局 */
   agentsLayoutDirs?: readonly string[];
+
+  /** 当前执行绑定的 Agent 注册表 */
+  agentRegistry?: AgentRegistry;
 }
 
 // ============================================================
@@ -301,6 +305,12 @@ export interface AgentToolConfig {
 
   /** 是否允许动态重新扫描 Agent 配置 */
   dynamicReload?: boolean;
+
+  /** 当前对话绑定的 Agent 注册表 */
+  agentRegistry?: AgentRegistry;
+
+  /** 配置目录名（用于工具描述文案） */
+  configDirName?: string;
 }
 
 // ============================================================

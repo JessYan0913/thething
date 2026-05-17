@@ -25,6 +25,8 @@ export interface CredentialStoreOptions {
   encryptionKey?: string  // 加密密钥（至少 16 字节）
   storagePath?: string    // 存储文件路径
   useEnvFallback?: boolean  // 是否使用环境变量作为后备
+  env?: Record<string, string | undefined>  // 显式环境变量快照
+  nodeEnv?: string  // 运行环境标识
 }
 
 let defaultStoragePath: string | null = null;
@@ -58,12 +60,14 @@ export class CredentialStore {
   private readonly mode: 'encrypted' | 'plaintext'
   private storagePath: string
   private useEnvFallback: boolean
+  private env: Record<string, string | undefined>
   private credentials: Map<string, EncryptedCredential> = new Map()
   private initialized = false
 
   constructor(options?: CredentialStoreOptions) {
-    const rawKey = options?.encryptionKey ?? process.env.CONNECTOR_ENCRYPTION_KEY
-    const isProduction = process.env.NODE_ENV === 'production'
+    this.env = { ...(options?.env ?? {}) }
+    const rawKey = options?.encryptionKey
+    const isProduction = options?.nodeEnv === 'production'
 
     if (!rawKey) {
       if (isProduction) {
@@ -301,7 +305,7 @@ export class CredentialStore {
 
     for (const field of fields) {
       const envKey = `${prefix}_${field}`
-      const value = process.env[envKey]
+      const value = this.env[envKey]
       if (value) {
         // 转换为小写键名（如 API_KEY → api_key）
         data[field.toLowerCase()] = value
@@ -310,7 +314,7 @@ export class CredentialStore {
 
     // 尝试读取整体凭证 JSON
     const jsonEnvKey = `${prefix}_CREDENTIALS`
-    const jsonValue = process.env[jsonEnvKey]
+    const jsonValue = this.env[jsonEnvKey]
     if (jsonValue) {
       try {
         const jsonData = JSON.parse(jsonValue) as CredentialData
@@ -373,36 +377,3 @@ export class CredentialStore {
   }
 }
 
-// 单例导出
-export const credentialStore = new CredentialStore()
-
-/**
- * 使用示例：
- *
- * ```typescript
- * import { credentialStore } from '@/connector/credentials'
- *
- * // 初始化
- * await credentialStore.initialize()
- *
- * // 存储凭证
- * await credentialStore.set('wecom', {
- *   corp_id: 'xxx',
- *   corp_secret: 'xxx',
- *   agent_id: 'xxx',
- * })
- *
- * // 获取凭证
- * const creds = await credentialStore.get('wecom')
- * console.log(creds?.corp_id)
- *
- * // 删除凭证
- * await credentialStore.delete('wecom')
- *
- * // 环境变量后备示例
- * // 设置环境变量：
- * // WECOM_CORP_ID=xxx
- * // WECOM_CORP_SECRET=xxx
- * // 或 WECOM_CREDENTIALS={"corp_id":"xxx","corp_secret":"xxx"}
- * ```
- */

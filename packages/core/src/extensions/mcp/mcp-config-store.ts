@@ -8,8 +8,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { scanMcpDirs, clearMcpCache } from '../../api/loaders/mcps';
-import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import type { McpServerConfig, McpServerConfigSource } from './types';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // MCP 配置目录
@@ -20,8 +21,8 @@ import type { McpServerConfig, McpServerConfigSource } from './types';
  *
  * 注意：configDirName 从全局单例获取
  */
-export function getUserMcpConfigDir(): string {
-  return getUserConfigDir('mcps');
+export function getUserMcpConfigDir(configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME): string {
+  return computeUserConfigDir(resolveHomeDir(), 'mcps', configDirName);
 }
 
 /**
@@ -31,15 +32,18 @@ export function getUserMcpConfigDir(): string {
  *
  * 注意：configDirName 从全局单例获取
  */
-export function getProjectMcpConfigDir(cwd: string): string {
-  return getProjectConfigDir(cwd, 'mcps');
+export function getProjectMcpConfigDir(
+  cwd: string,
+  configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME,
+): string {
+  return computeProjectConfigDir(cwd, 'mcps', configDirName);
 }
 
 /**
  * 获取默认 MCP 配置目录（项目级）
  */
-export function getDefaultMcpConfigDir(): string {
-  return getProjectMcpConfigDir(process.cwd());
+export function getDefaultMcpConfigDir(configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME): string {
+  return getProjectMcpConfigDir(process.cwd(), configDirName);
 }
 
 // ============================================================
@@ -85,9 +89,13 @@ function toSerializable(config: McpServerConfig): Record<string, unknown> {
  * @param data 配置数据
  * @param filePath 文件路径
  */
-function fromSerializable(data: Record<string, unknown>, filePath: string): McpServerConfigSource {
+function fromSerializable(
+  data: Record<string, unknown>,
+  filePath: string,
+  configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME,
+): McpServerConfigSource {
   // 使用全局 configDirName 判断来源
-  const userConfigDir = getUserMcpConfigDir();
+  const userConfigDir = getUserMcpConfigDir(configDirName);
   const source = filePath.startsWith(userConfigDir) ? 'user' : 'project';
 
   return {
@@ -118,7 +126,10 @@ export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig
 export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpServerConfigSource[]> {
   const effectiveCwd = cwd ?? process.cwd();
   const configs: McpServerConfigSource[] = [];
-  const dirs: string[] = [getUserMcpConfigDir(), getProjectMcpConfigDir(effectiveCwd)];
+  const dirs: string[] = [
+    getUserMcpConfigDir(DEFAULT_PROJECT_CONFIG_DIR_NAME),
+    getProjectMcpConfigDir(effectiveCwd, DEFAULT_PROJECT_CONFIG_DIR_NAME),
+  ];
 
   for (const dir of dirs) {
     try {
@@ -129,7 +140,7 @@ export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpSe
           const filePath = path.join(dir, entry);
           const content = await fs.readFile(filePath, 'utf-8');
           const data = JSON.parse(content) as Record<string, unknown>;
-          configs.push(fromSerializable(data, filePath));
+          configs.push(fromSerializable(data, filePath, DEFAULT_PROJECT_CONFIG_DIR_NAME));
         } catch {
           // skip corrupted files
         }

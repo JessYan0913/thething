@@ -42,6 +42,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
     } : undefined,
     writerRef: options.writerRef as { current: SubAgentStreamWriter | null } | undefined,
+    webSearchApiKey: context.runtime.env.EXA_API_KEY,
+    debugEnabled: Boolean(context.runtime.env.DEBUG),
     // 传递预加载数据，避免重复 loadAll
     preloadedData: {
       layout,

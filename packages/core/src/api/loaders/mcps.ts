@@ -7,9 +7,10 @@
 
 import { parseJsonFile } from '../../foundation/parser';
 import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanner';
-import { getUserConfigDir, getProjectConfigDir } from '../../foundation/paths';
+import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import type { McpServerConfig } from '../../extensions/mcp/types';
 import { McpServerConfigSchema } from '../../extensions/mcp/types';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
 
 // ============================================================
 // 扩展类型
@@ -35,6 +36,10 @@ export interface LoadMcpsOptions {
   sources?: ('user' | 'project')[];
   /** 显式扫描目录（来自 ResolvedLayout.resources.mcps） */
   dirs?: readonly string[];
+  /** 配置目录名（默认 '.thething'） */
+  configDirName?: string;
+  /** 用户 home 目录（默认 resolveHomeDir()） */
+  homeDir?: string;
 }
 
 // ============================================================
@@ -50,9 +55,12 @@ export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServ
   const cwd = options?.cwd ?? process.cwd();
   const sources = options?.sources ?? ['user', 'project'];
   const explicitDirs = options?.dirs;
+  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const homeDir = options?.homeDir ?? resolveHomeDir();
+  const userConfigBase = computeUserConfigDir(homeDir, undefined, configDirName);
 
   // 检查缓存
-  const cacheKey = `mcps:${cwd}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
+  const cacheKey = `mcps:${cwd}:${configDirName}:${homeDir}:${explicitDirs ? explicitDirs.join('|') : sources.join(',')}`;
   const cached = mcpsCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -60,17 +68,26 @@ export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServ
 
   // 构建扫描目录（使用全局 configDirName）
   const dirs: string[] = explicitDirs ? [...explicitDirs] : [];
+  const sourceByDir = new Map<string, 'user' | 'project'>();
   if (!explicitDirs) {
     if (sources.includes('user')) {
-      dirs.push(getUserConfigDir('mcps'));
+      const userDir = computeUserConfigDir(homeDir, 'mcps', configDirName);
+      dirs.push(userDir);
+      sourceByDir.set(userDir, 'user');
     }
     if (sources.includes('project')) {
-      dirs.push(getProjectConfigDir(cwd, 'mcps'));
+      const projectDir = computeProjectConfigDir(cwd, 'mcps', configDirName);
+      dirs.push(projectDir);
+      sourceByDir.set(projectDir, 'project');
+    }
+  } else {
+    for (const dir of dirs) {
+      sourceByDir.set(dir, dir.startsWith(userConfigBase) ? 'user' : 'project');
     }
   }
 
   // 扫描文件
-  const scanResults = await scanDirs(dirs, { pattern: '*.json' });
+  const scanResults = await scanDirs(dirs, { pattern: '*.json' }, sourceByDir);
 
   // 加载每个文件
   const mcps: McpConfigWithSource[] = [];
@@ -157,11 +174,18 @@ export interface McpLoaderConfig {
  */
 export async function scanMcpDirs(
   cwd?: string,
-  config?: Partial<McpLoaderConfig>,
+  config?: Partial<McpLoaderConfig> & {
+    configDirName?: string;
+    homeDir?: string;
+    dirs?: readonly string[];
+  },
 ): Promise<McpServerConfig[]> {
   return loadMcpServers({
     cwd,
     sources: config?.sources as ('user' | 'project')[] | undefined,
+    configDirName: config?.configDirName,
+    homeDir: config?.homeDir,
+    dirs: config?.dirs,
   });
 }
 

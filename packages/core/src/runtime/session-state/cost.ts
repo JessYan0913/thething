@@ -1,6 +1,6 @@
 import type { CostStore } from '../../foundation/datastore/types';
 import { DEFAULT_MAX_BUDGET_USD } from '../../config/defaults';
-import { getModelPricing } from '../../foundation/model/pricing';
+import type { PricingResolver } from '../../foundation/model/pricing';
 
 export interface CostDelta {
   inputTokens: number;
@@ -15,6 +15,7 @@ export interface CostDelta {
 export interface CostTrackerOptions {
   model?: string;
   maxBudgetUsd?: number;
+  pricingResolver?: PricingResolver;
 }
 
 export class CostTracker {
@@ -27,6 +28,7 @@ export class CostTracker {
   private _persistedToDB = false;
   private _conversationId: string;
   private _costStore: CostStore;
+  private _pricingResolver: PricingResolver;
 
   constructor(conversationId: string, costStore: CostStore, options?: CostTrackerOptions) {
     this._conversationId = conversationId;
@@ -35,6 +37,10 @@ export class CostTracker {
     // 此处 fallback 仅用于未传入配置时的兜底
     this._maxBudgetUsd = options?.maxBudgetUsd ?? DEFAULT_MAX_BUDGET_USD;
     this._costStore = costStore;
+    this._pricingResolver = options?.pricingResolver ?? {
+      getModelPricing: () => ({ input: 1.5, output: 4.5, cached: 0.5 }),
+      getPricingRegistry: () => ({}),
+    };
   }
 
   get totalCost(): number {
@@ -62,7 +68,7 @@ export class CostTracker {
   }
 
   calculateDelta(inputTokens: number, outputTokens: number, cachedReadTokens: number): CostDelta {
-    const pricing = getModelPricing(this._model);
+    const pricing = this._pricingResolver.getModelPricing(this._model);
 
     const inputCost = (inputTokens * pricing.input) / 1_000_000;
     const outputCost = (outputTokens * pricing.output) / 1_000_000;

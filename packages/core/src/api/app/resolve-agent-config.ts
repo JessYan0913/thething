@@ -112,6 +112,7 @@ export function resolveAgentConfig(options: CreateAgentOptions): ResolvedAgentCo
     maxDenialsPerTool: options.session?.maxDenialsPerTool ?? behavior.maxDenialsPerTool,
     model: options.model.modelName,
     dataStore: context.runtime.dataStore,
+    pricingResolver: context.runtime.pricingResolver,
     availableModels: behavior.availableModels,
     modelAliases: behavior.modelAliases,
     autoDowngradeCostThreshold: behavior.autoDowngradeCostThreshold,

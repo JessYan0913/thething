@@ -129,10 +129,7 @@ export {
   getEffectiveContextBudget,
   getAutoCompactThreshold,
   // Pricing（定价配置）
-  configurePricing,
-  getModelPricing,
-  getPricingRegistry,
-  resetPricing,
+  createPricingResolver,
   DEFAULT_PRICING,
 } from './foundation/model';
 export type {
@@ -140,6 +137,7 @@ export type {
   ModelProviderConfig,
   ModelPricing,
   PricingRegistry,
+  PricingResolver,
 } from './foundation/model';
 
 // Clock（时间抽象）
@@ -176,8 +174,6 @@ export {
 // Tasks
 export {
   createTaskStore,
-  getGlobalTaskStore,
-  initGlobalTaskStoreFromDataStore,
 } from './runtime/tasks';
 export {
   STATUS_CONFIG,
@@ -276,7 +272,7 @@ export type { SubAgentStreamWriter } from './extensions/subagents';
 export { SQLiteDataStore } from './foundation/datastore/sqlite/sqlite-data-store';
 
 // CredentialStore
-export { CredentialStore, credentialStore } from './extensions/connector/credentials/store';
+export { CredentialStore } from './extensions/connector/credentials/store';
 
 // ============================================================
 // Native 模块加载（SEA 支持）

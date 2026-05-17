@@ -24,6 +24,10 @@ export interface LoadPermissionsOptions {
   filename?: string;
   /** 显式扫描目录（来自 ResolvedLayout.resources.permissions） */
   dirs?: readonly string[];
+  /** 配置目录名（默认 '.thething'） */
+  configDirName?: string;
+  /** 用户 home 目录 */
+  homeDir?: string;
 }
 
 // ============================================================
@@ -44,7 +48,10 @@ export async function loadPermissions(options?: LoadPermissionsOptions): Promise
   const filename = options?.filename ?? PERMISSIONS_FILENAME;
 
   // 使用统一的 loader，共享缓存
-  const config = await loadRules(cwd, filename, options?.dirs);
+  const config = await loadRules(cwd, filename, options?.dirs, {
+    configDirName: options?.configDirName,
+    homeDir: options?.homeDir,
+  });
   return config.rules;
 }
 

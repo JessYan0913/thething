@@ -1,5 +1,5 @@
 import type { AgentDefinition } from '../types';
-import { globalAgentRegistry } from '../registry';
+import { AgentRegistry, globalAgentRegistry } from '../registry';
 import { EXPLORE_AGENT } from './explore';
 import { RESEARCH_AGENT } from './research';
 import { PLAN_AGENT } from './plan';
@@ -30,9 +30,9 @@ export const BUILTIN_AGENTS: AgentDefinition[] = [
  * registerBuiltinAgents();
  * ```
  */
-export function registerBuiltinAgents(): void {
+export function registerBuiltinAgents(registry: AgentRegistry = globalAgentRegistry): void {
   for (const agent of BUILTIN_AGENTS) {
-    globalAgentRegistry.register(agent);
+    registry.register(agent);
   }
 
   console.log(`[AgentRegistry] Registered ${BUILTIN_AGENTS.length} builtin agents: ${BUILTIN_AGENTS.map(a => a.agentType).join(', ')}`);

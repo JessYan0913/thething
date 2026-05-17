@@ -10,6 +10,8 @@ import type { DataStore } from '../../foundation/datastore/types';
 import type { ModelSpec, CompactionConfig } from '../../config/behavior';
 import type { ResolvedLayout } from '../../config/layout';
 import type { PermissionRule } from '../../extensions/permissions/types';
+import type { PricingResolver } from '../../foundation/model/pricing';
+import type { TaskStore } from '../tasks/types';
 
 /**
  * Session 状态选项
@@ -33,6 +35,10 @@ export interface SessionStateOptions {
   toolOutputConfig?: ToolOutputConfig;
   /** DataStore 实例（来自 CoreRuntime，必填） */
   dataStore: DataStore;
+  /** 定价解析器（来自 CoreRuntime；未传入时使用实例级默认定价） */
+  pricingResolver?: PricingResolver;
+  /** 任务存储（来自 CoreRuntime/DataStore，未传入时使用 dataStore.taskStore） */
+  taskStore?: TaskStore;
   /** 可用模型列表（来自 BehaviorConfig） */
   availableModels?: ModelSpec[];
   /** 自动降级成本阈值（来自 BehaviorConfig） */
@@ -83,6 +89,8 @@ export interface SessionState {
   permissionRules: readonly PermissionRule[];
   /** 额外敏感路径 */
   extraSensitivePaths: readonly string[];
+  /** 当前会话绑定的任务存储 */
+  taskStore: TaskStore;
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
 

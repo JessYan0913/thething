@@ -32,7 +32,7 @@
 export * from './types';
 
 // Core store
-export { InMemoryTaskStore, createTaskStore, getGlobalTaskStore, setGlobalTaskStore, initGlobalTaskStoreFromDataStore } from './store';
+export { InMemoryTaskStore, createTaskStore } from './store';
 
 // High water mark
 export {
