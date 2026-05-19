@@ -1,219 +1,143 @@
-import type { UIMessage } from "ai";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
-import type { DataStore } from "../../foundation/datastore/types";
-import { COMPACT_TOKEN_THRESHOLD, type RuntimeCompactionConfig, type CompactionResult, type PostCompactConfig } from "./types";
-import { estimateMessagesTokens } from "./token-counter";
-import { microCompactMessages } from "./micro-compact";
-import { trySessionMemoryCompact } from "./session-memory-compact";
-import { getMessagesAfterCompactBoundary } from "./boundary";
-import { tryPtlDegradation } from "./ptl-degradation";
-import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
-import { reinjectAfterCompact, type ReinjectContext } from "./post-compact-reinject";
+// ============================================================
+// Compaction Module - Entry Point
+// ============================================================
+// 源头管理，每步自动替换旧工具输出为结构化元信息
+//
+// compactBeforeStep 执行顺序：
+// 1. Layer 1: 应用 Agent 主动释放的工具输出 (pendingCompactIds)
+// 2. Layer 2: 工具输出生命周期管理 (同步，微秒级)
+// 3. Layer 3: 上下文窗口检查 (异步，极少触发)
+
+import type { UIMessage } from 'ai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import type { DataStore } from '../../foundation/datastore/types';
+import type { SessionState } from '../session-state/types';
+import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
+import { manageToolOutputLifecycle, extractToolMeta } from './lifecycle';
+import { enforceContextWindow } from './context-window';
+import { estimateFullRequest } from './token-counter';
+import { getModelContextLimit } from '../../foundation/model';
+import type { CompactedToolResult } from './types';
+
+// ============================================================
+// Main Entry Point: compactBeforeStep
+// ============================================================
 
 /**
- * Compaction 函数选项
+ * prepareStep 中调用：每步 API 调用前的上下文管理
  */
-export interface CompactOptions {
-  /** 是否启用普通自动压缩 */
-  enabled?: boolean;
-  /** Compaction 配置（运行时版本，compactableTools 为 Set<string>） */
-  compactionConfig?: RuntimeCompactionConfig;
-  /** 压缩阈值（来自 BehaviorConfig.compactionThreshold） */
-  compactionThreshold?: number;
-  /** Post-compaction config (budget, file limits) */
-  postCompact?: PostCompactConfig;
-  /** Context for reinjecting critical state after compaction */
-  reinjectContext?: ReinjectContext;
-}
-
-async function applyReinjectIfNeeded(
+export async function compactBeforeStep(
   messages: UIMessage[],
-  options?: CompactOptions,
+  sessionState: SessionState,
+  config: CompactionConfig = DEFAULT_COMPACTION_CONFIG,
+  context: {
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    conversationId: string;
+    dataStore: DataStore;
+    instructionsTokens?: number;
+    toolsTokens?: number;
+  },
 ): Promise<UIMessage[]> {
-  if (!options?.reinjectContext) return messages;
-  return reinjectAfterCompact(messages, options.reinjectContext, options.postCompact);
+  let current = messages;
+
+  // ── Layer 1: 应用 Agent 主动释放 ──
+  if (sessionState.pendingCompactIds && sessionState.pendingCompactIds.length > 0) {
+    current = applyPendingCompactions(current, sessionState.pendingCompactIds);
+    sessionState.pendingCompactIds = [];
+  }
+
+  // ── Layer 2: 工具输出生命周期管理（同步，微秒级）──
+  const lifecycle = manageToolOutputLifecycle(current, config.lifecycle);
+  current = lifecycle.messages;
+
+  // ── Layer 3: 上下文窗口检查（异步，极少触发）──
+  const estimation = await estimateFullRequest(current, '', {}, context.modelName);
+  const contextLimit = getModelContextLimit(context.modelName);
+  const triggerTokens = Math.floor(contextLimit * config.contextWindow.triggerPercent);
+
+  if (estimation.messagesTokens >= triggerTokens) {
+    const windowResult = await enforceContextWindow(current, {
+      model: context.model,
+      fallbackModels: context.fallbackModels,
+      modelName: context.modelName,
+      conversationId: context.conversationId,
+      dataStore: context.dataStore,
+      config: config.contextWindow,
+    });
+    if (windowResult.executed) {
+      current = windowResult.messages;
+    }
+  }
+
+  return current;
 }
 
-export async function compactMessagesIfNeeded(
-  messages: UIMessage[],
-  conversationId: string,
-  dataStore: DataStore,
-  options?: CompactOptions,
-): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
-  if (options?.enabled === false) {
-    return { messages, executed: false, tokensFreed: 0 };
-  }
+// ============================================================
+// Layer 1: Apply Pending Compactions
+// ============================================================
 
-  // 使用传入的阈值，否则使用 fallback
-  const threshold = options?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD;
+function applyPendingCompactions(messages: UIMessage[], ids: string[]): UIMessage[] {
+  const idSet = new Set(ids);
+  return messages.map((msg) => {
+    if (!msg.parts?.some((p) => p.type === 'dynamic-tool')) return msg;
 
-  // 检查是否需要自动压缩
-  const shouldAutoCompact = await autoCompactIfNeeded(
-    messages,
-    conversationId,
-    threshold,
-    options?.compactionConfig?.bufferTokens,
-  );
-  if (!shouldAutoCompact) {
-    return { messages, executed: false, tokensFreed: 0 };
-  }
+    const newParts = msg.parts.map((p) => {
+      if (p.type !== 'dynamic-tool') return p;
 
-  const tokenCount = await estimateMessagesTokens(messages);
+      const part = p as Record<string, unknown>;
+      const toolCallId = part.toolCallId as string | undefined;
+      if (!toolCallId || !idSet.has(toolCallId)) return p;
 
-  if (tokenCount < threshold) {
-    return { messages, executed: false, tokensFreed: 0 };
-  }
+      const output = part.output;
+      if (!output) return p;
+      if (typeof output === 'object' && (output as CompactedToolResult)._compacted) return p;
 
-  const messagesAfterBoundary = getMessagesAfterCompactBoundary(messages);
-  const tokensAfterBoundary = await estimateMessagesTokens(messagesAfterBoundary);
+      const toolName = (part.toolName ?? part.name) as string ?? 'unknown';
+      const args = part.input ?? part.args;
+      const summary = extractToolMeta(toolName, args, output);
+      const originalSize = JSON.stringify(output).length;
 
-  if (tokensAfterBoundary < threshold * 0.5) {
-    const summaryMessage = messages.find(
-      (m) =>
-        m.role === "system" &&
-        m.parts.some(
-          (p) =>
-            p.type === "text" &&
-            p.text.includes("[Previous conversation summary]"),
-        ),
-    );
-
-    if (summaryMessage) {
       return {
-        messages: [summaryMessage, ...messagesAfterBoundary],
-        executed: false,
-        tokensFreed: 0,
-      };
-    }
-  }
+        ...part,
+        output: {
+          summary,
+          _compacted: true,
+          _originalSize: originalSize,
+        },
+      } as typeof p;
+    });
 
-  // Fast path 1: use existing DB summary (no LLM call, instant)
-  try {
-    const sessionMemoryResult = await trySessionMemoryCompact(
-      messagesAfterBoundary,
-      conversationId,
-      options?.compactionConfig?.sessionMemory ?? {},
-      dataStore,
-    );
-
-    if (sessionMemoryResult) {
-      const reinjectedMessages = await applyReinjectIfNeeded(sessionMemoryResult.messages, options);
-      console.log(
-        `[Compaction] Session Memory Compact: freed ${sessionMemoryResult.tokensFreed} tokens`,
-      );
-      recordCompactSuccess(conversationId);
-      return {
-        messages: reinjectedMessages,
-        executed: true,
-        tokensFreed: sessionMemoryResult.tokensFreed,
-      };
-    }
-  } catch (error) {
-    console.error("[Compaction] Session Memory Compact failed:", error);
-  }
-
-  // Fast path 2: micro-compact (no LLM call)
-  const microResult = await microCompactMessages(
-    messagesAfterBoundary,
-    options?.compactionConfig?.micro,
-  );
-
-  if (microResult.executed) {
-    const tokensAfterMicro = await estimateMessagesTokens(microResult.messages);
-    console.log(
-      `[Compaction] MicroCompact: freed ${microResult.tokensFreed} tokens, remaining: ${tokensAfterMicro}`,
-    );
-
-    if (tokensAfterMicro < threshold) {
-      const reinjectedMessages = await applyReinjectIfNeeded(microResult.messages, options);
-      recordCompactSuccess(conversationId);
-      return {
-        messages: reinjectedMessages,
-        executed: true,
-        tokensFreed: microResult.tokensFreed,
-      };
-    }
-  }
-
-  // Fast path 3: PTL emergency hard-truncation (no LLM call)
-  const ptlResult = await tryPtlDegradation(microResult.messages, {
-    enabled: options?.enabled,
-    microConfig: options?.compactionConfig?.micro,
+    return { ...msg, parts: newParts };
   });
-  if (ptlResult.executed) {
-    console.log(
-      `[Compaction] PTL Degradation applied: freed ${ptlResult.tokensFreed} tokens`,
-    );
-    // Inject existing DB summary to restore context lost by truncation
-    const storedSummary = dataStore.summaryStore.getSummaryByConversation(conversationId);
-    if (storedSummary) {
-      const summaryMessage: UIMessage = {
-        id: `summary-${Date.now()}`,
-        role: "system",
-        parts: [
-          {
-            type: "text",
-            text: `[Previous conversation summary]\n${storedSummary.summary}\n\n[End of summary]`,
-          },
-        ],
-      };
-      const reinjectedMessages = await applyReinjectIfNeeded(
-        [summaryMessage, ...ptlResult.messages], options,
-      );
-      return {
-        messages: reinjectedMessages,
-        executed: true,
-        tokensFreed: ptlResult.tokensFreed,
-      };
-    }
-    const reinjectedMessages = await applyReinjectIfNeeded(ptlResult.messages, options);
-    recordCompactSuccess(conversationId);
-    return {
-      messages: reinjectedMessages,
-      executed: true,
-      tokensFreed: ptlResult.tokensFreed,
-    };
-  }
-
-  // All fast paths exhausted — LLM summary will be generated async after this response
-  console.warn(
-    `[Compaction] No fast-path compaction succeeded for ${conversationId}. ` +
-      `LLM summary will be generated in background after this response.`,
-  );
-  return {
-    messages: microResult.messages,
-    executed: microResult.executed,
-    tokensFreed: microResult.tokensFreed,
-  };
 }
 
-/**
- * Manual compact — 用户手动触发压缩
- *
- * [Level 2] 不受 modules.compaction 开关控制。
- * 设计决策：用户主动请求压缩时，无论自动压缩是否启用，都应执行。
- * 这与 compactMessagesIfNeeded（Level 1，受 enabled 控制）不同。
- */
-export async function compactMessagesWithCustomInstructions(
-  messages: UIMessage[],
-  conversationId: string,
-  customInstructions: string,
-  dataStore: DataStore,
-  model?: LanguageModelV3,
-): Promise<CompactionResult> {
-  const { compactWithCustomInstructions } = await import("./api-compact");
-  return compactWithCustomInstructions(
-    messages,
-    conversationId,
-    customInstructions,
-    dataStore,
-    model,
-  );
-}
+// ============================================================
+// Re-exports
+// ============================================================
 
-export { estimateMessagesTokens } from "./token-counter";
+export { manageToolOutputLifecycle, extractToolMeta } from './lifecycle';
+export { enforceContextWindow } from './context-window';
+export { checkInitialBudget, type InitialBudgetCheckResult } from './budget-check';
+export { handleReactiveRetry, isContextLengthError } from './retry';
+export {
+  type CompactionConfig,
+  type LifecycleConfig,
+  type ContextWindowConfig,
+  type CompactedToolResult,
+  type CompactionResult,
+  DEFAULT_COMPACTION_CONFIG,
+  DEFAULT_LIFECYCLE_CONFIG,
+  DEFAULT_CONTEXT_WINDOW_CONFIG,
+} from './types';
+
+// ============================================================
+// Token Counter (kept, used by external code)
+// ============================================================
 
 export {
+  estimateMessagesTokens,
   estimateToolTokens,
   estimateToolsTokens,
   estimateInstructionsTokens,
@@ -222,85 +146,15 @@ export {
   setTokenizerDir,
   formatEstimationResult,
   type FullRequestEstimation,
-} from "./token-counter";
+} from './token-counter';
 
-// Tokenizer 配置 API（显式配置，不依赖环境变量）
 export {
   registerTokenizer,
   setAutoDownload,
-} from "./tokenizer";
+} from './tokenizer';
 
-export { microCompactMessages } from "./micro-compact";
+// ============================================================
+// Title Generator
+// ============================================================
 
-export { trySessionMemoryCompact } from "./session-memory-compact";
-
-export { compactViaAPI } from "./api-compact";
-
-export {
-  createCompactBoundaryMessage,
-  isCompactBoundaryMessage,
-  parseCompactBoundaryMetadata,
-  getMessagesAfterCompactBoundary,
-  getLastBoundaryMessage,
-  hasCompactBoundary,
-  stripCompactBoundaries,
-} from "./boundary";
-
-export {
-  runCompactInBackground,
-  isCompactInProgress,
-  getQueueSize,
-  waitForConversationCompaction,
-  waitForAllCompactions,
-} from "./background-queue";
-
-export {
-  reinjectAfterCompact,
-  type ReinjectContext,
-} from "./post-compact-reinject";
-
-export { tryPtlDegradation } from "./ptl-degradation";
-
-export {
-  registerCompactHook,
-  executeCompactHooks,
-  type CompactHookPhase,
-  type CompactHookContext,
-  type CompactHookResult,
-} from "./hooks";
-
-export {
-  COMPACT_TOKEN_THRESHOLD,
-  DEFAULT_SESSION_MEMORY_CONFIG,
-  DEFAULT_MICRO_COMPACT_CONFIG,
-  DEFAULT_POST_COMPACT_CONFIG,
-  isCompactableTool,
-} from "./types";
-
-export {
-  shouldTriggerAutoCompact,
-  autoCompactIfNeeded,
-  recordCompactFailure,
-  recordCompactSuccess,
-} from "./auto-compact";
-
-export { generateConversationTitle } from "./title-generator";
-
-// Initial Budget Check
-export {
-  checkInitialBudget,
-  type InitialBudgetCheckResult,
-} from "./initial-budget-check";
-
-export type {
-  CompactionResult,
-  CompactMetadata,
-  CompactBoundaryMessage,
-  CompactionType,
-  SessionMemoryCompactConfig,
-  MicroCompactConfig,
-  PostCompactConfig,
-  RuntimeCompactionConfig,
-} from "./types";
-
-export { toRuntimeCompactionConfig } from "./types";
+export { generateConversationTitle } from './title-generator';

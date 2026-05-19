@@ -18,9 +18,9 @@ export type { ModelProviderConfig } from '../foundation/model/provider-types';
 
 // 压缩配置
 export type {
-  SessionMemoryCompactConfig,
-  MicroCompactConfig,
-  PostCompactConfig,
+  CompactionConfig,
+  LifecycleConfig,
+  ContextWindowConfig,
 } from '../runtime/compaction/types';
 
 // 数据存储

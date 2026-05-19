@@ -6,9 +6,7 @@ import { Hono } from 'hono'
 import {
   createAgent,
   generateConversationTitle,
-  compactMessagesIfNeeded,
   estimateMessagesTokens,
-  runCompactInBackground,
   extractMemoriesInBackground,
   type SubAgentStreamWriter,
 } from '@the-thing/core'
@@ -77,16 +75,6 @@ app.post('/', async (c) => {
 
     const messages: UIMessage[] = [...existingMessages, message]
 
-    const { messages: compactedMessages } = await compactMessagesIfNeeded(
-      messages,
-      conversationId,
-      store,
-    )
-
-    const preCompactionTokens = estimateMessagesTokens(messages)
-    const postCompactionTokens = estimateMessagesTokens(compactedMessages)
-    console.log(`[Tokens] Pre: ${preCompactionTokens}, Post: ${postCompactionTokens}`)
-
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
     const userId = messageUserId || 'default'
 
@@ -99,11 +87,10 @@ app.post('/', async (c) => {
       mcpRegistry,
       model,
       adjustedMessages,
-      compactOptions,
     } = await createAgent({
       context,
       conversationId,
-      messages: compactedMessages,
+      messages,
       userId,
       model: {
         apiKey: process.env.DASHSCOPE_API_KEY || '',
@@ -176,8 +163,6 @@ app.post('/', async (c) => {
                   })
                   .catch((err) => console.error('[Title Generation] Error:', err))
               }
-
-              runCompactInBackground(messagesToSave, conversationId, store, model, compactOptions)
 
               // Cleanup MCP connections (non-blocking)
               if (mcpRegistry) {

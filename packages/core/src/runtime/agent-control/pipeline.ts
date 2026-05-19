@@ -65,15 +65,11 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       sessionState.model = costSwitchResult.newModel!;
     }
 
-    if (sessionState.tokenBudget.shouldCompact()) {
-      debugLog(debugEnabled, `[Agent] Token budget exceeded threshold, triggering compaction...`);
-      const compactionResult = await sessionState.compact(messages as unknown as UIMessage[]);
-      if (compactionResult.executed) {
-        debugLog(debugEnabled, `[Agent] Compaction freed ${compactionResult.tokensFreed} tokens`);
-        return {
-          messages: compactionResult.messages as unknown as ModelMessageType[],
-        } as unknown as PrepareStepResult<TOOLS>;
-      }
+    // 每步调用 compactBeforeStep（Layer 1 + Layer 2 + Layer 3）
+    const compactResult = await sessionState.compact(messages as unknown as UIMessage[]);
+    if (compactResult.executed) {
+      debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
+      messages = compactResult.messages as unknown as ModelMessageType[];
     }
 
     // ✅ 新增：工具结果预算检查

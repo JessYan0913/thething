@@ -31,40 +31,6 @@ export const DEFAULT_MAX_DENIALS_PER_TOOL = 3;
 /** 压缩触发阈值 */
 export const COMPACT_TOKEN_THRESHOLD = 25_000;
 
-/** Session Memory Compact 默认配置 */
-export const DEFAULT_SESSION_MEMORY_CONFIG = {
-  minTokens: 10_000,
-  maxTokens: 40_000,
-  minTextBlockMessages: 5,
-};
-
-/** Micro Compact 默认配置（工具名数组形式，需在使用时转换为 Set） */
-export const DEFAULT_MICRO_COMPACT_CONFIG_RAW = {
-  timeWindowMs: 15 * 60 * 1000,  // 15 分钟
-  imageMaxTokenSize: 2000,
-  compactableTools: [
-    'Read',
-    'Bash',
-    'Grep',
-    'Glob',
-    'WebSearch',
-    'WebFetch',
-    'Edit',
-    'Write',
-  ],
-  gapThresholdMinutes: 60,
-  keepRecent: 5,
-};
-
-/** Post Compact 默认配置 */
-export const DEFAULT_POST_COMPACT_CONFIG = {
-  totalBudget: 50_000,
-  maxFilesToRestore: 5,
-  maxTokensPerFile: 5_000,
-  maxTokensPerSkill: 5_000,
-  skillsTokenBudget: 25_000,
-};
-
 // ============================================================
 // Skills 配置默认值
 // ============================================================

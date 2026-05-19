@@ -17,7 +17,6 @@ import type { MemoryEntry } from '../../api/loaders/memory'
 import type { DataStore } from '../../foundation/datastore/types'
 import type { BehaviorConfig } from '../../config/behavior'
 import type { ConnectorRegistry } from '../../extensions/connector'
-import type { CompactOptions } from '../compaction'
 import type { ResolvedLayout } from '../../config/layout'
 import type { ToolOutputConfig } from '../budget/tool-output-manager'
 
@@ -151,8 +150,6 @@ export interface CreateAgentResult {
     hasSkillListing: boolean
     skillListingCount: number
   }
-  /** Pre-built compact options for background compaction */
-  compactOptions?: CompactOptions
   /**
    * 释放本次对话占用的所有资源
    * - 持久化成本数据

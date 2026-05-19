@@ -13,12 +13,6 @@ import {
   DEFAULT_CONTEXT_LIMIT,
 } from '../foundation/model/constants';
 import {
-  AUTOCOMPACT_BUFFER_TOKENS,
-} from '../foundation/constants';
-import {
-  DEFAULT_SESSION_MEMORY_CONFIG,
-  DEFAULT_MICRO_COMPACT_CONFIG_RAW,
-  DEFAULT_POST_COMPACT_CONFIG,
   DEFAULT_MAX_BUDGET_USD,
   DEFAULT_MAX_DENIALS_PER_TOOL,
   COMPACT_TOKEN_THRESHOLD,
@@ -52,62 +46,16 @@ export interface ModelSpec {
   capabilityTier: number;
 }
 
-/**
- * Session Memory Compact 配置
- */
-export interface SessionMemoryCompactConfig {
-  /** 最小触发阈值（Token） */
-  minTokens: number;
-  /** 最大保留（Token） */
-  maxTokens: number;
-  /** 最少文本块消息数 */
-  minTextBlockMessages: number;
-}
-
-/**
- * Micro Compact 配置
- */
-export interface MicroCompactConfig {
-  /** 时间窗口（毫秒） */
-  timeWindowMs: number;
-  /** 图片最大 Token 大小 */
-  imageMaxTokenSize: number;
-  /** 可压缩工具列表 */
-  compactableTools: string[];
-  /** 间隙阈值（分钟） */
-  gapThresholdMinutes: number;
-  /** 保留最近数 */
-  keepRecent: number;
-}
-
-/**
- * Post Compact 配置
- */
-export interface PostCompactConfig {
-  /** 总 Token 预算 */
-  totalBudget: number;
-  /** 最大恢复文件数 */
-  maxFilesToRestore: number;
-  /** 每文件最大 Token */
-  maxTokensPerFile: number;
-  /** 每技能最大 Token */
-  maxTokensPerSkill: number;
-  /** Skills Token 预算 */
-  skillsTokenBudget: number;
-}
+import type { LifecycleConfig, ContextWindowConfig } from '../runtime/compaction/types';
 
 /**
  * Compaction 配置
  */
 export interface CompactionConfig {
-  /** 自动压缩提前触发的上下文缓冲区（Token） */
-  bufferTokens: number;
-  /** Session Memory Compact 配置 */
-  sessionMemory: SessionMemoryCompactConfig;
-  /** Micro Compact 配置 */
-  micro: MicroCompactConfig;
-  /** Post Compact 配置 */
-  postCompact: PostCompactConfig;
+  /** Layer 2: 工具输出生命周期管理配置 */
+  lifecycle: LifecycleConfig;
+  /** Layer 3: 上下文窗口管理配置 */
+  contextWindow: ContextWindowConfig;
 }
 
 /**
@@ -326,27 +274,19 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
     modelPricing: partial?.modelPricing,
     extraSensitivePaths: partial?.extraSensitivePaths ?? ([] as readonly string[]),
-    // 新增：压缩配置
+    // 压缩配置
     compaction: partial?.compaction ?? {
-      bufferTokens: AUTOCOMPACT_BUFFER_TOKENS,
-      sessionMemory: {
-        minTokens: DEFAULT_SESSION_MEMORY_CONFIG.minTokens,
-        maxTokens: DEFAULT_SESSION_MEMORY_CONFIG.maxTokens,
-        minTextBlockMessages: DEFAULT_SESSION_MEMORY_CONFIG.minTextBlockMessages,
+      lifecycle: {
+        keepRecentTurns: 3,
+        largeOutputThreshold: 8000,
+        compactableTools: null,
+        protectedTools: new Set(),
       },
-      micro: {
-        timeWindowMs: DEFAULT_MICRO_COMPACT_CONFIG_RAW.timeWindowMs,
-        imageMaxTokenSize: DEFAULT_MICRO_COMPACT_CONFIG_RAW.imageMaxTokenSize,
-        compactableTools: DEFAULT_MICRO_COMPACT_CONFIG_RAW.compactableTools,
-        gapThresholdMinutes: DEFAULT_MICRO_COMPACT_CONFIG_RAW.gapThresholdMinutes,
-        keepRecent: DEFAULT_MICRO_COMPACT_CONFIG_RAW.keepRecent,
-      },
-      postCompact: {
-        totalBudget: DEFAULT_POST_COMPACT_CONFIG.totalBudget,
-        maxFilesToRestore: DEFAULT_POST_COMPACT_CONFIG.maxFilesToRestore,
-        maxTokensPerFile: DEFAULT_POST_COMPACT_CONFIG.maxTokensPerFile,
-        maxTokensPerSkill: DEFAULT_POST_COMPACT_CONFIG.maxTokensPerSkill,
-        skillsTokenBudget: DEFAULT_POST_COMPACT_CONFIG.skillsTokenBudget,
+      contextWindow: {
+        triggerPercent: 0.85,
+        targetPercent: 0.60,
+        contextHintMessages: 2,
+        incrementalSummary: true,
       },
     },
     // 新增：工具输出限制

@@ -106,5 +106,9 @@ export async function buildAgentInstructions(
   })
 
   // 技能指令现在通过 Skill 工具注入，不再拼接到系统提示词
-  return prompt
+
+  // Layer 1: 添加工具输出释放指令
+  const compactionHint = '\n\nWhen you finish using a tool\'s output, call compact_tool_result to free context space.'
+
+  return prompt + compactionHint
 }

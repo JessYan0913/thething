@@ -5,9 +5,9 @@
 import type { UIMessage } from 'ai';
 import { DenialTracker } from '../agent-control/denial-tracking';
 import { ModelSwapper } from '../agent-control/model-switching';
-import { compactMessagesIfNeeded, type CompactOptions } from '../compaction';
-import { toRuntimeCompactionConfig } from '../compaction/types';
-import type { CompactionResult } from '../compaction/types';
+import { compactBeforeStep } from '../compaction';
+import { DEFAULT_COMPACTION_CONFIG, type CompactionResult } from '../compaction/types';
+import type { CompactionConfig } from '../compaction/types';
 import type { Skill } from '../../extensions/skills/types';
 import {
   createContentReplacementState,
@@ -52,7 +52,6 @@ export function createSessionState(
     compactionEnabled = true,
     permissionRules = [],
     extraSensitivePaths = [],
-    reinjectContext,
   } = options;
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
@@ -78,12 +77,8 @@ export function createSessionState(
     modelAliases: options?.modelAliases,
   });
 
-  // 构建压缩选项（从 BehaviorConfig 传入，转换 compactableTools 为 Set）
-  const compactOptions: CompactOptions = {
-    enabled: compactionEnabled,
-    compactionConfig: compactionConfig ? toRuntimeCompactionConfig(compactionConfig) : undefined,
-    compactionThreshold: compactThreshold,
-  };
+  // 构建 压缩配置
+  const compactionCfg: CompactionConfig = compactionConfig ?? DEFAULT_COMPACTION_CONFIG;
 
   // 使用普通对象，简化状态管理
   const state: SessionState = {
@@ -106,22 +101,47 @@ export function createSessionState(
     activeSkills: new Set<string>(),
     loadedSkills: new Map<string, Skill>(),
     contentReplacementState: createContentReplacementState(),
-    reinjectContext,
+    pendingCompactIds: [],
+    compactionConfig: compactionCfg,
+    compactModel: undefined,
+    fallbackModels: undefined,
+    dataStore: dataStore,
 
     async compact(messages: UIMessage[]): Promise<CompactionResult> {
-      const result = await compactMessagesIfNeeded(messages, conversationId, dataStore, {
-        ...compactOptions,
-        reinjectContext,
-        postCompact: compactOptions.compactionConfig?.postCompact,
-      });
-      const compactionResult: CompactionResult = {
+      if (!compactionEnabled) {
+        return { messages, executed: false, tokensFreed: 0, actions: [] };
+      }
+      // 调用 compactBeforeStep 执行完整的三层压缩
+      if (state.compactModel && state.dataStore) {
+        const beforeResult = await compactBeforeStep(
+          messages,
+          state,
+          compactionCfg,
+          {
+            model: state.compactModel,
+            fallbackModels: state.fallbackModels,
+            modelName: state.model,
+            conversationId,
+            dataStore: state.dataStore,
+          },
+        );
+        const tokensFreed = await estimateMessagesTokensDifference(messages, beforeResult);
+        return {
+          messages: beforeResult,
+          executed: tokensFreed > 0,
+          tokensFreed,
+          actions: tokensFreed > 0 ? [`compactBeforeStep: freed ${tokensFreed} tokens`] : [],
+        };
+      }
+      // Fallback: 仅 Layer 2（无模型实例时）
+      const { manageToolOutputLifecycle } = await import('../compaction/lifecycle');
+      const result = manageToolOutputLifecycle(messages, compactionCfg.lifecycle);
+      return {
         messages: result.messages,
-        executed: result.executed,
-        type: 'auto',
+        executed: result.tokensFreed > 0,
         tokensFreed: result.tokensFreed,
+        actions: result.tokensFreed > 0 ? [`Layer 2: freed ${result.tokensFreed} tokens`] : [],
       };
-      tokenBudget.reportCompaction(compactionResult);
-      return compactionResult;
     },
 
     abort() {
@@ -134,4 +154,15 @@ export function createSessionState(
   };
 
   return state;
+}
+
+async function estimateMessagesTokensDifference(before: UIMessage[], after: UIMessage[]): Promise<number> {
+  try {
+    const { estimateMessagesTokens } = await import('../compaction/token-counter');
+    const beforeTokens = await estimateMessagesTokens(before);
+    const afterTokens = await estimateMessagesTokens(after);
+    return Math.max(0, beforeTokens - afterTokens);
+  } catch {
+    return 0;
+  }
 }

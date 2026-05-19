@@ -23,7 +23,6 @@ import {
   preloadTokenizer,
 } from './runtime/compaction/tokenizer';
 import { createPricingResolver, type PricingResolver } from './foundation/model/pricing';
-import { waitForAllCompactions } from './runtime/compaction/background-queue';
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from './config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from './config/behavior';
 import path from 'path';
@@ -214,10 +213,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
       pricingResolver,
       connectorInbound: connectorRuntime.inbound,
     async dispose() {
-      // 1. 等待所有后台压缩完成，避免关闭数据库时写入失败
-      await waitForAllCompactions();
-
-      // 2. 关闭 Connector Runtime
+      // 1. 关闭 Connector Runtime
       await disposeConnectorRuntime(connectorRuntime);
 
       // 3. 关闭数据库连接

@@ -4,7 +4,8 @@
 
 import type { ModelProviderConfig } from '../../foundation/model';
 import type { ToolOutputConfig } from '../../runtime/budget/tool-output-manager';
-import type { BehaviorConfig, CompactionConfig } from '../../config/behavior';
+import type { BehaviorConfig } from '../../config/behavior';
+import type { CompactionConfig } from '../../runtime/compaction/types';
 import { DEFAULT_MAX_RESULT_SIZE_CHARS, PREVIEW_SIZE_CHARS } from '../../config/defaults';
 import type { CreateAgentOptions } from './types';
 import type { ResolvedAgentConfig, AgentModules } from '../../runtime/agent/types';
@@ -37,35 +38,17 @@ export function resolveAgentCompactThreshold(
   behavior: BehaviorConfig,
   options?: {
     session?: CreateAgentOptions['session'];
-    compaction?: AgentCompactionOptions;
   },
 ): number {
-  return (
-    options?.compaction?.threshold ??
-    options?.session?.compactThreshold ??
-    behavior.compactionThreshold
-  );
+  return options?.session?.compactThreshold ?? behavior.compactionThreshold;
 }
 
 export function resolveAgentCompactionConfig(
   behavior: BehaviorConfig,
   compaction?: AgentCompactionOptions,
 ): CompactionConfig {
-  return {
-    bufferTokens: compaction?.bufferTokens ?? behavior.compaction.bufferTokens,
-    sessionMemory: {
-      ...behavior.compaction.sessionMemory,
-      ...compaction?.sessionMemory,
-    },
-    micro: {
-      ...behavior.compaction.micro,
-      ...compaction?.micro,
-    },
-    postCompact: {
-      ...behavior.compaction.postCompact,
-      ...compaction?.postCompact,
-    },
-  };
+  // 直接使用 behavior.compaction（已包含 lifecycle + contextWindow）
+  return behavior.compaction;
 }
 
 export function resolveToolOutputConfig(
@@ -98,7 +81,6 @@ export function resolveAgentConfig(options: CreateAgentOptions): ResolvedAgentCo
   const compactionConfig = resolveAgentCompactionConfig(behavior, options.compaction);
   const compactThreshold = resolveAgentCompactThreshold(behavior, {
     session: options.session,
-    compaction: options.compaction,
   });
   const toolOutputConfig = resolveToolOutputConfig(behavior.toolOutput);
 
@@ -141,7 +123,7 @@ export function resolveAgentConfig(options: CreateAgentOptions): ResolvedAgentCo
 // 作为防止参数断层的回归门禁基础。
 
 export interface ConfigFieldTrace {
-  /** 字段名（点分路径，如 'behavior.compaction.bufferTokens'） */
+  /** 字段名（点分路径，如 'behavior.compaction.lifecycle'） */
   field: string;
   /** 值的来源：'explicit-override'（调用方显式传入）、'behavior-default'（BehaviorConfig 默认值）、'resolved-default'（解析层默认值） */
   source: 'explicit-override' | 'behavior-default' | 'resolved-default' | 'layout-default';
@@ -180,10 +162,8 @@ const FIELD_CONSUMERS: Record<string, string[]> = {
   'behavior.autoDowngradeCostThreshold': ['agent-control/model-switching', 'session-state'],
   'behavior.modelPricing': ['foundation/model/pricing'],
   'behavior.extraSensitivePaths': ['permissions'],
-  'behavior.compaction.bufferTokens': ['runtime/compaction'],
-  'behavior.compaction.sessionMemory': ['runtime/compaction'],
-  'behavior.compaction.micro': ['runtime/compaction/micro-compact'],
-  'behavior.compaction.postCompact': ['runtime/compaction/post-compact'],
+  'behavior.compaction.lifecycle': ['runtime/compaction/lifecycle'],
+  'behavior.compaction.contextWindow': ['runtime/compaction/context-window'],
   'behavior.toolOutput.maxResultSizeChars': ['budget/tool-output-manager'],
   'behavior.toolOutput.maxToolResultTokens': ['budget/tool-output-manager'],
   'behavior.toolOutput.maxToolResultsPerMessageChars': ['budget/message-budget'],
@@ -250,7 +230,6 @@ function determineSource(
     const sess = options.session as Record<string, unknown> | undefined;
     if (sess && sess[key] !== undefined) return 'explicit-override';
     if (key === 'compactThreshold') {
-      if (options.compaction?.threshold !== undefined) return 'explicit-override';
       if (options.session?.compactThreshold !== undefined) return 'explicit-override';
       return 'behavior-default';
     }

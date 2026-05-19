@@ -127,7 +127,6 @@ export {
   getDefaultOutputTokens,
   getModelCapabilities,
   getEffectiveContextBudget,
-  getAutoCompactThreshold,
   // Pricing（定价配置）
   createPricingResolver,
   DEFAULT_PRICING,
@@ -161,11 +160,9 @@ export type { SessionState, SessionStateOptions } from './runtime/session-state'
 
 // Compaction
 export {
-  compactMessagesIfNeeded,
+  compactBeforeStep,
+  manageToolOutputLifecycle,
   estimateMessagesTokens,
-  waitForConversationCompaction,
-  waitForAllCompactions,
-  runCompactInBackground,
 } from './runtime/compaction';
 
 // Tasks

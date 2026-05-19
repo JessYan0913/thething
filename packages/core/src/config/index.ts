@@ -65,7 +65,6 @@ export {
   getDefaultOutputTokens,
   getModelCapabilities,
   getEffectiveContextBudget,
-  getAutoCompactThreshold,
 } from '../foundation/model';
 
 // ============================================================
@@ -76,9 +75,6 @@ export {
 export type {
   ModelCapabilities,
   ModelProviderConfig,
-  SessionMemoryCompactConfig,
-  MicroCompactConfig,
-  PostCompactConfig,
   SQLiteDataStoreConfig,
   SkillLoaderConfig,
   ConnectorDefinition,

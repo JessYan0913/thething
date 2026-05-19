@@ -314,12 +314,13 @@ const { agent, sessionState, mcpRegistry } = await createAgent({
 ### 手动触发
 
 ```typescript
-import { compactMessagesIfNeeded } from '@the-thing/core';
+import { compactBeforeStep } from '@the-thing/core';
 
-const { messages: compacted, tokensFreed } = await compactMessagesIfNeeded(
+const compacted = await compactBeforeStep(
   messages,
-  conversationId,
-  runtime.dataStore,
+  sessionState,
+  compactionConfig,
+  { model, modelName, conversationId, dataStore },
 );
 ```
 

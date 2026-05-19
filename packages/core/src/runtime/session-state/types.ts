@@ -8,11 +8,11 @@ import type { Skill } from '../../extensions/skills/types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { DataStore } from '../../foundation/datastore/types';
 import type { ModelSpec, CompactionConfig } from '../../config/behavior';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ResolvedLayout } from '../../config/layout';
 import type { PermissionRule } from '../../extensions/permissions/types';
 import type { PricingResolver } from '../../foundation/model/pricing';
 import type { TaskStore } from '../tasks/types';
-import type { ReinjectContext } from '../compaction/post-compact-reinject';
 
 /**
  * Session 状态选项
@@ -54,8 +54,6 @@ export interface SessionStateOptions {
   permissionRules?: readonly PermissionRule[];
   /** 来自 BehaviorConfig.extraSensitivePaths */
   extraSensitivePaths?: readonly string[];
-  /** Post-compaction reinjection context (built during agent creation) */
-  reinjectContext?: ReinjectContext;
 }
 
 /**
@@ -96,8 +94,16 @@ export interface SessionState {
   taskStore: TaskStore;
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
-  /** Post-compaction reinjection context */
-  reinjectContext?: ReinjectContext;
+  /** Layer 1: Agent 主动释放的工具输出 ID 列表 */
+  pendingCompactIds: string[];
+  /** 压缩配置 */
+  compactionConfig?: CompactionConfig;
+  /** 模型实例引用（用于 Layer 3 LLM 摘要） */
+  compactModel?: LanguageModelV3;
+  /** Fallback 模型列表（用于 Layer 3） */
+  fallbackModels?: LanguageModelV3[];
+  /** DataStore 引用（用于 Layer 3 摘要持久化） */
+  dataStore?: DataStore;
 
   /** 压缩消息 */
   compact(messages: UIMessage[]): Promise<CompactionResult>;

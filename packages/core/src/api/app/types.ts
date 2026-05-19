@@ -15,7 +15,6 @@ import type { ResolvedLayout } from '../../config/layout';
 import type { BehaviorConfig } from '../../config/behavior';
 import type { SessionState } from '../../runtime/session-state';
 import type { McpRegistry } from '../../extensions/mcp';
-import type { CompactOptions } from '../../runtime/compaction';
 
 // ============================================================
 // AppContext - 加载配置结果（不可变快照）
@@ -138,29 +137,7 @@ export interface CreateAgentOptions {
   };
 
   /** 压缩配置 */
-  compaction?: {
-    threshold?: number;
-    bufferTokens?: number;
-    sessionMemory?: {
-      minTokens?: number;
-      maxTokens?: number;
-      minTextBlockMessages?: number;
-    };
-    micro?: {
-      timeWindowMs?: number;
-      imageMaxTokenSize?: number;
-      compactableTools?: string[];
-      gapThresholdMinutes?: number;
-      keepRecent?: number;
-    };
-    postCompact?: {
-      totalBudget?: number;
-      maxFilesToRestore?: number;
-      maxTokensPerFile?: number;
-      maxTokensPerSkill?: number;
-      skillsTokenBudget?: number;
-    };
-  };
+  compaction?: Partial<import('../../runtime/compaction/types').CompactionConfig>;
 
   /** 模块控制 */
   modules?: {
@@ -223,8 +200,6 @@ export interface CreateAgentResult {
   budgetActions?: string[];
   /** 底层模型实例（未包装 middleware），供后台任务使用 */
   model?: LanguageModelV3;
-  /** Pre-built compact options for background compaction */
-  compactOptions?: CompactOptions;
 
   /**
    * 释放本次对话占用的所有资源。
