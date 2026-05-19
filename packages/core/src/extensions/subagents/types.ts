@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
 import type { TaskStore } from '../../runtime/tasks';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 import type { AgentRegistry } from './registry';
 
 // ============================================================

@@ -16,6 +16,7 @@ import {
   type CompactionResult,
   type SessionMemoryCompactConfig,
   type MicroCompactConfig,
+  type PostCompactConfig,
   SYSTEM_COMPACT_BOUNDARY_MARKER,
 } from "./types";
 import {
@@ -26,6 +27,7 @@ import {
   stripImagesFromMessages,
 } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
+import { reinjectAfterCompact, type ReinjectContext } from "./post-compact-reinject";
 
 // 检查 model 参数是否提供
 function requireModel(model?: LanguageModelV3): LanguageModelV3 {
@@ -261,7 +263,12 @@ export async function compactViaAPI(
   conversationId: string,
   dataStore: DataStore,
   model?: LanguageModelV3,
-  options?: { sessionMemory?: SessionMemoryCompactConfig; micro?: MicroCompactConfig },
+  options?: {
+    sessionMemory?: SessionMemoryCompactConfig;
+    micro?: MicroCompactConfig;
+    postCompact?: PostCompactConfig;
+    reinjectContext?: ReinjectContext;
+  },
 ): Promise<CompactionResult> {
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
@@ -392,8 +399,12 @@ export async function compactViaAPI(
     console.error("[Compaction] Failed to save summary:", error);
   }
 
+  const finalMessages = options?.reinjectContext
+    ? await reinjectAfterCompact(resultMessages, options.reinjectContext, options.postCompact)
+    : resultMessages;
+
   return {
-    messages: resultMessages,
+    messages: finalMessages,
     executed: true,
     type: "auto",
     tokensFreed,
@@ -408,7 +419,12 @@ export async function compactWithCustomInstructions(
   customInstructions: string,
   dataStore: DataStore,
   model?: LanguageModelV3,
-  options?: { sessionMemory?: SessionMemoryCompactConfig; micro?: MicroCompactConfig },
+  options?: {
+    sessionMemory?: SessionMemoryCompactConfig;
+    micro?: MicroCompactConfig;
+    postCompact?: PostCompactConfig;
+    reinjectContext?: ReinjectContext;
+  },
 ): Promise<CompactionResult> {
   const preCompactTokenCount = await estimateMessagesTokens(messages);
 
@@ -521,8 +537,12 @@ export async function compactWithCustomInstructions(
     console.error("[Compaction] Failed to save summary:", error);
   }
 
+  const finalMessages = options?.reinjectContext
+    ? await reinjectAfterCompact(resultMessages, options.reinjectContext, options.postCompact)
+    : resultMessages;
+
   return {
-    messages: resultMessages,
+    messages: finalMessages,
     executed: true,
     type: "manual",
     tokensFreed,

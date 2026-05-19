@@ -1,11 +1,6 @@
 import type { LanguageModelUsage } from 'ai';
 import type { CompactionResult } from '../compaction/types';
 
-export interface TokenBudgetTrackerOptions {
-  maxContextTokens?: number;
-  compactThreshold?: number;
-}
-
 export class TokenBudgetTracker {
   private _sessionInputTokens = 0;
   private _sessionOutputTokens = 0;

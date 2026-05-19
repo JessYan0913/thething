@@ -18,9 +18,9 @@ import os from 'os';
 import {
   DEFAULT_PROJECT_CONFIG_DIR_NAME,
   TOKENIZER_CACHE_DIR_NAME,
-  PERMISSIONS_FILENAME,
-  DEFAULT_DB_FILENAME,
-} from './defaults';
+} from '../foundation/constants';
+import { PERMISSIONS_FILENAME } from './defaults';
+import { DEFAULT_DB_FILENAME } from '../foundation/datastore/constants';
 
 /**
  * 资源目录结构

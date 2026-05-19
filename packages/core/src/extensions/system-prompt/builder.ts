@@ -20,8 +20,6 @@ import {
   createSystemContextSection,
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
-// Skills section 已移除 - 技能元数据现在通过消息附件注入
-// import { createSkillsSection } from "./sections/skills";
 import { createMemorySection, createRecalledMemorySection } from "./sections/memory";
 import { createPermissionsSection } from "./sections/permissions";
 
@@ -211,22 +209,7 @@ const DYNAMIC_SECTION_FACTORIES: SectionFactory[] = [
 // Priority Levels
 // ============================================================================
 
-const PRIORITY = {
-  IDENTITY: 1,
-  CAPABILITIES: 2,
-  RULES: 3,
-  LANGUAGE_RULES: 4,
-  RESPONSE_STYLE: 15,
-  USER_PREFERENCES: 20,
-  TOOLS: 30,
-  PERMISSIONS: 35,
-  MEMORY_GUIDELINES: 45,
-  RECALLED_MEMORIES: 46,
-  DYNAMIC_BOUNDARY: 50,
-  PROJECT_CONTEXT: 60,
-  SESSION_GUIDANCE: 100,
-  FIRST_MESSAGE: 101,
-} as const;
+const DYNAMIC_BOUNDARY_PRIORITY = 50;
 
 // ============================================================================
 // Main Builder Function
@@ -301,7 +284,7 @@ export async function buildSystemPrompt(
     name: "dynamic-boundary",
     content: `\n\n${DYNAMIC_BOUNDARY}\n\n`,
     cacheStrategy: "dynamic",
-    priority: PRIORITY.DYNAMIC_BOUNDARY,
+    priority: DYNAMIC_BOUNDARY_PRIORITY,
   };
 
   // Find where to insert the dynamic boundary (after tools, before project context)

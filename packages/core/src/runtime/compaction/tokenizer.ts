@@ -26,7 +26,7 @@ import {
   HF_MIRROR_BASE_URL,
   MODEL_TO_HF_REPO_MAPPING,
   DEFAULT_TOKENIZER_REPO,
-} from "../../config/defaults";
+} from "../../foundation/constants";
 import { DEFAULT_MODEL_ALIASES } from "../../config/behavior";
 
 // ============================================================

@@ -54,12 +54,12 @@ async function initializeServerRuntime(): Promise<CoreRuntime> {
   console.log(`  dataDir: ${layout.dataDir}`)
   console.log(`  configDirName: ${layout.configDirName}`)
 
+  const envSnapshot: Record<string, string | undefined> = { ...process.env }
+
   runtimeInstance = await bootstrap({
     layout,
     tokenizerConfig,
-    connectorConfig: {
-      env: process.env,
-    },
+    env: envSnapshot,
   })
 
   // 立即创建 context（cwd 自动从 layout.resourceRoot 取值）
@@ -69,9 +69,9 @@ async function initializeServerRuntime(): Promise<CoreRuntime> {
 
   // 初始化 Connector Gateway（Inbound Processor）
   // 从环境变量读取模型配置，用于处理飞书/企微等入站消息
-  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY
-  const baseURL = process.env.DASHSCOPE_BASE_URL || process.env.OPENAI_BASE_URL
-  const modelName = process.env.THETHING_MODEL || process.env.DASHSCOPE_MODEL || 'qwen-max'
+  const apiKey = envSnapshot.DASHSCOPE_API_KEY || envSnapshot.OPENAI_API_KEY
+  const baseURL = envSnapshot.DASHSCOPE_BASE_URL || envSnapshot.OPENAI_BASE_URL
+  const modelName = envSnapshot.THETHING_MODEL || envSnapshot.DASHSCOPE_MODEL || 'qwen-max'
 
   if (apiKey && baseURL) {
     configureConnectorInboundRuntime(runtimeInstance.connectorRuntime, {

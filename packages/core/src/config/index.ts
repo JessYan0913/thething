@@ -55,7 +55,7 @@ export {
   HF_OFFICIAL_BASE_URL,
   MODEL_TO_HF_REPO_MAPPING,
   DEFAULT_TOKENIZER_REPO,
-} from './defaults';
+} from '../foundation/constants';
 
 // ============================================================
 // 从原有模块导出的函数（保持兼容）

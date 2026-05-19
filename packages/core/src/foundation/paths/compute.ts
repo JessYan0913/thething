@@ -14,7 +14,7 @@
 // ============================================================
 
 import path from 'path';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../constants';
 import { resolveHomeDir } from './resolve';
 
 // ============================================================

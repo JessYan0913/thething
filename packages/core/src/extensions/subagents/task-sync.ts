@@ -63,7 +63,7 @@ export class TaskSync {
   start(): void {
     if (this.unsubscribe) return;
 
-    this.unsubscribe = this.store.subscribe(this.handleTaskEvent.bind(this));
+    this.unsubscribe = this.store.subscribe(this.handleTaskEvent.bind(this) as Parameters<TaskStore['subscribe']>[0]);
   }
 
   /**

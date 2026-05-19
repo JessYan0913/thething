@@ -72,7 +72,6 @@ export async function loadMemoryContext(
  *
  * 简化版：技能指令现在通过 Skill 工具注入，不再拼接到系统提示词
  *
- * @param skillResolution 激活的技能解析结果（现在总是空）
  * @param memoryContext 记忆上下文
  * @param options 构建选项（包含已加载的数据）
  */
@@ -91,7 +90,6 @@ export interface BuildInstructionsOptions {
 }
 
 export async function buildAgentInstructions(
-  skillResolution: SkillResolution | null,
   memoryContext: MemoryContext | null,
   options?: BuildInstructionsOptions,
 ): Promise<string> {

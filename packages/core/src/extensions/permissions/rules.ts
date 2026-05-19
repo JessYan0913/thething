@@ -8,7 +8,7 @@
 import * as fs from 'fs/promises';
 import { nanoid } from 'nanoid';
 import { computeProjectConfigDir } from '../../foundation/paths';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 import type { PermissionConfig, PermissionRule, RuleMatchResult } from './types';
 import {
   loadRules,

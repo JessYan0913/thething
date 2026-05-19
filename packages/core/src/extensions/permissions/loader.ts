@@ -20,7 +20,8 @@ import path from 'path';
 import { parseJsonFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
 import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME, PERMISSIONS_FILENAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
+import { PERMISSIONS_FILENAME } from '../../config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
 

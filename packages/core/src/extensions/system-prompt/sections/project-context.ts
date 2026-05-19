@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { computeUserConfigDir, resolveHomeDir } from '../../../foundation/paths';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../foundation/constants';
 import type { SystemPromptSection } from '../types';
 
 // ============================================================================

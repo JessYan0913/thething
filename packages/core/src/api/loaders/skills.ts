@@ -11,7 +11,7 @@ import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '.
 import type { z } from 'zod';
 import type { Skill, SkillMetadata, SkillLoaderConfig } from '../../extensions/skills/types';
 import { SkillFrontmatterSchema } from '../../extensions/skills/types';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 
 // ============================================================
 // 扩展类型（带 source 字段）

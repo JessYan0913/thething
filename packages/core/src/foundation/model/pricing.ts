@@ -50,7 +50,7 @@ export const DEFAULT_PRICING: PricingRegistry = {
 /**
  * 默认定价（未知模型时使用）
  */
-export const FALLBACK_PRICING: ModelPricing = {
+const FALLBACK_PRICING: ModelPricing = {
   input: 1.5,
   output: 4.5,
   cached: 0.5,

@@ -10,7 +10,7 @@ import { scanDirs, mergeByPriority, LoadingCache } from '../../foundation/scanne
 import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import type { ConnectorFrontmatter } from '../../extensions/connector/loader';
 import { ConnectorFrontmatterSchema } from '../../extensions/connector/loader';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 
 // ============================================================
 // 扩展类型

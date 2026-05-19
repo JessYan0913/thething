@@ -36,7 +36,7 @@ import { SQLiteTaskStore } from './task-store';
 import {
   DEFAULT_DATA_DIR,
   DEFAULT_DB_FILENAME,
-} from '../../../config/defaults';
+} from '../constants';
 
 // 默认数据目录：cwd/.data（硬编码默认值，不读取环境变量）
 const getDefaultDataDir = () => path.join(process.cwd(), DEFAULT_DATA_DIR);

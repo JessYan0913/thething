@@ -7,7 +7,7 @@
 
 export type { Skill, SkillFrontmatter, SkillMetadata, SkillLoaderConfig } from './types';
 
-export { DEFAULT_SKILL_LOADER_CONFIG, DEFAULT_SKILL_SCAN_DIRS, SkillFrontmatterSchema } from './types';
+export { DEFAULT_SKILL_LOADER_CONFIG, SkillFrontmatterSchema } from './types';
 
 // 直接从 api/loaders 导出（移除中间 loader 代理层）
 export {

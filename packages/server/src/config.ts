@@ -60,7 +60,7 @@ export function getServerTokenizerConfig(): {
 /**
  * 默认配置目录名称
  */
-const DEFAULT_CONFIG_DIR_NAME = '.siact'
+const DEFAULT_CONFIG_DIR_NAME = '.thething'
 
 /**
  * 获取 Server Layout 配置
@@ -70,7 +70,7 @@ const DEFAULT_CONFIG_DIR_NAME = '.siact'
  * 支持的环境变量：
  * - THETHING_RESOURCE_ROOT: 项目根目录（默认为 server 包目录）
  * - THETHING_DATA_DIR: 数据目录路径（默认为 resourceRoot/.siact/data）
- * - THETHING_CONFIG_DIR_NAME: 配置目录名称（默认 '.siact'）
+ * - THETHING_CONFIG_DIR_NAME: 配置目录名称（默认 '.thething'）
  */
 export function getServerLayoutConfig(): {
   resourceRoot: string;

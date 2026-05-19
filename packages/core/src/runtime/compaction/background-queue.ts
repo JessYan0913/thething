@@ -50,6 +50,8 @@ export function runCompactInBackground(
         {
           sessionMemory: options?.compactionConfig?.sessionMemory,
           micro: options?.compactionConfig?.micro,
+          postCompact: options?.postCompact ?? options?.compactionConfig?.postCompact,
+          reinjectContext: options?.reinjectContext,
         },
       );
 

@@ -24,11 +24,12 @@
 import {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULT_TOKENS,
-  MAX_TOOL_RESULT_BYTES,
   MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
   PREVIEW_SIZE_CHARS,
-  BYTES_PER_TOKEN,
 } from '../../config/defaults';
+import { BYTES_PER_TOKEN } from '../../foundation/constants';
+
+const MAX_TOOL_RESULT_BYTES = MAX_TOOL_RESULT_TOKENS * BYTES_PER_TOKEN;
 
 // 重新导出供预算模块内部和测试复用
 export {
@@ -69,8 +70,6 @@ export interface ToolOutputConfig {
   messageBudget?: number
   /** 持久化预览内容大小（字符） */
   previewSizeChars?: number
-  /** 是否持久化到磁盘（默认 true，现在可选） */
-  shouldPersistToDisk?: boolean
 }
 
 function getMaxToolResultTokens(sessionConfig?: ToolOutputConfig): number {
@@ -258,28 +257,6 @@ export function cloneContentReplacementState(
   }
 }
 
-/**
- * 从 transcript 记录重建状态
- */
-export function reconstructContentReplacementState(
-  messages: unknown[],
-  records: ContentReplacementRecord[]
-): ContentReplacementState {
-  const state = createContentReplacementState()
-
-  // 从记录中恢复 replacements
-  for (const record of records) {
-    if (record.kind === 'tool-result') {
-      state.replacements.set(record.toolUseId, record.replacement)
-    }
-  }
-
-  // 从消息中提取所有已处理的 tool_use_id
-  // TODO: 实现消息遍历提取 tool_result 中的 tool_use_id
-
-  return state
-}
-
 // ============================================================
 // 工具输出内容估算
 // ============================================================
@@ -374,7 +351,6 @@ export async function processToolOutput(
     toolUseId,
     sessionId,
     dataDir,
-    config.maxResultSizeChars,
     !options?.sessionId,  // isTemporary: 标记是否为临时持久化
     sessionConfig,
   )
@@ -401,7 +377,6 @@ async function persistToDisk(
   toolUseId: string,
   sessionId: string,
   dataDir: string,
-  _maxSize: number,
   isTemporary: boolean = false,
   sessionConfig?: ToolOutputConfig,
 ): Promise<{ filepath: string; message: string; preview: string }> {

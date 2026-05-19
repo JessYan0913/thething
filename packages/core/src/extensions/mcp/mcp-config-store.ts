@@ -10,7 +10,7 @@ import path from 'path';
 import { scanMcpDirs, clearMcpCache } from '../../api/loaders/mcps';
 import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../foundation/paths';
 import type { McpServerConfig, McpServerConfigSource } from './types';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 
 // ============================================================
 // MCP 配置目录

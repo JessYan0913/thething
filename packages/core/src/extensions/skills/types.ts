@@ -2,12 +2,11 @@ import { z } from 'zod';
 
 // 从统一配置模块导入常量
 import {
-  DEFAULT_SKILL_SCAN_DIRS,
   DEFAULT_SKILL_LOADER_CONFIG,
 } from '../../config/defaults';
 
 // 重新导出供其他模块使用
-export { DEFAULT_SKILL_SCAN_DIRS, DEFAULT_SKILL_LOADER_CONFIG };
+export { DEFAULT_SKILL_LOADER_CONFIG };
 
 export const SkillFrontmatterSchema = z.object({
   name: z.string().min(1).max(50),

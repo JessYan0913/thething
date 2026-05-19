@@ -11,10 +11,14 @@
 import type { ModelPricing } from '../foundation/model/pricing';
 import {
   DEFAULT_CONTEXT_LIMIT,
+} from '../foundation/model/constants';
+import {
+  AUTOCOMPACT_BUFFER_TOKENS,
+} from '../foundation/constants';
+import {
   DEFAULT_SESSION_MEMORY_CONFIG,
   DEFAULT_MICRO_COMPACT_CONFIG_RAW,
   DEFAULT_POST_COMPACT_CONFIG,
-  AUTOCOMPACT_BUFFER_TOKENS,
   DEFAULT_MAX_BUDGET_USD,
   DEFAULT_MAX_DENIALS_PER_TOOL,
   COMPACT_TOKEN_THRESHOLD,
@@ -321,7 +325,7 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     modelAliases: partial?.modelAliases ?? DEFAULT_MODEL_ALIASES,
     autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
     modelPricing: partial?.modelPricing,
-    extraSensitivePaths: partial?.extraSensitivePaths ?? [],
+    extraSensitivePaths: partial?.extraSensitivePaths ?? ([] as readonly string[]),
     // 新增：压缩配置
     compaction: partial?.compaction ?? {
       bufferTokens: AUTOCOMPACT_BUFFER_TOKENS,

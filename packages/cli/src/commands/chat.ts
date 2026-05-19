@@ -106,8 +106,8 @@ async function runSetupWizard(): Promise<AppConfig | null> {
 /**
  * Check config and run setup wizard if needed
  */
-async function ensureConfig(): Promise<{ apiKey: string; baseURL: string; modelName: string } | null> {
-  const fileConfig = loadConfig()
+async function ensureConfig(fileConfig?: AppConfig): Promise<{ apiKey: string; baseURL: string; modelName: string } | null> {
+  fileConfig = fileConfig ?? loadConfig()
   let apiKey = fileConfig.api?.key || process.env.DASHSCOPE_API_KEY
   let baseURL = fileConfig.api?.baseUrl || process.env.DASHSCOPE_BASE_URL
   let modelName = fileConfig.default?.model || process.env[ENV_MODEL] || 'qwen-max'
@@ -155,16 +155,31 @@ export default async function chat(options: ChatOptions): Promise<void> {
   // Step 1: Bootstrap - 初始化基础设施
   // ============================================================
   const dataDirConfig = getDataDirConfig()
+  const fileConfig = loadConfig()
+  const envSnapshot: Record<string, string | undefined> = { ...process.env }
+
+  // 从 config file 中读取并合并到 env 快照（bootstrap 用 runtime.env 做 connector ${VAR} 替换）
+  if (fileConfig.api?.key && !envSnapshot.DASHSCOPE_API_KEY) {
+    envSnapshot.DASHSCOPE_API_KEY = fileConfig.api.key
+  }
+  if (fileConfig.api?.baseUrl && !envSnapshot.DASHSCOPE_BASE_URL) {
+    envSnapshot.DASHSCOPE_BASE_URL = fileConfig.api.baseUrl
+  }
+  if (fileConfig.default?.model && !envSnapshot[ENV_MODEL]) {
+    envSnapshot[ENV_MODEL] = fileConfig.default.model
+  }
+
   const cwd = resolveProjectDir({
     monorepoPatterns: ['packages/server', 'packages/cli'],
   })
 
-  // 使用新的 layout 配置结构
+  // Bootstrap 时传入 env 快照，确保 connector ${VAR} 替换可用
   const runtime = await bootstrap({
     layout: {
       resourceRoot: cwd,
       dataDir: dataDirConfig.dataDir,
     },
+    env: envSnapshot,
   })
 
   // Get datastore from runtime
@@ -195,8 +210,8 @@ export default async function chat(options: ChatOptions): Promise<void> {
   // Store messages
   let messages: UIMessage[] = store.messageStore.getMessagesByConversation(conversationId)
 
-  // Load config file and merge with environment variables
-  const configResult = await ensureConfig()
+  // Load config file and merge with environment variables（复用已读取的 fileConfig）
+  const configResult = await ensureConfig(fileConfig)
   if (!configResult) {
     await runtime.dispose()
     return

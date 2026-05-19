@@ -8,7 +8,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, defaultSettingsMiddleware } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ModelProviderConfig, ModelProviderFn } from './provider-types';
-import { DEFAULT_MODEL_ALIASES } from '../../config/behavior';
+
 
 export type { ModelProviderConfig, ModelProviderFn };
 
@@ -31,7 +31,8 @@ export function createModelProvider(config: ModelProviderConfig): ModelProviderF
  */
 export function createLanguageModel(config: ModelProviderConfig): LanguageModelV3 {
   const provider = createModelProvider(config);
-  const modelName = config.modelName || DEFAULT_MODEL_ALIASES.default;
+  // modelName fallback in caller's responsibility; here we require a valid name
+  const modelName = config.modelName || 'qwen-plus';
 
   // Base model from provider
   const baseModel = provider(modelName);

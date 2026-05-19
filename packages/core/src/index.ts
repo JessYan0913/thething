@@ -143,9 +143,6 @@ export type {
 // Clock（时间抽象）
 export {
   systemClock,
-  fixedClock,
-  offsetClock,
-  advancedClock,
 } from './foundation/clock';
 export type { Clock } from './foundation/clock';
 

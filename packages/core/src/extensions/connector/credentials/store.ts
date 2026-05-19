@@ -3,6 +3,7 @@
 // ============================================================
 
 import crypto from 'crypto'
+import os from 'os'
 import fs from 'fs'
 import path from 'path'
 
@@ -33,7 +34,7 @@ let defaultStoragePath: string | null = null;
 
 /**
  * Configure the default storage path for credentials.
- * Defaults to process.cwd() + '/.connector-credentials.json'.
+ * Defaults to ~/.thething/data/connector-credentials.json
  */
 export function configureCredentialStoragePath(storagePath: string): void {
   defaultStoragePath = storagePath;
@@ -99,7 +100,7 @@ export class CredentialStore {
       this.mode = 'encrypted'
     }
 
-    this.storagePath = options?.storagePath || defaultStoragePath || path.join(process.cwd(), '.connector-credentials.json')
+    this.storagePath = options?.storagePath || defaultStoragePath || path.join(os.homedir(), '.thething', 'data', 'connector-credentials.json')
     this.useEnvFallback = options?.useEnvFallback ?? DEFAULT_USE_ENV_FALLBACK
   }
 

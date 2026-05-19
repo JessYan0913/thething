@@ -17,10 +17,10 @@ import { parseFrontmatterFile } from '../../foundation/parser';
 import { LoadingCache } from '../../foundation/scanner';
 import { computeProjectConfigDir } from '../../foundation/paths';
 import {
-  DEFAULT_PROJECT_CONFIG_DIR_NAME,
   MEMORY_MD_MAX_LINES,
   MEMORY_MD_MAX_SIZE_KB,
 } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 
 // ============================================================
 // 类型

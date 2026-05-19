@@ -121,26 +121,15 @@ describe('runtime/agent/context', () => {
 
   describe('buildAgentInstructions', () => {
     it('should build instructions without skills', async () => {
-      const result = await buildAgentInstructions(null, null, {});
+      const result = await buildAgentInstructions(null, {});
 
       expect(result).toContain('System prompt');
     });
 
     it('should build instructions without skill bodies (skills invoked via tool)', async () => {
-      // Even with skill resolution, instructions don't include skill bodies
-      // Skill bodies are returned by Skill tool when Agent invokes it
-      const skillResolution = {
-        activeSkillNames: new Set(['test']),
-        activeSkills: [
-          { name: 'test', body: 'Test skill body', allowedTools: [] },
-        ],
-        activeToolsWhitelist: null,
-        activeModelOverride: null,
-      };
-
-      const result = await buildAgentInstructions(skillResolution, null, {});
-
       // Skill bodies are NOT included in instructions - Agent calls Skill tool
+      const result = await buildAgentInstructions(null, {});
+
       expect(result).toContain('System prompt');
     });
 
@@ -150,7 +139,7 @@ describe('runtime/agent/context', () => {
         recalledMemoriesContent: 'Some memory content',
       };
 
-      const result = await buildAgentInstructions(null, memoryContext, {});
+      const result = await buildAgentInstructions(memoryContext, {});
 
       expect(result).toContain('System prompt');
     });

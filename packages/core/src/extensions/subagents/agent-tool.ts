@@ -5,7 +5,7 @@ import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from '../../api/loaders/agents';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
 
 // ============================================================

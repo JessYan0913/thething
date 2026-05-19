@@ -19,10 +19,10 @@ import type { SessionState, SessionStateOptions } from './types';
 import { DEFAULT_MODEL_SPECS } from '../../config/behavior';
 import { createPricingResolver } from '../../foundation/model/pricing';
 import {
-  DEFAULT_CONTEXT_LIMIT,
   COMPACT_TOKEN_THRESHOLD,
   DEFAULT_MAX_BUDGET_USD,
 } from '../../config/defaults';
+import { DEFAULT_CONTEXT_LIMIT } from '../../foundation/model/constants';
 
 export type { SessionState, SessionStateOptions };
 
@@ -52,6 +52,7 @@ export function createSessionState(
     compactionEnabled = true,
     permissionRules = [],
     extraSensitivePaths = [],
+    reinjectContext,
   } = options;
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
@@ -105,9 +106,14 @@ export function createSessionState(
     activeSkills: new Set<string>(),
     loadedSkills: new Map<string, Skill>(),
     contentReplacementState: createContentReplacementState(),
+    reinjectContext,
 
     async compact(messages: UIMessage[]): Promise<CompactionResult> {
-      const result = await compactMessagesIfNeeded(messages, conversationId, dataStore, compactOptions);
+      const result = await compactMessagesIfNeeded(messages, conversationId, dataStore, {
+        ...compactOptions,
+        reinjectContext,
+        postCompact: compactOptions.compactionConfig?.postCompact,
+      });
       const compactionResult: CompactionResult = {
         messages: result.messages,
         executed: result.executed,

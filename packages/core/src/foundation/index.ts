@@ -2,6 +2,7 @@
 // Foundation Layer - 基础设施层
 // ============================================================
 // 提供底层基础设施：
+// - constants: 纯技术常量
 // - paths: 路径计算
 // - parser: 文件解析（Frontmatter、YAML、JSON）
 // - scanner: 目录扫描
@@ -10,6 +11,7 @@
 // - clock: 时间抽象（可测试设计）
 // ============================================================
 
+export * from './constants';
 export * from './paths';
 export * from './parser';
 export * from './scanner';

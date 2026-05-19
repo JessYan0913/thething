@@ -99,15 +99,16 @@ app.post('/', async (c) => {
       mcpRegistry,
       model,
       adjustedMessages,
+      compactOptions,
     } = await createAgent({
       context,
       conversationId,
       messages: compactedMessages,
       userId,
       model: {
-        apiKey: process.env.DASHSCOPE_API_KEY!,
-        baseURL: process.env.DASHSCOPE_BASE_URL!,
-        modelName: process.env[ENV_MODEL]!,
+        apiKey: process.env.DASHSCOPE_API_KEY || '',
+        baseURL: process.env.DASHSCOPE_BASE_URL || '',
+        modelName: process.env[ENV_MODEL] || 'qwen-max',
         includeUsage: true,
       },
     })
@@ -176,7 +177,7 @@ app.post('/', async (c) => {
                   .catch((err) => console.error('[Title Generation] Error:', err))
               }
 
-              runCompactInBackground(messagesToSave, conversationId, store, model)
+              runCompactInBackground(messagesToSave, conversationId, store, model, compactOptions)
 
               // Cleanup MCP connections (non-blocking)
               if (mcpRegistry) {

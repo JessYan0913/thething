@@ -1,13 +1,14 @@
 import type { UIMessage } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { DataStore } from "../../foundation/datastore/types";
-import { COMPACT_TOKEN_THRESHOLD, type RuntimeCompactionConfig, type CompactionResult } from "./types";
+import { COMPACT_TOKEN_THRESHOLD, type RuntimeCompactionConfig, type CompactionResult, type PostCompactConfig } from "./types";
 import { estimateMessagesTokens } from "./token-counter";
 import { microCompactMessages } from "./micro-compact";
 import { trySessionMemoryCompact } from "./session-memory-compact";
 import { getMessagesAfterCompactBoundary } from "./boundary";
 import { tryPtlDegradation } from "./ptl-degradation";
 import { autoCompactIfNeeded, recordCompactSuccess } from "./auto-compact";
+import { reinjectAfterCompact, type ReinjectContext } from "./post-compact-reinject";
 
 /**
  * Compaction 函数选项
@@ -19,6 +20,18 @@ export interface CompactOptions {
   compactionConfig?: RuntimeCompactionConfig;
   /** 压缩阈值（来自 BehaviorConfig.compactionThreshold） */
   compactionThreshold?: number;
+  /** Post-compaction config (budget, file limits) */
+  postCompact?: PostCompactConfig;
+  /** Context for reinjecting critical state after compaction */
+  reinjectContext?: ReinjectContext;
+}
+
+async function applyReinjectIfNeeded(
+  messages: UIMessage[],
+  options?: CompactOptions,
+): Promise<UIMessage[]> {
+  if (!options?.reinjectContext) return messages;
+  return reinjectAfterCompact(messages, options.reinjectContext, options.postCompact);
 }
 
 export async function compactMessagesIfNeeded(
@@ -84,12 +97,13 @@ export async function compactMessagesIfNeeded(
     );
 
     if (sessionMemoryResult) {
+      const reinjectedMessages = await applyReinjectIfNeeded(sessionMemoryResult.messages, options);
       console.log(
         `[Compaction] Session Memory Compact: freed ${sessionMemoryResult.tokensFreed} tokens`,
       );
       recordCompactSuccess(conversationId);
       return {
-        messages: sessionMemoryResult.messages,
+        messages: reinjectedMessages,
         executed: true,
         tokensFreed: sessionMemoryResult.tokensFreed,
       };
@@ -111,9 +125,10 @@ export async function compactMessagesIfNeeded(
     );
 
     if (tokensAfterMicro < threshold) {
+      const reinjectedMessages = await applyReinjectIfNeeded(microResult.messages, options);
       recordCompactSuccess(conversationId);
       return {
-        messages: microResult.messages,
+        messages: reinjectedMessages,
         executed: true,
         tokensFreed: microResult.tokensFreed,
       };
@@ -142,15 +157,19 @@ export async function compactMessagesIfNeeded(
           },
         ],
       };
+      const reinjectedMessages = await applyReinjectIfNeeded(
+        [summaryMessage, ...ptlResult.messages], options,
+      );
       return {
-        messages: [summaryMessage, ...ptlResult.messages],
+        messages: reinjectedMessages,
         executed: true,
         tokensFreed: ptlResult.tokensFreed,
       };
     }
+    const reinjectedMessages = await applyReinjectIfNeeded(ptlResult.messages, options);
     recordCompactSuccess(conversationId);
     return {
-      messages: ptlResult.messages,
+      messages: reinjectedMessages,
       executed: true,
       tokensFreed: ptlResult.tokensFreed,
     };
@@ -209,8 +228,6 @@ export {
 export {
   registerTokenizer,
   setAutoDownload,
-  isTokenizerReady,
-  getTokenizerConfig,
 } from "./tokenizer";
 
 export { microCompactMessages } from "./micro-compact";
@@ -235,7 +252,6 @@ export {
   getQueueSize,
   waitForConversationCompaction,
   waitForAllCompactions,
-  getActiveCompactionIds,
 } from "./background-queue";
 
 export {
@@ -247,9 +263,7 @@ export { tryPtlDegradation } from "./ptl-degradation";
 
 export {
   registerCompactHook,
-  unregisterCompactHook,
   executeCompactHooks,
-  getRegisteredHooks,
   type CompactHookPhase,
   type CompactHookContext,
   type CompactHookResult,
@@ -268,7 +282,6 @@ export {
   autoCompactIfNeeded,
   recordCompactFailure,
   recordCompactSuccess,
-  getAutoCompactStatus,
 } from "./auto-compact";
 
 export { generateConversationTitle } from "./title-generator";
@@ -276,7 +289,6 @@ export { generateConversationTitle } from "./title-generator";
 // Initial Budget Check
 export {
   checkInitialBudget,
-  quickBudgetCheck,
   type InitialBudgetCheckResult,
 } from "./initial-budget-check";
 

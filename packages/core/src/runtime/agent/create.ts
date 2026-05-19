@@ -13,6 +13,8 @@ import { checkInitialBudget } from '../compaction/initial-budget-check'
 import { formatEstimationResult } from '../compaction/token-counter'
 import { waitForConversationCompaction } from '../compaction/background-queue'
 import { toRuntimeCompactionConfig } from '../compaction/types'
+import type { ReinjectContext } from '../compaction/post-compact-reinject'
+import type { CompactOptions } from '../compaction'
 import { loadProjectContext } from '../../extensions/system-prompt/sections/project-context'
 import {
   injectMessageAttachments,
@@ -112,7 +114,20 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     configDirName: layout.configDirName,
   })
 
-  const instructions = await buildAgentInstructions(skillResolution, memoryContext, {
+  // Build reinject context for post-compaction reinjection
+  const reinjectContext: ReinjectContext = {
+    recentlyReadFiles: [],  // TODO: populate when file-read tracking is added
+    activeSkills: skillResolution?.activeSkillNames
+      ? Array.from(skillResolution.activeSkillNames).map(name => {
+          const skill = preloadedData.skills.find(s => s.name === name)
+          return { name, instructions: skill?.body ?? '' }
+        })
+      : [],
+    thingMdContent: projectContext?.combinedContent ?? undefined,
+  }
+  sessionState.reinjectContext = reinjectContext
+
+  const instructions = await buildAgentInstructions(memoryContext, {
     cwd: projectRoot,
     memoryBaseDir,
     skills: preloadedData.skills,
@@ -242,6 +257,16 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     }
   }
 
+  // Build compact options for background compaction
+  const compactOpts: CompactOptions = {
+    enabled: modules.compaction,
+    compactionConfig: sessionOptions.compactionConfig
+      ? toRuntimeCompactionConfig(sessionOptions.compactionConfig)
+      : undefined,
+    compactionThreshold: sessionOptions.compactThreshold,
+    reinjectContext,
+  }
+
   return {
     agent,
     sessionState,
@@ -252,6 +277,7 @@ export async function createChatAgent(config: CreateAgentConfig): Promise<Create
     budgetActions: budgetCheck.actions,
     model: modelInstance,
     attachmentInfo,
+    compactOptions: compactOpts,
     dispose: createDispose(),
   }
 }

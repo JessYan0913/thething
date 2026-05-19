@@ -13,8 +13,8 @@
 import {
   DEFAULT_CONTEXT_LIMIT,
   DEFAULT_OUTPUT_TOKENS,
-  AUTOCOMPACT_BUFFER_TOKENS,
-} from '../../config/defaults';
+} from './constants';
+import { AUTOCOMPACT_BUFFER_TOKENS } from '../constants';
 
 import type { ModelCapabilities } from './capabilities-types';
 

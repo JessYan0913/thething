@@ -15,8 +15,8 @@ import type {
   TaskClaimResult,
   TaskStatus,
   AgentStatus,
-  TaskEventListener,
   TaskEvent,
+  TaskEventListener,
   TaskEventType,
 } from '../../../runtime/tasks/types';
 

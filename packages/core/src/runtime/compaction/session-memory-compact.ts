@@ -24,10 +24,6 @@ import {
   hasTextBlocks,
 } from "./token-counter";
 
-export function shouldUseSessionMemoryCompaction(): boolean {
-  return true;
-}
-
 function getSummaryByConversation(conversationId: string, dataStore: DataStore): StoredSummary | null {
   try {
     return dataStore.summaryStore.getSummaryByConversation(conversationId);
@@ -149,10 +145,6 @@ export async function trySessionMemoryCompact(
   tokensFreed: number;
   summaryInjected: boolean;
 } | null> {
-  if (!shouldUseSessionMemoryCompaction()) {
-    return null;
-  }
-
   const resolvedConfig = { ...DEFAULT_SESSION_MEMORY_CONFIG, ...config };
 
   const summary = getSummaryByConversation(conversationId, dataStore);

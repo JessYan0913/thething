@@ -12,6 +12,7 @@ import type { ResolvedLayout } from '../../config/layout';
 import type { PermissionRule } from '../../extensions/permissions/types';
 import type { PricingResolver } from '../../foundation/model/pricing';
 import type { TaskStore } from '../tasks/types';
+import type { ReinjectContext } from '../compaction/post-compact-reinject';
 
 /**
  * Session 状态选项
@@ -53,6 +54,8 @@ export interface SessionStateOptions {
   permissionRules?: readonly PermissionRule[];
   /** 来自 BehaviorConfig.extraSensitivePaths */
   extraSensitivePaths?: readonly string[];
+  /** Post-compaction reinjection context (built during agent creation) */
+  reinjectContext?: ReinjectContext;
 }
 
 /**
@@ -93,6 +96,8 @@ export interface SessionState {
   taskStore: TaskStore;
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
+  /** Post-compaction reinjection context */
+  reinjectContext?: ReinjectContext;
 
   /** 压缩消息 */
   compact(messages: UIMessage[]): Promise<CompactionResult>;

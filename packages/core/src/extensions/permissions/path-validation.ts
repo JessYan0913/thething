@@ -5,13 +5,12 @@
  */
 
 import * as path from 'path';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../config/defaults';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../foundation/constants';
 import type { PathValidationOptions, PathValidationResult } from './types';
 
 // 敏感路径列表 - 任何模式下都不可绕过
 const SENSITIVE_PATHS = [
   '.git',
-  // DEFAULT_PROJECT_CONFIG_DIR_NAME,
   '.env',
   '.env.local',
   '.env.development.local',
@@ -244,18 +243,4 @@ export function validateWritePath(
   }
 
   return result;
-}
-
-/**
- * 获取敏感路径列表（用于文档/调试）
- */
-export function getSensitivePaths(): string[] {
-  return [...SENSITIVE_PATHS, ...SENSITIVE_DIRS];
-}
-
-/**
- * 获取敏感扩展名列表
- */
-export function getSensitiveExtensions(): string[] {
-  return [...SENSITIVE_EXTENSIONS];
 }
