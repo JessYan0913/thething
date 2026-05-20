@@ -1,5 +1,5 @@
 import type { LanguageModelUsage } from 'ai';
-import type { CompactionResult } from '../compaction/types';
+import type { CompactionResult } from '../../services/config/compaction-types';
 
 export class TokenBudgetTracker {
   private _sessionInputTokens = 0;

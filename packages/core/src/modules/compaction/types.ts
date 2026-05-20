@@ -5,6 +5,7 @@
 // Re-export shared types from services layer
 import type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../../services/config/compaction-types';
 export type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../../services/config/compaction-types';
+export type { CompactionResult } from '../../services/config/compaction-types';
 
 export const DEFAULT_LIFECYCLE_CONFIG: LifecycleConfig = {
   keepRecentTurns: 3,
@@ -34,15 +35,6 @@ export interface CompactedToolResult {
   _compacted: true;
   /** 原始输出大小（chars），用于遥测 */
   _originalSize: number;
-}
-
-// ── Compaction Result ──
-
-export interface CompactionResult {
-  messages: import('ai').UIMessage[];
-  executed: boolean;
-  tokensFreed: number;
-  actions: string[];
 }
 
 // ── Default Compactable Tools ──

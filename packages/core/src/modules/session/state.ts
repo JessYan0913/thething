@@ -5,9 +5,7 @@
 import type { UIMessage } from 'ai';
 import { DenialTracker } from './denial-tracking';
 import { ModelSwapper } from './model-switching';
-import { compactBeforeStep } from '../compaction';
-import { DEFAULT_COMPACTION_CONFIG, type CompactionResult } from '../compaction/types';
-import type { CompactionConfig } from '../compaction/types';
+import type { CompactionResult, CompactionConfig } from '../../services/config/compaction-types';
 import type { Skill } from '../../modules/skills/types';
 import {
   createContentReplacementState,
@@ -50,6 +48,7 @@ export function createSessionState(
     autoDowngradeCostThreshold = 80,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
     compactionEnabled = true,
+    compact: compactFn,
     permissionRules = [],
     extraSensitivePaths = [],
   } = options;
@@ -78,7 +77,7 @@ export function createSessionState(
   });
 
   // 构建 压缩配置
-  const compactionCfg: CompactionConfig = compactionConfig ?? DEFAULT_COMPACTION_CONFIG;
+  const compactionCfg: CompactionConfig | undefined = compactionConfig;
 
   // 使用普通对象，简化状态管理
   const state: SessionState = {
@@ -111,37 +110,10 @@ export function createSessionState(
       if (!compactionEnabled) {
         return { messages, executed: false, tokensFreed: 0, actions: [] };
       }
-      // 调用 compactBeforeStep 执行完整的三层压缩
-      if (state.compactModel && state.dataStore) {
-        const beforeResult = await compactBeforeStep(
-          messages,
-          state,
-          compactionCfg,
-          {
-            model: state.compactModel,
-            fallbackModels: state.fallbackModels,
-            modelName: state.model,
-            conversationId,
-            dataStore: state.dataStore,
-          },
-        );
-        const tokensFreed = await estimateMessagesTokensDifference(messages, beforeResult);
-        return {
-          messages: beforeResult,
-          executed: tokensFreed > 0,
-          tokensFreed,
-          actions: tokensFreed > 0 ? [`compactBeforeStep: freed ${tokensFreed} tokens`] : [],
-        };
+      if (compactFn) {
+        return compactFn(messages);
       }
-      // Fallback: 仅 Layer 2（无模型实例时）
-      const { manageToolOutputLifecycle } = await import('../compaction/lifecycle');
-      const result = manageToolOutputLifecycle(messages, compactionCfg.lifecycle);
-      return {
-        messages: result.messages,
-        executed: result.tokensFreed > 0,
-        tokensFreed: result.tokensFreed,
-        actions: result.tokensFreed > 0 ? [`Layer 2: freed ${result.tokensFreed} tokens`] : [],
-      };
+      return { messages, executed: false, tokensFreed: 0, actions: [] };
     },
 
     abort() {
@@ -154,15 +126,4 @@ export function createSessionState(
   };
 
   return state;
-}
-
-async function estimateMessagesTokensDifference(before: UIMessage[], after: UIMessage[]): Promise<number> {
-  try {
-    const { estimateMessagesTokens } = await import('../compaction/token-counter');
-    const beforeTokens = await estimateMessagesTokens(before);
-    const afterTokens = await estimateMessagesTokens(after);
-    return Math.max(0, beforeTokens - afterTokens);
-  } catch {
-    return 0;
-  }
 }

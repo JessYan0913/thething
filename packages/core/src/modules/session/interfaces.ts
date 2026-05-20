@@ -9,7 +9,7 @@
 // 这打破了 session-state ↔ compaction 和 session-state ↔ agent-control 的循环。
 
 import type { LanguageModelUsage, UIMessage } from 'ai';
-import type { CompactionResult, CompactionConfig } from '../compaction/types';
+import type { CompactionResult, CompactionConfig } from '../../services/config/compaction-types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { TaskStore } from '../../primitives/datastore/types';

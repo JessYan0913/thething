@@ -1,15 +1,12 @@
 // ============================================================
-// Agent Module - 统一的 Agent 创建模块
+// Agent Module - 工具函数导出（组装逻辑已上移到 composition/app/create.ts）
 // ============================================================
 
-export { createChatAgent } from './create'
 export { loadAllTools } from './tools'
 export { loadMemoryContext, buildAgentInstructions } from './context'
 export type { MemoryLoadOptions } from './context'
 
 export type {
-  CreateAgentConfig,
-  CreateAgentResult,
   LoadToolsConfig,
   MemoryContext,
   AgentContextConfig,

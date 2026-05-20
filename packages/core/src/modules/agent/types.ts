@@ -2,19 +2,13 @@
 // Agent Types - 统一的 Agent 创建类型定义
 // ============================================================
 
-import type { UIMessage, Tool, ToolLoopAgent } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { SessionStateOptions, SessionState } from '../session'
 import type { ModelProviderConfig } from '../../services/model'
-import type { McpRegistry } from '../../modules/mcp'
 import type { SubAgentStreamWriter } from '../../modules/subagents'
 import type { Skill } from '../../modules/skills/types'
 import type { AgentDefinition } from '../../modules/subagents/types'
 import type { McpServerConfig } from '../../modules/mcp/types'
-import type { ConnectorFrontmatter } from '../../modules/connector/loader'
-import type { PermissionRule } from '../../modules/permissions/types'
-import type { MemoryEntry } from '../memory/types'
-import type { DataStore } from '../../primitives/datastore/types'
 import type { BehaviorConfig } from '../../services/config/behavior'
 import type { ConnectorRegistry } from '../../modules/connector'
 import type { ResolvedLayout } from '../../services/config/layout'
@@ -92,71 +86,6 @@ export interface LoadToolsConfig {
   debugEnabled?: boolean
   /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */
   dynamicReload?: boolean
-}
-
-/**
- * 预加载的数据（来自 AppContext）
- * 用于避免 createChatAgent 内部重复调用 loadAll
- */
-export interface PreloadedData {
-  layout: ResolvedLayout
-  skills: Skill[]
-  agents: AgentDefinition[]
-  mcps: McpServerConfig[]
-  connectors: ConnectorFrontmatter[]
-  permissions: PermissionRule[]
-  memory: MemoryEntry[]
-  /** DataStore 实例（来自 CoreRuntime，必填） */
-  dataStore: DataStore
-  /** ConnectorRegistry 实例（来自 CoreRuntime） */
-  connectorRegistry?: ConnectorRegistry
-}
-
-export interface CreateAgentConfig {
-  conversationId: string
-  messages?: UIMessage[]
-  userId?: string
-  teamId?: string
-  conversationMeta?: {
-    messageCount: number
-    isNewConversation: boolean
-    conversationStartTime: number
-  }
-  writerRef?: { current: SubAgentStreamWriter | null }
-  /** 应用层显式传入的 WebSearch API Key */
-  webSearchApiKey?: string
-  /** 是否开启调试日志 */
-  debugEnabled?: boolean
-  /** 预加载的数据（来自 AppContext），必须提供 */
-  preloadedData: PreloadedData
-  /** 统一解析后的配置（包含模型、模块、session、行为、布局） */
-  resolvedConfig: ResolvedAgentConfig
-}
-
-export interface CreateAgentResult {
-  agent: ToolLoopAgent<Record<string, any>>
-  sessionState: SessionState
-  mcpRegistry?: McpRegistry
-  tools: Record<string, Tool>
-  instructions: string
-  /** 预算检查后调整的消息（包含注入的附件） */
-  adjustedMessages?: UIMessage[]
-  /** 预算检查执行的降级动作列表 */
-  budgetActions?: string[]
-  /** 模型实例（未包装 middleware），供后台任务使用 */
-  model?: LanguageModelV3
-  /** 附件注入信息 */
-  attachmentInfo?: {
-    hasSkillListing: boolean
-    skillListingCount: number
-  }
-  /**
-   * 释放本次对话占用的所有资源
-   * - 持久化成本数据
-   * - 等待后台压缩（可选）
-   * - 断开 MCP 连接
-   */
-  dispose(options?: { waitForCompaction?: boolean }): Promise<void>
 }
 
 export interface MemoryContext {

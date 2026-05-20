@@ -6,9 +6,6 @@ export { createContext } from './context';
 export { createAgent } from './create';
 export { resolveAgentConfig } from './resolve-agent-config';
 
-// 向后兼容：createChatAgent 从 runtime/agent 导出
-export { createChatAgent } from '../../modules/agent/create';
-
 export type {
   AppContext,
   CreateContextOptions,

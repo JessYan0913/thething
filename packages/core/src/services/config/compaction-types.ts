@@ -29,3 +29,10 @@ export interface CompactionConfig {
   lifecycle: LifecycleConfig;
   contextWindow: ContextWindowConfig;
 }
+
+export interface CompactionResult {
+  messages: import('ai').UIMessage[];
+  executed: boolean;
+  tokensFreed: number;
+  actions: string[];
+}

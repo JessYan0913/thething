@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { UIMessage } from 'ai';
-import type { CompactionResult } from '../compaction/types';
+import type { CompactionResult } from '../../services/config/compaction-types';
 import type { Skill } from '../../modules/skills/types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { DataStore } from '../../primitives/datastore/types';
@@ -50,6 +50,8 @@ export interface SessionStateOptions {
   compactionConfig?: CompactionConfig;
   /** 是否启用普通自动压缩（modules.compaction !== false） */
   compactionEnabled?: boolean;
+  /** 注入的压缩函数（从 composition 层传入，打破 session→compaction 耦合） */
+  compact?: (messages: UIMessage[]) => Promise<CompactionResult>;
   /** AppContext 快照中的权限规则 */
   permissionRules?: readonly PermissionRule[];
   /** 来自 BehaviorConfig.extraSensitivePaths */
