@@ -1,6 +1,6 @@
 # packages/core 模块架构分析
 
-> 2026-05-20 深度审查，Phase 1 & 2 修复后更新。
+> 2026-05-21 深度审查，全部修复后更新。
 
 ## 1. 分层与模块清单
 
@@ -53,16 +53,16 @@ primitives/      原语层 — constants、logger、clock、parser、paths、dat
 | `subagents/` | 2595 | 子代理注册/路由/执行 + 内置代理 + 递归防护 | tasks |
 | `system-prompt/` | 1553 | 8 个 section 工厂拼装系统提示 | skills, subagents, permissions, memory |
 | `agent-control/` | 154 | Agent 管道（步骤预处理 + 停止条件） | session, budget |
-| `session/` | 1009 | 会话状态聚合（成本/token/拒绝/模型切换） | compaction, budget, tasks |
+| `session/` | 1009 | 会话状态聚合（成本/token/拒绝/模型切换） | budget, tasks |
 | `connector/` | 6636 | Connector 注册 + 执行器 + 通信基础设施 | permissions, budget, memory |
-| `agent/` | 722 | Agent 创建编排（组装所有模块） | **15 个模块** |
+| `agent/` | ~400 | 工具函数（loadAllTools、loadMemoryContext、buildAgentInstructions） | permissions, skills, memory |
 
 ### composition/
 
 | 模块 | 一句话职责 |
 |------|-----------|
 | `bootstrap.ts` | CoreRuntime 初始化（layout + behavior + datastore + connector + tokenizer） |
-| `app/` | createContext（并行加载 6 类资源 → 冻结快照）+ createAgent（消费快照创建 Agent） |
+| `app/` | createContext（并行加载 6 类资源 → 冻结快照）+ createAgent（完整 Agent 组装编排） |
 | `finalize.ts` | Agent 后处理（保存消息 + 记忆提取 + 标题生成 + 成本持久化 + MCP 清理） |
 | `inbound/` | 入站 Agent 编排（agent-handler + approval + configure + ConversationResolver） |
 | `loaders/` | 6 个 AppModule 适配器（init/snapshot/dispose 生命周期） |
@@ -75,18 +75,17 @@ primitives/      原语层 — constants、logger、clock、parser、paths、dat
 composition/
   bootstrap       → config, datastore, model, connector
   app/context     → loaders, connector(registry)
-  app/create      → agent
+  app/create      → session, model, agent-control, middleware, compaction,
+                    attachments, memory, agent(tools), system-prompt, budget
   finalize        → memory, compaction, primitives
   inbound/        → app, connector(registry, inbound/types, inbound-processor),
                     memory, permissions, finalize
   loaders/        → skills, subagents, mcp, connector, permissions, memory
 
 modules/
-  agent           → session, model, agent-control, middleware, compaction, attachments,
-                    memory, tools, tasks, subagents, mcp, connector, skills, permissions,
-                    system-prompt, budget                           ← 15 个依赖
+  agent           → permissions, skills, memory                      ← 仅工具函数，无编排
   agent-control   → session, budget
-  session         → compaction, budget, tasks
+  session         → budget, tasks                                    ← compaction 已解耦（注入）
   compaction      → model, datastore
   connector       → permissions, budget, memory                    ← 已清理，无反向依赖
   system-prompt   → skills, subagents, permissions, memory
@@ -134,22 +133,20 @@ Agent 编排逻辑（agent-handler、approval-handler、approval-context、confi
 
 `resolveModelAlias()` 已从 `modules/subagents/model-resolver.ts` 移到 `services/model/alias.ts`。参数类型改为独立的 `ModelAliases`，不再依赖 subagents 类型。`MODEL_MAPPING` 一并迁移。
 
+### 3.6 ~~session → compaction 运行时耦合~~ ✅ 已修复
+
+`session/state.ts` 直接 import `compactBeforeStep`、动态 import `manageToolOutputLifecycle` 和 `estimateMessagesTokens`，产生 session→compaction 运行时依赖。
+
+修法：`CompactionResult` 类型移到 `services/config/compaction-types.ts`（共享层），`SessionStateOptions` 新增 `compact` 注入参数，`session/state.ts` 不再 import 任何 compaction 运行时代码。compact 闭包在 `composition/app/create.ts` 中构造并赋值给 `sessionState.compact`。
+
+### 3.7 ~~agent/ 的 15 个依赖~~ ✅ 已修复
+
+`modules/agent/create.ts`（247 行纯组装代码）导入 15 个模块，职责本质上属于 composition 层。
+
+已将组装逻辑合入 `composition/app/create.ts`，`modules/agent/` 仅保留工具函数（`loadAllTools`、`loadMemoryContext`、`buildAgentInstructions`）和类型定义。`modules/agent/create.ts` 已删除。
+
 ---
 
-## 4. 应该修但不紧急的问题
+## 4. 遗留问题
 
-### 4.1 agent/ 的 15 个依赖（可选）
-
-`modules/agent/create.ts` 导入 15 个模块，只有 722 行——它本质是个组装器。这个职责更适合 composition 层。
-
-可以把 agent 的组装逻辑上移到 `composition/app/create.ts`，让 `modules/agent/` 只保留工具函数（loadAllTools、loadMemoryContext、buildAgentInstructions）。
-
-**不做也不会坏。** agent 作为"已知的编排中心"是可以接受的。
-
-### 4.2 session → compaction 的类型耦合（可选）
-
-session 直接 import compaction 的函数和类型。目前不构成运行时循环，但后续拆分时会碍事。
-
-修法：`compactBeforeStep` 改为通过 `createSessionState` 参数注入。
-
-> P2 的问题不需要设计，直接提 PR 修。
+当前无已知架构问题。
