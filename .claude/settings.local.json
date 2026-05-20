@@ -54,7 +54,12 @@
       "Bash(rm test-import-chain.ts)",
       "Bash(rm test-fix.ts)",
       "Bash(npx --package typescript tsc --noEmit --project packages/server/tsconfig.json)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(cp extensions/subagents/*.ts modules/subagents/)",
+      "Bash(cp extensions/subagents/built-in/*.ts modules/subagents/built-in/)",
+      "Bash(cp extensions/memory/*.ts modules/memory/)",
+      "Bash(cp extensions/permissions/*.ts modules/permissions/)",
+      "Bash(cp extensions/system-prompt/*.ts modules/system-prompt/)"
     ]
   }
 }
