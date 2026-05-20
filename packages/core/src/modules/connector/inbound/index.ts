@@ -21,7 +21,3 @@ export { MemoryInboundInbox } from './inbox/memory-inbox'
 export { SQLiteInboundInbox } from './inbox/sqlite-inbox'
 export { ConnectorResponder } from './responder/responder'
 export { DefaultConnectorInboundRuntime } from './runtime'
-
-// Agent 入站处理器
-export { AgentInboundHandler, createAgentInboundHandler } from './agent-handler'
-export type { AgentHandlerConfig } from './agent-handler'

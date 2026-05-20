@@ -8,26 +8,15 @@
 // - 由应用层管理实例生命周期
 
 import path from 'path'
-import type { ConnectorRuntime, ConnectorRuntimeConfig, ConnectorAppContext } from './types'
-import type { AppContext } from '../../composition/app/types'
+import type { ConnectorRuntime, ConnectorRuntimeConfig } from './types'
 import { ConnectorRegistry } from './registry'
 import { AuditLogger } from './audit-logger'
 import { InboundEventProcessor } from './inbound/inbound-processor'
-import { createAgentInboundHandler, type AgentHandlerConfig } from './inbound/agent-handler'
 import { ConnectorInboundGateway } from './inbound/gateway/inbound-gateway'
 import { SQLiteInboundInbox } from './inbound/inbox/sqlite-inbox'
 import { ConnectorResponder } from './inbound/responder/responder'
 import { DefaultConnectorInboundRuntime } from './inbound/runtime'
 import { setConnectorDebugEnabled } from './debug'
-import { createAgent } from '../../composition/app'
-import { DefaultConversationResolver } from '../../composition/inbound-agent'
-
-export interface ConfigureConnectorInboundOptions {
-  userId?: string
-  appContext: ConnectorAppContext
-  modules?: AgentHandlerConfig['modules']
-  modelConfig?: ConnectorRuntimeConfig['model']
-}
 
 /**
  * 创建 ConnectorRuntime 实例
@@ -70,15 +59,6 @@ export function createConnectorRuntime(config: ConnectorRuntimeConfig): Connecto
     inboundService: eventProcessor,
   }
 
-  // 5. 如果有 AppContext，配置 inbound handler
-  if (config.appContext) {
-    configureConnectorInboundRuntime(runtime, {
-      userId: config.userId,
-      appContext: config.appContext as AppContext,
-      modelConfig: config.model,
-    })
-  }
-
   return runtime
 }
 
@@ -103,32 +83,6 @@ export async function initializeConnectorRuntime(
 }
 
 /**
- * 绑定入站 Agent 处理器并启动消费者。
- *
- * bootstrap 阶段只能初始化 registry；server 创建 AppContext 和模型配置后，
- * 再调用该函数把标准 InboundEvent 交给 Agent 应用服务。
- */
-export function configureConnectorInboundRuntime(
-  runtime: ConnectorRuntime,
-  options: ConfigureConnectorInboundOptions,
-): void {
-  const handlerConfig: AgentHandlerConfig = {
-    registry: runtime.registry,
-    userId: options.userId,
-    context: options.appContext,
-    modules: options.modules,
-    modelConfig: options.modelConfig,
-    conversationResolver: new DefaultConversationResolver(),
-    createAgent,
-  }
-  const handler = createAgentInboundHandler(handlerConfig)
-  const processor = runtime.inboundService as InboundEventProcessor
-  processor.setHandler(handler)
-  processor.setRegistry(runtime.registry)
-  runtime.inbound.startConsumer(processor)
-}
-
-/**
  * 释放 ConnectorRuntime 资源
  *
  * @param runtime ConnectorRuntime 实例
@@ -141,5 +95,4 @@ export async function disposeConnectorRuntime(runtime: ConnectorRuntime): Promis
   runtime.inbound.stopConsumer()
   const inbox = runtime.inbound.inbox as { close?: () => void }
   inbox.close?.()
-
 }

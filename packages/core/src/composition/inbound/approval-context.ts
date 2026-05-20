@@ -10,7 +10,7 @@
 //   工具需要审批 → setSuspendedState(现场 + 累积结果) → 返回询问消息
 //   用户回复同意 → getSuspendedState() → 在现场追加 approval-response → 继续运行
 
-import type { ReplyAddress } from './inbound/types'
+import type { ReplyAddress } from '../../modules/connector/inbound/types'
 import { logger } from '../../primitives/logger'
 
 export interface SuspendedApprovalRequest {

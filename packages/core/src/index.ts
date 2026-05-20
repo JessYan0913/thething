@@ -221,14 +221,11 @@ export {
 // Connector types
 export type { ConnectorFrontmatter } from './modules/connector/loader';
 export {
-  InboundEventProcessor,
   createConnectorRuntime,
   initializeConnectorRuntime,
-  configureConnectorInboundRuntime,
   disposeConnectorRuntime,
 } from './modules/connector';
 export type { ConnectorToolCall, ConnectorRuntime, ConnectorRuntimeConfig } from './modules/connector/types';
-export type { ConfigureConnectorInboundOptions } from './modules/connector';
 export type {
   InboundEvent,
   ReplyAddress,
@@ -239,8 +236,22 @@ export type {
   RespondResult,
 } from './modules/connector/inbound/types';
 export { ConnectorInboundGateway, ConnectorResponder } from './modules/connector/inbound';
-export { DefaultConversationResolver, DefaultInboundAgentService } from './composition/inbound-agent';
-export type { ConversationResolver, InboundAgentService, PendingApproval } from './composition/inbound-agent';
+export {
+  InboundEventProcessor,
+} from './modules/connector/inbound/inbound-processor';
+
+// Inbound Agent 编排（从 composition/inbound 导出）
+export {
+  DefaultConversationResolver,
+  DefaultInboundAgentService,
+  configureConnectorInboundRuntime,
+} from './composition/inbound';
+export type {
+  ConversationResolver,
+  InboundAgentService,
+  PendingApproval,
+  ConfigureConnectorInboundOptions,
+} from './composition/inbound';
 
 // Permission types
 export type { PermissionRule, PermissionBehavior } from './modules/permissions/types';

@@ -24,33 +24,15 @@ export { AuditLogger } from './audit-logger'
 // 凭证加密存储
 export * from './credentials/index'
 
-// Approval handling
-export {
-  buildApprovalAskMessage,
-  parseApprovalResponse,
-} from './approval-handler'
-export type { SuspendedAgentState } from './approval-context'
-export {
-  getSuspendedState,
-  setSuspendedState,
-  clearSuspendedState,
-  hasSuspendedState,
-  detectApprovalResponse,
-  clearAllSuspendedStates,
-  cleanupExpiredSuspendedStates,
-} from './approval-context'
-
-// Inbound Layer - 入站消息处理
+// Inbound Layer - 入站消息处理（通信基础设施）
 export * from './inbound/index'
 
 // Runtime Factory
 export {
   createConnectorRuntime,
   initializeConnectorRuntime,
-  configureConnectorInboundRuntime,
   disposeConnectorRuntime,
 } from './factory'
-export type { ConfigureConnectorInboundOptions } from './factory'
 
 // Connector Loader（YAML 加载）
 export {

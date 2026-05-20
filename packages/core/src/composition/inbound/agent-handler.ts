@@ -15,24 +15,24 @@
 
 import { convertToModelMessages, type UIMessage, type ModelMessage, type AssistantContent } from 'ai'
 import { nanoid } from 'nanoid'
-import type { InboundEvent } from './types'
-import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
-import type { AppContext, CreateAgentOptions, CreateAgentResult } from '../../../composition/app/types'
-import { finalizeAgentRun } from '../../../composition/finalize'
-import { getPrimaryMemoryDir } from '../../../modules/memory'
-import { ConnectorRegistry } from '../registry'
-import type { ConnectorModelConfig } from '../types'
-import type { DataStore } from '../../../primitives/datastore/types'
-import { checkPermissionRules } from '../../../modules/permissions/rules'
-import { buildApprovalAskMessageForRequests } from '../approval-handler'
-import { logger } from '../../../primitives/logger'
+import type { InboundEvent } from '../../modules/connector/inbound/types'
+import type { InboundEventResult, InboundEventHandler } from '../../modules/connector/inbound/inbound-processor'
+import type { AppContext, CreateAgentOptions, CreateAgentResult } from '../app/types'
+import { finalizeAgentRun } from '../finalize'
+import { getPrimaryMemoryDir } from '../../modules/memory'
+import { ConnectorRegistry } from '../../modules/connector/registry'
+import type { ConnectorModelConfig } from '../../modules/connector/types'
+import type { DataStore } from '../../primitives/datastore/types'
+import { checkPermissionRules } from '../../modules/permissions/rules'
+import { buildApprovalAskMessageForRequests } from './approval-handler'
+import { logger } from '../../primitives/logger'
 import {
   type SuspendedAgentState,
   getSuspendedState,
   setSuspendedState,
   clearSuspendedState,
   detectApprovalResponse,
-} from '../approval-context'
+} from './approval-context'
 
 // ============================================================
 // stepsToMessageParts - 将 AI SDK steps 转换为 UIMessage parts
