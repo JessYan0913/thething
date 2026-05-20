@@ -14,7 +14,7 @@ services/        基础设施层 — config、datastore、model、scanner
 primitives/      原语层 — constants、logger、clock、parser、paths、datastore 接口
 ```
 
-依赖规则：只能向下依赖，同层可互相依赖。**当前有 1 处违反（P2，type-only）。**
+依赖规则：只能向下依赖，同层可互相依赖。**当前无违反。**
 
 ### primitives/
 
@@ -102,11 +102,11 @@ modules/
   tasks           → (primitives only)
 
 services/
-  config          → model, datastore,
-                    ██ modules/* (type re-export)                   ← 层级违反（P2）
+  config          → model, datastore
+  model           → config (alias)
 ```
 
-`██` 标记的是违反分层规则的依赖。
+当前无分层违反。
 
 ---
 
@@ -126,6 +126,14 @@ Agent 编排逻辑（agent-handler、approval-handler、approval-context、confi
 
 `modules/compaction/types.ts` 的 `export type` re-export 不让类型名在本文件可用，添加了 `import type` 修复 3 个 `Cannot find name` 错误。
 
+### 3.4 ~~services/config 的类型 re-export（P2）~~ ✅ 已修复
+
+`services/config/types.ts` 从 7 个 modules 导入 24 个类型做 re-export，违反分层规则。经验证零消费者，整个文件为死代码。已删除文件并清理 `services/config/index.ts` 中对应的 re-export（含 `ToolOutputConfig`）。
+
+### 3.5 ~~resolveModelAlias 放在 subagents 里（P2）~~ ✅ 已修复
+
+`resolveModelAlias()` 已从 `modules/subagents/model-resolver.ts` 移到 `services/model/alias.ts`。参数类型改为独立的 `ModelAliases`，不再依赖 subagents 类型。`MODEL_MAPPING` 一并迁移。
+
 ---
 
 ## 4. 应该修但不紧急的问题
@@ -143,15 +151,5 @@ Agent 编排逻辑（agent-handler、approval-handler、approval-context、confi
 session 直接 import compaction 的函数和类型。目前不构成运行时循环，但后续拆分时会碍事。
 
 修法：`compactBeforeStep` 改为通过 `createSessionState` 参数注入。
-
-### 4.3 services/config 的类型 re-export（P2）
-
-`services/config/types.ts` 从 7 个 modules 导入类型做 re-export。全是 type-only，不影响运行时。
-
-修法：删掉 modules 层 re-export，统一入口放包顶层 `index.ts`。
-
-### 4.4 resolveModelAlias 放在 subagents 里（P2）
-
-模型别名解析是通用能力，不属于子代理。移到 `services/model/` 即可。
 
 > P2 的问题不需要设计，直接提 PR 修。
