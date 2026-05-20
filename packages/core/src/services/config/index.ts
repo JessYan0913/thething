@@ -67,33 +67,3 @@ export {
   getEffectiveContextBudget,
 } from '../model';
 
-// ============================================================
-// 类型导出（统一从 config/types.ts 导出）
-// ============================================================
-
-// 重新导出的模块类型
-export type {
-  ModelCapabilities,
-  ModelProviderConfig,
-  SQLiteDataStoreConfig,
-  SkillLoaderConfig,
-  ConnectorDefinition,
-  ConnectorRuntimeConfig,
-  AuthConfig,
-  ToolDefinition,
-  SchemaProperty,
-  HttpExecutorConfig,
-  SqlExecutorConfig,
-  ScriptExecutorConfig,
-  MockExecutorConfig,
-  McpServerConfig,
-  PermissionConfig,
-  PermissionRule,
-  SessionStateOptions,
-  SessionState,
-} from './types';
-
-// 从 runtime/budget 导出的类型
-export type {
-  ToolOutputConfig,
-} from '../../modules/budget/tool-output-manager';

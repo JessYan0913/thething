@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai';
-import { resolveModelAlias } from '../subagents/model-resolver';
+import { resolveModelAlias } from '../../services/model';
 
 export interface ModelProvider {
   id: string;

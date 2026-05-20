@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveModelForAgent, MODEL_MAPPING } from '../model-resolver';
+import { resolveModelForAgent } from '../model-resolver';
+import { MODEL_MAPPING } from '../../../services/model';
 import type { AgentDefinition, AgentExecutionContext, LanguageModel } from '../types';
 
 // Helper: extract modelId from a LanguageModel result (test-only)

@@ -1,16 +1,6 @@
 import type { AgentDefinition, AgentExecutionContext, LanguageModel } from './types';
-import { DEFAULT_MODEL_ALIASES } from '../../services/config/behavior';
+import { resolveModelAlias } from '../../services/model';
 import { logger } from '../../primitives/logger';
-
-// 重新导出默认别名映射供其他模块使用
-export { DEFAULT_MODEL_ALIASES as MODEL_MAPPING };
-
-export function resolveModelAlias(modelName: string, aliases?: AgentExecutionContext['modelAliases']): string {
-  if (modelName === 'fast') return aliases?.fast ?? DEFAULT_MODEL_ALIASES.fast;
-  if (modelName === 'smart') return aliases?.smart ?? DEFAULT_MODEL_ALIASES.smart;
-  if (modelName === 'default') return aliases?.default ?? DEFAULT_MODEL_ALIASES.default;
-  return modelName;
-}
 
 /**
  * 解析 Agent 使用的模型

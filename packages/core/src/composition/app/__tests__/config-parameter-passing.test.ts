@@ -12,7 +12,7 @@ import {
   type ToolOutputConfig,
 } from '../../../modules/budget/tool-output-manager';
 import { createPermissionsSection } from '../../../modules/system-prompt/sections/permissions';
-import { resolveModelAlias } from '../../../modules/subagents/model-resolver';
+import { resolveModelAlias } from '../../../services/model';
 import type { PermissionRule } from '../../../modules/permissions/types';
 
 function createMockLayout() {

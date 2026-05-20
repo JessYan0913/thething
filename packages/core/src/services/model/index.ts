@@ -24,3 +24,6 @@ export {
   createPricingResolver,
 } from './pricing';
 export type { ModelPricing, PricingRegistry, PricingResolver } from './pricing';
+
+// Alias（模型别名解析）
+export { resolveModelAlias, MODEL_MAPPING, type ModelAliases } from './alias';

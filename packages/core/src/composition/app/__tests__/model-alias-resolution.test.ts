@@ -9,7 +9,7 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
-import { resolveModelAlias, MODEL_MAPPING } from '../../../modules/subagents/model-resolver';
+import { resolveModelAlias, MODEL_MAPPING } from '../../../services/model';
 import { DEFAULT_MODEL_ALIASES } from '../../../services/config/behavior';
 import { detectModelSwitchIntent, ModelSwapper, type ModelProvider } from '../../../modules/session/model-switching';
 import { buildBehaviorConfig } from '../../../services/config/behavior';
