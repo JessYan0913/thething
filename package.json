@@ -15,7 +15,10 @@
     "cli": "pnpm --filter @the-thing/cli start",
     "lint": "eslint",
     "typecheck": "pnpm -r typecheck",
-    "typecheck:core": "pnpm --filter @the-thing/core typecheck"
+    "typecheck:core": "pnpm --filter @the-thing/core typecheck",
+    "check:layers": "node scripts/check-layer-deps.mjs",
+    "check:isolation": "node scripts/check-interface-isolation.mjs",
+    "check:exports": "node scripts/check-export-surface.mjs"
   },
   "dependencies": {
     "@the-thing/core": "workspace:*"

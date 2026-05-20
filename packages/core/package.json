@@ -7,7 +7,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:circular": "npx madge --circular --extensions ts ./src",
+    "check:layers": "node scripts/check-layer-deps.mjs",
+    "check:interfaces": "node scripts/check-interface-isolation.mjs",
+    "check:exports": "node scripts/check-export-surface.mjs"
   },
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.35",

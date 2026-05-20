@@ -10,7 +10,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import type { Task, TaskStatus } from "@/lib/tasks/types";
-import { STATUS_CONFIG } from "@/lib/tasks/types";
+import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/tasks/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -247,7 +247,7 @@ function TaskItem({ task, actions, onClick, showBlockedBy }: TaskItemProps) {
       onClick={onClick}
     >
       {/* Status Indicator */}
-      <div className={cn("mt-0.5", config.color)}>
+      <div className={cn("mt-0.5", STATUS_STYLES[task.status].color)}>
         <span className="text-lg">{config.icon}</span>
       </div>
 

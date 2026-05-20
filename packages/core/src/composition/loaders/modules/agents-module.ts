@@ -1,0 +1,35 @@
+// ============================================================
+// Agents Module - AppModule adapter for agents loader
+// ============================================================
+
+import type { AppModule, ModuleContext } from '../module-types';
+import { loadAgents, clearAgentsCache, type LoadAgentsOptions } from '../../../modules/subagents/loader';
+import type { AgentDefinition } from '../../../modules/subagents/types';
+
+export function createAgentsModule(loadOptions?: LoadAgentsOptions): AppModule<AgentDefinition[]> {
+  let loadedAgents: AgentDefinition[] = [];
+
+  return {
+    name: 'agents',
+
+    async init(context: ModuleContext): Promise<void> {
+      const options: LoadAgentsOptions = {
+        cwd: context.cwd,
+        configDirName: context.configDirName,
+        homeDir: context.homeDir,
+        dirs: context.resourceDirs.agents,
+        ...loadOptions,
+      };
+      loadedAgents = await loadAgents(options);
+    },
+
+    snapshot(): AgentDefinition[] {
+      return loadedAgents;
+    },
+
+    async dispose(): Promise<void> {
+      clearAgentsCache();
+      loadedAgents = [];
+    },
+  };
+}

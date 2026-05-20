@@ -60,8 +60,8 @@
 // ============================================================
 // 高层 API（推荐入口）
 // ============================================================
-export { bootstrap, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './bootstrap';
-export { createAgent, createContext, resolveAgentConfig } from './api/app';
+export { bootstrap, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './composition/bootstrap';
+export { createAgent, createContext, resolveAgentConfig } from './composition/app';
 export type {
   AppContext,
   CreateAgentOptions,
@@ -71,12 +71,12 @@ export type {
   LoadEvent,
   LoadSourceInfo,
   LoadError,
-} from './api/app/types';
+} from './composition/app/types';
 export type {
   ResolvedAgentConfig,
   AgentModules,
-} from './runtime/agent/types';
-export { type ConnectorRegistry } from './extensions/connector';
+} from './modules/agent/types';
+export { type ConnectorRegistry } from './modules/connector';
 
 // ============================================================
 // 新的配置系统（推荐使用）
@@ -87,14 +87,14 @@ export {
   DEFAULT_MODEL_ALIASES,
   type BehaviorConfig,
   type ModelSpec,
-} from './config/behavior';
+} from './services/config/behavior';
 
 export {
   resolveLayout,
   type LayoutConfig,
   type ResolvedLayout,
   type ResourceDirs,
-} from './config/layout';
+} from './services/config/layout';
 
 // ============================================================
 // Foundation Layer（白名单导出）
@@ -104,7 +104,7 @@ export {
   createDefaultDataStore,
   createInMemoryDataStore,
   createSQLiteDataStore,
-} from './foundation/datastore';
+} from './services/datastore';
 export type {
   DataStore,
   ConversationStore,
@@ -117,7 +117,7 @@ export type {
   StoredSummary,
   CostRecord,
   SQLiteDataStoreConfig,
-} from './foundation/datastore/types';
+} from './primitives/datastore/types';
 
 // Model
 export {
@@ -130,55 +130,55 @@ export {
   // Pricing（定价配置）
   createPricingResolver,
   DEFAULT_PRICING,
-} from './foundation/model';
+} from './services/model';
 export type {
   ModelCapabilities,
   ModelProviderConfig,
   ModelPricing,
   PricingRegistry,
   PricingResolver,
-} from './foundation/model';
+} from './services/model';
 
 // Clock（时间抽象）
 export {
   systemClock,
-} from './foundation/clock';
-export type { Clock } from './foundation/clock';
+} from './primitives/clock';
+export type { Clock } from './primitives/clock';
 
 // Paths
-export { resolveProjectDir, resolveHomeDir } from './foundation/paths';
+export { resolveProjectDir, resolveHomeDir } from './primitives/paths';
 
 // Parser
-export { parseFrontmatterFile, parseYamlFile, parseJsonFile } from './foundation/parser';
+export { parseFrontmatterFile, parseYamlFile, parseJsonFile } from './primitives/parser';
 
 // ============================================================
 // Runtime Layer（白名单导出）
 // ============================================================
 // Session State
-export { createSessionState } from './runtime/session-state';
-export type { SessionState, SessionStateOptions } from './runtime/session-state';
+export { createSessionState } from './modules/session';
+export type { SessionState, SessionStateOptions } from './modules/session';
 
 // Compaction
 export {
   compactBeforeStep,
   manageToolOutputLifecycle,
   estimateMessagesTokens,
-} from './runtime/compaction';
+} from './modules/compaction';
 
 // Tasks
 export {
   createTaskStore,
-} from './runtime/tasks';
+} from './modules/tasks';
 export {
   STATUS_CONFIG,
-} from './runtime/tasks/types';
+} from './modules/tasks/types';
 export type {
   Task,
   TaskStatus,
   TaskCreateInput,
   TaskUpdateInput,
   TaskClaimResult,
-} from './runtime/tasks/types';
+} from './modules/tasks/types';
 
 // ============================================================
 // Extensions Layer（白名单导出）
@@ -193,21 +193,21 @@ export {
   loadConnectors,
   loadPermissions,
   loadMemory,
-} from './api/loaders';
+} from './composition/loaders';
 export type {
   LoadAllOptions,
   LoadAllResult,
   MemoryEntry,
-} from './api/loaders';
+} from './composition/loaders';
 
 // Skill types
-export type { Skill } from './extensions/skills/types';
+export type { Skill } from './modules/skills/types';
 
 // Agent types
-export type { AgentDefinition } from './extensions/subagents/types';
+export type { AgentDefinition } from './modules/subagents/types';
 
 // MCP types
-export type { McpServerConfig, McpServerConfigSource } from './extensions/mcp/types';
+export type { McpServerConfig, McpServerConfigSource } from './modules/mcp/types';
 export {
   createMcpRegistry,
   getMcpServerConfigs,
@@ -215,19 +215,19 @@ export {
   addMcpServerConfig,
   updateMcpServerConfig,
   deleteMcpServerConfig,
-} from './extensions/mcp';
+} from './modules/mcp';
 
 // Connector types
-export type { ConnectorFrontmatter } from './extensions/connector/loader';
+export type { ConnectorFrontmatter } from './modules/connector/loader';
 export {
   InboundEventProcessor,
   createConnectorRuntime,
   initializeConnectorRuntime,
   configureConnectorInboundRuntime,
   disposeConnectorRuntime,
-} from './extensions/connector';
-export type { ConnectorToolCall, ConnectorRuntime, ConnectorRuntimeConfig } from './extensions/connector/types';
-export type { ConfigureConnectorInboundOptions } from './extensions/connector';
+} from './modules/connector';
+export type { ConnectorToolCall, ConnectorRuntime, ConnectorRuntimeConfig } from './modules/connector/types';
+export type { ConfigureConnectorInboundOptions } from './modules/connector';
 export type {
   InboundEvent,
   ReplyAddress,
@@ -236,14 +236,14 @@ export type {
   ExternalInboundInput,
   OutboundMessage,
   RespondResult,
-} from './extensions/connector/inbound/types';
-export { ConnectorInboundGateway, ConnectorResponder } from './extensions/connector/inbound';
-export { DefaultConversationResolver, DefaultInboundAgentService } from './application/inbound-agent';
-export type { ConversationResolver, InboundAgentService, PendingApproval } from './application/inbound-agent';
+} from './modules/connector/inbound/types';
+export { ConnectorInboundGateway, ConnectorResponder } from './modules/connector/inbound';
+export { DefaultConversationResolver, DefaultInboundAgentService } from './composition/inbound-agent';
+export type { ConversationResolver, InboundAgentService, PendingApproval } from './composition/inbound-agent';
 
 // Permission types
-export type { PermissionRule, PermissionBehavior } from './extensions/permissions/types';
-export { removeRule, saveRule, loadRules, updateRule } from './extensions/permissions';
+export type { PermissionRule, PermissionBehavior } from './modules/permissions/types';
+export { removeRule, saveRule, loadRules, updateRule } from './modules/permissions';
 
 // Memory extraction
 export {
@@ -252,29 +252,29 @@ export {
   scanMemoryFiles,
   loadEntrypoint,
   readMemoryContent,
-} from './extensions/memory';
+} from './modules/memory';
 
 // Title generation
-export { generateConversationTitle } from './runtime/compaction';
+export { generateConversationTitle } from './modules/compaction';
 
 // SubAgent types
-export type { SubAgentStreamWriter } from './extensions/subagents';
+export type { SubAgentStreamWriter } from './modules/subagents';
 
 // ============================================================
 // DataStore exports（补充）
 // ============================================================
-export { SQLiteDataStore } from './foundation/datastore/sqlite/sqlite-data-store';
+export { SQLiteDataStore } from './services/datastore/sqlite/sqlite-data-store';
 
 // CredentialStore
-export { CredentialStore } from './extensions/connector/credentials/store';
+export { CredentialStore } from './modules/connector/credentials/store';
 
 // ============================================================
 // Native 模块加载（SEA 支持）
 // ============================================================
-export { loadBetterSqlite3, getDatabase } from './foundation/datastore/sqlite/native-loader';
+export { loadBetterSqlite3, getDatabase } from './services/datastore/sqlite/native-loader';
 export type {
   SqliteDatabase,
   SqliteDatabaseConstructor,
   SqliteDatabaseOptions,
   SqliteStatement,
-} from './foundation/datastore/types';
+} from './primitives/datastore/types';

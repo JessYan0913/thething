@@ -241,7 +241,7 @@ export function TaskDetailsDialog({
           {/* Status */}
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">Status:</span>
-            <span className={STATUS_CONFIG[task.status].color}>
+            <span className={STATUS_STYLES[task.status].color}>
               {task.status.replace("_", " ")}
             </span>
           </div>
@@ -402,4 +402,4 @@ function PriorityBadgeInline({ priority }: { priority: "low" | "medium" | "high"
 }
 
 // Re-export status config for convenience
-import { STATUS_CONFIG } from "@/lib/tasks/types";
+import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/tasks/types";

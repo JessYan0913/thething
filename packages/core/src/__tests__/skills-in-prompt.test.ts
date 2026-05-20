@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
-import { loadSkills, clearSkillsCache } from '../api/loaders/skills';
-import { buildSystemPrompt } from '../extensions/system-prompt/builder';
-import { getSkillListingAttachment, formatSkillListingMessage } from '../extensions/attachments/skill-listing';
+import { loadSkills, clearSkillsCache } from '../modules/skills/loader';
+import { buildSystemPrompt } from '../modules/system-prompt/builder';
+import { getSkillListingAttachment, formatSkillListingMessage } from '../modules/attachments/skill-listing';
 
 describe('Skills Mechanism (Skill Tool Approach)', () => {
   beforeAll(async () => {

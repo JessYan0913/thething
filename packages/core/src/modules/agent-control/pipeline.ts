@@ -1,0 +1,105 @@
+import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage } from 'ai';
+import type { PipelineContext } from '../session/interfaces';
+import { enforceToolResultBudget } from '../budget/message-budget';
+import { logger } from '../../primitives/logger';
+
+function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
+  if (debugEnabled) {
+    logger.debug('Pipeline', args.map(a => String(a)).join(' '));
+  }
+}
+
+export interface AgentPipelineConfig {
+  sessionState: PipelineContext;
+  maxSteps?: number;
+  maxBudgetUsd?: number;
+  debugEnabled?: boolean;
+}
+
+export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipelineConfig): PrepareStepFunction<TOOLS> {
+  const { sessionState, debugEnabled } = config;
+
+  const prepareStep: PrepareStepFunction<TOOLS> = async ({ stepNumber, messages, steps }) => {
+    if (sessionState.aborted) {
+      return { messages, tools: [] as any, continue: false } as PrepareStepResult<TOOLS>;
+    }
+
+    sessionState.turnCount = stepNumber + 1;
+
+    const lastStep = steps[steps.length - 1];
+    if (lastStep?.usage) {
+      sessionState.tokenBudget.accumulate(lastStep.usage);
+    }
+
+    const budgetSummary = sessionState.tokenBudget.getSummary();
+    debugLog(
+      debugEnabled,
+      `[Agent] Step ${stepNumber + 1} | Tokens: ${budgetSummary.totalTokens.toLocaleString()} (${budgetSummary.usagePercentage.toFixed(1)}%) | Compact: ${budgetSummary.shouldCompact ? 'YES' : 'no'}`,
+    );
+
+    // 条件技能激活已移除，技能现在通过 Skill 工具主动调用
+
+    if (sessionState.denialTracker.isThresholdExceeded()) {
+      const injectMsg = sessionState.denialTracker.getInjectMessage();
+      if (injectMsg) {
+        debugLog(debugEnabled, `[Agent] Denial threshold exceeded, injecting warning message`);
+        return {
+          messages: [...messages, injectMsg as ModelMessageType],
+        } as PrepareStepResult<TOOLS>;
+      }
+    }
+
+    const modelSwitchResult = sessionState.modelSwapper.checkUserIntent(messages);
+    if (modelSwitchResult.switched) {
+      debugLog(debugEnabled, `[Agent] Model switched: ${sessionState.model} -> ${modelSwitchResult.newModel}`);
+      sessionState.model = modelSwitchResult.newModel!;
+      if (modelSwitchResult.notification) {
+        debugLog(debugEnabled, `[Agent] ${modelSwitchResult.notification}`);
+      }
+    }
+
+    const costSummary = sessionState.costTracker.getSummary();
+    const costPercent = (costSummary.totalCostUsd / costSummary.maxBudgetUsd) * 100;
+    const costSwitchResult = sessionState.modelSwapper.checkCostBudget(costPercent);
+    if (costSwitchResult.switched) {
+      debugLog(debugEnabled, `[Agent] Auto-downgrade model due to cost: ${costSwitchResult.newModel}`);
+      sessionState.model = costSwitchResult.newModel!;
+    }
+
+    // 每步调用 compactBeforeStep（Layer 1 + Layer 2 + Layer 3）
+    const compactResult = await sessionState.compact(messages as unknown as UIMessage[]);
+    if (compactResult.executed) {
+      debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
+      messages = compactResult.messages as unknown as ModelMessageType[];
+    }
+
+    // ✅ 新增：工具结果预算检查
+    // 在工具结果进入下一轮前，检查总额是否超过预算
+    if (stepNumber > 0 && lastStep?.toolResults && lastStep.toolResults.length > 0) {
+      const budgetResult = await enforceToolResultBudget(
+        messages as unknown as UIMessage[],
+        sessionState.contentReplacementState,
+        sessionState.conversationId,
+        sessionState.layout.dataDir,
+        new Set(),
+        sessionState.toolOutputConfig,
+      );
+
+      if (budgetResult.newlyPersisted.length > 0) {
+        debugLog(
+          debugEnabled,
+          `[Agent] Tool result budget: persisted ${budgetResult.newlyPersisted.length} results, ` +
+          `saved ${budgetResult.tokensSaved} tokens`
+        );
+        messages = budgetResult.messages as unknown as ModelMessageType[];
+      }
+    }
+
+    return {
+      messages,
+      continue: true,
+    } as unknown as PrepareStepResult<TOOLS>;
+  };
+
+  return prepareStep;
+}
