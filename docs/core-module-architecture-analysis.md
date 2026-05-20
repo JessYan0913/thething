@@ -1,6 +1,6 @@
 # packages/core 模块架构分析
 
-> 2026-05-20 深度审查。本文只回答三个问题：每个模块是什么、模块间怎么连的、哪里坏了怎么修。
+> 2026-05-20 深度审查，Phase 1 & 2 修复后更新。
 
 ## 1. 分层与模块清单
 
@@ -14,7 +14,7 @@ services/        基础设施层 — config、datastore、model、scanner
 primitives/      原语层 — constants、logger、clock、parser、paths、datastore 接口
 ```
 
-依赖规则：只能向下依赖，同层可互相依赖。**当前有 2 处违反。**
+依赖规则：只能向下依赖，同层可互相依赖。**当前有 1 处违反（P2，type-only）。**
 
 ### primitives/
 
@@ -54,7 +54,7 @@ primitives/      原语层 — constants、logger、clock、parser、paths、dat
 | `system-prompt/` | 1553 | 8 个 section 工厂拼装系统提示 | skills, subagents, permissions, memory |
 | `agent-control/` | 154 | Agent 管道（步骤预处理 + 停止条件） | session, budget |
 | `session/` | 1009 | 会话状态聚合（成本/token/拒绝/模型切换） | compaction, budget, tasks |
-| `connector/` | 6636 | Connector 注册 + 执行器 + 入站子系统 | permissions, budget, memory, **composition** |
+| `connector/` | 6636 | Connector 注册 + 执行器 + 通信基础设施 | permissions, budget, memory |
 | `agent/` | 722 | Agent 创建编排（组装所有模块） | **15 个模块** |
 
 ### composition/
@@ -63,8 +63,9 @@ primitives/      原语层 — constants、logger、clock、parser、paths、dat
 |------|-----------|
 | `bootstrap.ts` | CoreRuntime 初始化（layout + behavior + datastore + connector + tokenizer） |
 | `app/` | createContext（并行加载 6 类资源 → 冻结快照）+ createAgent（消费快照创建 Agent） |
+| `finalize.ts` | Agent 后处理（保存消息 + 记忆提取 + 标题生成 + 成本持久化 + MCP 清理） |
+| `inbound/` | 入站 Agent 编排（agent-handler + approval + configure + ConversationResolver） |
 | `loaders/` | 6 个 AppModule 适配器（init/snapshot/dispose 生命周期） |
-| `inbound-agent/` | 入站 Agent 编排接口（ConversationResolver + ApprovalService） |
 
 ---
 
@@ -75,8 +76,10 @@ composition/
   bootstrap       → config, datastore, model, connector
   app/context     → loaders, connector(registry)
   app/create      → agent
+  finalize        → memory, compaction, primitives
+  inbound/        → app, connector(registry, inbound/types, inbound-processor),
+                    memory, permissions, finalize
   loaders/        → skills, subagents, mcp, connector, permissions, memory
-  inbound-agent/  → connector/inbound(types)
 
 modules/
   agent           → session, model, agent-control, middleware, compaction, attachments,
@@ -85,8 +88,7 @@ modules/
   agent-control   → session, budget
   session         → compaction, budget, tasks
   compaction      → model, datastore
-  connector       → permissions, budget, memory,
-                    ██ composition/app, composition/inbound-agent   ← 反向依赖（P0）
+  connector       → permissions, budget, memory                    ← 已清理，无反向依赖
   system-prompt   → skills, subagents, permissions, memory
   subagents       → tasks
   tools           → permissions, skills
@@ -108,161 +110,48 @@ services/
 
 ---
 
-## 3. 必须修的问题
+## 3. 已修复的问题
 
-### 3.1 connector/inbound 反向依赖 composition（P0）
+### 3.1 ~~connector/inbound 反向依赖 composition（P0）~~ ✅ 已修复
 
-**问题：**
+Agent 编排逻辑（agent-handler、approval-handler、approval-context、configureConnectorInboundRuntime）已从 `modules/connector/` 搬到 `composition/inbound/`。
 
-```typescript
-// modules/connector/inbound/agent-handler.ts — modules 层
-import { createAgent } from '../../composition/app'        // ← 向上依赖
+`modules/connector/` 现在是纯通信层，零 composition 依赖。通信基础设施（gateway、adapters、inbox、responder、crypto、inbound-processor、runtime、types）保留在原位。
 
-// modules/connector/factory.ts — modules 层
-import { DefaultConversationResolver } from '../../composition/inbound-agent'  // ← 向上依赖
-```
+### 3.2 ~~两条 Agent 路径的后处理重复（P1）~~ ✅ 已修复
 
-connector 模块里混进了 Agent 编排逻辑（创建 Agent、运行对话、管理审批流）。这些是 composition 层的职责，不是通信基础设施的职责。
+提取 `composition/finalize.ts` 中的 `finalizeAgentRun()` 函数，两条路径共享。同时修复了 agent-handler.ts 中 `costTracker.persistToDB()` double-persist bug。
 
-**修法：** 沿职责线切开。
+### 3.3 ~~CompactionConfig 类型错误（P2）~~ ✅ 已修复
 
-connector/inbound/ 只留通信管道：
-```
-modules/connector/inbound/
-├── gateway/       协议入口（HTTP/WS 接入）
-├── adapters/      协议适配（飞书、微信验签解密解析）
-├── inbox/         消息队列（内存 + SQLite 持久化）
-├── responder/     回复派发
-├── crypto/        加解密工具
-└── types.ts       InboundEvent, ReplyAddress, OutboundMessage
-```
-
-Agent 编排逻辑搬到 composition：
-```
-composition/inbound/
-├── agent-handler.ts       ← 从 connector 搬来（核心：创建 Agent + 运行 + 审批）
-├── inbound-processor.ts   ← 从 connector 搬来（编排处理流程）
-├── factory.ts             ← 从 connector 搬来（入站运行时组装）
-├── conversation-resolver.ts
-├── approval-service.ts
-└── post-process.ts
-```
-
-修完后的依赖方向：
-```
-composition/inbound → composition/app (createAgent)       ✅ 同层
-composition/inbound → connector/inbound (inbox, responder) ✅ 上→下
-connector/inbound   → primitives                           ✅ 只依赖底层
-```
-
-connector 变成纯通信层，不知道 Agent 是什么。换任何消费者（日志记录器、转发器）都能复用。
-
-### 3.2 两条 Agent 路径的后处理重复（P1）
-
-Server 有两条 Agent 路径：
-
-| | 直接 API (`routes/chat.ts`) | Connector 入站 (`agent-handler.ts`) |
-|-|---------------------------|--------------------------------------|
-| 响应模式 | 流式 SSE（逐 token 推） | 完整回复（跑完后发消息） |
-| 协议 | 标准 HTTP | 飞书/微信私有协议 |
-| 交互 | Web UI 可弹对话框审批 | 只能发文本 |
-
-这两条路径**不能合并**（流式 vs 完整回复是本质差异），但它们各自独立实现了相同的后处理：
-
-```
-保存消息 → 提取记忆 → 生成标题 → 持久化成本 → 清理 MCP
-```
-
-**修法：** 提取一个函数，不需要新模块、新接口、新架构图。
-
-```typescript
-// composition/finalize.ts
-
-export async function finalizeAgentRun(opts: {
-  dataStore: DataStore
-  messages: UIMessage[]
-  conversationId: string
-  sessionState: SessionState
-  mcpRegistry: McpRegistry
-  model: LanguageModel
-  isNewConversation: boolean
-  memoryBaseDir?: string
-  userId?: string
-}): Promise<void> {
-  await opts.dataStore.messageStore.saveMessages(opts.conversationId, opts.messages)
-
-  setImmediate(() => {
-    extractMemoriesInBackground(opts.model, opts.messages, opts.memoryBaseDir, opts.userId)
-    if (opts.isNewConversation) {
-      generateConversationTitle(opts.model, opts.messages, opts.dataStore, opts.conversationId)
-    }
-    opts.sessionState.costTracker.persistToDB()
-    opts.mcpRegistry.disconnectAll()
-  })
-}
-```
-
-两条路径各自 import 这个函数：
-
-```typescript
-// routes/chat.ts — 流式路径
-const result = await createAgent(context, opts)
-// ... 流式推送 ...
-onFinish: () => finalizeAgentRun({ dataStore, messages, ... })
-
-// agent-handler.ts — 入站路径
-const result = await createAgent(context, opts)
-// ... 跑完拿到完整文本 ...
-await finalizeAgentRun({ dataStore, messages, ... })
-await responder.respond(event.replyAddress, text)
-```
-
-新增 connector（Telegram、Discord）时，只需实现收发逻辑，后处理一行 `finalizeAgentRun()` 搞定。
+`modules/compaction/types.ts` 的 `export type` re-export 不让类型名在本文件可用，添加了 `import type` 修复 3 个 `Cannot find name` 错误。
 
 ---
 
 ## 4. 应该修但不紧急的问题
 
-### 4.1 agent/ 的 15 个依赖（P1，可选）
+### 4.1 agent/ 的 15 个依赖（可选）
 
 `modules/agent/create.ts` 导入 15 个模块，只有 722 行——它本质是个组装器。这个职责更适合 composition 层。
 
-如果执行 3.1 的搬迁，可以顺便把 agent 的组装逻辑上移到 `composition/app/create.ts`，让 `modules/agent/` 只保留三个工具函数：
+可以把 agent 的组装逻辑上移到 `composition/app/create.ts`，让 `modules/agent/` 只保留工具函数（loadAllTools、loadMemoryContext、buildAgentInstructions）。
 
-- `loadAllTools()` — 加载全部工具
-- `loadMemoryContext()` — 加载记忆上下文
-- `buildAgentInstructions()` — 构建系统提示
+**不做也不会坏。** agent 作为"已知的编排中心"是可以接受的。
 
-**不做也不会坏。** agent 作为"已知的编排中心"是可以接受的，只要团队知道它的特殊地位。
+### 4.2 session → compaction 的类型耦合（可选）
 
-### 4.2 session → compaction 的类型耦合（P1，可选）
+session 直接 import compaction 的函数和类型。目前不构成运行时循环，但后续拆分时会碍事。
 
-```typescript
-// session/state.ts
-import { compactBeforeStep } from '../compaction'
-import { CompactionConfig } from '../compaction/types'
-```
-
-目前不构成运行时循环，但 session 直接 import compaction 的函数和类型会让后续拆分变难。
-
-修法：`CompactionConfig` 等共享类型下沉到 `services/config/compaction-types.ts`（文件已存在）。`compactBeforeStep` 改为通过 `createSessionState` 参数注入。
+修法：`compactBeforeStep` 改为通过 `createSessionState` 参数注入。
 
 ### 4.3 services/config 的类型 re-export（P2）
 
-`services/config/types.ts` 从 7 个 modules 导入类型做 re-export。全是 type-only，不影响运行时，但打破分层约束。
+`services/config/types.ts` 从 7 个 modules 导入类型做 re-export。全是 type-only，不影响运行时。
 
-修法：删掉 `services/config/types.ts` 的 modules 层 re-export。统一入口放包顶层 `index.ts`。
+修法：删掉 modules 层 re-export，统一入口放包顶层 `index.ts`。
 
 ### 4.4 resolveModelAlias 放在 subagents 里（P2）
 
-`session/model-switching.ts` 从 `subagents/model-resolver` 导入 `resolveModelAlias`。模型别名解析是通用能力，不属于子代理。
-
-修法：移到 `services/model/`。一个函数挪个位置，10 分钟。
-
-### 4.5 CompactionConfig 双重定义（P2）
-
-`services/config/compaction-types.ts` 和 `modules/compaction/types.ts` 各自定义了同名类型。
-
-修法：合并为一份放 `services/config/compaction-types.ts`，compaction 模块从这里导入。
+模型别名解析是通用能力，不属于子代理。移到 `services/model/` 即可。
 
 > P2 的问题不需要设计，直接提 PR 修。
