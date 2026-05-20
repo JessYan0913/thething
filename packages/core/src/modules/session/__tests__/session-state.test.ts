@@ -156,8 +156,8 @@ describe('token-budget', () => {
         const result: CompactionResult = {
           messages: [],
           executed: true,
-          type: 'auto',
           tokensFreed: 20000,
+          actions: [],
         };
         tracker.reportCompaction(result);
         expect(tracker.inputTokens).toBe(30000);
@@ -168,8 +168,8 @@ describe('token-budget', () => {
         const result: CompactionResult = {
           messages: [],
           executed: true,
-          type: 'auto',
           tokensFreed: 10000,
+          actions: [],
         };
         tracker.reportCompaction(result);
         expect(tracker.inputTokens).toBe(0);

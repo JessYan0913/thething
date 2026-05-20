@@ -199,15 +199,17 @@ const EXTRACTORS: Record<string, MetaExtractor> = {
   },
 
   Grep: (_args, result) => {
-    const matches = Array.isArray(result) ? result : (result as Record<string, unknown>)?.matches ?? [];
-    const files = new Set(matches.map((m: Record<string, unknown>) => (m.file ?? m.path) as string)).size;
+    const raw = Array.isArray(result) ? result : (result as Record<string, unknown>)?.matches;
+    const matches = Array.isArray(raw) ? raw as Record<string, unknown>[] : [];
+    const files = new Set(matches.map((m) => (m.file ?? m.path) as string)).size;
     const argsRecord = _args as Record<string, unknown> | undefined;
     const pattern = (argsRecord?.pattern as string) ?? '';
     return `Grep '${pattern}' → ${matches.length} matches in ${files} files`;
   },
 
   Glob: (_args, result) => {
-    const files = Array.isArray(result) ? result : (result as Record<string, unknown>)?.files ?? [];
+    const raw = Array.isArray(result) ? result : (result as Record<string, unknown>)?.files;
+    const files = Array.isArray(raw) ? raw as unknown[] : [];
     const argsRecord = _args as Record<string, unknown> | undefined;
     const pattern = (argsRecord?.pattern as string) ?? '';
     return `Glob '${pattern}' → ${files.length} files`;
@@ -226,7 +228,8 @@ const EXTRACTORS: Record<string, MetaExtractor> = {
   },
 
   WebSearch: (_args, result) => {
-    const count = Array.isArray(result) ? result.length : (result as Record<string, unknown>)?.results?.length ?? 0;
+    const raw = Array.isArray(result) ? result : (result as Record<string, unknown>)?.results;
+    const count = Array.isArray(raw) ? raw.length : 0;
     const argsRecord = _args as Record<string, unknown> | undefined;
     const query = ((argsRecord?.query as string) ?? '').slice(0, 60);
     return `WebSearch '${query}' → ${count} results`;

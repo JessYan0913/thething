@@ -168,7 +168,7 @@ async function callWithFallback(
         model,
         system: SUMMARY_SYSTEM_PROMPT,
         prompt,
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
       });
       if (text?.trim()) return text.trim();
     } catch (err) {
@@ -183,7 +183,7 @@ async function callWithFallback(
         model: fb,
         system: SUMMARY_SYSTEM_PROMPT,
         prompt,
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
       });
       if (text?.trim()) return text.trim();
     } catch {

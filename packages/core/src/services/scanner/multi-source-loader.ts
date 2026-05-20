@@ -20,7 +20,7 @@ import { mergeByPriority, LoadingCache } from './merge';
 import { logger } from '../../primitives/logger';
 import type { ConfigSource } from '../../primitives/constants';
 
-export interface MultiSourceLoaderOptions<T> {
+export interface MultiSourceLoaderOptions<T extends { source: string }> {
   /** 子目录名（如 'skills', 'mcps', 'agents'） */
   subcategory: string;
   /** 文件匹配模式（如 '*.json', '*.md', '*.yaml'） */
@@ -49,7 +49,7 @@ export interface MultiSourceLoaderLoadOptions {
   dirs?: readonly string[];
 }
 
-export function createMultiSourceLoader<T>(
+export function createMultiSourceLoader<T extends { source: string }>(
   loaderOptions: MultiSourceLoaderOptions<T>,
 ) {
   const {
@@ -64,7 +64,7 @@ export function createMultiSourceLoader<T>(
     cacheTtl = 60_000,
   } = loaderOptions;
 
-  const cache = new LoadingCache<T[]>(cacheTtl);
+  const cache = new LoadingCache<T[]>({ ttlMs: cacheTtl });
 
   async function load(options?: MultiSourceLoaderLoadOptions): Promise<T[]> {
     const cwd = options?.cwd ?? process.cwd();
