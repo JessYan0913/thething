@@ -3,6 +3,7 @@
 // ============================================================
 
 // Re-export shared types from services layer
+import type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../../services/config/compaction-types';
 export type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../../services/config/compaction-types';
 
 export const DEFAULT_LIFECYCLE_CONFIG: LifecycleConfig = {

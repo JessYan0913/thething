@@ -18,8 +18,8 @@ import { nanoid } from 'nanoid'
 import type { InboundEvent } from './types'
 import type { InboundEventResult, InboundEventHandler } from './inbound-processor'
 import type { AppContext, CreateAgentOptions, CreateAgentResult } from '../../../composition/app/types'
-import { generateConversationTitle } from '../../../modules/compaction'
-import { extractMemoriesInBackground, getPrimaryMemoryDir } from '../../../modules/memory'
+import { finalizeAgentRun } from '../../../composition/finalize'
+import { getPrimaryMemoryDir } from '../../../modules/memory'
 import { ConnectorRegistry } from '../registry'
 import type { ConnectorModelConfig } from '../types'
 import type { DataStore } from '../../../primitives/datastore/types'
@@ -444,7 +444,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     // can append approval prompts without overwriting the first message.
     store.messageStore.saveMessages(conversationId, uiMessagesForSave)
 
-    const { agent, sessionState, adjustedMessages, model, dispose } = await this.createAgentInstance(
+    const { agent, sessionState, adjustedMessages, model, dispose, mcpRegistry } = await this.createAgentInstance(
       conversationId,
       uiMessagesForSave,
     )
@@ -461,6 +461,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       sessionState,
       model,
       dispose,
+      mcpRegistry,
       initialModelMessages,
       uiMessagesForSave,
       { allSteps: [], responseText: '', writtenFiles: [], approvedTools: [] },
@@ -506,7 +507,7 @@ export class AgentInboundHandler implements InboundEventHandler {
 
     logger.debug('AgentInboundHandler', `Resuming from suspended state: conversation=${conversationId} tools=${suspended.pendingApprovals.map(item => item.toolName).join(', ')} pausedCount=${suspended.pausedModelMessages.length}`)
 
-    const { agent, sessionState, model, dispose } = await this.createAgentInstance(
+    const { agent, sessionState, model, dispose, mcpRegistry } = await this.createAgentInstance(
       conversationId,
       uiMessagesForSave,
     )
@@ -519,6 +520,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       sessionState,
       model,
       dispose,
+      mcpRegistry,
       resumeModelMessages,
       uiMessagesForSave,
       {
@@ -545,6 +547,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     model: any,
     dispose: () => Promise<void>,
+    mcpRegistry: any,
     initialModelMessages: ModelMessage[],
     uiMessagesForSave: UIMessage[],
     accumulated: AccumulatedState,
@@ -823,28 +826,24 @@ export class AgentInboundHandler implements InboundEventHandler {
 
     const messagesToSave = this.filterInjectedMessages(uiMessagesForSave)
     const finalMessages = [...messagesToSave, assistantMessage]
-    store.messageStore.saveMessages(conversationId, finalMessages)
 
-    // ── 后台：记忆提取 / 标题生成 / 成本持久化 ──
+    // ── 后台：记忆提取 / 标题生成 / 成本持久化 / 资源清理 ──
     const memoryBaseDir = getPrimaryMemoryDir(this.config.context.layout)
-    setImmediate(() => {
-      const userId = this.config.userId || event.sender.id
-      const memoryLimits = this.config.context.behavior?.memory
-      extractMemoriesInBackground(finalMessages, userId, conversationId, model, memoryBaseDir, {
-        maxLines: memoryLimits?.entrypointMaxLines,
-        maxBytes: memoryLimits?.entrypointMaxBytes,
-      }).catch(
-        (err: Error) => logger.error('MemoryExtraction', 'Error:', err)
-      )
-      if (isFirstMessage) {
-        generateConversationTitle(messagesToSave, model)
-          .then((title: string) => {
-            store.conversationStore.updateConversationTitle(conversationId, title)
-          })
-          .catch((err: Error) => logger.error('TitleGeneration', 'Error:', err))
-      }
-      sessionState.costTracker.persistToDB().catch((err: Error) => logger.error('CostPersist', 'Error:', err))
-      dispose().catch((err: Error) => logger.error('AgentDispose', 'Error:', err))
+    const memoryLimits = this.config.context.behavior?.memory
+    await finalizeAgentRun({
+      dataStore: store,
+      messages: finalMessages,
+      conversationId,
+      costTracker: sessionState.costTracker,
+      mcpRegistry,
+      model,
+      isNewConversation: isFirstMessage,
+      memoryBaseDir,
+      userId: this.config.userId || event.sender.id,
+      entrypointLimits: memoryLimits ? {
+        maxLines: memoryLimits.entrypointMaxLines,
+        maxBytes: memoryLimits.entrypointMaxBytes,
+      } : undefined,
     })
 
     logger.debug('AgentInboundHandler', `COMPLETE: responseLen=${finalResponse.length} conversation=${conversationId} durationMs=${Date.now() - startTime}`)

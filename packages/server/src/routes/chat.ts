@@ -7,7 +7,7 @@ import {
   createAgent,
   generateConversationTitle,
   estimateMessagesTokens,
-  extractMemoriesInBackground,
+  finalizeAgentRun,
   type SubAgentStreamWriter,
 } from '@the-thing/core'
 import { getServerContext, getServerDataStore } from '../runtime'
@@ -137,37 +137,21 @@ app.post('/', async (c) => {
                 `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
               )
 
-              store.messageStore.saveMessages(conversationId, messagesToSave)
-
               const costSummary = sessionState.costTracker.getSummary()
               console.log(
                 `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
               )
-              await sessionState.costTracker.persistToDB()
 
-              // Background Memory Extraction
-              extractMemoriesInBackground(
-                completedMessages,
-                userId,
+              await finalizeAgentRun({
+                dataStore: store,
+                messages: messagesToSave,
                 conversationId,
+                costTracker: sessionState.costTracker,
+                mcpRegistry,
                 model,
-                context.cwd,
-              ).catch((err) => console.error('[Memory Extraction] Error:', err))
-
-              // Background Title Generation (non-blocking)
-              if (isFirstMessage) {
-                generateConversationTitle(completedMessages, model)
-                  .then((title) => {
-                    store.conversationStore.updateConversationTitle(conversationId, title)
-                    console.log(`[Title Generated] ${conversationId}: ${title}`)
-                  })
-                  .catch((err) => console.error('[Title Generation] Error:', err))
-              }
-
-              // Cleanup MCP connections (non-blocking)
-              if (mcpRegistry) {
-                mcpRegistry.disconnectAll().catch((err) => console.error('[MCP Cleanup] Error:', err))
-              }
+                isNewConversation: isFirstMessage,
+                userId,
+              })
             } catch (err) {
               console.error('[Chat API] onFinish error:', err)
             }

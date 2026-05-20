@@ -62,6 +62,7 @@
 // ============================================================
 export { bootstrap, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './composition/bootstrap';
 export { createAgent, createContext, resolveAgentConfig } from './composition/app';
+export { finalizeAgentRun, type FinalizeAgentRunOptions } from './composition/finalize';
 export type {
   AppContext,
   CreateAgentOptions,
