@@ -3,15 +3,16 @@
 // ============================================================
 
 import { Hono } from 'hono'
-import { getGlobalTaskStore } from '@the-thing/core'
+import { getServerDataStore } from '../runtime'
 
 const app = new Hono()
 
-app.get('/', (c) => {
+app.get('/', async (c) => {
   try {
     const conversationId = c.req.query('conversationId')
 
-    const store = getGlobalTaskStore()
+    const dataStore = await getServerDataStore()
+    const store = dataStore.taskStore
     const tasks = conversationId
       ? store.getTasksByConversation(conversationId)
       : store.getAllTasks()
@@ -44,7 +45,8 @@ app.get('/', (c) => {
 
 app.post('/', async (c) => {
   try {
-    const store = getGlobalTaskStore()
+    const dataStore = await getServerDataStore()
+    const store = dataStore.taskStore
     const body = await c.req.json<{ action: string; [key: string]: unknown }>()
     const { action, ...params } = body
 
