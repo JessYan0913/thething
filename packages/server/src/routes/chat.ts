@@ -101,7 +101,7 @@ app.post('/', async (c) => {
     })
 
     // 使用调整后的消息（包含注入的附件）
-    const messagesWithAttachments = adjustedMessages ?? compactedMessages
+    const messagesWithAttachments = adjustedMessages ?? messages
 
     // 记录 LLM Input
     console.log(

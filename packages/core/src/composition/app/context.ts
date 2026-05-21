@@ -47,6 +47,11 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   };
   const loaded = await loadAll(loadOptions);
 
+  logger.debug('AppContext', `Loaded: skills=${loaded.skills.length} agents=${loaded.agents.length} mcps=${loaded.mcps.length} connectors=${loaded.connectors.length} permissions=${loaded.permissions.length} memory=${loaded.memory.length}`);
+  if (loaded.mcps.length > 0) {
+    logger.debug('AppContext', `MCP servers: ${loaded.mcps.map(m => m.name).join(', ')}`);
+  }
+
   // 将 connector 快照数据同步到 ConnectorRegistry，确保 runtime 使用与快照一致的定义
   runtime.connectorRegistry.initializeFromDefinitions(loaded.connectors);
 

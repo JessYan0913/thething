@@ -119,7 +119,6 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         await mcpRegistry.connectAll()
         const mcpTools = mcpRegistry.getAllTools()
 
-        // ✅ 改进：使用包装器处理输出
         const wrappedMcpTools = wrapMcpToolsWithOutputHandler(
           mcpTools as Record<string, Tool>,
           {
@@ -136,7 +135,14 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
           }
         }
         const mcpSnapshot = mcpRegistry.snapshot()
-        logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools available: ${Object.keys(mcpTools).join(', ')}`)
+        const connected = mcpSnapshot.servers.filter(s => s.connected)
+        const failed = mcpSnapshot.servers.filter(s => !s.connected && s.enabled)
+        logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools from ${connected.length} server(s): ${Object.keys(mcpTools).join(', ')}`)
+        if (failed.length > 0) {
+          logger.warn('MCP', `Failed servers: ${failed.map(s => `${s.name}(${s.error})`).join(', ')}`)
+        }
+      } else {
+        logger.debug('MCP', 'No MCP configs found')
       }
     } catch (error) {
       logger.error('MCP', 'Connection error:', error)

@@ -27,8 +27,12 @@ export class McpRegistry {
 
   async connectAll(): Promise<void> {
     const enabledServers = this._servers.filter((s) => s.enabled !== false);
-    for (const server of enabledServers) {
-      await this.connect(server);
+    const results = await Promise.allSettled(
+      enabledServers.map((server) => this.connect(server)),
+    );
+    const failed = results.filter((r) => r.status === 'rejected');
+    if (failed.length > 0) {
+      logger.warn('MCP', `${failed.length}/${enabledServers.length} server(s) failed to connect`);
     }
   }
 
@@ -75,15 +79,17 @@ export class McpRegistry {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('MCP', `Failed to connect to ${config.name}: ${err.message}`);
 
-      this._connections.set(config.name, {
+      const errorConnection: McpClientConnection = {
         config,
         client: null,
         tools: {},
         connectedAt: Date.now(),
         error: err,
-      });
+      };
 
-      throw error;
+      this._connections.set(config.name, errorConnection);
+
+      return errorConnection;
     }
   }
 

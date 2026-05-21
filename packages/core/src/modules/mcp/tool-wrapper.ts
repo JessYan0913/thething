@@ -44,13 +44,18 @@ export function wrapMcpToolWithOutputHandler(
   return {
     ...tool,
     execute: async (input: unknown, execOptions?: any) => {
-      // 执行原工具
       const result = await originalExecute(input, execOptions)
 
-      // 处理输出
+      // MCP 工具返回 { content: [{type:"text", text:"..."}], isError: false }
+      // 必须保留此结构，否则 @ai-sdk/mcp 的 mcpToModelOutput 会报错
+      const textContent = extractMcpText(result)
+      if (textContent === null) {
+        return result
+      }
+
       const toolUseId = `mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       const processed = await processToolOutput(
-        result,
+        textContent,
         toolName,
         toolUseId,
         {
@@ -61,7 +66,10 @@ export function wrapMcpToolWithOutputHandler(
         }
       )
 
-      return processed.content
+      return {
+        content: [{ type: 'text', text: processed.content }],
+        isError: (result as any)?.isError ?? false,
+      }
     },
   }
 }
@@ -105,4 +113,22 @@ export async function processMcpToolResult(
     state: options.contentReplacementState,
     config: options.toolOutputConfig,
   })
+}
+
+/**
+ * 从 MCP 工具结果中提取文本内容
+ * MCP 结果格式: { content: [{type:"text", text:"..."}], isError: false }
+ */
+function extractMcpText(result: unknown): string | null {
+  if (result === null || result === undefined || typeof result !== 'object') {
+    return null
+  }
+  const obj = result as Record<string, unknown>
+  if (!Array.isArray(obj.content)) {
+    return null
+  }
+  const texts = obj.content
+    .filter((p: any) => p?.type === 'text' && typeof p?.text === 'string')
+    .map((p: any) => p.text)
+  return texts.length > 0 ? texts.join('\n') : null
 }
