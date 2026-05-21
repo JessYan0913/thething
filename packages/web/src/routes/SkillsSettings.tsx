@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   WrenchIcon, RefreshCwIcon, FolderIcon, LayersIcon,
   ArrowLeftIcon, PanelLeftOpenIcon, PanelRightOpenIcon,
   TagIcon, TargetIcon, InfoIcon, PlusIcon, MoreVerticalIcon,
-  Trash2Icon, SearchIcon,
+  Trash2Icon, SearchIcon, SparklesIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -79,6 +80,7 @@ const effortColors: Record<string, string> = {
 // ============================================================
 
 export default function SkillsSettings() {
+  const navigate = useNavigate()
   const [skills, setSkills] = useState<SkillView[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedSkill, setSelectedSkill] = useState<SkillView | null>(null)
@@ -167,6 +169,10 @@ export default function SkillsSettings() {
         </div>
         <Button variant="ghost" size="sm" onClick={loadSkills} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button size="sm" onClick={() => navigate('/skill-workbench')}>
+          <SparklesIcon className="mr-1 size-4" />
+          AI 生成
         </Button>
         <Button size="sm" onClick={() => setIsUploadOpen(true)}>
           <PlusIcon className="mr-1 size-4" />

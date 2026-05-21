@@ -13,6 +13,7 @@ import AgentsSettings from './routes/AgentsSettings'
 import PermissionsSettings from './routes/PermissionsSettings'
 import MemorySettings from './routes/MemorySettings'
 import ConnectorsSettings from './routes/ConnectorsSettings'
+import SkillWorkbench from './routes/SkillWorkbench'
 
 export default function App() {
   const { i18n } = useTranslation()
@@ -26,6 +27,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/chat" replace />} />
+        <Route path="/skill-workbench" element={<SkillWorkbench />} />
         <Route path="/chat" element={<ChatLayout />}>
           <Route index element={<ChatHome />} />
           <Route path=":id" element={<ChatPage />} />

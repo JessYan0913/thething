@@ -194,9 +194,9 @@ export function getStoredConversationId(): string | null {
   return localStorage.getItem(CONVERSATION_ID_KEY);
 }
 
-function createChatTransport(conversationId: string) {
+function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat') {
   return new DefaultChatTransport({
-    api: '/api/chat',
+    api: apiEndpoint,
     body: { conversationId },
     prepareSendMessagesRequest({ messages, body }) {
       return {
@@ -213,9 +213,11 @@ function createChatTransport(conversationId: string) {
 export interface ChatProps {
   conversationId: string;
   onTitleUpdated?: () => void;
+  apiEndpoint?: string;
+  onTurnFinish?: () => void;
 }
 
-export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
+export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish }: ChatProps) {
   const initialMessageCountRef = useRef<number | null>(null);
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
@@ -240,7 +242,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
     }>;
   } | null>(null);
 
-  const transport = useMemo(() => createChatTransport(conversationId), [conversationId]);
+  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint), [conversationId, apiEndpoint]);
 
   const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId,
@@ -284,6 +286,8 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
       } catch (err) {
         console.error('[Chat] Error saving messages:', err);
       }
+
+      onTurnFinish?.();
 
       const msgCount = finishedMessages.length;
 
