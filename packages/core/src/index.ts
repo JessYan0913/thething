@@ -205,6 +205,7 @@ export type { Skill } from './modules/skills/types';
 
 // Agent types
 export type { AgentDefinition } from './modules/subagents/types';
+export { serializeAgentMarkdown } from './modules/subagents/loader';
 
 // MCP types
 export type { McpServerConfig, McpServerConfigSource } from './modules/mcp/types';

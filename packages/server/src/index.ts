@@ -27,6 +27,7 @@ import connectorAdminLogsRoutes from './routes/connector/admin/logs'
 import connectorWebhooksRoutes from './routes/connector/webhooks'
 import fsRoutes from './routes/fs'
 import skillWorkbenchRoutes from './routes/skill-workbench'
+import agentWorkbenchRoutes from './routes/agent-workbench'
 
 // Runtime management
 export {
@@ -66,6 +67,7 @@ app.route('/api/connector/admin/logs', connectorAdminLogsRoutes)
 app.route('/api/connector/webhooks', connectorWebhooksRoutes)
 app.route('/api/fs', fsRoutes)
 app.route('/api/skill-workbench', skillWorkbenchRoutes)
+app.route('/api/agent-workbench', agentWorkbenchRoutes)
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }))

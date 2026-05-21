@@ -194,7 +194,7 @@ export function getStoredConversationId(): string | null {
   return localStorage.getItem(CONVERSATION_ID_KEY);
 }
 
-function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat') {
+function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat', extraBodyRef?: React.RefObject<Record<string, unknown> | undefined>) {
   return new DefaultChatTransport({
     api: apiEndpoint,
     body: { conversationId },
@@ -203,6 +203,7 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
         body: {
           message: messages.at(-1),
           conversationId,
+          ...extraBodyRef?.current,
           ...body,
         },
       };
@@ -215,9 +216,10 @@ export interface ChatProps {
   onTitleUpdated?: () => void;
   apiEndpoint?: string;
   onTurnFinish?: () => void;
+  extraBody?: Record<string, unknown>;
 }
 
-export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish }: ChatProps) {
+export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody }: ChatProps) {
   const initialMessageCountRef = useRef<number | null>(null);
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
@@ -242,7 +244,10 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     }>;
   } | null>(null);
 
-  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint), [conversationId, apiEndpoint]);
+  const extraBodyRef = useRef<Record<string, unknown> | undefined>(extraBody);
+  extraBodyRef.current = extraBody;
+
+  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef), [conversationId, apiEndpoint]);
 
   const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId,
@@ -274,8 +279,9 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
       return false;
     },
     onFinish: async ({ messages: finishedMessages }) => {
+      const endpoint = apiEndpoint || '/api/chat';
       try {
-        const res = await fetch('/api/chat', {
+        const res = await fetch(endpoint, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversationId, messages: finishedMessages }),
@@ -521,8 +527,9 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     let cancelled = false;
 
     async function loadMessages() {
+      const endpoint = apiEndpoint || '/api/chat';
       try {
-        const res = await fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`);
+        const res = await fetch(`${endpoint}?conversationId=${encodeURIComponent(conversationId)}`);
         if (!res.ok) return;
 
         const data = await res.json();
@@ -550,7 +557,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     return () => {
       cancelled = true;
     };
-  }, [conversationId, setMessages]);
+  }, [conversationId, setMessages, apiEndpoint]);
 
   const thinkingState = useMemo(() => {
     if (status !== 'submitted' && status !== 'streaming') return null;

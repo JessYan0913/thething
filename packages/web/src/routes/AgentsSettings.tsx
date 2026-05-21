@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   BotIcon, RefreshCwIcon, WrenchIcon,
   FileTextIcon, ArrowLeftIcon,
-  CpuIcon, MessageSquareIcon,
+  CpuIcon, MessageSquareIcon, PlusIcon, PencilIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ const effortLabels: Record<string, string> = {
 }
 
 export default function AgentsSettings() {
+  const navigate = useNavigate()
   const [agents, setAgents] = useState<AgentView[]>([])
   const [isLoading, setIsLoading] = useState(true)
   // Detail view state
@@ -187,9 +189,15 @@ export default function AgentsSettings() {
         <Badge variant="secondary" className="text-xs">
           {agents.length} 个代理
         </Badge>
-        <Button variant="ghost" size="sm" onClick={loadAgents} disabled={isLoading}>
-          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="default" size="sm" onClick={() => navigate("/agent-workbench")}>
+            <PlusIcon className="size-4 mr-1" />
+            创建代理
+          </Button>
+          <Button variant="ghost" size="sm" onClick={loadAgents} disabled={isLoading}>
+            <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -215,6 +223,7 @@ export default function AgentsSettings() {
                 key={agent.agentType}
                 agent={agent}
                 onClick={() => setSelectedAgent(agent)}
+                onEdit={() => navigate(`/agent-workbench/${agent.agentType}`)}
               />
             ))}
           </div>
@@ -224,7 +233,7 @@ export default function AgentsSettings() {
   )
 }
 
-function AgentCard({ agent, onClick }: { agent: AgentView; onClick: () => void }) {
+function AgentCard({ agent, onClick, onEdit }: { agent: AgentView; onClick: () => void; onEdit: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -254,6 +263,15 @@ function AgentCard({ agent, onClick }: { agent: AgentView; onClick: () => void }
             </p>
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          onClick={(e) => { e.stopPropagation(); onEdit() }}
+        >
+          <PencilIcon className="size-3.5 mr-1" />
+          编辑
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
