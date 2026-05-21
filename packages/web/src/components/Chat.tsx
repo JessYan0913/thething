@@ -16,10 +16,17 @@ import {
 } from '@/components/ai-elements/message';
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionAddScreenshot,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
+  type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
 import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
@@ -33,7 +40,7 @@ import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel'
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, Loader2Icon, BrainIcon, PenLineIcon, WrenchIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
@@ -142,6 +149,44 @@ async function saveAlwaysAllowRule(
   } catch (error) {
     console.error('[Permissions] Failed to save always-allow rule:', error);
   }
+}
+
+function AttachmentPreview() {
+  const { files, remove } = usePromptInputAttachments();
+  if (files.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 px-3 pt-3">
+      {files.map((file) => {
+        const isImage = file.mediaType?.startsWith('image/');
+        return (
+          <div key={file.id} className="group relative">
+            {isImage ? (
+              <img
+                src={file.url}
+                alt={file.filename ?? ''}
+                className="h-16 w-16 rounded-md border object-cover"
+              />
+            ) : (
+              <div className="flex h-16 w-16 flex-col items-center justify-center rounded-md border bg-muted p-1">
+                <FileTextIcon className="size-5 text-muted-foreground" />
+                <span className="mt-0.5 max-w-full truncate text-[10px] text-muted-foreground">
+                  {file.filename ?? 'file'}
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => remove(file.id)}
+              className="absolute -right-1.5 -top-1.5 hidden rounded-full border bg-background p-0.5 shadow-sm group-hover:block"
+            >
+              <XIcon className="size-3" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function getStoredConversationId(): string | null {
@@ -543,9 +588,9 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
   }, [status, messages]);
 
   const handleSend = useCallback(
-    async ({ text }: { text: string }) => {
-      if (text.trim()) {
-        sendMessage({ text });
+    async ({ text, files }: PromptInputMessage) => {
+      if (text.trim() || files.length > 0) {
+        sendMessage({ text, files: files.length > 0 ? files : undefined });
       }
     },
     [sendMessage],
@@ -612,6 +657,26 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                       {message.parts.map((part, index) => {
                         if (part.type === 'text') {
                           return <MessageResponse key={`${message.id}-${index}`}>{part.text}</MessageResponse>;
+                        }
+
+                        if (part.type === 'file') {
+                          const filePart = part as { type: 'file'; mediaType?: string; url: string; filename?: string };
+                          if (filePart.mediaType?.startsWith('image/')) {
+                            return (
+                              <img
+                                key={`${message.id}-${index}`}
+                                src={filePart.url}
+                                alt={filePart.filename ?? 'image'}
+                                className="max-h-64 rounded-md border"
+                              />
+                            );
+                          }
+                          return (
+                            <div key={`${message.id}-${index}`} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                              <FileTextIcon className="size-4 text-muted-foreground" />
+                              <span>{filePart.filename ?? 'file'}</span>
+                            </div>
+                          );
                         }
 
                         if (part.type.startsWith('data-sub-')) {
@@ -766,10 +831,19 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
             />
           )}
 
-          <PromptInput onSubmit={handleSend}>
+          <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh" multiple>
+            <AttachmentPreview />
             <PromptInputTextarea placeholder="Message AI Assistant..." />
             <PromptInputFooter>
-              <PromptInputTools />
+              <PromptInputTools>
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger tooltip="Add attachments" />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments />
+                    <PromptInputActionAddScreenshot />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
+              </PromptInputTools>
               <PromptInputSubmit status={status} onStop={stop} />
             </PromptInputFooter>
           </PromptInput>

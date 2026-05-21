@@ -109,9 +109,15 @@ app.post('/', async (c) => {
       `[LLM Input] ${messagesWithAttachments.length} messages:\n` +
         messagesWithAttachments
           .map((m, i) => {
-            const part = m.parts[0]
-            const text = part?.type === 'text' ? part.text : `[${part?.type}]`
-            return `  [${i}] ${m.role}: ${text.replace(/\n/g, ' ').slice(0, 60)}${text.length > 60 ? '…' : ''}`
+            const partSummaries = m.parts.map((p) => {
+              if (p.type === 'text') return `text(${(p as { text: string }).text.slice(0, 40)})`
+              if (p.type === 'file') {
+                const fp = p as { mediaType?: string; filename?: string; url?: string }
+                return `file(${fp.mediaType}, ${fp.filename ?? 'unnamed'}, url:${fp.url ? fp.url.slice(0, 30) + '...' : 'none'})`
+              }
+              return `[${p.type}]`
+            })
+            return `  [${i}] ${m.role}: ${partSummaries.join(' | ')}`
           })
           .join('\n'),
     )

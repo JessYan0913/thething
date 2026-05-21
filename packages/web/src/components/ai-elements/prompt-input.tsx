@@ -69,6 +69,34 @@ import {
 // Helpers
 // ============================================================================
 
+const TEXT_FILE_EXTENSIONS = new Set([
+  '.txt', '.md', '.markdown', '.csv', '.tsv',
+  '.json', '.jsonl', '.jsonc',
+  '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.env',
+  '.html', '.htm', '.css', '.scss', '.sass', '.less',
+  '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts',
+  '.py', '.pyw', '.rb', '.php', '.java', '.kt', '.kts', '.scala',
+  '.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.cs', '.m', '.mm',
+  '.go', '.rs', '.swift', '.dart',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+  '.sql', '.graphql', '.gql',
+  '.r', '.R', '.lua', '.pl', '.pm', '.ex', '.exs', '.erl', '.zig',
+  '.vue', '.svelte', '.astro',
+  '.log', '.diff', '.patch',
+]);
+
+function resolveMediaType(file: File): string {
+  if (file.type && file.type !== 'application/octet-stream') {
+    if (file.type.startsWith('text/')) return file.type;
+    if (file.type.startsWith('image/')) return file.type;
+    if (file.type.startsWith('audio/')) return file.type;
+    if (file.type === 'application/pdf') return file.type;
+  }
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  if (ext && TEXT_FILE_EXTENSIONS.has(ext)) return 'text/plain';
+  return file.type || 'application/octet-stream';
+}
+
 const convertBlobUrlToDataUrl = async (url: string): Promise<string | null> => {
   try {
     const response = await fetch(url);
@@ -244,7 +272,7 @@ export const PromptInputProvider = ({
       ...incoming.map((file) => ({
         filename: file.name,
         id: nanoid(),
-        mediaType: file.type,
+        mediaType: resolveMediaType(file),
         type: "file" as const,
         url: URL.createObjectURL(file),
       })),
@@ -523,6 +551,9 @@ export const PromptInput = ({
           const prefix = pattern.slice(0, -1);
           return f.type.startsWith(prefix);
         }
+        if (pattern.startsWith(".")) {
+          return f.name.toLowerCase().endsWith(pattern.toLowerCase());
+        }
         return f.type === pattern;
       });
     },
@@ -569,7 +600,7 @@ export const PromptInput = ({
           next.push({
             filename: file.name,
             id: nanoid(),
-            mediaType: file.type,
+            mediaType: resolveMediaType(file),
             type: "file",
             url: URL.createObjectURL(file),
           });
