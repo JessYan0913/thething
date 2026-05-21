@@ -1,4 +1,4 @@
-import { FeishuMessageCrypto } from '../crypto/feishu-crypto'
+import crypto from 'crypto'
 import type {
   AdapterInput,
   ConnectorInboundConfig,
@@ -7,9 +7,49 @@ import type {
 } from '../types'
 import type { ProtocolAdapter } from './protocol-adapter'
 
+// ---- Feishu Crypto ----
+
+interface FeishuVerifyParams {
+  timestamp: string
+  nonce: string
+  signature: string
+  body: string
+  encryptKey: string
+}
+
+interface FeishuDecryptedMessage {
+  eventType: string
+  event: unknown
+  raw: unknown
+}
+
+function verifyFeishuSignature(params: FeishuVerifyParams): boolean {
+  const content = params.timestamp + params.nonce + params.encryptKey + params.body
+  const hash = crypto.createHash('sha256').update(content).digest('hex')
+  return hash === params.signature
+}
+
+function decryptFeishuMessage(encrypted: string, encryptKey: string): FeishuDecryptedMessage {
+  const key = crypto.createHash('sha256').update(encryptKey).digest()
+  const buf = Buffer.from(encrypted, 'base64')
+  const iv = buf.slice(0, 16)
+  const ciphertext = buf.slice(16)
+
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv)
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+
+  const json = JSON.parse(decrypted.toString('utf-8'))
+  return {
+    eventType: json.type || json.event_type || '',
+    event: json.event || json,
+    raw: json,
+  }
+}
+
+// ---- HTTP Adapter ----
+
 export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
   readonly protocol = 'feishu'
-  private readonly crypto = new FeishuMessageCrypto()
 
   async challenge(input: AdapterInput): Promise<InboundAcceptResult | null> {
     const bodyJson = parseJsonObject(input.body)
@@ -35,7 +75,7 @@ export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
     const encryptKey = getCredential(config, 'encrypt_key', 'encryptKey')
     if (!encryptKey) return false
 
-    return this.crypto.verifySignature({
+    return verifyFeishuSignature({
       timestamp: input.headers['x-lark-request-timestamp'] || input.query.timestamp || '',
       nonce: input.headers['x-lark-request-nonce'] || input.query.nonce || '',
       signature: input.headers['x-lark-signature'] || input.query.signature || '',
@@ -49,7 +89,7 @@ export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
     if (!bodyJson || typeof bodyJson.encrypt !== 'string') return input
 
     const encryptKey = getCredential(config, 'encrypt_key', 'encryptKey')
-    const decrypted = this.crypto.decrypt(bodyJson.encrypt, encryptKey)
+    const decrypted = decryptFeishuMessage(bodyJson.encrypt, encryptKey)
 
     return {
       ...input,
@@ -75,6 +115,32 @@ export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
     })
   }
 }
+
+// ---- WebSocket Adapter ----
+
+export class FeishuWsProtocolAdapter implements ProtocolAdapter {
+  readonly protocol = 'feishu'
+
+  async verify(): Promise<boolean> {
+    return true
+  }
+
+  async parse(input: AdapterInput, config: ConnectorInboundConfig): Promise<InboundEvent> {
+    const raw = input.raw
+    if (!raw || typeof raw !== 'object') {
+      throw new Error('INVALID_EXTERNAL_INPUT')
+    }
+
+    return feishuPayloadToInboundEvent(raw as Record<string, unknown>, {
+      connectorId: config.connectorId,
+      transport: input.transport,
+      receivedAt: input.receivedAt,
+      raw,
+    })
+  }
+}
+
+// ---- Shared helpers ----
 
 export function feishuPayloadToInboundEvent(
   body: Record<string, unknown>,
@@ -155,4 +221,3 @@ function getCredential(config: ConnectorInboundConfig, ...keys: string[]): strin
   }
   return ''
 }
-

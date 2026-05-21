@@ -51,22 +51,14 @@ function replaceEnvVars(
 }
 
 function replaceEnvVarInString(str: string, env: Record<string, string | undefined>): string {
-  return str
-    .replace(/\$\{(\w+)\}/g, (_, varName) => {
-      const envValue = env[varName];
-      if (envValue === undefined) {
-        logger.warn('ConnectorsLoader', `Environment variable ${varName} not found`);
-        return str;
-      }
-      return envValue;
-    })
-    .replace(/\$(\w+)/g, (_, varName) => {
-      const envValue = env[varName];
-      if (envValue === undefined) {
-        return str;
-      }
-      return envValue;
-    });
+  return str.replace(/\$\{(\w+)\}/g, (match, varName) => {
+    const envValue = env[varName];
+    if (envValue === undefined) {
+      logger.warn('ConnectorsLoader', `Environment variable ${varName} not found`);
+      return match;
+    }
+    return envValue;
+  });
 }
 
 // ============================================================

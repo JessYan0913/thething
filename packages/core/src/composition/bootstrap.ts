@@ -195,8 +195,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     model: options.connectorConfig?.model,
     appContext: options.connectorConfig?.appContext,
     env: options.connectorConfig?.env ?? env,
-    debugEnabled: options.connectorConfig?.debugEnabled ?? Boolean(env.DEBUG),
-    allowUnsafeScriptExecutor: options.connectorConfig?.allowUnsafeScriptExecutor,
   });
   await initializeConnectorRuntime(connectorRuntime, { startConsumer: false }).catch((err) => {
     logger.error('Bootstrap', 'ConnectorRuntime init failed:', err);

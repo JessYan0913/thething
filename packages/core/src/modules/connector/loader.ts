@@ -49,7 +49,7 @@ const ToolDefinitionSchema = z.object({
   input_schema: InputSchemaSchema,
   retryable: z.boolean().optional(),
   timeout_ms: z.number().optional(),
-  executor: z.enum(['http', 'sql', 'script', 'mock']),
+  executor: z.enum(['http', 'mock']),
   executor_config: z.unknown(),
 });
 

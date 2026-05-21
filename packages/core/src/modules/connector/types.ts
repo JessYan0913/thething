@@ -4,7 +4,6 @@
 
 // 前向声明类型（避免循环导入）
 import type { ConnectorRegistry } from './registry'
-import type { AuditLogger } from './audit-logger'
 import type { ConnectorInboundRuntime, InboundEvent } from './inbound/types'
 
 /**
@@ -96,8 +95,8 @@ export interface ToolDefinition {
   }
   retryable?: boolean
   timeout_ms?: number
-  executor: 'http' | 'sql' | 'script' | 'mock'
-  executor_config: HttpExecutorConfig | SqlExecutorConfig | ScriptExecutorConfig | MockExecutorConfig
+  executor: 'http' | 'mock'
+  executor_config: HttpExecutorConfig | MockExecutorConfig
 }
 
 /**
@@ -122,24 +121,6 @@ export interface HttpExecutorConfig {
   query_params?: Record<string, string>
   body?: Record<string, unknown>
   body_type?: 'json' | 'form' | 'xml'
-}
-
-/**
- * SQL 执行器配置
- */
-export interface SqlExecutorConfig {
-  connection_id: string
-  allow_write: boolean
-  max_rows: number
-  query_template: string
-}
-
-/**
- * 脚本执行器配置
- */
-export interface ScriptExecutorConfig {
-  script: string
-  language: 'javascript' | 'typescript'
 }
 
 /**
@@ -249,11 +230,6 @@ export interface ConnectorRuntimeConfig {
   /** 环境变量快照，由 server/cli 显式传入；core 不自行读取 process.env */
   env?: Record<string, string | undefined>
 
-  /** 是否开启调试日志 */
-  debugEnabled?: boolean
-
-  /** 显式允许不安全 script executor；默认 false */
-  allowUnsafeScriptExecutor?: boolean
 }
 
 /**
@@ -265,9 +241,6 @@ export interface ConnectorRuntimeConfig {
 export interface ConnectorRuntime {
   /** Connector 注册表 */
   registry: ConnectorRegistry
-
-  /** 审计日志器 */
-  auditLogger: AuditLogger
 
   /** 入站运行时（标准事件、网关、收件箱、回复器） */
   inbound: ConnectorInboundRuntime

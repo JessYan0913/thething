@@ -6,10 +6,9 @@ import type {
   InboundAcceptResult,
   InboundInbox,
 } from '../types'
-import { FeishuHttpProtocolAdapter } from '../adapters/feishu-http-adapter'
-import { FeishuWsProtocolAdapter } from '../adapters/feishu-ws-adapter'
+import { FeishuHttpProtocolAdapter, FeishuWsProtocolAdapter } from '../adapters/feishu'
 import { TestProtocolAdapter } from '../adapters/test-adapter'
-import { isWechatProtocol, WechatProtocolAdapter } from '../adapters/wechat-adapter'
+import { isWechatProtocol, WechatProtocolAdapter } from '../adapters/wechat'
 import type { ProtocolAdapter } from '../adapters/protocol-adapter'
 import type { InboundHttpRequest } from './http-request'
 

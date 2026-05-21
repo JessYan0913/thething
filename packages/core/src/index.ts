@@ -276,9 +276,6 @@ export type { SubAgentStreamWriter } from './modules/subagents';
 // ============================================================
 export { SQLiteDataStore } from './services/datastore/sqlite/sqlite-data-store';
 
-// CredentialStore
-export { CredentialStore } from './modules/connector/credentials/store';
-
 // ============================================================
 // Native 模块加载（SEA 支持）
 // ============================================================
