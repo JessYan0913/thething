@@ -207,6 +207,8 @@ export interface CreateAgentResult {
   budgetActions?: string[];
   /** 底层模型实例（未包装 middleware），供后台任务使用 */
   model?: LanguageModelV3;
+  /** 记忆基础目录，供 finalizeAgentRun 使用 */
+  memoryBaseDir?: string;
 
   /**
    * 释放本次对话占用的所有资源。

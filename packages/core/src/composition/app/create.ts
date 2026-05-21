@@ -270,6 +270,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     adjustedMessages: finalMessages,
     budgetActions: budgetCheck.actions,
     model: modelInstance,
+    memoryBaseDir,
     dispose,
   }
 }

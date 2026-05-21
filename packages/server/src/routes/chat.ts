@@ -87,6 +87,7 @@ app.post('/', async (c) => {
       mcpRegistry,
       model,
       adjustedMessages,
+      memoryBaseDir,
     } = await createAgent({
       context,
       conversationId,
@@ -151,6 +152,7 @@ app.post('/', async (c) => {
                 model,
                 isNewConversation: isFirstMessage,
                 userId,
+                memoryBaseDir,
               })
             } catch (err) {
               console.error('[Chat API] onFinish error:', err)
