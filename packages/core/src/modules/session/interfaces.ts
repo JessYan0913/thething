@@ -12,7 +12,7 @@ import type { LanguageModelUsage, UIMessage } from 'ai';
 import type { CompactionResult, CompactionConfig } from '../../services/config/compaction-types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { ResolvedLayout } from '../../services/config/layout';
-import type { TaskStore } from '../../primitives/datastore/types';
+import type { TodoStore } from '../../primitives/datastore/types';
 import type { PermissionRule } from '../../modules/permissions/types';
 import type { Skill } from '../../modules/skills/types';
 import type { ModelMessage } from 'ai';
@@ -99,7 +99,7 @@ export interface SessionContext {
   model: string;
   readonly projectRoot: string;
   readonly layout: ResolvedLayout;
-  readonly taskStore: TaskStore;
+  readonly todoStore: TodoStore;
   readonly permissionRules: readonly PermissionRule[];
   readonly extraSensitivePaths: readonly string[];
   readonly compactionConfig?: CompactionConfig;

@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * TaskPanel - Fetches and displays tasks from API
+ * TodoPanel - Fetches and displays todos from API
  * 
- * Displays tasks in collapsible sections grouped by status.
+ * Displays todos in collapsible sections grouped by status.
  */
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus } from "@/lib/tasks/types";
+import type { Todo, TodoStatus } from "@/lib/todos/types";
 import {
   Collapsible,
   CollapsibleContent,
@@ -22,7 +22,7 @@ import {
   ChevronDownIcon,
 } from "lucide-react";
 
-interface TaskStats {
+interface TodoStats {
   pending: number;
   in_progress: number;
   completed: number;
@@ -30,12 +30,12 @@ interface TaskStats {
   cancelled: number;
 }
 
-interface TasksResponse {
-  tasks: Task[];
-  stats: TaskStats;
+interface TodosResponse {
+  todos: Todo[];
+  stats: TodoStats;
 }
 
-const STATUS_ICONS: Record<TaskStatus, React.ReactNode> = {
+const STATUS_ICONS: Record<TodoStatus, React.ReactNode> = {
   pending: <Clock className="h-4 w-4 text-gray-400" />,
   in_progress: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
   completed: <CheckCircle className="h-4 w-4 text-green-500" />,
@@ -43,7 +43,7 @@ const STATUS_ICONS: Record<TaskStatus, React.ReactNode> = {
   cancelled: <AlertCircle className="h-4 w-4 text-gray-400" />,
 };
 
-const STATUS_COLORS: Record<TaskStatus, string> = {
+const STATUS_COLORS: Record<TodoStatus, string> = {
   pending: "text-gray-400",
   in_progress: "text-blue-500",
   completed: "text-green-500",
@@ -51,18 +51,18 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   cancelled: "text-gray-400",
 };
 
-export function TaskPanel({ conversationId }: { conversationId: string }) {
-  const [tasks, setTasks] = React.useState<Task[]>([]);
-  const [stats, setStats] = React.useState<TaskStats | null>(null);
+export function TodoPanel({ conversationId }: { conversationId: string }) {
+  const [todos, setTodos] = React.useState<Todo[]>([]);
+  const [stats, setStats] = React.useState<TodoStats | null>(null);
   const [isOpen, setIsOpen] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  const fetchTasks = React.useCallback(async () => {
+  const fetchTodos = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/tasks?conversationId=${encodeURIComponent(conversationId)}`);
-      if (!res.ok) throw new Error("Failed to fetch tasks");
-      const data: TasksResponse = await res.json();
-      setTasks(data.tasks);
+      const res = await fetch(`/api/todos?conversationId=${encodeURIComponent(conversationId)}`);
+      if (!res.ok) throw new Error("Failed to fetch todos");
+      const data: TodosResponse = await res.json();
+      setTodos(data.todos);
       setStats(data.stats);
       setError(null);
     } catch (err) {
@@ -70,42 +70,42 @@ export function TaskPanel({ conversationId }: { conversationId: string }) {
     }
   }, [conversationId]);
 
-  // Poll for task updates
+  // Poll for todo updates
   React.useEffect(() => {
-    fetchTasks();
-    const interval = setInterval(fetchTasks, 5000);
+    fetchTodos();
+    const interval = setInterval(fetchTodos, 5000);
     return () => clearInterval(interval);
-  }, [fetchTasks]);
+  }, [fetchTodos]);
 
-  // Group tasks by status
-  const tasksByStatus = React.useMemo(() => {
-    const groups: Record<TaskStatus, Task[]> = {
+  // Group todos by status
+  const todosByStatus = React.useMemo(() => {
+    const groups: Record<TodoStatus, Todo[]> = {
       pending: [],
       in_progress: [],
       completed: [],
       failed: [],
       cancelled: [],
     };
-    for (const task of tasks) {
-      groups[task.status].push(task);
+    for (const todo of todos) {
+      groups[todo.status].push(todo);
     }
     return groups;
-  }, [tasks]);
+  }, [todos]);
 
-  const totalTasks = stats
+  const totalTodos = stats
     ? stats.pending + stats.in_progress + stats.completed + stats.failed + stats.cancelled
     : 0;
 
   if (error) {
     return (
       <div className="shrink-0 border-b p-3 bg-destructive/10 text-destructive text-sm">
-        Task panel error: {error}
+        Todo panel error: {error}
       </div>
     );
   }
 
-  // Only show panel when there are tasks
-  if (totalTasks === 0) {
+  // Only show panel when there are todos
+  if (totalTodos === 0) {
     return null;
   }
 
@@ -115,38 +115,38 @@ export function TaskPanel({ conversationId }: { conversationId: string }) {
         <CollapsibleContent>
           <div className="px-3 pb-3 space-y-2 max-h-64 overflow-y-auto">
             {/* In Progress */}
-            {tasksByStatus.in_progress.length > 0 && (
-              <TaskSection
+            {todosByStatus.in_progress.length > 0 && (
+              <TodoSection
                 title="In Progress"
-                tasks={tasksByStatus.in_progress}
+                todos={todosByStatus.in_progress}
                 icon={STATUS_ICONS.in_progress}
               />
             )}
 
             {/* Pending */}
-            {tasksByStatus.pending.length > 0 && (
-              <TaskSection
+            {todosByStatus.pending.length > 0 && (
+              <TodoSection
                 title="Pending"
-                tasks={tasksByStatus.pending}
+                todos={todosByStatus.pending}
                 icon={STATUS_ICONS.pending}
               />
             )}
 
             {/* Completed */}
-            {tasksByStatus.completed.length > 0 && (
-              <TaskSection
+            {todosByStatus.completed.length > 0 && (
+              <TodoSection
                 title="Completed"
-                tasks={tasksByStatus.completed}
+                todos={todosByStatus.completed}
                 icon={STATUS_ICONS.completed}
                 defaultCollapsed
               />
             )}
 
             {/* Failed */}
-            {tasksByStatus.failed.length > 0 && (
-              <TaskSection
+            {todosByStatus.failed.length > 0 && (
+              <TodoSection
                 title="Failed"
-                tasks={tasksByStatus.failed}
+                todos={todosByStatus.failed}
                 icon={STATUS_ICONS.failed}
                 defaultCollapsed
               />
@@ -158,17 +158,17 @@ export function TaskPanel({ conversationId }: { conversationId: string }) {
   );
 }
 
-interface TaskSectionProps {
+interface TodoSectionProps {
   title: string;
-  tasks: Task[];
+  todos: Todo[];
   icon: React.ReactNode;
   defaultCollapsed?: boolean;
 }
 
-function TaskSection({ title, tasks, icon, defaultCollapsed }: TaskSectionProps) {
+function TodoSection({ title, todos, icon, defaultCollapsed }: TodoSectionProps) {
   const [isOpen, setIsOpen] = React.useState(!defaultCollapsed);
 
-  if (tasks.length === 0) return null;
+  if (todos.length === 0) return null;
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -178,7 +178,7 @@ function TaskSection({ title, tasks, icon, defaultCollapsed }: TaskSectionProps)
       >
         {icon}
         <span className="text-sm font-medium">{title}</span>
-        <span className="text-xs text-muted-foreground">({tasks.length})</span>
+        <span className="text-xs text-muted-foreground">({todos.length})</span>
         <ChevronDownIcon className={cn(
           "h-3 w-3 ml-auto transition-transform",
           isOpen ? "rotate-180" : ""
@@ -186,8 +186,8 @@ function TaskSection({ title, tasks, icon, defaultCollapsed }: TaskSectionProps)
       </button>
       {isOpen && (
         <div className="divide-y">
-          {tasks.map((task) => (
-            <TaskItem key={task.id} task={task} />
+          {todos.map((todo) => (
+            <TodoItem key={todo.id} todo={todo} />
           ))}
         </div>
       )}
@@ -195,25 +195,25 @@ function TaskSection({ title, tasks, icon, defaultCollapsed }: TaskSectionProps)
   );
 }
 
-function TaskItem({ task }: { task: Task }) {
+function TodoItem({ todo }: { todo: Todo }) {
   return (
     <div className="flex items-start gap-2 px-3 py-2 hover:bg-muted/50 transition-colors">
-      <span className={cn("mt-0.5", STATUS_COLORS[task.status])}>
-        {STATUS_ICONS[task.status]}
+      <span className={cn("mt-0.5", STATUS_COLORS[todo.status])}>
+        {STATUS_ICONS[todo.status]}
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm truncate">{task.subject}</span>
-          <span className="text-xs text-muted-foreground shrink-0">#{task.id}</span>
+          <span className="text-sm truncate">{todo.subject}</span>
+          <span className="text-xs text-muted-foreground shrink-0">#{todo.id}</span>
         </div>
-        {task.activeForm && (
-          <p className="text-xs text-blue-600 truncate">{task.activeForm}</p>
+        {todo.activeForm && (
+          <p className="text-xs text-blue-600 truncate">{todo.activeForm}</p>
         )}
-        {task.metadata?.error && task.status === "failed" && (
-          <p className="text-xs text-red-600 truncate">{task.metadata.error as string}</p>
+        {todo.metadata?.error && todo.status === "failed" && (
+          <p className="text-xs text-red-600 truncate">{todo.metadata.error as string}</p>
         )}
-        {task.metadata?.result && (
-          <p className="text-xs text-muted-foreground truncate">{task.metadata.result as string}</p>
+        {todo.metadata?.result && (
+          <p className="text-xs text-muted-foreground truncate">{todo.metadata.result as string}</p>
         )}
       </div>
     </div>

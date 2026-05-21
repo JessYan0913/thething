@@ -40,7 +40,7 @@ thething/
 | `skills/` | 技能系统 |
 | `subagents/` | 子代理系统 |
 | `system-prompt/` | 系统提示生成 |
-| `tasks/` | 任务管理 |
+| `todos/` | 任务管理 |
 | `tools/` | 工具定义 |
 | `middleware/` | 中间件 |
 

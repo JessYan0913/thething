@@ -3,7 +3,7 @@ import type { AgentDefinition, AgentExecutionContext, AgentExecutionResult } fro
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
-import { completeTask, failTask, updateTaskStatus } from '../../modules/tasks';
+import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
 
 // ============================================================
 // Helper Functions
@@ -31,7 +31,7 @@ export async function executeRoutedAgent(
   task: string,
 ): Promise<AgentExecutionResult> {
   const startTime = Date.now();
-  const { toolCallId, writerRef, abortSignal, taskStore, taskId } = context;
+  const { toolCallId, writerRef, abortSignal, todoStore, todoId } = context;
   const writer = writerRef.current;
 
   try {
@@ -63,8 +63,8 @@ export async function executeRoutedAgent(
       : task;
 
     // 7. 更新任务状态
-    if (taskStore && taskId) {
-      updateTaskStatus(taskStore, taskId, 'in_progress');
+    if (todoStore && todoId) {
+      updateTodoStatus(todoStore, todoId, 'in_progress');
     }
 
     // 8. 执行流式输出
@@ -132,9 +132,9 @@ export async function executeRoutedAgent(
     };
 
     // 12. 完成任务（如果有）
-    if (taskStore && taskId) {
+    if (todoStore && todoId) {
       fireAndForget(() => {
-        completeTask(taskStore, taskId, result.summary);
+        completeTodo(todoStore, todoId, result.summary);
       });
     }
 
@@ -154,9 +154,9 @@ export async function executeRoutedAgent(
       status: isAborted ? 'aborted' : 'failed',
     };
 
-    if (taskStore && taskId) {
+    if (todoStore && todoId) {
       fireAndForget(() => {
-        failTask(taskStore, taskId, errorMsg);
+        failTodo(todoStore, todoId, errorMsg);
       });
     }
 

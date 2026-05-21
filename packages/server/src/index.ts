@@ -11,7 +11,7 @@ import path from 'path'
 // Routes
 import chatRoutes from './routes/chat'
 import conversationsRoutes from './routes/conversations'
-import tasksRoutes from './routes/tasks'
+import todosRoutes from './routes/todos'
 import permissionsRoutes from './routes/permissions'
 import mcpRoutes from './routes/mcp'
 import skillsRoutes from './routes/skills'
@@ -49,7 +49,7 @@ app.use('*', cors({
 // Mount routes under /api prefix
 app.route('/api/chat', chatRoutes)
 app.route('/api/conversations', conversationsRoutes)
-app.route('/api/tasks', tasksRoutes)
+app.route('/api/todos', todosRoutes)
 app.route('/api/permissions', permissionsRoutes)
 app.route('/api/mcp', mcpRoutes)
 app.route('/api/skills', skillsRoutes)

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
-import type { TaskStore } from '../../modules/tasks';
+import type { TodoStore } from '../../modules/todos';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import type { AgentRegistry } from './registry';
 
@@ -175,10 +175,10 @@ export interface AgentExecutionContext {
   recursionDepth: number;
 
   /** 任务存储 */
-  taskStore?: TaskStore;
+  todoStore?: TodoStore;
 
   /** 任务 ID */
-  taskId?: string;
+  todoId?: string;
 
   /** 模型提供者（用于创建子代理模型） */
   provider?: (modelName: string) => LanguageModel;
@@ -279,10 +279,10 @@ export interface AgentToolConfig {
   recursionDepth?: number;
 
   /** 任务存储 */
-  taskStore?: TaskStore;
+  todoStore?: TodoStore;
 
   /** 任务 ID */
-  taskId?: string;
+  todoId?: string;
 
   /** 工作目录 */
   cwd?: string;

@@ -1,13 +1,13 @@
 // ============================================================
 // SQLite Schema Initialization
 // ============================================================
-// Database schema for conversations, messages, summaries, costs, and tasks.
+// Database schema for conversations, messages, summaries, costs, and todos.
 // Memory is stored in file system (.siact/memory/), not in database.
 
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -25,10 +25,10 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
   }
 
   if (currentVersion < 2) {
-    // v2: add tasks table
+    // v2: add todos table
     db.exec(`
-      -- Tasks table for task management system
-      CREATE TABLE IF NOT EXISTS tasks (
+      -- Todos table for todo management system
+      CREATE TABLE IF NOT EXISTS todos (
         id TEXT PRIMARY KEY,
         conversation_id TEXT NOT NULL,
         subject TEXT NOT NULL,
@@ -44,19 +44,19 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       );
 
-      -- Index for task lookup by conversation
-      CREATE INDEX IF NOT EXISTS idx_tasks_conversation
-        ON tasks(conversation_id);
+      -- Index for todo lookup by conversation
+      CREATE INDEX IF NOT EXISTS idx_todos_conversation
+        ON todos(conversation_id);
 
-      -- Index for task status lookup
-      CREATE INDEX IF NOT EXISTS idx_tasks_status
-        ON tasks(status);
+      -- Index for todo status lookup
+      CREATE INDEX IF NOT EXISTS idx_todos_status
+        ON todos(status);
 
-      -- Index for claimed tasks lookup
-      CREATE INDEX IF NOT EXISTS idx_tasks_claimed
-        ON tasks(claimed_by);
+      -- Index for claimed todos lookup
+      CREATE INDEX IF NOT EXISTS idx_todos_claimed
+        ON todos(claimed_by);
     `);
-    logger.debug('Schema', 'Migrated to v2: added tasks table');
+    logger.debug('Schema', 'Migrated to v2: added todos table');
   }
 
   if (currentVersion < 3) {
@@ -85,6 +85,37 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
         ON pending_approvals(status);
     `);
     logger.debug('Schema', 'Migrated to v3: added pending_approvals table');
+  }
+
+  if (currentVersion < 4) {
+    // v4: rename tasks → todos (destructive, zero users)
+    db.exec(`
+      DROP TABLE IF EXISTS tasks;
+      DROP INDEX IF EXISTS idx_tasks_conversation;
+      DROP INDEX IF EXISTS idx_tasks_status;
+      DROP INDEX IF EXISTS idx_tasks_claimed;
+
+      CREATE TABLE IF NOT EXISTS todos (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')),
+        claimed_by TEXT,
+        active_form TEXT,
+        blocked_by TEXT NOT NULL DEFAULT '[]',
+        blocks TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        completed_at TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_todos_conversation ON todos(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
+      CREATE INDEX IF NOT EXISTS idx_todos_claimed ON todos(claimed_by);
+    `);
+    logger.debug('Schema', 'Migrated to v4: renamed tasks to todos');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -156,6 +187,27 @@ export function initializeSchema(db: SqliteDatabase): void {
     -- Index for cost lookup by conversation
     CREATE INDEX IF NOT EXISTS idx_chat_costs_conversation
       ON chat_costs(conversation_id);
+
+    -- Todos table
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')),
+      claimed_by TEXT,
+      active_form TEXT,
+      blocked_by TEXT NOT NULL DEFAULT '[]',
+      blocks TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      completed_at TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_todos_conversation ON todos(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
+    CREATE INDEX IF NOT EXISTS idx_todos_claimed ON todos(claimed_by);
   `);
 
   ensureSchemaVersion(db);

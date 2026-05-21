@@ -1,32 +1,32 @@
 // ============================================================
-// SQLite Task Store Implementation
+// SQLite Todo Store Implementation
 // ============================================================
-// Persistent task storage using SQLite database.
-// Implements the TaskStore interface from runtime/tasks/types.ts.
+// Persistent todo storage using SQLite database.
+// Implements the TodoStore interface from runtime/todos/types.ts.
 
 import { nanoid } from 'nanoid';
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
-import type { TaskRow } from '../../../primitives/datastore/types';
+import type { TodoRow } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 import type {
-  Task,
-  TaskStore,
-  TaskCreateInput,
-  TaskUpdateInput,
-  TaskClaimResult,
-  TaskStatus,
+  Todo,
+  TodoStore,
+  TodoCreateInput,
+  TodoUpdateInput,
+  TodoClaimResult,
+  TodoStatus,
   AgentStatus,
-  TaskEvent,
-  TaskEventListener,
-  TaskEventType,
+  TodoEvent,
+  TodoEventListener,
+  TodoEventType,
 } from '../../../primitives/datastore/types';
 
 /**
- * SQLite-based TaskStore implementation
+ * SQLite-based TodoStore implementation
  */
-export class SQLiteTaskStore implements TaskStore {
+export class SQLiteTodoStore implements TodoStore {
   private db: SqliteDatabase;
-  private listeners: Set<TaskEventListener> = new Set();
+  private listeners: Set<TodoEventListener> = new Set();
   private agentStatus: Map<string, AgentStatus> = new Map();
 
   constructor(db: SqliteDatabase) {
@@ -34,14 +34,14 @@ export class SQLiteTaskStore implements TaskStore {
   }
 
   // ============================================================
-  // Helper: Parse task row to Task object
+  // Helper: Parse todo row to Todo object
   // ============================================================
-  private parseRow(row: TaskRow): Task {
+  private parseRow(row: TodoRow): Todo {
     return {
       id: row.id,
       conversationId: row.conversation_id,
       subject: row.subject,
-      status: row.status as TaskStatus,
+      status: row.status as TodoStatus,
       claimedBy: row.claimed_by,
       activeForm: row.active_form,
       blockedBy: JSON.parse(row.blocked_by || '[]'),
@@ -56,10 +56,10 @@ export class SQLiteTaskStore implements TaskStore {
   // ============================================================
   // Helper: Emit event to listeners
   // ============================================================
-  private emit(type: TaskEventType, task: Task, metadata?: Record<string, unknown>): void {
-    const event: TaskEvent = {
+  private emit(type: TodoEventType, todo: Todo, metadata?: Record<string, unknown>): void {
+    const event: TodoEvent = {
       type,
-      task,
+      todo,
       timestamp: Date.now(),
       metadata,
     };
@@ -67,7 +67,7 @@ export class SQLiteTaskStore implements TaskStore {
       try {
         listener(event);
       } catch (e) {
-        logger.error('SQLiteTaskStore', 'Event listener error:', e);
+        logger.error('SQLiteTodoStore', 'Event listener error:', e);
       }
     }
   }
@@ -75,29 +75,29 @@ export class SQLiteTaskStore implements TaskStore {
   // ============================================================
   // Helper: Update blocks reverse index
   // ============================================================
-  private updateBlocksIndex(taskId: string, blockedBy: string[]): void {
+  private updateBlocksIndex(todoId: string, blockedBy: string[]): void {
     // Get current blocks list
-    const currentTask = this.getTask(taskId);
-    if (!currentTask) return;
+    const currentTodo = this.getTodo(todoId);
+    if (!currentTodo) return;
 
-    const oldBlockedBy = currentTask.blockedBy;
+    const oldBlockedBy = currentTodo.blockedBy;
     const newBlockedBy = blockedBy;
 
     // Remove from old blockers' blocks list
     for (const oldDep of oldBlockedBy) {
-      const blocker = this.getTask(oldDep);
+      const blocker = this.getTodo(oldDep);
       if (blocker) {
-        const newBlocks = blocker.blocks.filter(id => id !== taskId);
-        this.db.prepare(`UPDATE tasks SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), oldDep);
+        const newBlocks = blocker.blocks.filter(id => id !== todoId);
+        this.db.prepare(`UPDATE todos SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), oldDep);
       }
     }
 
     // Add to new blockers' blocks list
     for (const newDep of newBlockedBy) {
-      const blocker = this.getTask(newDep);
+      const blocker = this.getTodo(newDep);
       if (blocker) {
-        const newBlocks = [...blocker.blocks, taskId];
-        this.db.prepare(`UPDATE tasks SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), newDep);
+        const newBlocks = [...blocker.blocks, todoId];
+        this.db.prepare(`UPDATE todos SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), newDep);
       }
     }
   }
@@ -108,50 +108,50 @@ export class SQLiteTaskStore implements TaskStore {
   private areDependenciesCompleted(blockedBy: string[]): boolean {
     if (blockedBy.length === 0) return true;
     for (const depId of blockedBy) {
-      const dep = this.getTask(depId);
+      const dep = this.getTodo(depId);
       if (!dep || dep.status !== 'completed') return false;
     }
     return true;
   }
 
   // ============================================================
-  // Helper: Unblock dependent tasks when this task completes
+  // Helper: Unblock dependent todos when this todo completes
   // ============================================================
-  private unblockDependents(taskId: string): void {
-    const task = this.getTask(taskId);
-    if (!task) return;
+  private unblockDependents(todoId: string): void {
+    const todo = this.getTodo(todoId);
+    if (!todo) return;
 
-    // Notify listeners that dependent tasks may now be available
-    for (const depId of task.blocks) {
-      const dep = this.getTask(depId);
+    // Notify listeners that dependent todos may now be available
+    for (const depId of todo.blocks) {
+      const dep = this.getTodo(depId);
       if (dep && dep.status === 'pending' && this.areDependenciesCompleted(dep.blockedBy)) {
-        this.emit('task:updated', dep, { reason: 'dependency_completed', completedTaskId: taskId });
+        this.emit('todo:updated', dep, { reason: 'dependency_completed', completedTodoId: todoId });
       }
     }
   }
 
   // ============================================================
-  // TaskStore Implementation
+  // TodoStore Implementation
   // ============================================================
 
-  createTask(input: TaskCreateInput): Task {
-    const id = `task-${nanoid(8)}`;
+  createTodo(input: TodoCreateInput): Todo {
+    const id = `todo-${nanoid(8)}`;
     const now = new Date().toISOString();
     const blockedBy = input.blockedBy ?? [];
 
     // Validate dependencies exist and belong to same conversation
     for (const depId of blockedBy) {
-      const dep = this.getTask(depId);
+      const dep = this.getTodo(depId);
       if (!dep) {
-        throw new Error(`[SQLiteTaskStore] Dependency ${depId} does not exist`);
+        throw new Error(`[SQLiteTodoStore] Dependency ${depId} does not exist`);
       }
       if (dep.conversationId !== input.conversationId) {
-        throw new Error(`[SQLiteTaskStore] Dependency ${depId} belongs to different conversation`);
+        throw new Error(`[SQLiteTodoStore] Dependency ${depId} belongs to different conversation`);
       }
     }
 
     const stmt = this.db.prepare(`
-      INSERT INTO tasks (id, conversation_id, subject, status, blocked_by, created_at, updated_at, metadata)
+      INSERT INTO todos (id, conversation_id, subject, status, blocked_by, created_at, updated_at, metadata)
       VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
     `);
 
@@ -167,38 +167,38 @@ export class SQLiteTaskStore implements TaskStore {
 
     // Update blockers' blocks reverse index
     for (const depId of blockedBy) {
-      const blocker = this.getTask(depId);
+      const blocker = this.getTodo(depId);
       if (blocker) {
         const newBlocks = [...blocker.blocks, id];
-        this.db.prepare(`UPDATE tasks SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), depId);
+        this.db.prepare(`UPDATE todos SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), depId);
       }
     }
 
-    const task = this.getTask(id)!;
-    this.emit('task:created', task);
-    return task;
+    const todo = this.getTodo(id)!;
+    this.emit('todo:created', todo);
+    return todo;
   }
 
-  getTask(id: string): Task | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM tasks WHERE id = ?`);
-    const row = stmt.get(id) as TaskRow | undefined;
+  getTodo(id: string): Todo | undefined {
+    const stmt = this.db.prepare(`SELECT * FROM todos WHERE id = ?`);
+    const row = stmt.get(id) as TodoRow | undefined;
     return row ? this.parseRow(row) : undefined;
   }
 
-  getAllTasks(): Task[] {
-    const stmt = this.db.prepare(`SELECT * FROM tasks ORDER BY created_at DESC`);
-    const rows = stmt.all() as unknown as TaskRow[];
+  getAllTodos(): Todo[] {
+    const stmt = this.db.prepare(`SELECT * FROM todos ORDER BY created_at DESC`);
+    const rows = stmt.all() as unknown as TodoRow[];
     return rows.map(row => this.parseRow(row));
   }
 
-  getTasksByConversation(conversationId: string): Task[] {
-    const stmt = this.db.prepare(`SELECT * FROM tasks WHERE conversation_id = ? ORDER BY created_at DESC`);
-    const rows = stmt.all(conversationId) as unknown as TaskRow[];
+  getTodosByConversation(conversationId: string): Todo[] {
+    const stmt = this.db.prepare(`SELECT * FROM todos WHERE conversation_id = ? ORDER BY created_at DESC`);
+    const rows = stmt.all(conversationId) as unknown as TodoRow[];
     return rows.map(row => this.parseRow(row));
   }
 
-  updateTask(input: TaskUpdateInput): Task | undefined {
-    const existing = this.getTask(input.id);
+  updateTodo(input: TodoUpdateInput): Todo | undefined {
+    const existing = this.getTodo(input.id);
     if (!existing) return undefined;
 
     const now = new Date().toISOString();
@@ -266,16 +266,16 @@ export class SQLiteTaskStore implements TaskStore {
     // Add WHERE clause value
     values.push(input.id);
 
-    const stmt = this.db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`);
+    const stmt = this.db.prepare(`UPDATE todos SET ${updates.join(', ')} WHERE id = ?`);
     stmt.run(...values);
 
-    const updated = this.getTask(input.id)!;
-    this.emit('task:updated', updated);
+    const updated = this.getTodo(input.id)!;
+    this.emit('todo:updated', updated);
     return updated;
   }
 
-  deleteTask(id: string): boolean {
-    const existing = this.getTask(id);
+  deleteTodo(id: string): boolean {
+    const existing = this.getTodo(id);
     if (!existing) return false;
 
     // Clean up blocks reverse index
@@ -286,99 +286,99 @@ export class SQLiteTaskStore implements TaskStore {
       this.setAgentBusy(existing.claimedBy, false);
     }
 
-    const stmt = this.db.prepare(`DELETE FROM tasks WHERE id = ?`);
+    const stmt = this.db.prepare(`DELETE FROM todos WHERE id = ?`);
     stmt.run(id);
 
-    this.emit('task:deleted', existing);
+    this.emit('todo:deleted', existing);
     return true;
   }
 
-  claimTask(taskId: string, agentId: string): TaskClaimResult {
+  claimTodo(todoId: string, agentId: string): TodoClaimResult {
     // Check if agent is busy
     const agentStatus = this.getAgentStatus(agentId);
     if (agentStatus.isBusy) {
       return {
         success: false,
-        message: `Agent ${agentId} is already busy with task ${agentStatus.currentTaskId}`,
+        message: `Agent ${agentId} is already busy with todo ${agentStatus.currentTodoId}`,
       };
     }
 
-    const task = this.getTask(taskId);
-    if (!task) {
-      return { success: false, message: `Task ${taskId} not found` };
+    const todo = this.getTodo(todoId);
+    if (!todo) {
+      return { success: false, message: `Todo ${todoId} not found` };
     }
 
-    // Check task status
-    if (task.status !== 'pending') {
-      return { success: false, message: `Task ${taskId} is not pending (status: ${task.status})` };
+    // Check todo status
+    if (todo.status !== 'pending') {
+      return { success: false, message: `Todo ${todoId} is not pending (status: ${todo.status})` };
     }
 
     // Check dependencies
-    if (!this.areDependenciesCompleted(task.blockedBy)) {
-      const pendingDeps = task.blockedBy.filter(depId => {
-        const dep = this.getTask(depId);
+    if (!this.areDependenciesCompleted(todo.blockedBy)) {
+      const pendingDeps = todo.blockedBy.filter(depId => {
+        const dep = this.getTodo(depId);
         return !dep || dep.status !== 'completed';
       });
       return {
         success: false,
-        message: `Task ${taskId} has incomplete dependencies: ${pendingDeps.join(', ')}`,
+        message: `Todo ${todoId} has incomplete dependencies: ${pendingDeps.join(', ')}`,
       };
     }
 
     // Check if already claimed
-    if (task.claimedBy) {
-      return { success: false, message: `Task ${taskId} is already claimed by ${task.claimedBy}` };
+    if (todo.claimedBy) {
+      return { success: false, message: `Todo ${todoId} is already claimed by ${todo.claimedBy}` };
     }
 
-    // Claim the task
+    // Claim the todo
     this.db.prepare(`
-      UPDATE tasks SET status = 'in_progress', claimed_by = ?, updated_at = ?
+      UPDATE todos SET status = 'in_progress', claimed_by = ?, updated_at = ?
       WHERE id = ?
-    `).run(agentId, new Date().toISOString(), taskId);
+    `).run(agentId, new Date().toISOString(), todoId);
 
-    this.setAgentBusy(agentId, true, taskId);
+    this.setAgentBusy(agentId, true, todoId);
 
-    const claimed = this.getTask(taskId)!;
-    this.emit('task:claimed', claimed, { agentId });
-    return { success: true, task: claimed };
+    const claimed = this.getTodo(todoId)!;
+    this.emit('todo:claimed', claimed, { agentId });
+    return { success: true, todo: claimed };
   }
 
-  getAvailableTasks(): Task[] {
-    // Get all pending tasks
-    const pending = this.getTasksByStatus('pending');
+  getAvailableTodos(): Todo[] {
+    // Get all pending todos
+    const pending = this.getTodosByStatus('pending');
 
     // Filter by dependency completion and not claimed
-    return pending.filter(task => {
-      if (task.claimedBy) return false;
-      return this.areDependenciesCompleted(task.blockedBy);
+    return pending.filter(todo => {
+      if (todo.claimedBy) return false;
+      return this.areDependenciesCompleted(todo.blockedBy);
     });
   }
 
-  getTasksByStatus(status: TaskStatus): Task[] {
-    const stmt = this.db.prepare(`SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC`);
-    const rows = stmt.all(status) as unknown as TaskRow[];
+  getTodosByStatus(status: TodoStatus): Todo[] {
+    const stmt = this.db.prepare(`SELECT * FROM todos WHERE status = ? ORDER BY created_at DESC`);
+    const rows = stmt.all(status) as unknown as TodoRow[];
     return rows.map(row => this.parseRow(row));
   }
 
-  getTasksByAgent(agentId: string): Task[] {
-    const stmt = this.db.prepare(`SELECT * FROM tasks WHERE claimed_by = ? ORDER BY updated_at DESC`);
-    const rows = stmt.all(agentId) as unknown as TaskRow[];
+  getTodosByAgent(agentId: string): Todo[] {
+    const stmt = this.db.prepare(`SELECT * FROM todos WHERE claimed_by = ? ORDER BY updated_at DESC`);
+    const rows = stmt.all(agentId) as unknown as TodoRow[];
     return rows.map(row => this.parseRow(row));
   }
 
-  getBlockingTasks(taskId: string): Task[] {
-    const task = this.getTask(taskId);
-    if (!task) return [];
-    return task.blocks.map(id => this.getTask(id)!).filter(Boolean);
+  getBlockingTodos(todoId: string): Todo[] {
+    const todo = this.getTodo(todoId);
+    if (!todo) return [];
+    return todo.blocks.map(id => this.getTodo(id)!).filter(Boolean);
   }
 
-  getBlockedByTasks(taskId: string): Task[] {
-    const task = this.getTask(taskId);
-    if (!task) return [];
-    return task.blockedBy.map(id => this.getTask(id)!).filter(Boolean);
+  getBlockedByTodos(todoId: string): Todo[] {
+    const todo = this.getTodo(todoId);
+    if (!todo) return [];
+    return todo.blockedBy.map(id => this.getTodo(id)!).filter(Boolean);
   }
 
-  subscribe(listener: TaskEventListener): () => void {
+  subscribe(listener: TodoEventListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -387,21 +387,21 @@ export class SQLiteTaskStore implements TaskStore {
     return this.agentStatus.get(agentId) ?? {
       agentId,
       isBusy: false,
-      currentTaskId: null,
+      currentTodoId: null,
     };
   }
 
-  setAgentBusy(agentId: string, busy: boolean, taskId?: string): void {
+  setAgentBusy(agentId: string, busy: boolean, todoId?: string): void {
     this.agentStatus.set(agentId, {
       agentId,
       isBusy: busy,
-      currentTaskId: busy ? taskId ?? null : null,
+      currentTodoId: busy ? todoId ?? null : null,
     });
   }
 
-  clearAllTasks(): void {
-    this.db.prepare(`DELETE FROM tasks`).run();
+  clearAllTodos(): void {
+    this.db.prepare(`DELETE FROM todos`).run();
     this.agentStatus.clear();
-    logger.debug('SQLiteTaskStore', 'All tasks cleared');
+    logger.debug('SQLiteTodoStore', 'All todos cleared');
   }
 }

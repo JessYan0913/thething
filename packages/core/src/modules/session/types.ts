@@ -12,7 +12,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { PermissionRule } from '../../modules/permissions/types';
 import type { PricingResolver } from '../../services/model/pricing';
-import type { TaskStore } from '../tasks/types';
+import type { TodoStore } from '../todos/types';
 
 /**
  * Session 状态选项
@@ -38,8 +38,8 @@ export interface SessionStateOptions {
   dataStore: DataStore;
   /** 定价解析器（来自 CoreRuntime；未传入时使用实例级默认定价） */
   pricingResolver?: PricingResolver;
-  /** 任务存储（来自 CoreRuntime/DataStore，未传入时使用 dataStore.taskStore） */
-  taskStore?: TaskStore;
+  /** 任务存储（来自 CoreRuntime/DataStore，未传入时使用 dataStore.todoStore） */
+  todoStore?: TodoStore;
   /** 可用模型列表（来自 BehaviorConfig） */
   availableModels?: ModelSpec[];
   /** 自动降级成本阈值（来自 BehaviorConfig） */
@@ -93,7 +93,7 @@ export interface SessionState {
   /** 额外敏感路径 */
   extraSensitivePaths: readonly string[];
   /** 当前会话绑定的任务存储 */
-  taskStore: TaskStore;
+  todoStore: TodoStore;
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
   /** Layer 1: Agent 主动释放的工具输出 ID 列表 */

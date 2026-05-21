@@ -30,7 +30,7 @@ const OPTIONAL_TOOL_PRIORITY = [
   'connector_*',
   'web_search',
   'research',
-  'task_*',
+  'todo_*',
   'ask_user_question',
 ];
 

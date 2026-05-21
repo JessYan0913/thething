@@ -23,7 +23,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
 import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
-import { TaskPanel } from '@/components/chat-task-panel';
+import { TodoPanel } from '@/components/chat-todo-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { ToolOutput } from '@/components/ai-elements/tool';
 import { Shimmer } from '@/components/ai-elements/shimmer';
@@ -38,13 +38,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
 
-const TASK_TOOL_TYPES = new Set([
-  'tool-task_create',
-  'tool-task_update',
-  'tool-task_list',
-  'tool-task_get',
-  'tool-task_stop',
-  'tool-task_delete',
+const TODO_TOOL_TYPES = new Set([
+  'tool-todo_create',
+  'tool-todo_update',
+  'tool-todo_list',
+  'tool-todo_get',
+  'tool-todo_stop',
+  'tool-todo_delete',
 ]);
 
 function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null): { title: string; icon: React.ComponentType<{ className?: string }> } | undefined {
@@ -71,17 +71,17 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
       return { title: `Search: ${i.query ?? ''}`, icon: SearchIcon };
     case 'agent':
       return { title: `${i.agentType ?? 'Agent'}: ${String(i.task ?? '').slice(0, 30)}...`, icon: UserIcon };
-    case 'task_create':
+    case 'todo_create':
       return { title: `Create: ${i.subject ?? ''}`, icon: PlusIcon };
-    case 'task_update':
+    case 'todo_update':
       return { title: `Update: ${i.subject ?? i.id ?? ''}`, icon: RefreshCwIcon };
-    case 'task_list':
-      return { title: i.status ? `Tasks (${i.status})` : 'Tasks', icon: ListIcon };
-    case 'task_get':
+    case 'todo_list':
+      return { title: i.status ? `Todos (${i.status})` : 'Todos', icon: ListIcon };
+    case 'todo_get':
       return { title: `Get: ${i.id ?? ''}`, icon: SearchIcon };
-    case 'task_stop':
+    case 'todo_stop':
       return { title: `Stop: ${i.id ?? ''}`, icon: SquareIcon };
-    case 'task_delete':
+    case 'todo_delete':
       return { title: `Delete: ${i.id ?? ''}`, icon: TrashIcon };
     case 'research': 
       return { title: `Research: ${i.task ?? ''}`, icon: BookIcon };
@@ -567,7 +567,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                         if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
                           const toolPart = part as ToolUIPart;
 
-                          if (TASK_TOOL_TYPES.has(toolPart.type)) {
+                          if (TODO_TOOL_TYPES.has(toolPart.type)) {
                             return null;
                           }
 
@@ -680,7 +680,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
       <div className="shrink-0 border-t p-4">
         <div className="mx-auto max-w-3xl">
           {/* Task List Panel - always visible above input */}
-          <TaskPanel conversationId={conversationId} />
+          <TodoPanel conversationId={conversationId} />
 
           {/* User Question Panel - 问题收集 */}
           {questionPanel && (

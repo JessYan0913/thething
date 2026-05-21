@@ -17,7 +17,7 @@ import {
   askUserQuestionTool,
   createSkillTool,
 } from '../tools'
-import { createTaskToolsForConversation } from '../tasks'
+import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool } from '../../modules/subagents'
 import { createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
@@ -77,7 +77,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     }),
   })
 
-  Object.assign(tools, createTaskToolsForConversation(config.sessionState.taskStore, config.conversationId))
+  Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId))
 
   // 1. 注册内置 Agent
   registerBuiltinAgents(agentRegistry)

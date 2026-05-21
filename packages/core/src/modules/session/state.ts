@@ -43,7 +43,7 @@ export function createSessionState(
     toolOutputConfig,
     dataStore,
     pricingResolver = createPricingResolver(),
-    taskStore = dataStore.taskStore,
+    todoStore = dataStore.todoStore,
     availableModels = DEFAULT_MODEL_SPECS,
     autoDowngradeCostThreshold = 80,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
@@ -92,7 +92,7 @@ export function createSessionState(
     },
     permissionRules: [...permissionRules],
     extraSensitivePaths: [...extraSensitivePaths],
-    taskStore,
+    todoStore,
     tokenBudget,
     costTracker,
     denialTracker,

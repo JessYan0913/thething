@@ -112,7 +112,7 @@ export type {
   MessageStore,
   SummaryStore,
   CostStore,
-  TaskStore,
+  TodoStore,
   Conversation,
   StoredMessage,
   StoredSummary,
@@ -166,20 +166,20 @@ export {
   estimateMessagesTokens,
 } from './modules/compaction';
 
-// Tasks
+// Todos
 export {
-  createTaskStore,
-} from './modules/tasks';
+  createTodoStore,
+} from './modules/todos';
 export {
   STATUS_CONFIG,
-} from './modules/tasks/types';
+} from './modules/todos/types';
 export type {
-  Task,
-  TaskStatus,
-  TaskCreateInput,
-  TaskUpdateInput,
-  TaskClaimResult,
-} from './modules/tasks/types';
+  Todo,
+  TodoStatus,
+  TodoCreateInput,
+  TodoUpdateInput,
+  TodoClaimResult,
+} from './modules/todos/types';
 
 // ============================================================
 // Extensions Layer（白名单导出）

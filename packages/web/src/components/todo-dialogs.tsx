@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * TaskDialogs - Dialog components for task operations
+ * TodoDialogs - Dialog components for todo operations
  * 
  * Provides confirmation dialogs for:
- * - Claiming a task
- * - Completing a task (with result summary)
- * - Stopping a task (with reason)
- * - Deleting a task
+ * - Claiming a todo
+ * - Completing a todo (with result summary)
+ * - Stopping a todo (with reason)
+ * - Deleting a todo
  */
 
 import * as React from "react";
-import type { Task } from "@/lib/tasks/types";
+import type { Todo } from "@/lib/todos/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -24,32 +24,32 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * Claim Task Dialog
+ * Claim Todo Dialog
  */
-export interface ClaimTaskDialogProps {
-  taskId: string;
+export interface ClaimTodoDialogProps {
+  todoId: string;
   subject: string;
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ClaimTaskDialog({
-  taskId,
+export function ClaimTodoDialog({
+  todoId,
   subject,
   open,
   onConfirm,
   onCancel,
-}: ClaimTaskDialogProps) {
+}: ClaimTodoDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Claim Task #{taskId}</DialogTitle>
+          <DialogTitle>Claim Todo #{todoId}</DialogTitle>
           <DialogDescription>{subject}</DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Are you sure you want to claim this task? You will be responsible for
+          Are you sure you want to claim this todo? You will be responsible for
           completing it.
         </p>
         <DialogFooter>
@@ -64,30 +64,30 @@ export function ClaimTaskDialog({
 }
 
 /**
- * Complete Task Dialog
+ * Complete Todo Dialog
  */
-export interface CompleteTaskDialogProps {
-  taskId: string;
+export interface CompleteTodoDialogProps {
+  todoId: string;
   subject: string;
   open: boolean;
   onConfirm: (result: string) => void;
   onCancel: () => void;
 }
 
-export function CompleteTaskDialog({
-  taskId,
+export function CompleteTodoDialog({
+  todoId,
   subject,
   open,
   onConfirm,
   onCancel,
-}: CompleteTaskDialogProps) {
+}: CompleteTodoDialogProps) {
   const [result, setResult] = React.useState("");
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Complete Task</DialogTitle>
+          <DialogTitle>Complete Todo</DialogTitle>
           <DialogDescription>{subject}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
@@ -111,30 +111,30 @@ export function CompleteTaskDialog({
 }
 
 /**
- * Stop Task Dialog
+ * Stop Todo Dialog
  */
-export interface StopTaskDialogProps {
-  taskId: string;
+export interface StopTodoDialogProps {
+  todoId: string;
   subject: string;
   open: boolean;
   onConfirm: (reason: string) => void;
   onCancel: () => void;
 }
 
-export function StopTaskDialog({
-  taskId,
+export function StopTodoDialog({
+  todoId,
   subject,
   open,
   onConfirm,
   onCancel,
-}: StopTaskDialogProps) {
+}: StopTodoDialogProps) {
   const [reason, setReason] = React.useState("");
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Stop Task</DialogTitle>
+          <DialogTitle>Stop Todo</DialogTitle>
           <DialogDescription>{subject}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
@@ -142,7 +142,7 @@ export function StopTaskDialog({
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Why is this task being stopped?"
+            placeholder="Why is this todo being stopped?"
             rows={3}
           />
         </div>
@@ -151,7 +151,7 @@ export function StopTaskDialog({
             Cancel
           </Button>
           <Button variant="destructive" onClick={() => onConfirm(reason)}>
-            Stop Task
+            Stop Todo
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -160,32 +160,32 @@ export function StopTaskDialog({
 }
 
 /**
- * Delete Task Dialog
+ * Delete Todo Dialog
  */
-export interface DeleteTaskDialogProps {
-  taskId: string;
+export interface DeleteTodoDialogProps {
+  todoId: string;
   subject: string;
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function DeleteTaskDialog({
-  taskId,
+export function DeleteTodoDialog({
+  todoId,
   subject,
   open,
   onCancel,
   onConfirm,
-}: DeleteTaskDialogProps) {
+}: DeleteTodoDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete Task</DialogTitle>
+          <DialogTitle>Delete Todo</DialogTitle>
           <DialogDescription>{subject}</DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Are you sure you want to delete this task? This action cannot be undone.
+          Are you sure you want to delete this todo? This action cannot be undone.
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>
@@ -201,10 +201,10 @@ export function DeleteTaskDialog({
 }
 
 /**
- * Task Details Dialog - Shows full task information
+ * Todo Details Dialog - Shows full todo information
  */
-export interface TaskDetailsDialogProps {
-  task: Task | null;
+export interface TodoDetailsDialogProps {
+  todo: Todo | null;
   open: boolean;
   onClose: () => void;
   onClaim?: () => void;
@@ -214,8 +214,8 @@ export interface TaskDetailsDialogProps {
   onRetry?: () => void;
 }
 
-export function TaskDetailsDialog({
-  task,
+export function TodoDetailsDialog({
+  todo,
   open,
   onClose,
   onClaim,
@@ -223,53 +223,53 @@ export function TaskDetailsDialog({
   onStop,
   onDelete,
   onRetry,
-}: TaskDetailsDialogProps) {
-  if (!task) return null;
+}: TodoDetailsDialogProps) {
+  if (!todo) return null;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="text-2xl">{STATUS_CONFIG[task.status].icon}</span>
-            {task.subject}
+            <span className="text-2xl">{STATUS_CONFIG[todo.status].icon}</span>
+            {todo.subject}
           </DialogTitle>
-          <DialogDescription>Task #{task.id}</DialogDescription>
+          <DialogDescription>Todo #{todo.id}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Status */}
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">Status:</span>
-            <span className={STATUS_STYLES[task.status].color}>
-              {task.status.replace("_", " ")}
+            <span className={STATUS_STYLES[todo.status].color}>
+              {todo.status.replace("_", " ")}
             </span>
           </div>
 
           {/* Claimed By */}
-          {task.claimedBy && (
+          {todo.claimedBy && (
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Claimed By:</span>
-              <span className="text-sm">{task.claimedBy}</span>
+              <span className="text-sm">{todo.claimedBy}</span>
             </div>
           )}
 
           {/* Active Form */}
-          {task.activeForm && (
+          {todo.activeForm && (
             <div className="space-y-1">
               <span className="text-sm font-medium">Current Activity:</span>
               <p className="text-sm bg-blue-50 dark:bg-blue-950/30 p-2 rounded">
-                {task.activeForm}
+                {todo.activeForm}
               </p>
             </div>
           )}
 
           {/* Dependencies */}
-          {task.blockedBy.length > 0 && (
+          {todo.blockedBy.length > 0 && (
             <div className="space-y-1">
               <span className="text-sm font-medium">Blocked By:</span>
               <div className="flex flex-wrap gap-2">
-                {task.blockedBy.map((id) => (
+                {todo.blockedBy.map((id) => (
                   <span
                     key={id}
                     className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded"
@@ -282,11 +282,11 @@ export function TaskDetailsDialog({
           )}
 
           {/* Blocks */}
-          {task.blocks.length > 0 && (
+          {todo.blocks.length > 0 && (
             <div className="space-y-1">
               <span className="text-sm font-medium">Blocks:</span>
               <div className="flex flex-wrap gap-2">
-                {task.blocks.map((id) => (
+                {todo.blocks.map((id) => (
                   <span
                     key={id}
                     className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-2 py-1 rounded"
@@ -299,44 +299,44 @@ export function TaskDetailsDialog({
           )}
 
           {/* Error */}
-          {task.metadata?.error && (
+          {todo.metadata?.error && (
             <div className="space-y-1">
               <span className="text-sm font-medium text-red-600">Error:</span>
               <p className="text-sm bg-red-50 dark:bg-red-950/30 p-2 rounded text-red-700 dark:text-red-400">
-                {task.metadata.error as string}
+                {todo.metadata.error as string}
               </p>
             </div>
           )}
 
           {/* Result */}
-          {task.metadata?.result && (
+          {todo.metadata?.result && (
             <div className="space-y-1">
               <span className="text-sm font-medium">Result:</span>
               <p className="text-sm bg-green-50 dark:bg-green-950/30 p-2 rounded">
-                {task.metadata.result as string}
+                {todo.metadata.result as string}
               </p>
             </div>
           )}
 
           {/* Stop Reason */}
-          {task.metadata?.stopReason && (
+          {todo.metadata?.stopReason && (
             <div className="space-y-1">
               <span className="text-sm font-medium">Stop Reason:</span>
               <p className="text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                {task.metadata.stopReason as string}
+                {todo.metadata.stopReason as string}
               </p>
             </div>
           )}
 
           {/* Metadata */}
-          {(task.metadata?.priority || task.metadata?.tags) && (
+          {(todo.metadata?.priority || todo.metadata?.tags) && (
             <div className="flex gap-2">
-              {task.metadata?.priority && (
+              {todo.metadata?.priority && (
                 <PriorityBadgeInline
-                  priority={task.metadata.priority as "low" | "medium" | "high"}
+                  priority={todo.metadata.priority as "low" | "medium" | "high"}
                 />
               )}
-              {(task.metadata?.tags as string[])?.map((tag) => (
+              {(todo.metadata?.tags as string[])?.map((tag) => (
                 <span
                   key={tag}
                   className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded"
@@ -349,31 +349,31 @@ export function TaskDetailsDialog({
 
           {/* Timestamps */}
           <div className="text-xs text-muted-foreground space-y-1">
-            <p>Created: {new Date(task.createdAt).toLocaleString()}</p>
-            <p>Updated: {new Date(task.updatedAt).toLocaleString()}</p>
-            {task.completedAt && (
-              <p>Completed: {new Date(task.completedAt).toLocaleString()}</p>
+            <p>Created: {new Date(todo.createdAt).toLocaleString()}</p>
+            <p>Updated: {new Date(todo.updatedAt).toLocaleString()}</p>
+            {todo.completedAt && (
+              <p>Completed: {new Date(todo.completedAt).toLocaleString()}</p>
             )}
           </div>
         </div>
 
         {/* Actions */}
         <DialogFooter className="flex-wrap gap-2">
-          {task.status === "pending" && onClaim && (
+          {todo.status === "pending" && onClaim && (
             <Button onClick={onClaim}>Claim</Button>
           )}
-          {task.status === "in_progress" && onComplete && (
+          {todo.status === "in_progress" && onComplete && (
             <Button onClick={onComplete}>Complete</Button>
           )}
-          {task.status === "in_progress" && onStop && (
+          {todo.status === "in_progress" && onStop && (
             <Button variant="destructive" onClick={onStop}>
               Stop
             </Button>
           )}
-          {(task.status === "failed" || task.status === "cancelled") && onRetry && (
+          {(todo.status === "failed" || todo.status === "cancelled") && onRetry && (
             <Button onClick={onRetry}>Retry</Button>
           )}
-          {task.status !== "in_progress" && onDelete && (
+          {todo.status !== "in_progress" && onDelete && (
             <Button variant="outline" onClick={onDelete}>
               Delete
             </Button>
@@ -402,4 +402,4 @@ function PriorityBadgeInline({ priority }: { priority: "low" | "medium" | "high"
 }
 
 // Re-export status config for convenience
-import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/tasks/types";
+import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/todos/types";

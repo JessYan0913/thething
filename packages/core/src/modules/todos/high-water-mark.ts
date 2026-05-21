@@ -1,8 +1,8 @@
 import type { HighWaterMark } from './types';
-import { TASK_ID_PREFIX } from './types';
+import { TODO_ID_PREFIX } from './types';
 
 /**
- * HighWaterMark implementation for generating unique task IDs
+ * HighWaterMark implementation for generating unique todo IDs
  * 
  * Uses a monotonically increasing counter to ensure unique IDs
  * even across distributed systems or multiple instances.
@@ -18,7 +18,7 @@ export class HighWaterMarkImpl implements HighWaterMark {
    * Get the next unique ID and increment the counter
    */
   next(): string {
-    const id = `${TASK_ID_PREFIX}${this.value}`;
+    const id = `${TODO_ID_PREFIX}${this.value}`;
     this.value++;
     return id;
   }
@@ -43,13 +43,13 @@ export class HighWaterMarkImpl implements HighWaterMark {
 }
 
 /**
- * Parse a task ID to extract its numeric value
+ * Parse a todo ID to extract its numeric value
  */
-export function parseTaskId(id: string): number | null {
-  if (!id.startsWith(TASK_ID_PREFIX)) {
+export function parseTodoId(id: string): number | null {
+  if (!id.startsWith(TODO_ID_PREFIX)) {
     return null;
   }
-  const numStr = id.slice(TASK_ID_PREFIX.length);
+  const numStr = id.slice(TODO_ID_PREFIX.length);
   const num = parseInt(numStr, 10);
   return isNaN(num) ? null : num;
 }
@@ -62,7 +62,7 @@ export function createHighWaterMarkFromIds(ids: string[]): HighWaterMarkImpl {
   let maxValue = 0;
   
   for (const id of ids) {
-    const parsed = parseTaskId(id);
+    const parsed = parseTodoId(id);
     if (parsed !== null && parsed > maxValue) {
       maxValue = parsed;
     }
@@ -73,7 +73,7 @@ export function createHighWaterMarkFromIds(ids: string[]): HighWaterMarkImpl {
 }
 
 /**
- * Global HighWaterMark instance for task ID generation
+ * Global HighWaterMark instance for todo ID generation
  * This ensures unique IDs across the entire application
  */
 let globalHighWaterMark: HighWaterMarkImpl | null = null;

@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * TaskPanel - Task list display component
+ * TodoPanel - Todo list display component
  * 
- * Displays tasks grouped by status with actions.
+ * Displays todos grouped by status with actions.
  * Uses the existing UI component patterns (shadcn-style with Radix UI).
  */
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus } from "@/lib/tasks/types";
-import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/tasks/types";
+import type { Todo, TodoStatus } from "@/lib/todos/types";
+import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/todos/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,23 +31,23 @@ import {
 } from "lucide-react";
 
 /**
- * TaskPanel Props
+ * TodoPanel Props
  */
-export interface TaskPanelProps {
-  /** All tasks to display */
-  tasks: Task[];
+export interface TodoPanelProps {
+  /** All todos to display */
+  todos: Todo[];
   /** Callback when claim action is triggered */
-  onClaim: (taskId: string) => void;
+  onClaim: (todoId: string) => void;
   /** Callback when complete action is triggered */
-  onComplete: (taskId: string) => void;
+  onComplete: (todoId: string) => void;
   /** Callback when stop action is triggered */
-  onStop: (taskId: string) => void;
+  onStop: (todoId: string) => void;
   /** Callback when delete action is triggered */
-  onDelete: (taskId: string) => void;
+  onDelete: (todoId: string) => void;
   /** Callback when retry action is triggered */
-  onRetry?: (taskId: string) => void;
-  /** Callback when task is clicked */
-  onTaskClick?: (task: Task) => void;
+  onRetry?: (todoId: string) => void;
+  /** Callback when todo is clicked */
+  onTodoClick?: (todo: Todo) => void;
   /** Class name for the container */
   className?: string;
 }
@@ -55,7 +55,7 @@ export interface TaskPanelProps {
 /**
  * Status icon mapping
  */
-const STATUS_ICONS: Record<TaskStatus, React.ReactNode> = {
+const STATUS_ICONS: Record<TodoStatus, React.ReactNode> = {
   pending: <Clock className="h-4 w-4 text-gray-400" />,
   in_progress: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
   completed: <CheckCircle className="h-4 w-4 text-green-500" />,
@@ -64,21 +64,21 @@ const STATUS_ICONS: Record<TaskStatus, React.ReactNode> = {
 };
 
 /**
- * TaskPanel component
+ * TodoPanel component
  */
-export function TaskPanel({
-  tasks,
+export function TodoPanel({
+  todos,
   onClaim,
   onComplete,
   onStop,
   onDelete,
   onRetry,
-  onTaskClick,
+  onTodoClick,
   className,
-}: TaskPanelProps) {
-  // Group tasks by status
-  const tasksByStatus = React.useMemo(() => {
-    const groups: Record<TaskStatus, Task[]> = {
+}: TodoPanelProps) {
+  // Group todos by status
+  const todosByStatus = React.useMemo(() => {
+    const groups: Record<TodoStatus, Todo[]> = {
       pending: [],
       in_progress: [],
       completed: [],
@@ -86,71 +86,71 @@ export function TaskPanel({
       cancelled: [],
     };
     
-    for (const task of tasks) {
-      groups[task.status].push(task);
+    for (const todo of todos) {
+      groups[todo.status].push(todo);
     }
     
     return groups;
-  }, [tasks]);
+  }, [todos]);
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       {/* In Progress */}
-      <TaskSection
+      <TodoSection
         title="In Progress"
         icon={STATUS_ICONS.in_progress}
-        tasks={tasksByStatus.in_progress}
+        todos={todosByStatus.in_progress}
         actions={[
           { label: "Complete", onClick: onComplete },
           { label: "Stop", onClick: onStop },
         ]}
-        onTaskClick={onTaskClick}
+        onTodoClick={onTodoClick}
         defaultOpen={true}
       />
 
       {/* Pending */}
-      <TaskSection
+      <TodoSection
         title="Pending"
         icon={STATUS_ICONS.pending}
-        tasks={tasksByStatus.pending}
+        todos={todosByStatus.pending}
         actions={onClaim ? [{ label: "Claim", onClick: onClaim }] : []}
-        onTaskClick={onTaskClick}
+        onTodoClick={onTodoClick}
         defaultOpen={true}
         showBlockedBy
       />
 
       {/* Completed */}
-      <TaskSection
+      <TodoSection
         title="Completed"
         icon={STATUS_ICONS.completed}
-        tasks={tasksByStatus.completed}
-        onTaskClick={onTaskClick}
+        todos={todosByStatus.completed}
+        onTodoClick={onTodoClick}
         defaultOpen={false}
       />
 
       {/* Failed */}
-      {tasksByStatus.failed.length > 0 && (
-        <TaskSection
+      {todosByStatus.failed.length > 0 && (
+        <TodoSection
           title="Failed"
           icon={STATUS_ICONS.failed}
-          tasks={tasksByStatus.failed}
+          todos={todosByStatus.failed}
           actions={[
             ...(onRetry ? [{ label: "Retry", onClick: onRetry }] : []),
             { label: "Delete", onClick: onDelete },
           ]}
-          onTaskClick={onTaskClick}
+          onTodoClick={onTodoClick}
           defaultOpen={false}
         />
       )}
 
       {/* Cancelled */}
-      {tasksByStatus.cancelled.length > 0 && (
-        <TaskSection
+      {todosByStatus.cancelled.length > 0 && (
+        <TodoSection
           title="Cancelled"
           icon={STATUS_ICONS.cancelled}
-          tasks={tasksByStatus.cancelled}
+          todos={todosByStatus.cancelled}
           actions={[{ label: "Delete", onClick: onDelete }]}
-          onTaskClick={onTaskClick}
+          onTodoClick={onTodoClick}
           defaultOpen={false}
         />
       )}
@@ -159,33 +159,33 @@ export function TaskPanel({
 }
 
 /**
- * TaskSection Props
+ * TodoSection Props
  */
-interface TaskSectionProps {
+interface TodoSectionProps {
   title: string;
   icon: React.ReactNode;
-  tasks: Task[];
-  actions?: Array<{ label: string; onClick: (taskId: string) => void }>;
-  onTaskClick?: (task: Task) => void;
+  todos: Todo[];
+  actions?: Array<{ label: string; onClick: (todoId: string) => void }>;
+  onTodoClick?: (todo: Todo) => void;
   defaultOpen?: boolean;
   showBlockedBy?: boolean;
 }
 
 /**
- * Collapsible task section
+ * Collapsible todo section
  */
-function TaskSection({
+function TodoSection({
   title,
   icon,
-  tasks,
+  todos,
   actions = [],
-  onTaskClick,
+  onTodoClick,
   defaultOpen = true,
   showBlockedBy = false,
-}: TaskSectionProps) {
+}: TodoSectionProps) {
   const [isOpen, setIsOpen] = React.useState(defaultOpen);
 
-  if (tasks.length === 0) return null;
+  if (todos.length === 0) return null;
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -201,18 +201,18 @@ function TaskSection({
         )}
         {icon}
         <span className="font-medium">{title}</span>
-        <span className="text-sm text-muted-foreground">({tasks.length})</span>
+        <span className="text-sm text-muted-foreground">({todos.length})</span>
       </button>
 
       {/* Section Content */}
       {isOpen && (
         <div className="divide-y">
-          {tasks.map((task) => (
-            <TaskItem
-              key={task.id}
-              task={task}
+          {todos.map((todo) => (
+            <TodoItem
+              key={todo.id}
+              todo={todo}
               actions={actions}
-              onClick={() => onTaskClick?.(task)}
+              onClick={() => onTodoClick?.(todo)}
               showBlockedBy={showBlockedBy}
             />
           ))}
@@ -223,20 +223,20 @@ function TaskSection({
 }
 
 /**
- * TaskItem Props
+ * TodoItem Props
  */
-interface TaskItemProps {
-  task: Task;
-  actions: Array<{ label: string; onClick: (taskId: string) => void }>;
+interface TodoItemProps {
+  todo: Todo;
+  actions: Array<{ label: string; onClick: (todoId: string) => void }>;
   onClick?: () => void;
   showBlockedBy?: boolean;
 }
 
 /**
- * Single task item
+ * Single todo item
  */
-function TaskItem({ task, actions, onClick, showBlockedBy }: TaskItemProps) {
-  const config = STATUS_CONFIG[task.status];
+function TodoItem({ todo, actions, onClick, showBlockedBy }: TodoItemProps) {
+  const config = STATUS_CONFIG[todo.status];
 
   return (
     <div
@@ -247,49 +247,49 @@ function TaskItem({ task, actions, onClick, showBlockedBy }: TaskItemProps) {
       onClick={onClick}
     >
       {/* Status Indicator */}
-      <div className={cn("mt-0.5", STATUS_STYLES[task.status].color)}>
+      <div className={cn("mt-0.5", STATUS_STYLES[todo.status].color)}>
         <span className="text-lg">{config.icon}</span>
       </div>
 
-      {/* Task Content */}
+      {/* Todo Content */}
       <div className="flex-1 min-w-0">
         {/* Subject and ID */}
         <div className="flex items-center gap-2">
-          <span className="font-medium truncate">{task.subject}</span>
-          <span className="text-xs text-muted-foreground shrink-0">#{task.id}</span>
+          <span className="font-medium truncate">{todo.subject}</span>
+          <span className="text-xs text-muted-foreground shrink-0">#{todo.id}</span>
         </div>
 
         {/* Active Form */}
-        {task.activeForm && task.status === "in_progress" && (
-          <p className="text-sm text-blue-600 mt-1 truncate">{task.activeForm}</p>
+        {todo.activeForm && todo.status === "in_progress" && (
+          <p className="text-sm text-blue-600 mt-1 truncate">{todo.activeForm}</p>
         )}
 
         {/* Blocked By */}
-        {showBlockedBy && task.blockedBy.length > 0 && (
+        {showBlockedBy && todo.blockedBy.length > 0 && (
           <p className="text-sm text-amber-600 mt-1">
-            Blocked by: {task.blockedBy.join(", ")}
+            Blocked by: {todo.blockedBy.join(", ")}
           </p>
         )}
 
         {/* Error */}
-        {task.status === "failed" && task.metadata?.error && (
-          <p className="text-sm text-red-600 mt-1 truncate">{task.metadata.error as string}</p>
+        {todo.status === "failed" && todo.metadata?.error && (
+          <p className="text-sm text-red-600 mt-1 truncate">{todo.metadata.error as string}</p>
         )}
 
         {/* Result */}
-        {task.metadata?.result && (
+        {todo.metadata?.result && (
           <p className="text-sm text-muted-foreground mt-1 truncate">
-            {task.metadata.result as string}
+            {todo.metadata.result as string}
           </p>
         )}
 
         {/* Metadata: Priority, Tags */}
-        {(task.metadata?.priority || task.metadata?.tags) && (
+        {(todo.metadata?.priority || todo.metadata?.tags) && (
           <div className="flex gap-2 mt-2">
-            {task.metadata?.priority && (
-              <PriorityBadge priority={task.metadata.priority as "low" | "medium" | "high"} />
+            {todo.metadata?.priority && (
+              <PriorityBadge priority={todo.metadata.priority as "low" | "medium" | "high"} />
             )}
-            {(task.metadata?.tags as string[])?.map((tag) => (
+            {(todo.metadata?.tags as string[])?.map((tag) => (
               <TagBadge key={tag} tag={tag} />
             ))}
           </div>
@@ -306,7 +306,7 @@ function TaskItem({ task, actions, onClick, showBlockedBy }: TaskItemProps) {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                action.onClick(task.id);
+                action.onClick(todo.id);
               }}
             >
               {action.label}
@@ -347,11 +347,11 @@ function TagBadge({ tag }: { tag: string }) {
 }
 
 /**
- * Task Summary - Shows counts for each status
+ * Todo Summary - Shows counts for each status
  */
-export function TaskSummary({ tasks }: { tasks: Task[] }) {
+export function TodoSummary({ todos }: { todos: Todo[] }) {
   const counts = React.useMemo(() => {
-    const result: Record<TaskStatus, number> = {
+    const result: Record<TodoStatus, number> = {
       pending: 0,
       in_progress: 0,
       completed: 0,
@@ -359,12 +359,12 @@ export function TaskSummary({ tasks }: { tasks: Task[] }) {
       cancelled: 0,
     };
     
-    for (const task of tasks) {
-      result[task.status]++;
+    for (const todo of todos) {
+      result[todo.status]++;
     }
     
     return result;
-  }, [tasks]);
+  }, [todos]);
 
   return (
     <div className="flex gap-4 text-sm">
