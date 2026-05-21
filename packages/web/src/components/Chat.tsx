@@ -25,7 +25,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
 import { TodoPanel } from '@/components/chat-todo-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
-import { ToolOutput } from '@/components/ai-elements/tool';
+import { ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
@@ -33,7 +33,7 @@ import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel'
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, Loader2Icon, BrainIcon, PenLineIcon, WrenchIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
@@ -488,6 +488,45 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
     };
   }, [conversationId, setMessages]);
 
+  const thinkingState = useMemo(() => {
+    if (status !== 'submitted' && status !== 'streaming') return null;
+
+    const lastMsg = messages.at(-1);
+
+    // Submitted but no assistant message yet
+    if (!lastMsg || lastMsg.role !== 'assistant') {
+      return { icon: BrainIcon, label: 'Thinking...', animate: 'pulse' as const };
+    }
+
+    const lastPart = lastMsg.parts.at(-1);
+    if (!lastPart) return { icon: BrainIcon, label: 'Thinking...', animate: 'pulse' as const };
+
+    // Reasoning / deep thinking
+    if (lastPart.type === 'reasoning') {
+      return { icon: BrainIcon, label: 'Thinking...', animate: 'pulse' as const };
+    }
+
+    // Tool call in progress
+    if (lastPart.type.startsWith('tool-') || lastPart.type === 'dynamic-tool') {
+      const toolPart = lastPart as { type: string; state?: string; input?: Record<string, unknown> };
+      const isCompleted = toolPart.state === 'output-available' || toolPart.state === 'output-error' || toolPart.state === 'output-denied';
+      if (!isCompleted) {
+        const toolInfo = getToolTitleAndIcon(lastPart.type, toolPart.input as Record<string, unknown> ?? null);
+        const ToolIcon = toolInfo?.icon ?? WrenchIcon;
+        return { icon: ToolIcon, label: toolInfo?.title ?? 'Running tool...', animate: 'spin' as const };
+      }
+      // Tool completed, model is deciding next step
+      return { icon: BrainIcon, label: 'Thinking...', animate: 'pulse' as const };
+    }
+
+    // Text streaming
+    if (lastPart.type === 'text') {
+      return { icon: PenLineIcon, label: 'Writing...', animate: 'none' as const };
+    }
+
+    return { icon: BrainIcon, label: 'Thinking...', animate: 'pulse' as const };
+  }, [status, messages]);
+
   const handleSend = useCallback(
     async ({ text }: { text: string }) => {
       if (text.trim()) {
@@ -630,7 +669,10 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                                 ) : isSubAgent ? (
                                   <SubAgentStream parts={subParts} />
                                 ) : (
-                                  <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                                  <>
+                                    <ToolInput input={toolPart.input} />
+                                    <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                                  </>
                                 )}
                               </TaskContent>
                             </Task>
@@ -641,7 +683,19 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                       })}
                     </MessageContent>
 
-                    {message.role === 'assistant' && (
+                    {message.role === 'assistant' && messageIndex === messages.length - 1 && thinkingState ? (
+                      <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
+                        <thinkingState.icon
+                          className={`size-4 shrink-0 ${
+                            thinkingState.animate === 'spin' ? 'animate-spin' :
+                            thinkingState.animate === 'pulse' ? 'animate-pulse' : ''
+                          }`}
+                        />
+                        <span className={thinkingState.animate === 'pulse' ? 'animate-pulse' : ''}>
+                          {thinkingState.label}
+                        </span>
+                      </div>
+                    ) : message.role === 'assistant' && (
                       <MessageToolbar>
                         <MessageActions>
                           <MessageAction
