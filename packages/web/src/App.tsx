@@ -10,10 +10,8 @@ import GeneralSettings from './routes/GeneralSettings'
 import McpSettings from './routes/McpSettings'
 import SkillsSettings from './routes/SkillsSettings'
 import AgentsSettings from './routes/AgentsSettings'
-import ConnectorsSettings from './routes/ConnectorsSettings'
 import PermissionsSettings from './routes/PermissionsSettings'
 import MemorySettings from './routes/MemorySettings'
-import ConnectorAdmin from './routes/ConnectorAdmin'
 
 export default function App() {
   const { i18n } = useTranslation()
@@ -37,11 +35,9 @@ export default function App() {
           <Route path="mcp" element={<McpSettings />} />
           <Route path="skills" element={<SkillsSettings />} />
           <Route path="agents" element={<AgentsSettings />} />
-          <Route path="connectors" element={<ConnectorsSettings />} />
           <Route path="permissions" element={<PermissionsSettings />} />
           <Route path="memory" element={<MemorySettings />} />
         </Route>
-        <Route path="/connector-admin" element={<ConnectorAdmin />} />
       </Routes>
     </BrowserRouter>
   )

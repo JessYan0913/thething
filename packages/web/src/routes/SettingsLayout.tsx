@@ -16,7 +16,6 @@ import {
   PlugIcon,
   WrenchIcon,
   BotIcon,
-  LinkIcon,
   ShieldIcon,
   DatabaseIcon,
   ArrowLeftIcon,
@@ -39,7 +38,6 @@ export default function SettingsLayout() {
     { to: "/settings/mcp", icon: PlugIcon, label: t('sidebar.mcpServers') },
     { to: "/settings/skills", icon: WrenchIcon, label: t('sidebar.skills') },
     { to: "/settings/agents", icon: BotIcon, label: t('sidebar.agents') },
-    { to: "/settings/connectors", icon: LinkIcon, label: t('sidebar.connectors') },
     { to: "/settings/permissions", icon: ShieldIcon, label: t('sidebar.permissions') },
     { to: "/settings/memory", icon: DatabaseIcon, label: t('sidebar.memory') },
   ]
