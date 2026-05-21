@@ -110,6 +110,11 @@ export class ConnectorToolExecutor {
 
     const ctx: TemplateContext = { input, credentials, token }
 
+    if (toolConfig.headers) {
+      const renderedHeaders = renderObject(toolConfig.headers, ctx) as Record<string, string>
+      Object.assign(headers, renderedHeaders)
+    }
+
     const url = renderTemplate(toolConfig.url, ctx)
     const body = toolConfig.body
       ? renderObject(toolConfig.body, ctx) as Record<string, unknown>

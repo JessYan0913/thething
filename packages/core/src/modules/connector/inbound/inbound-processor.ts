@@ -108,7 +108,7 @@ export class InboundEventProcessor {
       })
 
       if (!result.success) {
-        logger.debug('InboundProcessor', 'Add indicator failed:', result.error)
+        logger.warn('InboundProcessor', `Add indicator failed [${event.connectorId}/${indicator.add_tool}]:`, result.error)
         return null
       }
 
@@ -117,11 +117,11 @@ export class InboundEventProcessor {
         logger.debug('InboundProcessor', 'Add indicator success:', reactionId)
         return reactionId
       } else {
-        logger.debug('InboundProcessor', 'Indicator returned invalid or missing reaction_id')
+        logger.warn('InboundProcessor', `Indicator returned invalid or missing reaction_id [${event.connectorId}]:`, JSON.stringify(result.result))
         return null
       }
     } catch (err) {
-      logger.debug('InboundProcessor', 'Add indicator error:', err)
+      logger.warn('InboundProcessor', `Add indicator error [${event.connectorId}/${indicator.add_tool}]:`, err)
       return null
     }
   }
@@ -166,12 +166,12 @@ export class InboundEventProcessor {
       })
 
       if (!result.success) {
-        logger.debug('InboundProcessor', 'Remove indicator failed:', result.error)
+        logger.warn('InboundProcessor', `Remove indicator failed [${event.connectorId}/${indicator.remove_tool}]:`, result.error)
       } else {
         logger.debug('InboundProcessor', 'Remove indicator success:', resultId)
       }
     } catch (err) {
-      logger.debug('InboundProcessor', 'Remove indicator error:', err)
+      logger.warn('InboundProcessor', `Remove indicator error [${event.connectorId}/${indicator.remove_tool}]:`, err)
     }
   }
 
