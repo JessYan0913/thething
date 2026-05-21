@@ -20,6 +20,7 @@ import {
   DatabaseIcon,
   ArrowLeftIcon,
   PaletteIcon,
+  CableIcon,
 } from "lucide-react"
 import { Link, Outlet, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -36,6 +37,7 @@ export default function SettingsLayout() {
 
   const resourceItems = [
     { to: "/settings/mcp", icon: PlugIcon, label: t('sidebar.mcpServers') },
+    { to: "/settings/connectors", icon: CableIcon, label: t('sidebar.connectors') },
     { to: "/settings/skills", icon: WrenchIcon, label: t('sidebar.skills') },
     { to: "/settings/agents", icon: BotIcon, label: t('sidebar.agents') },
     { to: "/settings/permissions", icon: ShieldIcon, label: t('sidebar.permissions') },

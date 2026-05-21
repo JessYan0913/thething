@@ -23,7 +23,17 @@ app.get('/', async (c) => {
       enabled: conn.enabled,
       base_url: conn.base_url,
       auth: conn.auth,
+      inbound: conn.inbound,
+      tools: conn.tools?.map((t) => ({
+        name: t.name,
+        description: t.description,
+        executor: t.executor,
+        timeout_ms: t.timeout_ms,
+        retryable: t.retryable,
+        input_schema: t.input_schema,
+      })) ?? [],
       toolCount: conn.tools?.length ?? 0,
+      sourcePath: conn.sourcePath,
     }))
 
     return c.json({ connectors })

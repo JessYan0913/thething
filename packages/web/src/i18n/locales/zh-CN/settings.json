@@ -4,6 +4,7 @@
     "generalSettings": "通用设置",
     "resourceManagement": "资源管理",
     "mcpServers": "MCP 服务器",
+    "connectors": "连接器管理",
     "skills": "技能管理",
     "agents": "代理管理",
     "permissions": "权限管理",
