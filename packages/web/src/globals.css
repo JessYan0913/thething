@@ -74,7 +74,27 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+@keyframes building {
+  0% {
+    clip-path: inset(100% 0 0 0);
+    opacity: 0.3;
+  }
+  70% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  85% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(100% 0 0 0);
+    opacity: 0.3;
+  }
+}
+
 @theme inline {
+  --animate-building: building 2s ease-in-out infinite;
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
 

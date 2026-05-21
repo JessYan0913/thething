@@ -513,7 +513,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
       if (!isCompleted) {
         const toolInfo = getToolTitleAndIcon(lastPart.type, toolPart.input as Record<string, unknown> ?? null);
         const ToolIcon = toolInfo?.icon ?? WrenchIcon;
-        return { icon: ToolIcon, label: toolInfo?.title ?? 'Running tool...', animate: 'spin' as const };
+        return { icon: ToolIcon, label: 'Running...', animate: 'spin' as const };
       }
       // Tool completed, model is deciding next step
       return { icon: BrainIcon, label: 'Thinking...', animate: 'pulse' as const };
@@ -685,15 +685,8 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
                     {message.role === 'assistant' && messageIndex === messages.length - 1 && thinkingState ? (
                       <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
-                        <thinkingState.icon
-                          className={`size-4 shrink-0 ${
-                            thinkingState.animate === 'spin' ? 'animate-spin' :
-                            thinkingState.animate === 'pulse' ? 'animate-pulse' : ''
-                          }`}
-                        />
-                        <span className={thinkingState.animate === 'pulse' ? 'animate-pulse' : ''}>
-                          {thinkingState.label}
-                        </span>
+                        <thinkingState.icon className="size-4 shrink-0 animate-building" />
+                        <span className="animate-pulse">{thinkingState.label}</span>
                       </div>
                     ) : message.role === 'assistant' && (
                       <MessageToolbar>
