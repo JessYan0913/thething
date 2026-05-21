@@ -27,16 +27,18 @@ import path from 'path'
 const app = new Hono()
 
 const WORKBENCH_PREAMBLE = `<system-reminder>
-你是一个 Skill 开发助手。你的任务是帮助用户创建、测试和优化 Skill。
+你是一个 Skill 开发助手，运行在 Skill 工作台中。
 
-工作流程：
-1. 理解用户需求后，使用 skill-creator 技能（通过 Skill 工具调用）来指导创建流程
-2. 在 skills 目录下创建完整的 skill 文件夹（SKILL.md + scripts/ + references/ 等）
-3. 创建完成后告知用户 skill 已就绪，可以请求测试
-4. 测试时直接调用新创建的 skill（通过 Skill 工具），验证其行为是否符合预期
-5. 根据用户反馈持续优化 skill 文件，每次修改后都可以重新测试
+核心原则：在用户明确表达需求之前，不要调用任何工具，不要创建任何文件。
 
-注意：每轮对话结束后系统会自动重新加载 skills，新创建或修改的 skill 在下一轮对话中即可通过 Skill 工具调用。
+行为准则：
+- 如果用户只是打招呼或闲聊，正常回应即可，不要主动提起创建 Skill
+- 只有当用户明确描述了想要创建什么样的 Skill 时，才开始工作
+- 开始工作前，先与用户确认需求理解是否正确
+- 确认后，使用 skill-creator 技能（通过 Skill 工具调用）来指导创建流程
+- 创建完成后告知用户可以请求测试
+- 测试时直接调用新创建的 skill（通过 Skill 工具），验证其行为
+- 每轮对话结束后系统会自动重新加载 skills，修改后的 skill 在下一轮即可测试
 </system-reminder>
 `
 
@@ -216,9 +218,10 @@ app.patch('/chat', async (c) => {
   }
 })
 
-// GET /detect — 检测最近修改的 skill
+// GET /detect — 检测指定时间之后修改的 skill
 app.get('/detect', async (c) => {
   try {
+    const since = Number(c.req.query('since') || '0')
     const runtime = await getServerRuntime()
     const skillsDirs = runtime.layout.resources.skills
     const skillsDir = skillsDirs[skillsDirs.length - 1]
@@ -237,7 +240,7 @@ app.get('/detect', async (c) => {
       if (!entry.isDirectory()) continue
       const dirPath = path.join(skillsDir, entry.name)
       const stat = await fs.stat(dirPath)
-      if (stat.mtimeMs > latestTime) {
+      if (stat.mtimeMs > since && stat.mtimeMs > latestTime) {
         latestTime = stat.mtimeMs
         latestName = entry.name
       }

@@ -58,6 +58,7 @@ function getExt(filePath: string): string {
 export default function SkillWorkbench() {
   const navigate = useNavigate()
   const conversationId = useMemo(() => nanoid(), [])
+  const pageLoadTime = useMemo(() => Date.now(), [])
 
   const [skillName, setSkillName] = useState<string | null>(null)
   const [tree, setTree] = useState<SkillFileNode[] | null>(null)
@@ -67,15 +68,6 @@ export default function SkillWorkbench() {
 
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-
-  // 注册工作台会话到 server
-  useEffect(() => {
-    fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: conversationId, title: "Skill Workbench" }),
-    }).catch(() => {})
-  }, [conversationId])
 
   const refreshSkillFiles = useCallback(async (name: string) => {
     try {
@@ -94,7 +86,7 @@ export default function SkillWorkbench() {
   const handleTurnFinish = useCallback(async () => {
     try {
       // 检测最近修改的 skill
-      const detectRes = await fetch("/api/skill-workbench/detect")
+      const detectRes = await fetch(`/api/skill-workbench/detect?since=${pageLoadTime}`)
       if (!detectRes.ok) return
       const { skillName: detected } = await detectRes.json()
 
@@ -253,7 +245,7 @@ export default function SkillWorkbench() {
         </div>
 
         {/* Right: Chat */}
-        <div className="w-[420px] border-l flex flex-col shrink-0">
+        <div className="w-105 border-l flex flex-col shrink-0">
           <Chat
             conversationId={conversationId}
             apiEndpoint="/api/skill-workbench/chat"
