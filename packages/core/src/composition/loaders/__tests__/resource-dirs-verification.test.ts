@@ -14,7 +14,6 @@ import { tmpdir } from 'os';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import {
   loadAll,
-  clearAllCache,
   loadSkills,
   loadAgents,
   loadMcpServers,
@@ -116,7 +115,6 @@ async function createMemoryMd(dir: string, content: string): Promise<string> {
 
 describe('resource-dirs verification', () => {
   beforeEach(async () => {
-    clearAllCache();
     await setupTestDir();
   });
 

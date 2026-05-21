@@ -6,36 +6,20 @@
  * - 项目级: 项目/${configDirName}/permissions/permissions.json
  *
  * 优先级: 项目级 > 用户全局
- *
- * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
- * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
- *
- * 重要变更（2026-04）：
- * - PERMISSIONS_FILENAME 已迁移到 ResolvedLayout.filenames.permissions
- * - 调用方可通过 filename 参数传入配置
- * - 未传入时使用 defaults.ts 作为 fallback
  */
 
 import path from 'path';
 import { parseJsonFile } from '../../primitives/parser';
-import { LoadingCache } from '../../services/scanner';
 import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../primitives/paths';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import { PERMISSIONS_FILENAME } from '../../services/config/defaults';
-import { logger } from '../../primitives/logger';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
 
 const CURRENT_VERSION = 1;
 
-// 使用 LoadingCache 替代独立的缓存变量
-const permissionsCache = new LoadingCache<PermissionConfig>();
-
 /**
  * 获取配置文件的绝对路径
- *
- * @param dir 目录路径
- * @param filename 文件名（默认 PERMISSIONS_FILENAME）
  */
 function getPermissionsFilePath(dir: string, filename: string = PERMISSIONS_FILENAME): string {
   return path.join(dir, filename);
@@ -79,7 +63,6 @@ async function loadConfigFile(filePath: string): Promise<PermissionConfig | null
     const result = await parseJsonFile(filePath, PermissionConfigSchema);
     return result.data;
   } catch {
-    // 文件不存在或解析失败
     return null;
   }
 }
@@ -90,17 +73,14 @@ async function loadConfigFile(filePath: string): Promise<PermissionConfig | null
 function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[]): PermissionRule[] {
   const ruleMap = new Map<string, PermissionRule>();
 
-  // 先添加用户级规则
   for (const rule of userRules) {
     ruleMap.set(rule.id, rule);
   }
 
-  // 项目级规则覆盖同 id 的用户级规则
   for (const rule of projectRules) {
     ruleMap.set(rule.id, rule);
   }
 
-  // 按来源排序：project 优先
   return Array.from(ruleMap.values()).sort((a, b) => {
     if (a.source === 'project' && b.source !== 'project') return -1;
     if (a.source !== 'project' && b.source === 'project') return 1;
@@ -111,16 +91,7 @@ function mergeRules(userRules: PermissionRule[], projectRules: PermissionRule[])
 /**
  * 加载权限配置（支持多层级）
  *
- * @param cwd 当前工作目录（默认 process.cwd()）
- * @param filename 配置文件名（来自 ResolvedLayout.filenames.permissions）
- *
- * 加载顺序：
- * 1. 用户全局配置 (~/${configDirName}/permissions/permissions.json)
- * 2. 项目级配置 (项目/${configDirName}/permissions/permissions.json)
- *
- * 合并规则：项目级优先级高于用户级
- *
- * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
+ * 每次调用都从磁盘重新加载，确保始终读到最新状态。
  */
 export async function loadRules(
   cwd?: string,
@@ -134,13 +105,6 @@ export async function loadRules(
   const effectiveCwd = cwd ?? process.cwd();
   const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
   const effectiveDirs = getPermissionDirs(effectiveCwd, dirs, options);
-  const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}:${effectiveDirs.join('|')}`;
-
-  // 检查缓存
-  const cached = permissionsCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const loadedRules: PermissionRule[][] = [];
   for (const [index, dir] of effectiveDirs.entries()) {
@@ -155,64 +119,12 @@ export async function loadRules(
     loadedRules.push(rules);
   }
 
-  // 合并规则：项目级覆盖同 id 的用户级规则
   const mergedRules = loadedRules.reduce<PermissionRule[]>((acc, rules) => mergeRules(acc, rules), []);
 
-  const mergedConfig: PermissionConfig = {
+  return {
     rules: mergedRules,
     version: CURRENT_VERSION,
   };
-
-  // 更新缓存
-  permissionsCache.set(cacheKey, mergedConfig);
-  // 同步 needsApproval 使用的旧 key；AppContext 是当前对话的配置快照。
-  permissionsCache.set(`permissions:${effectiveCwd}:${effectiveFilename}`, mergedConfig);
-
-  return mergedConfig;
-}
-
-/**
- * 同步加载（用于 needsApproval 中，避免异步问题）
- * 需要先调用 loadRules() 进行初始化
- *
- * 使用全局单例 getResolvedCwd() 获取 cwd，
- * 该值在 bootstrap() 时通过 setResolvedCwd() 设置。
- *
- * @param cwd 当前工作目录（可选，默认使用全局单例）
- * @param filename 配置文件名（可选，默认 PERMISSIONS_FILENAME）
- */
-export function loadRulesSync(cwd?: string, filename?: string): PermissionConfig {
-  const effectiveCwd = cwd ?? process.cwd();
-  const effectiveFilename = filename ?? PERMISSIONS_FILENAME;
-  const cacheKey = `permissions:${effectiveCwd}:${effectiveFilename}`;
-
-  const cached = permissionsCache.get(cacheKey);
-  if (cached) {
-    logger.debug('loadRulesSync', `Found cached rules: ${cached.rules.length} rules for ${effectiveCwd}`);
-    return cached;
-  }
-
-  // 缓存未找到，返回空配置
-  logger.debug('loadRulesSync', `Cache not found for key: ${cacheKey}`);
-  return createEmptyConfig();
-}
-
-/**
- * 清除缓存
- */
-export function clearPermissionsCache(): void {
-  permissionsCache.clear();
-}
-
-/**
- * 初始化：加载规则到内存缓存
- * 应在应用启动时调用
- *
- * @param cwd 当前工作目录（默认 process.cwd()）
- * @param filename 配置文件名（来自 ResolvedLayout.filenames.permissions）
- */
-export async function initPermissions(cwd?: string, filename?: string): Promise<void> {
-  await loadRules(cwd, filename);
 }
 
 // ============================================================

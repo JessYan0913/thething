@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadSkills, clearSkillsCache, type LoadSkillsOptions } from '../../../modules/skills/loader';
+import { loadSkills, type LoadSkillsOptions } from '../../../modules/skills/loader';
 import type { Skill } from '../../../modules/skills/types';
 
 export function createSkillsModule(loadOptions?: LoadSkillsOptions): AppModule<Skill[]> {
@@ -28,7 +28,6 @@ export function createSkillsModule(loadOptions?: LoadSkillsOptions): AppModule<S
     },
 
     async dispose(): Promise<void> {
-      clearSkillsCache();
       loadedSkills = [];
     },
   };

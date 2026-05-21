@@ -187,9 +187,6 @@ export function serializeAgentMarkdown(def: AgentDefinition): string {
   return `---\n${yamlContent}---\n${def.instructions ?? ''}\n`;
 }
 
-export function clearAgentsCache(): void {
-  agentsLoader.clearCache();
-}
 
 // ============================================================
 // 兼容接口
@@ -222,9 +219,6 @@ export async function scanAgentDirs(
   });
 }
 
-export function clearAgentCache(): void {
-  clearAgentsCache();
-}
 
 export async function getAvailableAgents(
   cwd?: string,

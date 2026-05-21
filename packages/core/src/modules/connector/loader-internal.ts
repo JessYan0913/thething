@@ -146,6 +146,3 @@ export async function loadConnectorFile(
   };
 }
 
-export function clearConnectorsCache(): void {
-  connectorsLoader.clearCache();
-}

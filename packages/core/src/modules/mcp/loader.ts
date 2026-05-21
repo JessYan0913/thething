@@ -86,9 +86,6 @@ export async function loadMcpFile(
   };
 }
 
-export function clearMcpsCache(): void {
-  mcpsLoader.clearCache();
-}
 
 // ============================================================
 // 兼容接口
@@ -115,9 +112,6 @@ export async function scanMcpDirs(
   });
 }
 
-export function clearMcpCache(): void {
-  clearMcpsCache();
-}
 
 export async function getAvailableMcpServers(cwd?: string): Promise<McpServerConfig[]> {
   return loadMcpServers({ cwd });

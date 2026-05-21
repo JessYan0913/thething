@@ -100,10 +100,6 @@ export async function loadSkillFile(
   };
 }
 
-export function clearSkillsCache(): void {
-  skillsLoader.clearCache();
-}
-
 // ============================================================
 // 兼容接口
 // ============================================================

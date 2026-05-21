@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadPermissions, clearPermissionsCache, type LoadPermissionsOptions } from '../permissions';
+import { loadPermissions, type LoadPermissionsOptions } from '../permissions';
 import type { PermissionRule } from '../../../modules/permissions/types';
 
 export function createPermissionsModule(loadOptions?: LoadPermissionsOptions): AppModule<PermissionRule[]> {
@@ -28,7 +28,6 @@ export function createPermissionsModule(loadOptions?: LoadPermissionsOptions): A
     },
 
     async dispose(): Promise<void> {
-      clearPermissionsCache();
       loadedPermissions = [];
     },
   };

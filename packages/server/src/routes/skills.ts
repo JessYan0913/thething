@@ -6,7 +6,6 @@ import { Hono } from 'hono'
 import { getServerContext, getServerRuntime, reloadServerContext } from '../runtime'
 import { promises as fs } from 'fs'
 import path from 'path'
-import { clearSkillsCache } from '@the-thing/core'
 
 const app = new Hono()
 
@@ -230,7 +229,6 @@ app.delete('/', async (c) => {
     }
 
     await fs.rm(folderPath, { recursive: true, force: true })
-    clearSkillsCache()
     await reloadServerContext()
     return c.json({ success: true })
   } catch (error) {

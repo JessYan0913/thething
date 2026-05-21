@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
-import { loadSkills, clearSkillsCache } from '../modules/skills/loader';
+import { loadSkills } from '../modules/skills/loader';
 import { buildSystemPrompt } from '../modules/system-prompt/builder';
 import { getSkillListingAttachment, formatSkillListingMessage } from '../modules/attachments/skill-listing';
 
 describe('Skills Mechanism (Skill Tool Approach)', () => {
   beforeAll(async () => {
-    clearSkillsCache();
+    // no-op: caches removed
   });
 
   it('should load skills successfully', async () => {

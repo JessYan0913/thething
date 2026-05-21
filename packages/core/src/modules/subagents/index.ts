@@ -29,8 +29,6 @@ export {
   loadAgentFile,
   loadAgentMarkdown,
   scanAgentDirs,
-  clearAgentCache,
-  clearAgentsCache,
   getAvailableAgents,
   type LoadAgentsOptions,
   type AgentLoaderConfig,

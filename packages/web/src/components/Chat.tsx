@@ -91,7 +91,22 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
 }
 
 /**
- * 保存 Always allow 规则到配置文件
+ * 计算工具调用的会话信任 scope
+ * bash → 按命令前缀分类（bash:git, bash:npm）
+ * 文件/其他工具 → 按工具名分类（edit_file, read_file）
+ */
+function computeApprovalScope(toolName: string, toolInput: Record<string, unknown>): string {
+  const normalized = toolName.replace('tool-', '').replace(/ /g, '_').toLowerCase();
+  if (normalized === 'bash') {
+    const command = String(toolInput.command || '').trim();
+    const prefix = command.split(' ')[0];
+    return prefix ? `bash:${prefix}` : 'bash';
+  }
+  return normalized;
+}
+
+/**
+ * 保存 Always allow 规则到配置文件（持久化，跨会话生效）
  * 通过 API 端点保存（因为客户端无法直接访问 fs）
  */
 async function saveAlwaysAllowRule(
@@ -99,29 +114,16 @@ async function saveAlwaysAllowRule(
   toolInput: Record<string, unknown>,
 ): Promise<void> {
   try {
-    // 标准化工具名
     const normalizedToolName = toolName.replace(' ', '_').toLowerCase();
 
-    // 根据工具类型生成规则 pattern
     let pattern: string | undefined;
 
     if (normalizedToolName === 'bash') {
-      // Bash 工具：提取命令前缀作为 pattern
-      const command = String(toolInput.command || '');
-      const parts = command.trim().split(' ');
-      if (parts.length > 0) {
-        // 使用第一个词作为前缀，如 "git *" 或 "npm *"
-        pattern = `${parts[0]} *`;
-      }
-    } else if (['read_file', 'edit_file', 'write_file'].includes(normalizedToolName)) {
-      // 文件工具：使用文件路径作为 pattern
-      const filePath = String(toolInput.filePath || '');
-      if (filePath) {
-        pattern = filePath;
-      }
+      const command = String(toolInput.command || '').trim();
+      const prefix = command.split(' ')[0];
+      if (prefix) pattern = `${prefix} *`;
     }
 
-    // 通过 API 保存规则
     const res = await fetch('/api/permissions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,6 +177,10 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   // 审批对话框状态（用于工具审批）- 支持批量审批
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
+
+  // 会话信任：本次对话中已审批过的 scope，同类操作自动放行
+  const sessionApprovedScopesRef = useRef(new Set<string>());
+  const autoApprovedIdsRef = useRef(new Set<string>());
 
   // 问题收集面板状态（用于 ask_user_question）
   const [questionPanel, setQuestionPanel] = useState<{
@@ -336,12 +342,19 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
                   questions,
                 };
               } else if (!isQuestionTool) {
-                pendingApprovals.push({
-                  approvalId,
-                  toolCallId: toolPart.toolCallId,
-                  toolName,
-                  toolInput,
-                });
+                // 会话信任：如果该 scope 已在本次对话中被批准过，自动放行
+                const scope = computeApprovalScope(toolName, toolInput);
+                if (sessionApprovedScopesRef.current.has(scope) && !autoApprovedIdsRef.current.has(approvalId)) {
+                  autoApprovedIdsRef.current.add(approvalId);
+                  addToolApprovalResponse({ id: approvalId, approved: true });
+                } else {
+                  pendingApprovals.push({
+                    approvalId,
+                    toolCallId: toolPart.toolCallId,
+                    toolName,
+                    toolInput,
+                  });
+                }
               }
             }
           }
@@ -364,7 +377,7 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
         }
       }
     }
-  }, [messages, status, approvalRequests.length, questionPanel?.isOpen]);
+  }, [messages, status, approvalRequests.length, questionPanel?.isOpen, addToolApprovalResponse]);
 
   // 处理问题收集完成
   const handleQuestionsComplete = useCallback((answers: Record<string, string | string[]>) => {
@@ -395,38 +408,40 @@ export default function Chat({ conversationId, onTitleUpdated }: ChatProps) {
 
   // 处理审批批准（单个）
   const handleApprove = useCallback((approvalId: string, options?: { alwaysAllow?: boolean }) => {
+    // 记录 session scope — 本次对话内同类操作自动放行
+    const request = approvalRequests.find(r => r.approvalId === approvalId);
+    if (request) {
+      const scope = computeApprovalScope(request.toolName, request.toolInput);
+      sessionApprovedScopesRef.current.add(scope);
+    }
+
     addToolApprovalResponse({
       id: approvalId,
       approved: true,
     });
 
-    // 保存 Always allow 规则
-    if (options?.alwaysAllow) {
-      const request = approvalRequests.find(r => r.approvalId === approvalId);
-      if (request) {
-        saveAlwaysAllowRule(request.toolName, request.toolInput);
-      }
+    // 持久化规则（跨会话生效）
+    if (options?.alwaysAllow && request) {
+      saveAlwaysAllowRule(request.toolName, request.toolInput);
     }
-
-    // 不立即从列表移除，让 useEffect 重新扫描消息状态后自然清空
-    // 这样可以确保面板显示直到消息状态真正更新
   }, [addToolApprovalResponse, approvalRequests]);
 
   // 处理批量审批批准
   const handleApproveAll = useCallback((requests: ApprovalRequest[], options?: { alwaysAllow?: boolean }) => {
     for (const req of requests) {
+      // 记录 session scope
+      const scope = computeApprovalScope(req.toolName, req.toolInput);
+      sessionApprovedScopesRef.current.add(scope);
+
       addToolApprovalResponse({
         id: req.approvalId,
         approved: true,
       });
 
-      // 保存 Always allow 规则
       if (options?.alwaysAllow) {
         saveAlwaysAllowRule(req.toolName, req.toolInput);
       }
     }
-
-    // 不立即清空，让 useEffect 重新扫描消息状态后自然清空
   }, [addToolApprovalResponse]);
 
   // 处理审批拒绝（单个）

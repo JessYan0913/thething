@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadAgents, clearAgentsCache, type LoadAgentsOptions } from '../../../modules/subagents/loader';
+import { loadAgents, type LoadAgentsOptions } from '../../../modules/subagents/loader';
 import type { AgentDefinition } from '../../../modules/subagents/types';
 
 export function createAgentsModule(loadOptions?: LoadAgentsOptions): AppModule<AgentDefinition[]> {
@@ -28,7 +28,6 @@ export function createAgentsModule(loadOptions?: LoadAgentsOptions): AppModule<A
     },
 
     async dispose(): Promise<void> {
-      clearAgentsCache();
       loadedAgents = [];
     },
   };

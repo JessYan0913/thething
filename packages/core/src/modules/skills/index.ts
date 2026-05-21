@@ -14,7 +14,6 @@ export {
   loadSkills,
   loadSkill,
   loadSkillFile,
-  clearSkillsCache,
   scanSkillsDirs,
   getAvailableSkills,
   type LoadSkillsOptions,

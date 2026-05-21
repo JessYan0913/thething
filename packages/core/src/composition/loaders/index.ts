@@ -5,7 +5,6 @@
 export {
   loadSkills,
   loadSkillFile,
-  clearSkillsCache,
   type LoadSkillsOptions,
 } from '../../modules/skills/loader';
 
@@ -14,33 +13,28 @@ export {
   loadAgentFile,
   parseAgentMarkdown,
   serializeAgentMarkdown,
-  clearAgentsCache,
   type LoadAgentsOptions,
 } from '../../modules/subagents/loader';
 
 export {
   loadMcpServers,
   loadMcpFile,
-  clearMcpsCache,
   type LoadMcpsOptions,
 } from '../../modules/mcp/loader';
 
 export {
   loadConnectors,
   loadConnectorFile,
-  clearConnectorsCache,
   type LoadConnectorsOptions,
 } from '../../modules/connector/loader-internal';
 
 export {
   loadPermissions,
-  clearPermissionsCache,
   type LoadPermissionsOptions,
 } from './permissions';
 
 export {
   loadMemory,
-  clearMemoryCache,
   type LoadMemoryOptions,
   type MemoryEntry,
 } from './memory';
@@ -118,14 +112,10 @@ export type LoadedData = LoadAllResult;
  *
  * 内部使用 AppModule 统一生命周期，每个模块独立 init/snapshot。
  * 返回 moduleInstances 供调用者后续 dispose。
- *
- * @param options 加载选项
- * @returns 所有配置 + 模块实例
  */
 export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> {
   const cwd = options?.cwd ?? process.cwd();
 
-  // 构建 ModuleContext
   const moduleContext: ModuleContext = {
     cwd,
     configDirName: options?.configDirName ?? '.thething',
@@ -141,7 +131,6 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
     },
   };
 
-  // 创建模块实例（每个模块使用对应的 LoadOptions）
   const modules: AppModule[] = [
     createSkillsModule(options?.skills),
     createAgentsModule(options?.agents),
@@ -151,12 +140,10 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
     createMemoryModule(options?.memory),
   ];
 
-  // 并行 init 所有模块
   await Promise.all(
     modules.map((mod) => mod.init?.(moduleContext)),
   );
 
-  // 并行获取所有快照
   const snapshots = await Promise.all(
     modules.map((mod) => Promise.resolve(mod.snapshot?.())),
   );
@@ -175,27 +162,9 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
 
 /**
  * 释放所有模块资源
- *
- * @param modules 要释放的模块实例列表
  */
 export async function disposeModules(modules: AppModule[]): Promise<void> {
   await Promise.all(
     modules.map((mod) => mod.dispose?.()),
   );
-}
-
-/**
- * 清除所有缓存（向后兼容）
- */
-export function clearAllCache(): void {
-  // 通过创建临时模块实例并 dispose 来清缓存
-  const modules = [
-    createSkillsModule(),
-    createAgentsModule(),
-    createMcpModule(),
-    createConnectorModule(),
-    createPermissionsModule(),
-    createMemoryModule(),
-  ];
-  disposeModules(modules);
 }

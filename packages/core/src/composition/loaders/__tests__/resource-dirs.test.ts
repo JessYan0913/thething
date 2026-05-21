@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
 import { describe, expect, it } from 'vitest';
-import { loadAll, clearAllCache } from '../index';
+import { loadAll } from '../index';
 
 describe('resource-aware loaders', () => {
   it('loads skills, agents, permissions, and memory from explicit resource dirs', async () => {
@@ -54,7 +54,6 @@ describe('resource-aware loaders', () => {
     );
     await writeFile(path.join(memoryDir, 'MEMORY.md'), 'custom memory', 'utf-8');
 
-    clearAllCache();
     const loaded = await loadAll({
       cwd: root,
       resourceDirs: {

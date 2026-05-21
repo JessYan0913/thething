@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadMcpServers, clearMcpsCache, type LoadMcpsOptions } from '../../../modules/mcp/loader';
+import { loadMcpServers, type LoadMcpsOptions } from '../../../modules/mcp/loader';
 import type { McpServerConfig } from '../../../modules/mcp/types';
 
 export function createMcpModule(loadOptions?: LoadMcpsOptions): AppModule<McpServerConfig[]> {
@@ -28,7 +28,6 @@ export function createMcpModule(loadOptions?: LoadMcpsOptions): AppModule<McpSer
     },
 
     async dispose(): Promise<void> {
-      clearMcpsCache();
       loadedMcps = [];
     },
   };

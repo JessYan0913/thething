@@ -7,7 +7,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { scanMcpDirs, clearMcpCache } from './loader';
+import { scanMcpDirs } from './loader';
 import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../primitives/paths';
 import type { McpServerConfig, McpServerConfigSource } from './types';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
@@ -201,8 +201,6 @@ export async function addMcpServerConfig(
   const filePath = configFilePath(dir, config.name);
   await fs.writeFile(filePath, JSON.stringify(toSerializable(config), null, 2), 'utf-8');
 
-  clearMcpCache();
-
   return fromSerializable(toSerializable(config), filePath);
 }
 
@@ -228,12 +226,10 @@ export async function updateMcpServerConfig(
     await fs.unlink(existing.filePath);
     const newFilePath = configFilePath(path.dirname(existing.filePath), merged.name);
     await fs.writeFile(newFilePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
-    clearMcpCache();
     return fromSerializable(toSerializable(merged), newFilePath);
   }
 
   await fs.writeFile(existing.filePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
-  clearMcpCache();
 
   return fromSerializable(toSerializable(merged), existing.filePath);
 }
@@ -247,7 +243,6 @@ export async function deleteMcpServerConfig(name: string, cwd?: string): Promise
 
   try {
     await fs.unlink(existing.filePath);
-    clearMcpCache();
     return true;
   } catch {
     return false;

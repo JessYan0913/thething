@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadMemory, clearMemoryCache, type LoadMemoryOptions, type MemoryEntry } from '../memory';
+import { loadMemory, type LoadMemoryOptions, type MemoryEntry } from '../memory';
 
 export function createMemoryModule(loadOptions?: LoadMemoryOptions): AppModule<MemoryEntry[]> {
   let loadedMemory: MemoryEntry[] = [];
@@ -26,7 +26,6 @@ export function createMemoryModule(loadOptions?: LoadMemoryOptions): AppModule<M
     },
 
     async dispose(): Promise<void> {
-      clearMemoryCache();
       loadedMemory = [];
     },
   };

@@ -12,7 +12,6 @@ import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import type { PermissionConfig, PermissionRule, RuleMatchResult } from './types';
 import {
   loadRules,
-  clearPermissionsCache,
   getPermissionsFilePath,
 } from './loader';
 
@@ -30,7 +29,7 @@ async function ensurePermissionsDir(dir: string): Promise<void> {
 /**
  * 加载权限配置（从 loader 导入）
  */
-export { loadRules, loadRulesSync, clearPermissionsCache, initPermissions } from './loader';
+export { loadRules } from './loader';
 
 /**
  * 保存配置到文件（项目级）
@@ -54,9 +53,6 @@ async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void>
   };
 
   await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), 'utf-8');
-
-  // 清除缓存
-  clearPermissionsCache();
 }
 
 /**
@@ -71,6 +67,15 @@ export async function saveRule(
 ): Promise<PermissionRule> {
   const config = await loadRules(cwd);
 
+  const existing = config.rules.find(r =>
+    r.toolName === rule.toolName &&
+    r.behavior === rule.behavior &&
+    isPatternCoveredBy(rule.pattern, r.pattern),
+  );
+  if (existing) {
+    return existing;
+  }
+
   const newRule: PermissionRule = {
     ...rule,
     id: nanoid(),
@@ -82,6 +87,15 @@ export async function saveRule(
   await saveConfig(config, cwd);
 
   return newRule;
+}
+
+function isPatternCoveredBy(
+  newPattern: string | undefined,
+  existingPattern: string | undefined,
+): boolean {
+  if (!existingPattern) return true;
+  if (!newPattern) return false;
+  return newPattern === existingPattern;
 }
 
 /**

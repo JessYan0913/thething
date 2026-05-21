@@ -6,7 +6,6 @@ export type {
   ScanOptions,
   ScanConfig,
   ScanResult,
-  CacheConfig,
 } from './types';
 
 export {
@@ -17,5 +16,4 @@ export {
 
 export {
   mergeByPriority,
-  LoadingCache,
 } from './merge';

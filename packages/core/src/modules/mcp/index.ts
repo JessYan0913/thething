@@ -10,8 +10,6 @@ export {
   loadMcpServers,
   loadMcpFile,
   scanMcpDirs,
-  clearMcpCache,
-  clearMcpsCache,
   getAvailableMcpServers,
   MCP_LOADER_MODULE_VERSION,
   type LoadMcpsOptions,

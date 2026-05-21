@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadConnectors, clearConnectorsCache, type LoadConnectorsOptions } from '../../../modules/connector/loader-internal';
+import { loadConnectors, type LoadConnectorsOptions } from '../../../modules/connector/loader-internal';
 import type { ConnectorFrontmatter } from '../../../modules/connector/loader';
 
 export function createConnectorModule(loadOptions?: LoadConnectorsOptions): AppModule<ConnectorFrontmatter[]> {
@@ -29,7 +29,6 @@ export function createConnectorModule(loadOptions?: LoadConnectorsOptions): AppM
     },
 
     async dispose(): Promise<void> {
-      clearConnectorsCache();
       loadedConnectors = [];
     },
   };

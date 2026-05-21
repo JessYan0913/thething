@@ -113,7 +113,6 @@ export interface ConnectorSource extends ConnectorFrontmatter {
 
 import {
   loadConnectors,
-  clearConnectorsCache,
   loadConnectorFile,
 } from './loader-internal';
 
@@ -146,13 +145,6 @@ export async function loadConnectorYaml(
   source: ConfigSource,
 ): Promise<ConnectorSource> {
   return loadConnectorFile(filePath, source);
-}
-
-/**
- * 清除 Connector 加载缓存
- */
-export function clearConnectorCache(): void {
-  clearConnectorsCache();
 }
 
 /**

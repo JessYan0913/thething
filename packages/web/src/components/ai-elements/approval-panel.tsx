@@ -32,22 +32,56 @@ interface ApprovalPanelProps {
   onDenyAll: (requests: ApprovalRequest[], reason?: string) => void;
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  bash: '执行命令',
+  write_file: '写入文件',
+  edit_file: '编辑文件',
+  read_file: '读取文件',
+  glob: '搜索文件',
+  grep: '搜索内容',
+  web_search: '网络搜索',
+};
+
 const TOOL_CONFIGS: Record<
   string,
   { icon: React.ComponentType<{ className?: string }>; label: string }
 > = {
-  bash: { icon: TerminalIcon, label: '执行命令' },
-  write_file: { icon: FileIcon, label: '写入文件' },
-  edit_file: { icon: EditIcon, label: '编辑文件' },
-  read_file: { icon: FileIcon, label: '读取文件' },
-  glob: { icon: SearchIcon, label: '搜索文件' },
-  grep: { icon: SearchIcon, label: '搜索内容' },
-  web_search: { icon: SearchIcon, label: '网络搜索' },
+  bash: { icon: TerminalIcon, label: TOOL_LABELS.bash },
+  write_file: { icon: FileIcon, label: TOOL_LABELS.write_file },
+  edit_file: { icon: EditIcon, label: TOOL_LABELS.edit_file },
+  read_file: { icon: FileIcon, label: TOOL_LABELS.read_file },
+  glob: { icon: SearchIcon, label: TOOL_LABELS.glob },
+  grep: { icon: SearchIcon, label: TOOL_LABELS.grep },
+  web_search: { icon: SearchIcon, label: TOOL_LABELS.web_search },
 };
 
 function getToolConfig(toolName: string) {
   const name = toolName.replace('tool-', '').replace(/_/g, ' ');
   return TOOL_CONFIGS[name] || { icon: WrenchIcon, label: name || '工具调用' };
+}
+
+function getAlwaysAllowLabel(requests: ApprovalRequest[]): string {
+  if (requests.length === 0) return '以后自动允许此类操作';
+
+  const toolNames = new Set(requests.map(r => r.toolName.replace('tool-', '').replace(/ /g, '_').toLowerCase()));
+
+  if (toolNames.size > 1) {
+    return '以后自动允许这些类型的操作';
+  }
+
+  const toolName = [...toolNames][0];
+
+  if (toolName === 'bash') {
+    const firstRequest = requests[0];
+    const command = String(firstRequest.toolInput.command || '').trim();
+    const prefix = command.split(' ')[0];
+    if (prefix) return `以后自动允许 ${prefix} 命令`;
+  }
+
+  const toolLabel = TOOL_LABELS[toolName];
+  if (toolLabel) return `以后自动允许${toolLabel}`;
+
+  return '以后自动允许此类操作';
 }
 
 function getSummary(name: string, toolInput: Record<string, unknown>, label: string): string {
@@ -216,7 +250,7 @@ export function ApprovalPanel({
             htmlFor='always-allow-batch'
             className='text-xs text-muted-foreground cursor-pointer select-none'
           >
-            以后自动允许此类操作
+            {getAlwaysAllowLabel(requests)}
           </label>
         </div>
 

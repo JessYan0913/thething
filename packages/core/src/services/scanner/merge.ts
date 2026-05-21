@@ -2,8 +2,6 @@
 // Scanner - 配置合并与缓存
 // ============================================================
 
-import type { CacheConfig } from './types';
-
 // ============================================================
 // 按优先级合并
 // ============================================================
@@ -36,82 +34,4 @@ export function mergeByPriority<T extends { source: string }>(
   }
 
   return Array.from(merged.values());
-}
-
-// ============================================================
-// 缓存
-// ============================================================
-
-const DEFAULT_TTL_MS = 60_000;
-const DEFAULT_MAX_ENTRIES = 100;
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-/**
- * 通用加载缓存
- */
-export class LoadingCache<T> {
-  private cache = new Map<string, CacheEntry<T>>();
-  private ttlMs: number;
-  private maxEntries: number;
-
-  constructor(config?: CacheConfig) {
-    this.ttlMs = config?.ttlMs ?? DEFAULT_TTL_MS;
-    this.maxEntries = config?.maxEntries ?? DEFAULT_MAX_ENTRIES;
-  }
-
-  get(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-
-    const now = Date.now();
-    if (now - entry.timestamp > this.ttlMs) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    return entry.data;
-  }
-
-  set(key: string, data: T): void {
-    if (this.cache.size >= this.maxEntries) {
-      this.evictOldest();
-    }
-
-    this.cache.set(key, {
-      data,
-      timestamp: Date.now(),
-    });
-  }
-
-  has(key: string): boolean {
-    return this.get(key) !== null;
-  }
-
-  delete(key: string): boolean {
-    return this.cache.delete(key);
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  private evictOldest(): void {
-    let oldestKey: string | null = null;
-    let oldestTimestamp = Infinity;
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (entry.timestamp < oldestTimestamp) {
-        oldestTimestamp = entry.timestamp;
-        oldestKey = key;
-      }
-    }
-
-    if (oldestKey) {
-      this.cache.delete(oldestKey);
-    }
-  }
 }

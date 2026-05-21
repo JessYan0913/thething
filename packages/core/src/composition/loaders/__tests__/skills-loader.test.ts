@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
-import { loadSkills, clearSkillsCache } from '../../../modules/skills/loader';
+import { loadSkills } from '../../../modules/skills/loader';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
 
 async function createTempSkillProject(): Promise<{ root: string; skillDir: string }> {
@@ -42,7 +42,6 @@ describe('Skills Loader Integration', () => {
   let root: string | undefined;
 
   afterEach(async () => {
-    clearSkillsCache();
     if (root) {
       await rm(root, { recursive: true, force: true }).catch(() => {});
       root = undefined;

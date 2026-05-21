@@ -1,7 +1,7 @@
 // ============================================================
 // Multi-Source Config Loader - 通用多源配置加载器
 // ============================================================
-// 统一 skills/mcp/connector/agents 的 "扫描用户目录 → 扫描项目目录 → 合并 → 缓存" 模式。
+// 统一 skills/mcp/connector/agents 的 "扫描用户目录 → 扫描项目目录 → 合并" 模式。
 //
 // 使用方式：
 // ```typescript
@@ -16,7 +16,7 @@
 
 import { computeUserConfigDir, computeProjectConfigDir } from '../../primitives/paths/compute';
 import { scanDirs, scanConfigDirs, type ScanResult } from './scan';
-import { mergeByPriority, LoadingCache } from './merge';
+import { mergeByPriority } from './merge';
 import { logger } from '../../primitives/logger';
 import type { ConfigSource } from '../../primitives/constants';
 
@@ -37,8 +37,6 @@ export interface MultiSourceLoaderOptions<T extends { source: string }> {
   getMergeKey: (item: T) => string;
   /** 合并优先级（默认 project 覆盖 user） */
   priorityOrder?: Array<ConfigSource>;
-  /** 缓存 TTL（毫秒，默认 60000） */
-  cacheTtl?: number;
 }
 
 export interface MultiSourceLoaderLoadOptions {
@@ -61,23 +59,12 @@ export function createMultiSourceLoader<T extends { source: string }>(
     parse,
     getMergeKey,
     priorityOrder = ['project', 'user'],
-    cacheTtl = 60_000,
   } = loaderOptions;
-
-  const cache = new LoadingCache<T[]>({ ttlMs: cacheTtl });
 
   async function load(options?: MultiSourceLoaderLoadOptions): Promise<T[]> {
     const cwd = options?.cwd ?? process.cwd();
     const configDirName = options?.configDirName ?? '.thething';
     const homeDir = options?.homeDir ?? (await import('os')).homedir();
-
-    // 构建缓存 key
-    const cacheKey = options?.dirs
-      ? `${subcategory}:${cwd}:${options.dirs.join('|')}`
-      : `${subcategory}:${cwd}:${configDirName}:${homeDir}`;
-
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
 
     // 解析目录
     let dirs: string[];
@@ -102,7 +89,6 @@ export function createMultiSourceLoader<T extends { source: string }>(
     // 扫描文件
     let scanResults: ScanResult[];
     if (scanMode === 'configDir') {
-      // 子目录结构模式（如 skills: {skillName}/SKILL.md）
       scanResults = await scanConfigDirs(cwd, {
         dirs,
         filePattern,
@@ -110,14 +96,12 @@ export function createMultiSourceLoader<T extends { source: string }>(
         recursive: false,
       }, sourceByDir);
     } else if (filePatterns && filePatterns.length > 0) {
-      // 多扩展名模式（如 connectors: *.yaml + *.yml）
       scanResults = [];
       for (const pattern of filePatterns) {
         const results = await scanDirs(dirs, { pattern }, sourceByDir);
         scanResults.push(...results);
       }
     } else {
-      // 默认单模式
       scanResults = await scanDirs(dirs, { pattern: filePattern }, sourceByDir);
     }
 
@@ -135,17 +119,8 @@ export function createMultiSourceLoader<T extends { source: string }>(
     }
 
     // 合并
-    const merged = mergeByPriority(items, priorityOrder, getMergeKey);
-
-    // 缓存
-    cache.set(cacheKey, merged);
-
-    return merged;
+    return mergeByPriority(items, priorityOrder, getMergeKey);
   }
 
-  function clearCache(): void {
-    cache.clear();
-  }
-
-  return { load, clearCache };
+  return { load };
 }

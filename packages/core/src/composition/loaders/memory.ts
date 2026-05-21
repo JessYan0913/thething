@@ -1,20 +1,9 @@
 // ============================================================
 // Memory Loader
 // ============================================================
-//
-// 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
-// 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
-//
-// 重要变更（2026-04）：
-// - MEMORY_MD_MAX_LINES 已迁移到 BehaviorConfig.memory.mdMaxLines
-// - MEMORY_MD_MAX_SIZE_KB 已迁移到 BehaviorConfig.memory.mdMaxSizeKb
-// - 调用方可通过 options.maxLines/maxSizeKb 传入配置
-// - 未传入时使用 defaults.ts 作为 fallback
 
 import fs from 'fs/promises';
 import path from 'path';
-import { parseFrontmatterFile } from '../../primitives/parser';
-import { LoadingCache } from '../../services/scanner';
 import { computeProjectConfigDir } from '../../primitives/paths';
 import {
   MEMORY_MD_MAX_LINES,
@@ -29,12 +18,6 @@ import { logger } from '../../primitives/logger';
 
 export type { MemoryEntry } from '../../modules/memory/types';
 import type { MemoryEntry } from '../../modules/memory/types';
-
-// ============================================================
-// 缓存
-// ============================================================
-
-const memoryCache = new LoadingCache<MemoryEntry[]>();
 
 // ============================================================
 // 加载选项
@@ -59,27 +42,15 @@ export interface LoadMemoryOptions {
 /**
  * 加载 Memory 配置
  *
- * 注意：configDirName 从全局单例 getResolvedConfigDirName() 获取
- *
- * @param options 加载选项（maxLines/maxSizeKb 可从 BehaviorConfig.memory 传入）
- * @returns MemoryEntry 列表
+ * 每次调用都从磁盘重新加载，确保始终读到最新状态。
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
   const cwd = options?.cwd ?? process.cwd();
   const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
-  // 使用传入的限制，否则使用 fallback
   const maxLines = options?.maxLines ?? MEMORY_MD_MAX_LINES;
   const maxSizeKb = options?.maxSizeKb ?? MEMORY_MD_MAX_SIZE_KB;
   const dirs = options?.dirs ? [...options.dirs] : [computeProjectConfigDir(cwd, 'memory', configDirName)];
 
-  // 检查缓存（包含限制参数）
-  const cacheKey = `memory:${cwd}:${configDirName}:${dirs.join('|')}:${maxLines}:${maxSizeKb}`;
-  const cached = memoryCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // 加载 MEMORY.md
   const entries: MemoryEntry[] = [];
 
   for (const memoryDir of dirs) {
@@ -89,7 +60,6 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
       const lines = content.split('\n').length;
       const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
 
-      // 截断超长内容
       const truncatedContent = truncateContent(content, lines, sizeKb, maxLines, maxSizeKb);
 
       entries.push({
@@ -102,7 +72,6 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
       // MEMORY.md 不存在
     }
 
-    // 加载 memories/ 目录下的其他文件
     const memoriesDir = path.join(memoryDir, 'memories');
     try {
       const files = await fs.readdir(memoriesDir);
@@ -132,21 +101,9 @@ export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEnt
     }
   }
 
-  // 更新缓存
-  memoryCache.set(cacheKey, entries);
-
   return entries;
 }
 
-/**
- * 截断超长内容
- *
- * @param content 原始内容
- * @param lines 当前行数
- * @param sizeKb 当前大小 KB
- * @param maxLines 最大行数限制
- * @param maxSizeKb 最大大小限制 KB
- */
 function truncateContent(
   content: string,
   lines: number,
@@ -154,14 +111,12 @@ function truncateContent(
   maxLines: number,
   maxSizeKb: number,
 ): string {
-  // 检查行数
   if (lines > maxLines) {
     const contentLines = content.split('\n');
     content = contentLines.slice(0, maxLines).join('\n');
     logger.warn('MemoryLoader', `Truncated ${lines} lines to ${maxLines}`);
   }
 
-  // 检查大小
   if (sizeKb > maxSizeKb) {
     const maxBytes = maxSizeKb * 1024;
     content = content.slice(0, maxBytes);
@@ -169,11 +124,4 @@ function truncateContent(
   }
 
   return content;
-}
-
-/**
- * 清除缓存
- */
-export function clearMemoryCache(): void {
-  memoryCache.clear();
 }

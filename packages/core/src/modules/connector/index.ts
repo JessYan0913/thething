@@ -38,7 +38,6 @@ export {
 export {
   loadConnectorYaml,
   scanConnectorDirs,
-  clearConnectorCache,
   getAvailableConnectors,
   ConnectorFrontmatterSchema,
   type ConnectorFrontmatter,

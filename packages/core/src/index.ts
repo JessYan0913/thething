@@ -188,7 +188,6 @@ export type {
 export {
   loadAll,
   loadSkills,
-  clearSkillsCache,
   loadAgents,
   loadMcpServers,
   loadConnectors,

@@ -39,13 +39,3 @@ export interface ScanResult {
   /** 来源标识 */
   source: ConfigSource;
 }
-
-/**
- * 缓存配置
- */
-export interface CacheConfig {
-  /** 缓存 TTL（毫秒），默认 60 秒 */
-  ttlMs?: number;
-  /** 最大缓存条目数 */
-  maxEntries?: number;
-}
