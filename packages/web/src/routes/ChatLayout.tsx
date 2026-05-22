@@ -17,7 +17,7 @@ interface ChatContextValue {
   conversations: ConversationItem[];
   isLoading: boolean;
   switchToConversation: (id: string) => void;
-  handleCreateConversation: () => Promise<void>;
+  handleCreateConversation: (options?: { initialMessage?: string }) => Promise<void>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   handleRefreshConversations: () => Promise<void>;
@@ -102,7 +102,7 @@ export default function ChatLayout() {
     [activeConversationId, switchToConversation]
   );
 
-  const handleCreateConversation = useCallback(async () => {
+  const handleCreateConversation = useCallback(async (options?: { initialMessage?: string }) => {
     const newId = nanoid();
     try {
       const res = await fetch("/api/conversations", {
@@ -113,12 +113,17 @@ export default function ChatLayout() {
       if (res.ok) {
         const data = await res.json();
         setConversations((prev) => [data.conversation, ...prev]);
-        switchToConversation(newId);
+        setActiveConversationId(newId);
+        navigate(`/chat/${newId}`,
+          options?.initialMessage
+            ? { state: { initialMessage: options.initialMessage } }
+            : undefined
+        );
       }
     } catch {
       // Failed to create
     }
-  }, [switchToConversation]);
+  }, [navigate]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {

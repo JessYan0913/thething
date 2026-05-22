@@ -1,7 +1,9 @@
 {
   "emptyState": {
     "homeTitle": "新しい会話を開始",
-    "homeDescription": "サイドバーの + ボタンをクリックして開始。"
+    "homeDescription": "サイドバーの + ボタンをクリックして開始。",
+    "quickStartTitle": "何かお手伝いできますか？",
+    "quickStartDescription": "メッセージを入力して新しい会話を開始しましょう。"
   },
   "conversation": {
     "new": "新規会話",

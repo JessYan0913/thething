@@ -1,7 +1,9 @@
 {
   "emptyState": {
     "homeTitle": "Start a new conversation",
-    "homeDescription": "Click the + button in the sidebar to begin."
+    "homeDescription": "Click the + button in the sidebar to begin.",
+    "quickStartTitle": "How can I help you?",
+    "quickStartDescription": "Type a message below to start a new conversation."
   },
   "conversation": {
     "new": "New conversation",

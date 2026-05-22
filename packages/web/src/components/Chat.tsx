@@ -217,12 +217,15 @@ export interface ChatProps {
   apiEndpoint?: string;
   onTurnFinish?: () => void;
   extraBody?: Record<string, unknown>;
+  initialMessage?: string;
 }
 
-export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody }: ChatProps) {
+export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage }: ChatProps) {
   const initialMessageCountRef = useRef<number | null>(null);
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
+  const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
+  const initialMessageSentRef = useRef(false);
 
   // 审批对话框状态（用于工具审批）- 支持批量审批
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
@@ -550,6 +553,10 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         }
       } catch {
         // Failed to load
+      } finally {
+        if (!cancelled) {
+          setIsInitialLoadDone(true);
+        }
       }
     }
 
@@ -558,6 +565,19 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
       cancelled = true;
     };
   }, [conversationId, setMessages, apiEndpoint]);
+
+  useEffect(() => {
+    if (
+      isInitialLoadDone &&
+      initialMessage &&
+      !initialMessageSentRef.current &&
+      initialMessageCountRef.current === 0
+    ) {
+      initialMessageSentRef.current = true;
+      sendMessage({ text: initialMessage });
+      window.history.replaceState({}, document.title);
+    }
+  }, [isInitialLoadDone, initialMessage, sendMessage]);
 
   const thinkingState = useMemo(() => {
     if (status !== 'submitted' && status !== 'streaming') return null;

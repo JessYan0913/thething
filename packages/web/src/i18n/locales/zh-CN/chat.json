@@ -1,7 +1,9 @@
 {
   "emptyState": {
     "homeTitle": "开始新对话",
-    "homeDescription": "点击侧边栏的 + 按钮开始。"
+    "homeDescription": "点击侧边栏的 + 按钮开始。",
+    "quickStartTitle": "有什么可以帮您？",
+    "quickStartDescription": "在下方输入消息，开始新对话。"
   },
   "conversation": {
     "new": "新建对话",
