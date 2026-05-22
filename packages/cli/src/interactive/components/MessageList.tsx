@@ -1,0 +1,46 @@
+import React from 'react'
+import { Static, Text, Box } from 'ink'
+import chalk from 'chalk'
+import type { CompletedMessage } from '../lib/types.js'
+import { renderMarkdown } from '../lib/markdown.js'
+
+interface Props {
+  items: CompletedMessage[]
+}
+
+export function MessageList({ items }: Props) {
+  return (
+    <Static items={items}>
+      {(item) => (
+        <Box key={item.id} flexDirection="column" marginBottom={1}>
+          {item.role === 'user' ? (
+            <Box>
+              <Text color="cyan" bold>You: </Text>
+              <Text>{item.text}</Text>
+            </Box>
+          ) : (
+            <Box flexDirection="column">
+              <Text color="green" bold>Assistant:</Text>
+              <Text>{renderMarkdown(item.text)}</Text>
+              {item.toolCalls && item.toolCalls.length > 0 && (
+                <Box flexDirection="column">
+                  {item.toolCalls.map(tc => (
+                    <Text key={tc.toolCallId} dimColor>
+                      {'  '}{tc.status === 'success' ? '✓' : '✗'} {tc.toolName}: {tc.summary}
+                    </Text>
+                  ))}
+                </Box>
+              )}
+              {item.cost && (
+                <Text dimColor>
+                  Cost: ${item.cost.totalCostUsd.toFixed(6)} | Input: {item.cost.inputTokens} | Output: {item.cost.outputTokens}
+                </Text>
+              )}
+            </Box>
+          )}
+          <Text dimColor>{'─'.repeat(Math.min(process.stdout.columns || 80, 60))}</Text>
+        </Box>
+      )}
+    </Static>
+  )
+}

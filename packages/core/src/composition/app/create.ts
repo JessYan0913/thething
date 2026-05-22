@@ -221,6 +221,12 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const finalTools = budgetCheck.adjustedTools ?? tools
   const finalMessages = budgetCheck.adjustedMessages ?? messagesWithAttachments
 
+  if (options.autoApprove) {
+    for (const name of Object.keys(finalTools)) {
+      finalTools[name] = { ...finalTools[name], needsApproval: undefined }
+    }
+  }
+
   // ============================================================
   // Agent pipeline + ToolLoopAgent
   // ============================================================

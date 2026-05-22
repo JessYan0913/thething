@@ -1,0 +1,23 @@
+import React, { useMemo } from 'react'
+import { Text } from 'ink'
+import { renderMarkdown } from '../lib/markdown.js'
+
+interface Props {
+  text: string
+  streaming?: boolean
+}
+
+export function MarkdownText({ text, streaming }: Props) {
+  const rendered = useMemo(() => {
+    if (!text) return ''
+    try {
+      return renderMarkdown(text)
+    } catch {
+      return text
+    }
+  }, [text])
+
+  if (!rendered) return null
+
+  return <Text>{rendered}</Text>
+}

@@ -168,6 +168,9 @@ export interface CreateAgentOptions {
    */
   dynamicReload?: boolean;
 
+  /** 自动批准所有工具调用，跳过 needsApproval 检查。CLI 等无 UI 场景使用。 */
+  autoApprove?: boolean;
+
   /** 对话元数据（用于控制技能附件注入等行为） */
   conversationMeta?: {
     /** 是否是新对话（首次消息） */

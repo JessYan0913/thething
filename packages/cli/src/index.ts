@@ -8,10 +8,7 @@
 import './lib/env-loader'
 
 import { Command } from 'commander'
-import start from './commands/start'
-import stop from './commands/stop'
-import status from './commands/status'
-import chat from './commands/chat'
+import chat from './commands/chat.js'
 import config from './commands/config'
 import db from './commands/db'
 
@@ -27,27 +24,6 @@ program
   .action(() => {
     chat({})
   })
-
-// Server command: start HTTP server and open browser
-program
-  .command('server')
-  .description('Start the HTTP server and open browser')
-  .option('--port <port>', 'Port number', '3456')
-  .option('--no-open', 'Do not open browser')
-  .option('--data-dir <path>', 'Data directory path')
-  .action((options) => start(options))
-
-// Stop command
-program
-  .command('stop')
-  .description('Stop the running server')
-  .action(() => stop())
-
-// Status command
-program
-  .command('status')
-  .description('Show server status')
-  .action(() => status())
 
 // Config command (with subcommands)
 const configCmd = program
