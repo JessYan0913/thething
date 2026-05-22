@@ -50,11 +50,6 @@ export {
 
 export {
   DEFAULT_PROJECT_CONFIG_DIR_NAME,
-  TOKENIZER_CACHE_DIR_NAME,
-  HF_MIRROR_BASE_URL,
-  HF_OFFICIAL_BASE_URL,
-  MODEL_TO_HF_REPO_MAPPING,
-  DEFAULT_TOKENIZER_REPO,
 } from '../../primitives/constants';
 
 // GlobalConfig - 全局用户配置（~/.thething/config.json）

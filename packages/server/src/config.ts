@@ -24,40 +24,6 @@ function getServerProjectDir(): string {
 }
 
 /**
- * 获取 Server Tokenizer 配置
- *
- * 支持的环境变量：
- * - THETHING_TOKENIZER_DIR: tokenizer 目录路径
- * - THETHING_TOKENIZER_DISABLE_AUTO_DOWNLOAD: 禁用自动下载 (true/false)
- * - THETHING_TOKENIZER_PRELOAD: 预加载模型列表 (逗号分隔)
- */
-export function getServerTokenizerConfig(): {
-  dir?: string;
-  disableAutoDownload?: boolean;
-  preloadModels?: string[];
-} {
-  const config: {
-    dir?: string;
-    disableAutoDownload?: boolean;
-    preloadModels?: string[];
-  } = {}
-
-  if (process.env.THETHING_TOKENIZER_DIR) {
-    config.dir = process.env.THETHING_TOKENIZER_DIR
-  }
-
-  if (process.env.THETHING_TOKENIZER_DISABLE_AUTO_DOWNLOAD === 'true') {
-    config.disableAutoDownload = true
-  }
-
-  if (process.env.THETHING_TOKENIZER_PRELOAD) {
-    config.preloadModels = process.env.THETHING_TOKENIZER_PRELOAD.split(',').map(s => s.trim())
-  }
-
-  return config
-}
-
-/**
  * 默认配置目录名称
  */
 const DEFAULT_CONFIG_DIR_NAME = '.thething'

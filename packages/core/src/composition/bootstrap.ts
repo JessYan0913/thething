@@ -16,12 +16,6 @@ import {
   type ConnectorRegistry,
 } from '../modules/connector';
 import type { ConnectorInboundRuntime } from '../modules/connector/inbound/types';
-import {
-  registerTokenizer,
-  setTokenizerDir,
-  setAutoDownload,
-  preloadTokenizer,
-} from '../modules/compaction/tokenizer';
 import { createPricingResolver, type PricingResolver } from '../services/model/pricing';
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from '../services/config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from '../services/config/behavior';
@@ -202,8 +196,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
   const connectorRegistry = connectorRuntime.registry;
 
-  // 6. 初始化 Tokenizer（显式配置，不依赖环境变量）
-  initTokenizer(options.tokenizerConfig);
+  // 6. Tokenizer（已替换为字符估算，无需初始化）
 
   return {
     layout,
@@ -225,47 +218,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 }
 
 // ============================================================
-// Tokenizer 初始化辅助函数
+// Tokenizer 初始化辅助函数（已废弃，保留接口兼容）
 // ============================================================
 
-/**
- * 初始化 Tokenizer（内部函数）
- *
- * 设计约束：
- * - 不读取 process.env（配置已通过 BootstrapOptions 显式传入）
- * - 配置优先级：registrations > dir > 默认行为
- */
-function initTokenizer(config?: TokenizerConfig): void {
-  if (!config) return;
-
-  // 1. 禁用自动下载（如果指定）
-  if (config.disableAutoDownload) {
-    setAutoDownload(false);
-  }
-
-  // 2. 设置 tokenizer 目录（全局覆盖）
-  if (config.dir) {
-    setTokenizerDir(config.dir);
-    logger.debug('Bootstrap', `Tokenizer 目录已设置: ${config.dir}`);
-  }
-
-  // 3. 注册单个模型（精确映射）
-  if (config.registrations && config.registrations.length > 0) {
-    for (const { modelName, path } of config.registrations) {
-      registerTokenizer(modelName, path);
-      logger.debug('Bootstrap', `Tokenizer 注册: ${modelName} -> ${path}`);
-    }
-  }
-
-  // 4. 预加载模型（可选，避免首次使用延迟）
-  if (config.preloadModels && config.preloadModels.length > 0) {
-    // 异步预加载，不阻塞 bootstrap
-    Promise.all(config.preloadModels.map(model => preloadTokenizer(model)))
-      .then(() => {
-        logger.debug('Bootstrap', `Tokenizer 预加载完成: ${config.preloadModels!.join(', ')}`);
-      })
-      .catch(err => {
-        logger.error('Bootstrap', 'Tokenizer 预加载失败:', err);
-      });
-  }
+function initTokenizer(_config?: TokenizerConfig): void {
+  // 已替换为字符估算，无需初始化
 }

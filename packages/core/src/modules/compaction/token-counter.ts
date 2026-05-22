@@ -6,7 +6,6 @@ import {
   preloadTokenizer,
   setTokenizerDir,
   tryCountTokensSync,
-  inferHfRepo,
 } from "./tokenizer";
 
 // ============================================================
@@ -276,12 +275,8 @@ export async function estimateFullRequest(
 /**
  * 从模型名称推断 tokenizer repo 信息（用于日志）
  */
-function inferTokenizerVersion(modelName: string): string {
-  const repoInfo = inferHfRepo(modelName);
-  const repoName = repoInfo.variant
-    ? `${repoInfo.repo}-${repoInfo.variant}`
-    : repoInfo.repo;
-  return `${repoInfo.org}/${repoName}`;
+function inferTokenizerVersion(_modelName: string): string {
+  return 'char-estimation';
 }
 
 /**

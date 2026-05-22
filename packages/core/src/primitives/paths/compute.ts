@@ -4,7 +4,7 @@
 //
 // 重要变更（2026-04）：
 // - DEFAULT_PROJECT_CONFIG_DIR_NAME 已迁移到 ResolvedLayout.configDirName
-// - TOKENIZER_CACHE_DIR_NAME 已迁移到 ResolvedLayout.tokenizerCacheDir
+// - TOKENIZER_CACHE_DIR_NAME 已移除（tokenizer 已替换为字符估算）
 // - 全局单例（resolvedConfigDirName, resolvedCwd）已移除
 //
 // 设计模式：
@@ -14,7 +14,7 @@
 // ============================================================
 
 import path from 'path';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME, TOKENIZER_CACHE_DIR_NAME } from '../constants';
+import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../constants';
 import { resolveHomeDir } from './resolve';
 
 // ============================================================
@@ -119,40 +119,4 @@ export function computeProjectDataDir(
 export function getDefaultDataDir(): string {
   const cwd = process.cwd();
   return computeProjectDataDir(cwd);
-}
-
-// ============================================================
-// Tokenizer 缓存目录（纯函数版本）
-// ============================================================
-
-/**
- * 计算用户全局 Tokenizer 缓存目录（纯函数）
- *
- * 注意：Tokenizer 缓存目录不依赖 configDirName，
- * 它始终位于 ~/.cache/thething/tokenizers
- *
- * @param homeDir 用户 home 目录
- * @param subdir 子目录名（如版本号或 repo 名）
- * @returns 目录绝对路径
- */
-export function computeUserTokenizerCacheDir(homeDir: string, subdir?: string): string {
-  const cacheBase = path.join(homeDir, '.cache', 'thething', TOKENIZER_CACHE_DIR_NAME);
-  if (subdir) {
-    return path.join(cacheBase, subdir);
-  }
-  return cacheBase;
-}
-
-// ============================================================
-// Tokenizer 缓存目录（便捷版本 - 向后兼容）
-// ============================================================
-
-/**
- * 获取用户全局 Tokenizer 缓存目录（便捷版本）
- *
- * @param subdir 子目录名（如版本号或 repo 名）
- * @returns 目录绝对路径
- */
-export function getUserTokenizerCacheDir(subdir?: string): string {
-  return computeUserTokenizerCacheDir(resolveHomeDir(), subdir);
 }

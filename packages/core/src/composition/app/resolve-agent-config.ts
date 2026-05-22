@@ -177,7 +177,6 @@ const FIELD_CONSUMERS: Record<string, string[]> = {
   'layout.dataDir': ['context', 'foundation/datastore'],
   'layout.resources': ['loaders'],
   'layout.contextFileNames': ['system-prompt/project-context'],
-  'layout.tokenizerCacheDir': ['foundation/tokenizer'],
   'sessionOptions.maxContextTokens': ['session-state/token-budget'],
   'sessionOptions.maxBudgetUsd': ['session-state/cost-tracker'],
   'sessionOptions.compactThreshold': ['runtime/compaction'],

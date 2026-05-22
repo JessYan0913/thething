@@ -7,7 +7,6 @@ import {
   extractMessageText,
   hasTextBlocks,
   stripImagesFromMessages,
-  preloadTokenizer,
 } from '../token-counter';
 import {
   manageToolOutputLifecycle,
@@ -24,10 +23,6 @@ import {
 // Token Counter Tests
 // ============================================================
 describe('token-counter', () => {
-  beforeAll(async () => {
-    await preloadTokenizer();
-  });
-
   it('should estimate text tokens', async () => {
     const tokens = await estimateTextTokens('Hello world');
     expect(tokens).toBeGreaterThan(0);

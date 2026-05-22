@@ -15,7 +15,7 @@ import {
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
-import { getServerTokenizerConfig, getServerLayoutConfig } from './config'
+import { getServerLayoutConfig } from './config'
 import { startFeishuLongConnection, stopFeishuLongConnection } from './feishu-long-connection'
 
 let runtimeInstance: CoreRuntime | null = null
@@ -45,8 +45,6 @@ export async function initServerRuntime(): Promise<CoreRuntime> {
 }
 
 async function initializeServerRuntime(): Promise<CoreRuntime> {
-  const tokenizerConfig = getServerTokenizerConfig()
-
   // 使用新的 layout + behavior 配置结构（从环境变量读取）
   const layout = getServerLayoutConfig()
 
@@ -59,7 +57,6 @@ async function initializeServerRuntime(): Promise<CoreRuntime> {
 
   runtimeInstance = await bootstrap({
     layout,
-    tokenizerConfig,
     env: envSnapshot,
   })
 
