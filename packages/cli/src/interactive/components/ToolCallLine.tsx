@@ -20,7 +20,7 @@ interface Props {
 
 export function ToolCallLine({ tool }: Props) {
   const icon = TOOL_ICONS[tool.toolName] || '>'
-  const elapsed = ((Date.now() - tool.startTime) / 1000).toFixed(1)
+  const elapsed = (((tool.endTime || Date.now()) - tool.startTime) / 1000).toFixed(1)
 
   return (
     <Box>

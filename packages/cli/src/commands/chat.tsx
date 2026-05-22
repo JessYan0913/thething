@@ -124,6 +124,12 @@ async function ensureConfig(fileConfig?: GlobalConfig): Promise<{ apiKey: string
 }
 
 export default async function chat(options: ChatOptions): Promise<void> {
+  const origEmitWarning = process.emitWarning
+  process.emitWarning = ((...args: any[]) => {
+    if (typeof args[0] === 'string' && args[0].includes('punycode')) return
+    return origEmitWarning.apply(process, args as any)
+  }) as typeof process.emitWarning
+
   const dataDirConfig = getDataDirConfig()
   const fileConfig = loadConfig()
   const envSnapshot: Record<string, string | undefined> = { ...process.env }
@@ -175,6 +181,26 @@ export default async function chat(options: ChatOptions): Promise<void> {
     { exitOnCtrlC: false },
   )
 
+  const origLog = console.log
+  const origWarn = console.warn
+  const origError = console.error
+  const suppress = /\[ConnectorRegistry\]|\[TitleGenerator\]|DEP0040|punycode|APICallError|AI_APICallError/
+  console.log = (...args: any[]) => {
+    if (args.some(a => typeof a === 'string' && suppress.test(a))) return
+    origLog(...args)
+  }
+  console.warn = (...args: any[]) => {
+    if (args.some(a => typeof a === 'string' && suppress.test(a))) return
+    origWarn(...args)
+  }
+  console.error = (...args: any[]) => {
+    if (args.some(a => typeof a === 'string' && suppress.test(a))) return
+    origError(...args)
+  }
+
   await waitUntilExit()
+  console.log = origLog
+  console.warn = origWarn
+  console.error = origError
   await runtime.dispose()
 }

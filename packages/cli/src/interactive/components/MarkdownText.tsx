@@ -10,12 +10,13 @@ interface Props {
 export function MarkdownText({ text, streaming }: Props) {
   const rendered = useMemo(() => {
     if (!text) return ''
+    if (streaming) return text
     try {
       return renderMarkdown(text)
     } catch {
       return text
     }
-  }, [text])
+  }, [text, streaming])
 
   if (!rendered) return null
 

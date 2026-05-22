@@ -22,8 +22,10 @@ export interface ToolCallState {
   toolCallId: string
   toolName: string
   summary: string
+  input?: unknown
   status: 'queued' | 'running' | 'success' | 'error'
   startTime: number
+  endTime?: number
   errorText?: string
 }
 

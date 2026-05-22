@@ -12,7 +12,7 @@ type Action =
   | { type: 'REASONING_DELTA'; text: string }
   | { type: 'REASONING_END' }
   | { type: 'TOOL_START'; toolCallId: string; toolName: string }
-  | { type: 'TOOL_INPUT'; toolCallId: string; input: unknown }
+  | { type: 'TOOL_INPUT'; toolCallId: string; input: unknown; toolName: string }
   | { type: 'TOOL_OUTPUT'; toolCallId: string }
   | { type: 'TOOL_ERROR'; toolCallId: string; error: string }
   | { type: 'APPROVAL_REQUEST'; request: ApprovalRequest }
@@ -76,7 +76,9 @@ function reducer(state: StreamState, action: Action): StreamState {
       if (existing) {
         toolCalls.set(action.toolCallId, {
           ...existing,
-          summary: formatToolInputSummary(existing.toolName, action.input),
+          toolName: action.toolName || existing.toolName,
+          summary: formatToolInputSummary(action.toolName || existing.toolName, action.input),
+          input: action.input,
           status: 'running',
         })
       }
@@ -87,7 +89,7 @@ function reducer(state: StreamState, action: Action): StreamState {
       const toolCalls = new Map(state.toolCalls)
       const existing = toolCalls.get(action.toolCallId)
       if (existing) {
-        toolCalls.set(action.toolCallId, { ...existing, status: 'success' })
+        toolCalls.set(action.toolCallId, { ...existing, status: 'success', endTime: Date.now() })
       }
       return { ...state, toolCalls }
     }
@@ -194,6 +196,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
 
       let finishedMessages: UIMessage[] = []
       const approvalRequests: ApprovalRequest[] = []
+      const toolInfoMap = new Map<string, { toolName: string; input: unknown }>()
 
       const stream = await createAgentUIStream({
         agent: agentResult.agent,
@@ -216,28 +219,36 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
             dispatch({ type: 'REASONING_START' })
             break
           case 'reasoning-delta':
-            dispatch({ type: 'REASONING_DELTA', text: (chunk as any).textDelta || '' })
+            dispatch({ type: 'REASONING_DELTA', text: (chunk as any).delta || '' })
             break
           case 'tool-input-start':
+            toolInfoMap.set((chunk as any).toolCallId, { toolName: (chunk as any).toolName, input: undefined })
             dispatch({
               type: 'TOOL_START',
               toolCallId: (chunk as any).toolCallId,
               toolName: (chunk as any).toolName,
             })
             break
-          case 'tool-input-available':
+          case 'tool-input-available': {
+            const tcId = (chunk as any).toolCallId
+            const info = toolInfoMap.get(tcId)
+            if (info) info.input = (chunk as any).input
             dispatch({
               type: 'TOOL_INPUT',
-              toolCallId: (chunk as any).toolCallId,
+              toolCallId: tcId,
+              toolName: (chunk as any).toolName || info?.toolName || 'unknown',
               input: (chunk as any).input,
             })
             break
+          }
           case 'tool-approval-request': {
+            const toolCallId = (chunk as any).toolCallId
+            const toolInfo = toolInfoMap.get(toolCallId)
             const req: ApprovalRequest = {
               approvalId: (chunk as any).approvalId,
-              toolCallId: (chunk as any).toolCallId,
-              toolName: (chunk as any).toolName,
-              input: (chunk as any).input,
+              toolCallId,
+              toolName: toolInfo?.toolName || 'unknown',
+              input: toolInfo?.input,
             }
             const scope = computeApprovalScope(req.toolName, req.input)
             if (sessionApprovedScopes.current.has(scope)) {
@@ -294,6 +305,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
 
   const startStream = useCallback((messages: UIMessage[]) => {
     messagesRef.current = messages
+    finishedMessagesRef.current = []
     approvalResponsesRef.current = []
     streamGenRef.current++
     dispatch({ type: 'START_STREAM' })

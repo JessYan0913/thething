@@ -12,6 +12,19 @@ import { InputBar } from './components/InputBar.js'
 import { MessageList } from './components/MessageList.js'
 import type { CompletedMessage } from './lib/types.js'
 
+function extractLastAssistantText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === 'assistant') {
+      return (msg.parts || [])
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map(p => p.text)
+        .join('\n\n')
+    }
+  }
+  return ''
+}
+
 interface AppProps {
   runtime: CoreRuntime
   context: AppContext
@@ -36,6 +49,7 @@ export function App({
   const { exit } = useApp()
   const [modelName, setModelName] = useState(initialModel)
   const [completedItems, setCompletedItems] = useState<CompletedMessage[]>([])
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const sessionApprovedScopes = useRef(new Set<string>())
   const isFirstTurn = useRef(true)
 
@@ -56,6 +70,7 @@ export function App({
   })
 
   const handleSubmit = useCallback((text: string) => {
+    setErrorMsg(null)
     const userMsg: UIMessage = {
       id: nanoid(),
       role: 'user',
@@ -75,10 +90,19 @@ export function App({
 
   useEffect(() => {
     if (stream.state.phase === 'done') {
+      const streamText = stream.state.text
+      const finishedText = stream.finishedMessages.length > 0
+        ? extractLastAssistantText(stream.finishedMessages)
+        : ''
+
+      // Prefer streamText (reset per turn) to avoid cross-turn text leaking.
+      // Only fall back to finishedText if streamText is empty.
+      const text = streamText || finishedText
+
       const item: CompletedMessage = {
         id: nanoid(),
         role: 'assistant',
-        text: stream.state.text,
+        text,
         toolCalls: [...stream.state.toolCalls.values()],
         reasoning: stream.state.reasoning || undefined,
         cost: stream.state.cost,
@@ -89,7 +113,7 @@ export function App({
         conversation.setMessages(stream.finishedMessages)
         conversation.saveMessages()
 
-        if (isFirstTurn.current && stream.state.text) {
+        if (isFirstTurn.current && text) {
           isFirstTurn.current = false
           generateConversationTitle(
             stream.finishedMessages,
@@ -99,6 +123,11 @@ export function App({
         }
       }
 
+      stream.reset()
+    }
+
+    if (stream.state.phase === 'error') {
+      setErrorMsg(stream.state.error || 'Unknown error')
       stream.reset()
     }
   }, [stream.state.phase])
@@ -113,7 +142,7 @@ export function App({
     }
   })
 
-  const isStreaming = stream.state.phase !== 'idle'
+  const isStreaming = stream.state.phase === 'streaming' || stream.state.phase === 'awaiting-approval'
 
   return (
     <Box flexDirection="column">
@@ -121,12 +150,17 @@ export function App({
 
       {isStreaming && (
         <Box flexDirection="column" marginTop={1}>
-          <Text color="green" bold>Assistant:</Text>
           <StreamingResponse
             state={stream.state}
             onApprovalResponse={stream.respondApproval}
             sessionApprovedScopes={sessionApprovedScopes.current}
           />
+        </Box>
+      )}
+
+      {errorMsg && !isStreaming && (
+        <Box marginTop={1}>
+          <Text color="red">Error: {errorMsg}</Text>
         </Box>
       )}
 

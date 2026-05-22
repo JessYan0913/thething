@@ -1,8 +1,8 @@
 import React from 'react'
 import { Static, Text, Box } from 'ink'
-import chalk from 'chalk'
 import type { CompletedMessage } from '../lib/types.js'
 import { renderMarkdown } from '../lib/markdown.js'
+import { ToolCallLine } from './ToolCallLine.js'
 
 interface Props {
   items: CompletedMessage[]
@@ -25,9 +25,7 @@ export function MessageList({ items }: Props) {
               {item.toolCalls && item.toolCalls.length > 0 && (
                 <Box flexDirection="column">
                   {item.toolCalls.map(tc => (
-                    <Text key={tc.toolCallId} dimColor>
-                      {'  '}{tc.status === 'success' ? '✓' : '✗'} {tc.toolName}: {tc.summary}
-                    </Text>
+                    <ToolCallLine key={tc.toolCallId} tool={tc} />
                   ))}
                 </Box>
               )}
