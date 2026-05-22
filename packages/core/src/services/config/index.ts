@@ -57,6 +57,14 @@ export {
   DEFAULT_TOKENIZER_REPO,
 } from '../../primitives/constants';
 
+// GlobalConfig - 全局用户配置（~/.thething/config.json）
+export {
+  loadGlobalConfig,
+  saveGlobalConfig,
+  getGlobalConfigPath,
+  type GlobalConfig,
+} from './global-config';
+
 // ============================================================
 // 从原有模块导出的函数（保持兼容）
 // ============================================================

@@ -11,6 +11,7 @@ import {
   bootstrap,
   createContext,
   configureConnectorInboundRuntime,
+  loadGlobalConfig,
   type CoreRuntime,
   type AppContext,
 } from '@the-thing/core'
@@ -68,10 +69,11 @@ async function initializeServerRuntime(): Promise<CoreRuntime> {
   })
 
   // 初始化 Connector Gateway（Inbound Processor）
-  // 从环境变量读取模型配置，用于处理飞书/企微等入站消息
-  const apiKey = envSnapshot.DASHSCOPE_API_KEY || envSnapshot.OPENAI_API_KEY
-  const baseURL = envSnapshot.DASHSCOPE_BASE_URL || envSnapshot.OPENAI_BASE_URL
-  const modelName = envSnapshot.THETHING_MODEL || envSnapshot.DASHSCOPE_MODEL || 'qwen-max'
+  // 从配置文件/环境变量读取模型配置，用于处理飞书/企微等入站消息
+  const globalConfig = loadGlobalConfig()
+  const apiKey = envSnapshot.THETHING_API_KEY || globalConfig?.apiKey || envSnapshot.OPENAI_API_KEY
+  const baseURL = envSnapshot.THETHING_BASE_URL || globalConfig?.baseURL || envSnapshot.OPENAI_BASE_URL
+  const modelName = envSnapshot.THETHING_MODEL || globalConfig?.model || 'qwen-max'
 
   if (apiKey && baseURL) {
     configureConnectorInboundRuntime(runtimeInstance.connectorRuntime, {

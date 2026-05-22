@@ -7,7 +7,7 @@ import * as readline from 'readline'
 import { nanoid } from 'nanoid'
 import { createRepl, startRepl } from '../interactive/repl'
 import { getDataDirConfig } from '../lib/data-dir'
-import { loadConfig, saveConfig, AppConfig } from '../lib/config-store'
+import { loadConfig, saveConfig, type GlobalConfig } from '../lib/config-store'
 import {
   bootstrap,
   createContext,
@@ -38,7 +38,7 @@ function questionBool(rl: readline.Interface, prompt: string): Promise<boolean> 
 /**
  * Interactive first-time setup wizard
  */
-async function runSetupWizard(): Promise<AppConfig | null> {
+async function runSetupWizard(): Promise<GlobalConfig | null> {
   console.log(chalk.cyan('\n🚀 欢迎使用 TheThing CLI！'))
   console.log(chalk.gray('首次使用需要配置 API 连接信息。\n'))
 
@@ -55,7 +55,7 @@ async function runSetupWizard(): Promise<AppConfig | null> {
 
   try {
     // Ask for baseURL
-    console.log(chalk.yellow('请输入 API Base URL（例如: https://dashscope.aliyuncs.com/compatible-mode/v1）'))
+    console.log(chalk.yellow('请输入 API Base URL（例如: https://dashscope.aliyuncs.com/compatible-mode/v1 或 https://api.deepseek.com/v1）'))
     const baseURL = await question(chalk.cyan('Base URL: '))
     if (!baseURL.trim()) {
       console.log(chalk.red('Base URL 不能为空'))
@@ -79,21 +79,17 @@ async function runSetupWizard(): Promise<AppConfig | null> {
 
     rl.close()
 
-    const config: AppConfig = {
-      api: {
-        key: apiKey.trim(),
-        baseUrl: baseURL.trim(),
-      },
-      default: {
-        model: modelName,
-      },
+    const config: GlobalConfig = {
+      apiKey: apiKey.trim(),
+      baseURL: baseURL.trim(),
+      model: modelName,
     }
 
     // Save config
     saveConfig(config)
     console.log(chalk.green('\n✅ 配置已保存到 ~/.thething/config.json'))
-    console.log(chalk.gray(`   Base URL: ${config.api?.baseUrl}`))
-    console.log(chalk.gray(`   Model: ${config.default?.model}\n`))
+    console.log(chalk.gray(`   Base URL: ${config.baseURL}`))
+    console.log(chalk.gray(`   Model: ${config.model}\n`))
 
     return config
   } catch (error) {
@@ -106,11 +102,11 @@ async function runSetupWizard(): Promise<AppConfig | null> {
 /**
  * Check config and run setup wizard if needed
  */
-async function ensureConfig(fileConfig?: AppConfig): Promise<{ apiKey: string; baseURL: string; modelName: string } | null> {
+async function ensureConfig(fileConfig?: GlobalConfig): Promise<{ apiKey: string; baseURL: string; modelName: string } | null> {
   fileConfig = fileConfig ?? loadConfig()
-  let apiKey = fileConfig.api?.key || process.env.DASHSCOPE_API_KEY
-  let baseURL = fileConfig.api?.baseUrl || process.env.DASHSCOPE_BASE_URL
-  let modelName = fileConfig.default?.model || process.env[ENV_MODEL] || 'qwen-max'
+  let apiKey = process.env.THETHING_API_KEY || fileConfig.apiKey
+  let baseURL = process.env.THETHING_BASE_URL || fileConfig.baseURL
+  let modelName = process.env[ENV_MODEL] || fileConfig.model || 'qwen-max'
 
   if (apiKey && baseURL) {
     return { apiKey, baseURL, modelName }
@@ -129,23 +125,23 @@ async function ensureConfig(fileConfig?: AppConfig): Promise<{ apiKey: string; b
   if (shouldSetup) {
     rl.close()
     const newConfig = await runSetupWizard()
-    if (!newConfig?.api?.key || !newConfig?.api?.baseUrl) {
+    if (!newConfig?.apiKey || !newConfig?.baseURL) {
       return null
     }
     return {
-      apiKey: newConfig.api.key,
-      baseURL: newConfig.api.baseUrl,
-      modelName: newConfig.default?.model || 'qwen-max',
+      apiKey: newConfig.apiKey,
+      baseURL: newConfig.baseURL,
+      modelName: newConfig.model || 'qwen-max',
     }
   } else {
     rl.close()
     console.log(chalk.gray('\n你也可以稍后通过以下方式配置:'))
-    console.log(chalk.gray('  thething config set api.key <your-api-key>'))
-    console.log(chalk.gray('  thething config set api.baseUrl <your-base-url>'))
-    console.log(chalk.gray('  thething config set default.model <model-name>'))
+    console.log(chalk.gray('  thething config set apiKey <your-api-key>'))
+    console.log(chalk.gray('  thething config set baseURL <your-base-url>'))
+    console.log(chalk.gray('  thething config set model <model-name>'))
     console.log(chalk.gray('\n或设置环境变量:'))
-    console.log(chalk.gray('  DASHSCOPE_API_KEY=<your-api-key>'))
-    console.log(chalk.gray('  DASHSCOPE_BASE_URL=<your-base-url>'))
+    console.log(chalk.gray('  THETHING_API_KEY=<your-api-key>'))
+    console.log(chalk.gray('  THETHING_BASE_URL=<your-base-url>'))
     return null
   }
 }
@@ -159,14 +155,14 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env }
 
   // 从 config file 中读取并合并到 env 快照（bootstrap 用 runtime.env 做 connector ${VAR} 替换）
-  if (fileConfig.api?.key && !envSnapshot.DASHSCOPE_API_KEY) {
-    envSnapshot.DASHSCOPE_API_KEY = fileConfig.api.key
+  if (fileConfig.apiKey && !envSnapshot.THETHING_API_KEY) {
+    envSnapshot.THETHING_API_KEY = fileConfig.apiKey
   }
-  if (fileConfig.api?.baseUrl && !envSnapshot.DASHSCOPE_BASE_URL) {
-    envSnapshot.DASHSCOPE_BASE_URL = fileConfig.api.baseUrl
+  if (fileConfig.baseURL && !envSnapshot.THETHING_BASE_URL) {
+    envSnapshot.THETHING_BASE_URL = fileConfig.baseURL
   }
-  if (fileConfig.default?.model && !envSnapshot[ENV_MODEL]) {
-    envSnapshot[ENV_MODEL] = fileConfig.default.model
+  if (fileConfig.model && !envSnapshot[ENV_MODEL]) {
+    envSnapshot[ENV_MODEL] = fileConfig.model
   }
 
   const cwd = resolveProjectDir({
@@ -219,7 +215,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
 
   // Override model if specified via CLI option
   const modelName = options.model || configResult.modelName
-  const enableThinking = process.env.DASHSCOPE_ENABLE_THINKING === 'true'
+  const enableThinking = process.env.THETHING_ENABLE_THINKING === 'true'
   const apiKey = configResult.apiKey
   const baseURL = configResult.baseURL
 

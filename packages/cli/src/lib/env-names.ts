@@ -22,11 +22,11 @@ export const ENV_GLOBAL_CONFIG_DIR = 'THETHING_GLOBAL_CONFIG_DIR';
 /** 环境变量：Connector 配置目录 */
 export const ENV_CONNECTORS_DIR = 'THETHING_CONNECTORS_DIR';
 
-/** 环境变量：DashScope API Key */
-export const ENV_DASHSCOPE_API_KEY = 'DASHSCOPE_API_KEY';
+/** 环境变量：API Key */
+export const ENV_API_KEY = 'THETHING_API_KEY';
 
-/** 环境变量：DashScope Base URL */
-export const ENV_DASHSCOPE_BASE_URL = 'DASHSCOPE_BASE_URL';
+/** 环境变量：Base URL */
+export const ENV_BASE_URL = 'THETHING_BASE_URL';
 
-/** 环境变量：DashScope Enable Thinking */
-export const ENV_DASHSCOPE_ENABLE_THINKING = 'DASHSCOPE_ENABLE_THINKING';
+/** 环境变量：Enable Thinking */
+export const ENV_ENABLE_THINKING = 'THETHING_ENABLE_THINKING';

@@ -97,6 +97,13 @@ export {
   type ResourceDirs,
 } from './services/config/layout';
 
+export {
+  loadGlobalConfig,
+  saveGlobalConfig,
+  getGlobalConfigPath,
+  type GlobalConfig,
+} from './services/config/global-config';
+
 // ============================================================
 // Foundation Layer（白名单导出）
 // ============================================================

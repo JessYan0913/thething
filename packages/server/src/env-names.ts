@@ -13,11 +13,11 @@ export const ENV_CONTEXT_LIMIT = 'THETHING_MODEL_CONTEXT_LIMIT';
 /** 环境变量：模型输出预留 */
 export const ENV_OUTPUT_TOKENS = 'THETHING_MODEL_OUTPUT_TOKENS';
 
-/** 环境变量：DashScope API Key */
-export const ENV_DASHSCOPE_API_KEY = 'DASHSCOPE_API_KEY';
+/** 环境变量：API Key */
+export const ENV_API_KEY = 'THETHING_API_KEY';
 
-/** 环境变量：DashScope Base URL */
-export const ENV_DASHSCOPE_BASE_URL = 'DASHSCOPE_BASE_URL';
+/** 环境变量：Base URL */
+export const ENV_BASE_URL = 'THETHING_BASE_URL';
 
 // ============================================================
 // Layout Configuration - 布局配置环境变量

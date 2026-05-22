@@ -53,8 +53,8 @@ const { agent, sessionState, mcpRegistry } = await createAgent({
   conversationId: 'conv-123',
   messages: [] as UIMessage[],
   model: {
-    apiKey: process.env.DASHSCOPE_API_KEY!,
-    baseURL: process.env.DASHSCOPE_BASE_URL!,
+    apiKey: process.env.THETHING_API_KEY!,
+    baseURL: process.env.THETHING_BASE_URL!,
     modelName: 'qwen-max',
   },
 });
@@ -348,8 +348,8 @@ const compacted = await compactBeforeStep(
 import { extractMemoriesInBackground, createLanguageModel } from '@the-thing/core';
 
 const model = createLanguageModel({
-  apiKey: process.env.DASHSCOPE_API_KEY,
-  baseURL: process.env.DASHSCOPE_BASE_URL,
+  apiKey: process.env.THETHING_API_KEY,
+  baseURL: process.env.THETHING_BASE_URL,
   modelName: 'qwen-max',
 });
 
@@ -448,15 +448,15 @@ await sessionState.costTracker.persistToDB();
 import { createLanguageModel, createModelProvider } from '@the-thing/core';
 
 const model = createLanguageModel({
-  apiKey: process.env.DASHSCOPE_API_KEY!,
-  baseURL: process.env.DASHSCOPE_BASE_URL!,
+  apiKey: process.env.THETHING_API_KEY!,
+  baseURL: process.env.THETHING_BASE_URL!,
   modelName: 'qwen-max',
 });
 
 // 创建 Provider（用于多次创建）
 const provider = createModelProvider({
-  apiKey: process.env.DASHSCOPE_API_KEY!,
-  baseURL: process.env.DASHSCOPE_BASE_URL!,
+  apiKey: process.env.THETHING_API_KEY!,
+  baseURL: process.env.THETHING_BASE_URL!,
 });
 
 const model1 = provider('qwen-max');

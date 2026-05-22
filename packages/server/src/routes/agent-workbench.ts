@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import {
   createAgent,
   finalizeAgentRun,
+  loadGlobalConfig,
   type SubAgentStreamWriter,
 } from '@the-thing/core'
 import {
@@ -219,6 +220,7 @@ function createChatHandler(mode: 'config' | 'debug') {
       const writerRef: { current: SubAgentStreamWriter | null } = { current: null }
       const userId = messageUserId || 'default'
 
+      const globalConfig = loadGlobalConfig()
       const {
         agent,
         sessionState,
@@ -232,9 +234,9 @@ function createChatHandler(mode: 'config' | 'debug') {
         messages,
         userId,
         model: {
-          apiKey: process.env.DASHSCOPE_API_KEY || '',
-          baseURL: process.env.DASHSCOPE_BASE_URL || '',
-          modelName: process.env[ENV_MODEL] || 'qwen-max',
+          apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
+          baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
+          modelName: process.env[ENV_MODEL] || globalConfig?.model || 'qwen-max',
           includeUsage: true,
         },
       })

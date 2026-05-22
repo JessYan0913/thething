@@ -8,6 +8,7 @@ import {
   generateConversationTitle,
   estimateMessagesTokens,
   finalizeAgentRun,
+  loadGlobalConfig,
   type SubAgentStreamWriter,
 } from '@the-thing/core'
 import { getServerContext, getServerDataStore } from '../runtime'
@@ -81,6 +82,7 @@ app.post('/', async (c) => {
     // ============================================================
     // Step 2: 创建 Agent（使用新 API）
     // ============================================================
+    const globalConfig = loadGlobalConfig()
     const {
       agent,
       sessionState,
@@ -94,9 +96,9 @@ app.post('/', async (c) => {
       messages,
       userId,
       model: {
-        apiKey: process.env.DASHSCOPE_API_KEY || '',
-        baseURL: process.env.DASHSCOPE_BASE_URL || '',
-        modelName: process.env[ENV_MODEL] || 'qwen-max',
+        apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
+        baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
+        modelName: process.env[ENV_MODEL] || globalConfig?.model || 'qwen-max',
         includeUsage: true,
       },
     })

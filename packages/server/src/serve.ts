@@ -12,7 +12,7 @@ import { app, initServerRuntime } from './index'
 const PORT = parseInt(process.env.PORT || '3456', 10)
 
 console.log(`[Server] Starting Hono server on port ${PORT}...`)
-console.log(`[Server] DASHSCOPE_BASE_URL: ${process.env.DASHSCOPE_BASE_URL}`)
+console.log(`[Server] THETHING_BASE_URL: ${process.env.THETHING_BASE_URL}`)
 
 // Initialize runtime (starts Feishu long connection)
 initServerRuntime().catch(err => {

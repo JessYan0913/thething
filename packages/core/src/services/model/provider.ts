@@ -18,7 +18,7 @@ export type { ModelProviderConfig, ModelProviderFn };
  */
 export function createModelProvider(config: ModelProviderConfig): ModelProviderFn {
   return createOpenAICompatible({
-    name: "dashscope",
+    name: "openai-compatible",
     apiKey: config.apiKey,
     baseURL: config.baseURL,
     includeUsage: config.includeUsage ?? true,
