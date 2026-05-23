@@ -106,7 +106,7 @@ export function formatToolInputSummary(toolName: string, input: unknown): string
   switch (toolName) {
     case 'bash': {
       const cmd = String(inp.command || '').trim()
-      return cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd
+      return cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd
     }
     case 'read_file':
     case 'write_file':
@@ -117,9 +117,9 @@ export function formatToolInputSummary(toolName: string, input: unknown): string
     case 'glob':
       return String(inp.pattern || '')
     case 'agent':
-      return String(inp.description || inp.prompt || '').slice(0, 50)
+      return String(inp.description || inp.prompt || '').slice(0, 80)
     case 'web_search':
-      return String(inp.query || '').slice(0, 50)
+      return String(inp.query || '').slice(0, 80)
     default:
       return ''
   }

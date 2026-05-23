@@ -25,7 +25,7 @@ export function MessageList({ items }: Props) {
               {item.toolCalls && item.toolCalls.length > 0 && (
                 <Box flexDirection="column">
                   {item.toolCalls.map(tc => (
-                    <ToolCallLine key={tc.toolCallId} tool={tc} />
+                    <ToolCallLine key={tc.toolCallId} tool={tc} detailed />
                   ))}
                 </Box>
               )}

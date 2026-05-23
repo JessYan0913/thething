@@ -13,7 +13,7 @@ type Action =
   | { type: 'REASONING_END' }
   | { type: 'TOOL_START'; toolCallId: string; toolName: string }
   | { type: 'TOOL_INPUT'; toolCallId: string; input: unknown; toolName: string }
-  | { type: 'TOOL_OUTPUT'; toolCallId: string }
+  | { type: 'TOOL_OUTPUT'; toolCallId: string; output?: unknown }
   | { type: 'TOOL_ERROR'; toolCallId: string; error: string }
   | { type: 'APPROVAL_REQUEST'; request: ApprovalRequest }
   | { type: 'PAUSE_FOR_APPROVAL' }
@@ -89,7 +89,12 @@ function reducer(state: StreamState, action: Action): StreamState {
       const toolCalls = new Map(state.toolCalls)
       const existing = toolCalls.get(action.toolCallId)
       if (existing) {
-        toolCalls.set(action.toolCallId, { ...existing, status: 'success', endTime: Date.now() })
+        toolCalls.set(action.toolCallId, {
+          ...existing,
+          status: 'success',
+          endTime: Date.now(),
+          output: action.output,
+        })
       }
       return { ...state, toolCalls }
     }
@@ -101,6 +106,7 @@ function reducer(state: StreamState, action: Action): StreamState {
         toolCalls.set(action.toolCallId, {
           ...existing,
           status: 'error',
+          endTime: Date.now(),
           errorText: action.error,
         })
       }
@@ -263,13 +269,17 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
             break
           }
           case 'tool-output-available':
-            dispatch({ type: 'TOOL_OUTPUT', toolCallId: (chunk as any).toolCallId })
+            dispatch({
+              type: 'TOOL_OUTPUT',
+              toolCallId: (chunk as any).toolCallId,
+              output: (chunk as any).output,
+            })
             break
           case 'tool-output-error':
             dispatch({
               type: 'TOOL_ERROR',
               toolCallId: (chunk as any).toolCallId,
-              error: (chunk as any).error || 'unknown error',
+              error: (chunk as any).errorText || 'unknown error',
             })
             break
         }
