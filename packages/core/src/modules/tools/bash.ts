@@ -15,7 +15,6 @@ const DANGEROUS_PATTERNS = [
   /^\s*dd\s+/i,
   /^\s*mkfs/i,
   /^\s*fdisk/i,
-  /^\s*curl\s/i,
   /^\s*wget\s/i,
   /^\s*nc\s/i,
   /^\s*ncat\s/i,
