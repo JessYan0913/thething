@@ -54,11 +54,6 @@ export default async function serve(options: ServeOptions) {
   const webDir = resolveWebDir(options.webDir)
   if (webDir) {
     configureStaticAssets(webDir)
-  }
-
-  await initServerRuntime()
-
-  if (webDir) {
     setupStaticAssets()
   }
 
@@ -73,6 +68,10 @@ export default async function serve(options: ServeOptions) {
   } else {
     console.log(`[Serve] http://localhost:${port} (API only)`)
   }
+
+  initServerRuntime().catch((error) => {
+    console.error('[Serve] Runtime initialization failed:', error)
+  })
 
   const shutdown = async () => {
     console.log('[Serve] Shutting down...')
