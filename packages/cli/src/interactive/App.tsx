@@ -95,8 +95,6 @@ export function App({
         ? extractLastAssistantText(stream.finishedMessages)
         : ''
 
-      // Prefer streamText (reset per turn) to avoid cross-turn text leaking.
-      // Only fall back to finishedText if streamText is empty.
       const text = streamText || finishedText
 
       const item: CompletedMessage = {
@@ -104,6 +102,7 @@ export function App({
         role: 'assistant',
         text,
         toolCalls: [...stream.state.toolCalls.values()],
+        parts: stream.state.parts,
         reasoning: stream.state.reasoning || undefined,
         cost: stream.state.cost,
       }

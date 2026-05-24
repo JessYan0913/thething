@@ -37,6 +37,7 @@ export interface StreamState {
   isReasoning: boolean
   reasoningStartTime: number
   toolCalls: Map<string, ToolCallState>
+  parts: StreamPart[]
   approvalRequests: ApprovalRequest[]
   finishedMessages: UIMessage[]
   cost?: { totalCostUsd: number; inputTokens: number; outputTokens: number }
@@ -48,6 +49,7 @@ export interface CompletedMessage {
   role: 'user' | 'assistant'
   text: string
   toolCalls?: ToolCallState[]
+  parts?: StreamPart[]
   reasoning?: string
   cost?: StreamState['cost']
 }
@@ -56,6 +58,11 @@ export interface CommandResult {
   type: 'handled' | 'exit' | 'unknown'
   output?: string
 }
+
+export type StreamPart =
+  | { type: 'text'; text: string }
+  | { type: 'tool-call'; toolCallId: string }
+  | { type: 'step-boundary' }
 
 export interface QuestionItem {
   question: string

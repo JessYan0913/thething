@@ -22,11 +22,11 @@ export function buildApprovalQuestion(toolName: string, input: unknown): string 
       return `Do you want to execute ${chalk.cyan(`\`${short}\``)}?`
     }
     case 'write_file':
-      return `Do you want to create ${chalk.cyan(String(inp.file_path))}?`
+      return `Do you want to create ${chalk.cyan(String(inp.filePath))}?`
     case 'edit_file':
-      return `Do you want to edit ${chalk.cyan(String(inp.file_path))}?`
+      return `Do you want to edit ${chalk.cyan(String(inp.filePath))}?`
     case 'read_file':
-      return `Do you want to read ${chalk.cyan(String(inp.file_path))}?`
+      return `Do you want to read ${chalk.cyan(String(inp.filePath))}?`
     case 'grep':
       return `Do you want to search for ${chalk.cyan(`/${inp.pattern}/`)}?`
     case 'glob':
@@ -111,7 +111,7 @@ export function formatToolInputSummary(toolName: string, input: unknown): string
     case 'read_file':
     case 'write_file':
     case 'edit_file':
-      return String(inp.file_path || '')
+      return String(inp.filePath || '')
     case 'grep':
       return `/${inp.pattern || ''}/ ${inp.path || ''}`
     case 'glob':

@@ -2,7 +2,7 @@ import { useReducer, useRef, useCallback, useEffect } from 'react'
 import { createAgentUIStream, type UIMessage } from 'ai'
 import type { AppContext, CreateAgentResult } from '@the-thing/core'
 import { createAgent } from '@the-thing/core'
-import type { StreamState, ApprovalRequest, ApprovalResponse, ToolCallState } from '../lib/types.js'
+import type { StreamState, ApprovalRequest, ApprovalResponse, ToolCallState, StreamPart } from '../lib/types.js'
 import { applyApprovalResponses, computeApprovalScope, formatToolInputSummary } from '../lib/approval-logic.js'
 
 type Action =
@@ -19,6 +19,7 @@ type Action =
   | { type: 'PAUSE_FOR_APPROVAL' }
   | { type: 'APPROVAL_RESPONSE'; response: ApprovalResponse }
   | { type: 'ALL_APPROVALS_RESOLVED' }
+  | { type: 'STEP_FINISH' }
   | { type: 'STREAM_DONE'; cost?: StreamState['cost'] }
   | { type: 'STREAM_ERROR'; error: string }
   | { type: 'RESET' }
@@ -31,6 +32,7 @@ function createInitialState(): StreamState {
     isReasoning: false,
     reasoningStartTime: 0,
     toolCalls: new Map(),
+    parts: [],
     approvalRequests: [],
     finishedMessages: [],
     cost: undefined,
@@ -46,8 +48,16 @@ function reducer(state: StreamState, action: Action): StreamState {
         phase: 'streaming',
       }
 
-    case 'TEXT_DELTA':
-      return { ...state, text: state.text + action.text, isReasoning: false }
+    case 'TEXT_DELTA': {
+      const parts = [...state.parts]
+      const last = parts[parts.length - 1]
+      if (last && last.type === 'text') {
+        parts[parts.length - 1] = { type: 'text', text: last.text + action.text }
+      } else {
+        parts.push({ type: 'text', text: action.text })
+      }
+      return { ...state, text: state.text + action.text, isReasoning: false, parts }
+    }
 
     case 'REASONING_START':
       return { ...state, isReasoning: true, reasoningStartTime: Date.now() }
@@ -67,7 +77,8 @@ function reducer(state: StreamState, action: Action): StreamState {
         status: 'queued',
         startTime: Date.now(),
       })
-      return { ...state, toolCalls }
+      const parts: StreamPart[] = [...state.parts, { type: 'tool-call', toolCallId: action.toolCallId }]
+      return { ...state, toolCalls, parts }
     }
 
     case 'TOOL_INPUT': {
@@ -130,7 +141,18 @@ function reducer(state: StreamState, action: Action): StreamState {
     }
 
     case 'ALL_APPROVALS_RESOLVED':
-      return { ...state, phase: 'streaming', approvalRequests: [] }
+      return {
+        ...state,
+        phase: 'streaming',
+        approvalRequests: [],
+        parts: [...state.parts, { type: 'step-boundary' as const }],
+      }
+
+    case 'STEP_FINISH': {
+      const lastPart = state.parts[state.parts.length - 1]
+      if (lastPart && lastPart.type === 'step-boundary') return state
+      return { ...state, parts: [...state.parts, { type: 'step-boundary' as const }] }
+    }
 
     case 'STREAM_DONE':
       return { ...state, phase: 'done', cost: action.cost }
@@ -281,6 +303,9 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
               toolCallId: (chunk as any).toolCallId,
               error: (chunk as any).errorText || 'unknown error',
             })
+            break
+          case 'finish-step':
+            dispatch({ type: 'STEP_FINISH' })
             break
         }
       }

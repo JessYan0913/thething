@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box } from 'ink'
+import { Box, Text } from 'ink'
 import { MarkdownText } from './MarkdownText.js'
 import { ToolCallLine } from './ToolCallLine.js'
 import { ReasoningBlock } from './ReasoningBlock.js'
@@ -14,7 +14,6 @@ interface Props {
 }
 
 export function StreamingResponse({ state, onApprovalResponse, sessionApprovedScopes }: Props) {
-  const toolCallList = [...state.toolCalls.values()]
   const elapsed = state.reasoningStartTime
     ? (Date.now() - state.reasoningStartTime) / 1000
     : 0
@@ -29,17 +28,21 @@ export function StreamingResponse({ state, onApprovalResponse, sessionApprovedSc
         />
       )}
 
-      {state.text && (
-        <MarkdownText text={state.text} streaming={state.phase === 'streaming'} />
-      )}
-
-      {toolCallList.length > 0 && (
-        <Box flexDirection="column" marginTop={state.text ? 1 : 0}>
-          {toolCallList.map(tc => (
-            <ToolCallLine key={tc.toolCallId} tool={tc} />
-          ))}
-        </Box>
-      )}
+      {state.parts.map((part, i) => {
+        if (part.type === 'text') {
+          return part.text ? (
+            <MarkdownText key={`text-${i}`} text={part.text} streaming={state.phase === 'streaming'} />
+          ) : null
+        }
+        if (part.type === 'tool-call') {
+          const tc = state.toolCalls.get(part.toolCallId)
+          return tc ? <ToolCallLine key={part.toolCallId} tool={tc} /> : null
+        }
+        if (part.type === 'step-boundary') {
+          return <Text key={`step-${i}`} dimColor>{' '}</Text>
+        }
+        return null
+      })}
 
       {state.phase === 'awaiting-approval' && state.approvalRequests.length > 0 && (
         <ApprovalPrompt
