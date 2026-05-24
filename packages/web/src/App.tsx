@@ -29,6 +29,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/chat" replace />} />
         <Route path="/skill-workbench" element={<SkillWorkbench />} />
+        <Route path="/skill-workbench/:skillName" element={<SkillWorkbench />} />
         <Route path="/agent-workbench" element={<AgentWorkbench />} />
         <Route path="/agent-workbench/:agentType" element={<AgentWorkbench />} />
         <Route path="/chat" element={<ChatLayout />}>

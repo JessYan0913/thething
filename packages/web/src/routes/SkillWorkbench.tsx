@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import { nanoid } from "nanoid"
 import {
   ArrowLeftIcon, FolderIcon, SparklesIcon, FileTextIcon, RefreshCwIcon,
@@ -57,10 +57,13 @@ function getExt(filePath: string): string {
 
 export default function SkillWorkbench() {
   const navigate = useNavigate()
+  const { skillName: editSkillName } = useParams<{ skillName?: string }>()
+  const isEditing = !!editSkillName
+
   const conversationId = useMemo(() => nanoid(), [])
   const pageLoadTime = useMemo(() => Date.now(), [])
 
-  const [skillName, setSkillName] = useState<string | null>(null)
+  const [skillName, setSkillName] = useState<string | null>(editSkillName ?? null)
   const [tree, setTree] = useState<SkillFileNode[] | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
@@ -68,6 +71,12 @@ export default function SkillWorkbench() {
 
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+
+  // 编辑模式：初始加载已有 skill 文件
+  useEffect(() => {
+    if (!editSkillName) return
+    refreshSkillFiles(editSkillName)
+  }, [editSkillName])
 
   const refreshSkillFiles = useCallback(async (name: string) => {
     try {
@@ -174,7 +183,9 @@ export default function SkillWorkbench() {
           </Button>
           <div className="flex items-center gap-2">
             <SparklesIcon className="size-4 text-primary" />
-            <span className="text-sm font-medium">Skill 工作台</span>
+            <span className="text-sm font-medium">
+              {isEditing ? "Skill 编辑" : "Skill 工作台"}
+            </span>
             {skillName && (
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                 {skillName}
@@ -213,7 +224,7 @@ export default function SkillWorkbench() {
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground/40 text-xs gap-2 px-4 text-center">
                 <FileTextIcon className="size-8 opacity-30" />
-                <p>在右侧对话中描述你想创建的 Skill，文件将在这里显示</p>
+                <p>{isEditing ? "加载中..." : "在右侧对话中描述你想创建的 Skill，文件将在这里显示"}</p>
               </div>
             )}
           </div>
@@ -250,6 +261,7 @@ export default function SkillWorkbench() {
             conversationId={conversationId}
             apiEndpoint="/api/skill-workbench/chat"
             onTurnFinish={handleTurnFinish}
+            extraBody={editSkillName ? { editSkillName } : undefined}
           />
         </div>
       </div>

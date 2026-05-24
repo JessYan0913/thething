@@ -304,6 +304,7 @@ interface SkillDetailProps {
 }
 
 function SkillDetail({ skill, onBack }: SkillDetailProps) {
+  const navigate = useNavigate()
   const [tree, setTree] = useState<SkillFileNode[] | null>(null)
   const [treeLoading, setTreeLoading] = useState(true)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
@@ -415,6 +416,13 @@ function SkillDetail({ skill, onBack }: SkillDetailProps) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            onClick={() => navigate(`/skill-workbench/${encodeURIComponent(skill.folderName)}`)}
+          >
+            <SparklesIcon className="mr-1 size-4" />
+            AI 编辑
+          </Button>
           <Button
             variant="ghost"
             size="sm"

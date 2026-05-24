@@ -43,6 +43,57 @@ const WORKBENCH_PREAMBLE = `<system-reminder>
 </system-reminder>
 `
 
+const EDIT_PREAMBLE = `<system-reminder>
+你是一个 Skill 开发助手，运行在 Skill 编辑工作台中。
+
+你正在编辑一个已有的 Skill，用户希望你帮助修改和完善它。
+
+核心原则：在用户明确表达修改需求之前，不要调用任何工具，不要修改任何文件。
+
+行为准则：
+- 下方会提供当前 Skill 的文件内容，请先理解它的功能和结构
+- 如果用户只是打招呼或闲聊，正常回应即可
+- 当用户描述了修改需求时，先确认理解是否正确
+- 使用 skill-creator 技能（通过 Skill 工具调用）来执行修改
+- 修改时保持现有 Skill 的整体结构，只修改用户要求的部分
+- 修改完成后告知用户可以请求测试
+- 每轮对话结束后系统会自动重新加载 skills，修改后的 skill 在下一轮即可测试
+</system-reminder>
+`
+
+async function readSkillContent(skillsDir: string, skillName: string): Promise<string | null> {
+  const folderPath = path.join(skillsDir, skillName)
+  try {
+    await fs.access(folderPath)
+  } catch {
+    return null
+  }
+
+  const parts: string[] = []
+
+  async function collectFiles(dir: string, prefix: string) {
+    const entries = await fs.readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = path.join(dir, entry.name)
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        await collectFiles(fullPath, relativePath)
+      } else {
+        try {
+          const content = await fs.readFile(fullPath, 'utf-8')
+          parts.push(`--- ${relativePath} ---\n${content}`)
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+  }
+
+  await collectFiles(folderPath, '')
+  return parts.length > 0 ? parts.join('\n\n') : null
+}
+
 // POST /chat — 工作台对话流
 app.post('/chat', async (c) => {
   try {
@@ -50,9 +101,10 @@ app.post('/chat', async (c) => {
       message: UIMessage
       conversationId: string
       userId?: string
+      editSkillName?: string
     }>()
 
-    const { message, conversationId, userId: messageUserId } = body
+    const { message, conversationId, userId: messageUserId, editSkillName } = body
 
     if (!conversationId) {
       return c.json({ error: 'Missing conversationId' }, 400)
@@ -88,7 +140,16 @@ app.post('/chat', async (c) => {
         .map((p) => p.text)
         .join('\n')
 
-      const preamble = WORKBENCH_PREAMBLE + `\nSkills 目录路径: ${skillsDir}\n`
+      let preamble: string
+      if (editSkillName) {
+        const skillContent = await readSkillContent(skillsDir, editSkillName)
+        preamble = EDIT_PREAMBLE
+          + `\nSkills 目录路径: ${skillsDir}\n`
+          + `\n当前编辑的 Skill: ${editSkillName}\n`
+          + (skillContent ? `\n当前 Skill 文件内容:\n${skillContent}\n` : '')
+      } else {
+        preamble = WORKBENCH_PREAMBLE + `\nSkills 目录路径: ${skillsDir}\n`
+      }
 
       messages[0] = {
         ...firstMsg,
