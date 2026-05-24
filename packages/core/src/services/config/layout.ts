@@ -74,7 +74,7 @@ export interface LayoutConfig {
    * 这一个字段决定了整个约定体系：
    *   资源目录：<resourceRoot>/<configDirName>/skills、mcps ...
    *   用户目录：~/<configDirName>/skills、mcps ...
-   *   数据目录：<resourceRoot>/<configDirName>/data（可被 dataDir 覆盖）
+   *   数据目录：~/<configDirName>/data（可被 dataDir 覆盖）
    *
    * @default '.thething'
    */
@@ -82,7 +82,7 @@ export interface LayoutConfig {
 
   /**
    * 运行时数据目录（数据库、工具结果缓存等）
-   * 不传时默认为 <resourceRoot>/<configDirName>/data
+   * 不传时默认为 ~/<configDirName>/data
    *
    * 独立配置此字段可以把数据与代码分离（符合 12-factor app 原则）
    */
@@ -150,15 +150,15 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
 
   const projectDir = path.join(resourceRoot, configDirName);
   const userDir = path.join(os.homedir(), configDirName);
-  const dataDir = config.dataDir ?? path.join(projectDir, 'data');
+  const dataDir = config.dataDir ?? path.join(userDir, 'data');
 
   const defaultResources: ResourceDirs = {
     skills:      [path.join(userDir, 'skills'),      path.join(projectDir, 'skills')],
     agents:      [path.join(userDir, 'agents'),      path.join(projectDir, 'agents')],
     mcps:        [path.join(userDir, 'mcps'),        path.join(projectDir, 'mcps')],
-    connectors:  [                                    path.join(projectDir, 'connectors')],
+    connectors:  [path.join(userDir, 'connectors'),  path.join(projectDir, 'connectors')],
     permissions: [path.join(userDir, 'permissions'), path.join(projectDir, 'permissions')],
-    memory:      [                                    path.join(projectDir, 'memory')],
+    memory:      [path.join(userDir, 'memory'),      path.join(projectDir, 'memory')],
   };
 
   return Object.freeze({

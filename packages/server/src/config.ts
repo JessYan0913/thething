@@ -1,27 +1,12 @@
 // ============================================================
-// Server Config - Server 项目目录配置
+// Server Config - Server 布局配置
 // ============================================================
 
-import path from 'path'
-import { fileURLToPath } from 'url'
 import {
   ENV_RESOURCE_ROOT,
   ENV_DATA_DIR,
   ENV_CONFIG_DIR_NAME,
 } from './env-names'
-
-/**
- * 获取 Server 项目目录
- *
- * 使用 import.meta.url 获取当前模块的实际位置
- * 在 ES modules 中，__dirname 不可靠（tsx 运行时指向入口文件目录）
- */
-function getServerProjectDir(): string {
-  const currentModulePath = fileURLToPath(import.meta.url)
-  // config.ts 位于 packages/server/src/config.ts
-  // 向上一级是 packages/server/src，再向上一级是 packages/server
-  return path.resolve(path.dirname(currentModulePath), '..')
-}
 
 /**
  * 默认配置目录名称
@@ -31,27 +16,26 @@ const DEFAULT_CONFIG_DIR_NAME = '.thething'
 /**
  * 获取 Server Layout 配置
  *
- * 从环境变量读取布局配置，未设置时使用默认值。
+ * resourceRoot 默认为 process.cwd()，即用户当前工作目录。
+ * CLI 下 cd 到项目目录启动，桌面端打开项目时传入项目路径。
  *
  * 支持的环境变量：
- * - THETHING_RESOURCE_ROOT: 项目根目录（默认为 server 包目录）
- * - THETHING_DATA_DIR: 数据目录路径（默认为 resourceRoot/.siact/data）
+ * - THETHING_RESOURCE_ROOT: 项目根目录（默认为 cwd）
+ * - THETHING_DATA_DIR: 数据目录路径（默认为 ~/.thething/data）
  * - THETHING_CONFIG_DIR_NAME: 配置目录名称（默认 '.thething'）
  */
 export function getServerLayoutConfig(): {
   resourceRoot: string;
-  dataDir: string;
+  dataDir?: string;
   configDirName: string;
 } {
-  const defaultResourceRoot = getServerProjectDir()
-  const resourceRoot = process.env[ENV_RESOURCE_ROOT] || defaultResourceRoot
+  const resourceRoot = process.env[ENV_RESOURCE_ROOT] || process.cwd()
   const configDirName = process.env[ENV_CONFIG_DIR_NAME] || DEFAULT_CONFIG_DIR_NAME
-  const defaultDataDir = path.join(resourceRoot, configDirName, 'data')
-  const dataDir = process.env[ENV_DATA_DIR] || defaultDataDir
+  const dataDir = process.env[ENV_DATA_DIR] || undefined
 
   return {
     resourceRoot,
-    dataDir,
+    ...(dataDir ? { dataDir } : {}),
     configDirName,
   }
 }
