@@ -17,6 +17,8 @@ export interface PlatformConfig {
   requiresCodesign: boolean
   /** Requires postject sentinel (macOS only) */
   requiresSentinel: boolean
+  /** Tauri target triple for sidecar naming */
+  tauriTargetTriple: string
 }
 
 /**
@@ -31,6 +33,7 @@ export const PLATFORMS: Record<string, PlatformConfig> = {
     nativeDirName: 'darwin-arm64',
     requiresCodesign: true,
     requiresSentinel: true,
+    tauriTargetTriple: 'aarch64-apple-darwin',
   },
   'darwin-x64': {
     platform: 'darwin',
@@ -40,6 +43,7 @@ export const PLATFORMS: Record<string, PlatformConfig> = {
     nativeDirName: 'darwin-x64',
     requiresCodesign: true,
     requiresSentinel: true,
+    tauriTargetTriple: 'x86_64-apple-darwin',
   },
   'win32-x64': {
     platform: 'win32',
@@ -49,6 +53,7 @@ export const PLATFORMS: Record<string, PlatformConfig> = {
     nativeDirName: 'win32-x64',
     requiresCodesign: false,
     requiresSentinel: false,
+    tauriTargetTriple: 'x86_64-pc-windows-msvc',
   },
   'linux-x64': {
     platform: 'linux',
@@ -58,6 +63,7 @@ export const PLATFORMS: Record<string, PlatformConfig> = {
     nativeDirName: 'linux-x64',
     requiresCodesign: false,
     requiresSentinel: false,
+    tauriTargetTriple: 'x86_64-unknown-linux-gnu',
   },
 }
 

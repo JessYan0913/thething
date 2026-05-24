@@ -60,10 +60,11 @@ async function bundleCli(outputFile: string): Promise<void> {
     minify: false,
     sourcemap: false,
     external: [
-      // Native modules must be external (loaded dynamically)
       'better-sqlite3',
-      // Large dependencies that should stay external
       'fsevents',
+      'ink',
+      'yoga-wasm-web',
+      'react-devtools-core',
     ],
     define: {
       // Define process.env variables needed

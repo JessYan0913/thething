@@ -1,0 +1,15 @@
+{
+  "name": "@the-thing/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "cargo tauri dev",
+    "build": "cargo tauri build",
+    "prepare:sidecar": "tsx scripts/prepare-sidecar.ts"
+  },
+  "devDependencies": {
+    "@the-thing/build": "workspace:*",
+    "@tauri-apps/cli": "^2",
+    "tsx": "^4.19.3"
+  }
+}
