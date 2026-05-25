@@ -1,14 +1,15 @@
 // ============================================================
-// Prepare Next.js Standalone for Tauri Packaging
+// Prepare Next.js Standalone for Electron Packaging
 // ============================================================
 
-import { mkdirSync, cpSync, existsSync, copyFileSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, existsSync, copyFileSync, writeFileSync, rmSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
 
 const ROOT_DIR = join(__dirname, '..', '..');
 const NEXT_APP_DIR = join(ROOT_DIR, 'app');
 const STANDALONE_DIR = join(NEXT_APP_DIR, '.next', 'standalone');
-const TAURI_RESOURCES_DIR = join(__dirname, '..', 'src-tauri', 'resources', 'app');
+const OUTPUT_DIR = join(__dirname, '..', 'resources', 'standalone');
 
 async function main() {
   console.log('[Prepare Standalone] Starting...');
@@ -18,32 +19,33 @@ async function main() {
     throw new Error(`Standalone build not found at ${STANDALONE_DIR}. Run "pnpm build:next" first.`);
   }
 
-  // 2. Copy standalone output to Tauri resources
+  // 2. Copy standalone output (dereference all symlinks for Electron bundling)
   console.log('[Prepare Standalone] Copying standalone output...');
-  if (existsSync(TAURI_RESOURCES_DIR)) {
-    rmSync(TAURI_RESOURCES_DIR, { recursive: true, force: true });
+  if (existsSync(OUTPUT_DIR)) {
+    rmSync(OUTPUT_DIR, { recursive: true, force: true });
   }
-  mkdirSync(TAURI_RESOURCES_DIR, { recursive: true });
-  cpSync(STANDALONE_DIR, TAURI_RESOURCES_DIR, { recursive: true });
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+  execSync(`rsync -a --copy-links "${STANDALONE_DIR}/" "${OUTPUT_DIR}/"`, { stdio: 'inherit' });
 
   // 3. Copy static assets (standalone doesn't include public/ and .next/static/)
   console.log('[Prepare Standalone] Copying static assets...');
   const publicDir = join(NEXT_APP_DIR, 'public');
   const staticDir = join(NEXT_APP_DIR, '.next', 'static');
+  const appInResources = join(OUTPUT_DIR, 'packages', 'app');
 
   if (existsSync(publicDir)) {
-    cpSync(publicDir, join(TAURI_RESOURCES_DIR, 'public'), { recursive: true });
+    execSync(`rsync -a --copy-links "${publicDir}/" "${join(appInResources, 'public')}/"`, { stdio: 'inherit' });
   }
 
   if (existsSync(staticDir)) {
-    mkdirSync(join(TAURI_RESOURCES_DIR, '.next', 'static'), { recursive: true });
-    cpSync(staticDir, join(TAURI_RESOURCES_DIR, '.next', 'static'), { recursive: true });
+    mkdirSync(join(appInResources, '.next', 'static'), { recursive: true });
+    execSync(`rsync -a --copy-links "${staticDir}/" "${join(appInResources, '.next', 'static')}/"`, { stdio: 'inherit' });
   }
 
   // 4. Copy better-sqlite3 native binding
   console.log('[Prepare Standalone] Copying better-sqlite3 native binding...');
   const sqliteBindingSrc = join(NEXT_APP_DIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
-  const sqliteBindingDest = join(TAURI_RESOURCES_DIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+  const sqliteBindingDest = join(appInResources, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
 
   if (existsSync(sqliteBindingSrc)) {
     mkdirSync(join(sqliteBindingDest, '..'), { recursive: true });
@@ -56,7 +58,7 @@ async function main() {
   console.log('[Prepare Standalone] Creating start-standalone.js wrapper...');
   const wrapperScript = `
 const http = require('http');
-const next = require('./server.js');
+const next = require('./packages/app/server.js');
 
 const port = parseInt(process.argv.find(a => a === '-p')
   ? process.argv[process.argv.indexOf('-p') + 1] : '3456');
@@ -69,7 +71,7 @@ server.listen(port === 0 ? 0 : port, '127.0.0.1', () => {
 });
 `;
 
-  const wrapperPath = join(TAURI_RESOURCES_DIR, 'start-standalone.js');
+  const wrapperPath = join(OUTPUT_DIR, 'start-standalone.js');
   writeFileSync(wrapperPath, wrapperScript);
 
   console.log('[Prepare Standalone] Done!');

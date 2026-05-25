@@ -39,10 +39,9 @@ dist/
 # exception: allow packages/build (portable build scripts)
 !packages/build/
 
-# Tauri
-packages/desktop/src-tauri/target/
-packages/desktop/src-tauri/binaries/
-packages/desktop/src-tauri/gen/
+# Electron desktop
+packages/desktop/build/
+packages/desktop/resources/standalone/
 
 # misc
 .DS_Store

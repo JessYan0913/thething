@@ -2,14 +2,19 @@
   "name": "@the-thing/desktop",
   "version": "0.1.0",
   "private": true,
+  "main": "build/main.js",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "dev": "electron .",
+    "build": "tsc -p tsconfig.json && electron-builder",
     "prepare:standalone": "tsx scripts/prepare-standalone.ts",
-    "download:node": "tsx scripts/download-node.ts"
+    "rebuild:sqlite": "electron-rebuild -f -w better-sqlite3 -m ../app"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
-    "tsx": "^4.19.3"
+    "@electron/rebuild": "^4.0.0",
+    "@types/node": "^20",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5"
   }
 }
