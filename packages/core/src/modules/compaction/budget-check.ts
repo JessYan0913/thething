@@ -28,7 +28,7 @@ const CORE_TOOLS = new Set(['bash', 'read_file', 'write_file', 'edit_file', 'gre
 const OPTIONAL_TOOL_PRIORITY = [
   'mcp_*',
   'connector_*',
-  'web_search',
+  'web_fetch',
   'research',
   'todo_*',
   'ask_user_question',

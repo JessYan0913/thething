@@ -7,6 +7,8 @@
 import path from 'path';
 import os from 'os';
 
+const ENV_HOME_DIR = 'THETHING_HOME_DIR';
+
 /**
  * 检测项目根目录
  *
@@ -51,5 +53,8 @@ export function resolveProjectDir(options?: {
  * @returns 用户 home 目录路径
  */
 export function resolveHomeDir(): string {
+  const overriddenHomeDir = process.env[ENV_HOME_DIR];
+  if (overriddenHomeDir) return overriddenHomeDir;
+
   return os.homedir();
 }

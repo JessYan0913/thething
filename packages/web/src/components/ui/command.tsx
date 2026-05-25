@@ -39,6 +39,7 @@ function CommandDialog({
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
+  children?: React.ComponentProps<typeof CommandPrimitive>["children"]
   className?: string
   showCloseButton?: boolean
 }) {

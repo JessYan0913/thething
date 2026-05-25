@@ -77,7 +77,7 @@ initialPrompt: ""             # 首轮提示前缀
 这里是 agent 的核心行为指令...
 \`\`\`
 
-常用工具名：read_file, edit_file, write_file, bash, grep, glob, search, agent, skill, ask_user_question, web_search
+常用工具名：read_file, edit_file, write_file, bash, grep, glob, search, agent, skill, ask_user_question, web_fetch
 `
 
 function buildConfigChatPreamble(currentContent: string): string {

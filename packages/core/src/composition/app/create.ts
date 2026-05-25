@@ -181,7 +181,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     skills: [...context.skills],
     agents: [...context.agents],
     mcps: [...context.mcps],
-    webSearchApiKey: context.runtime.env.EXA_API_KEY,
     debugEnabled: Boolean(context.runtime.env.DEBUG),
     modelAliases: behavior.modelAliases,
     dynamicReload: resolved.dynamicReload,

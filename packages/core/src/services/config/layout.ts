@@ -14,10 +14,10 @@
 //
 
 import path from 'path';
-import os from 'os';
 import {
   DEFAULT_PROJECT_CONFIG_DIR_NAME,
 } from '../../primitives/constants';
+import { resolveHomeDir } from '../../primitives/paths';
 import { PERMISSIONS_FILENAME } from './defaults';
 import { DEFAULT_DB_FILENAME } from '../datastore/constants';
 
@@ -149,7 +149,7 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
   const configDirName = config.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
 
   const projectDir = path.join(resourceRoot, configDirName);
-  const userDir = path.join(os.homedir(), configDirName);
+  const userDir = path.join(resolveHomeDir(), configDirName);
   const dataDir = config.dataDir ?? path.join(userDir, 'data');
 
   const defaultResources: ResourceDirs = {

@@ -13,7 +13,7 @@ export const EXPLORE_AGENT: AgentDefinition = {
   displayName: 'Explore Agent',
   description: 'Quick exploration to find information. Read-only access with fast model.',
   tools: ['read_file', 'grep', 'glob'],
-  disallowedTools: ['write_file', 'edit_file', 'bash', 'web_search'],
+  disallowedTools: ['write_file', 'edit_file', 'bash', 'web_fetch'],
   model: 'fast',
   maxTurns: 15,
   includeParentContext: false,

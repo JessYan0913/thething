@@ -9,7 +9,7 @@ import { logger } from '../../primitives/logger'
 import {
   createBashTool,
   createEditFileTool,
-  createExaSearchTool,
+  createWebFetchTool,
   createGlobTool,
   createGrepTool,
   createReadFileTool,
@@ -34,7 +34,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   const agentRegistry = new AgentRegistry()
 
   Object.assign(tools, {
-    web_search: createExaSearchTool({ apiKey: config.webSearchApiKey }),
+    web_fetch: createWebFetchTool(),
     read_file: createReadFileTool({
       cwd: config.sessionState.projectRoot,
       extraSensitivePaths: config.sessionState.extraSensitivePaths,

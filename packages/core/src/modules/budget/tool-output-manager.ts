@@ -133,7 +133,7 @@ export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
   'glob': {
     maxResultSizeChars: 20_000,
   },
-  'exa_search': {
+  'web_fetch': {
     maxResultSizeChars: 20_000,
   },
 

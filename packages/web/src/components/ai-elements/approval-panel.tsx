@@ -39,7 +39,7 @@ const TOOL_LABELS: Record<string, string> = {
   read_file: '读取文件',
   glob: '搜索文件',
   grep: '搜索内容',
-  web_search: '网络搜索',
+  web_fetch: '网络搜索',
 };
 
 const TOOL_CONFIGS: Record<
@@ -52,7 +52,7 @@ const TOOL_CONFIGS: Record<
   read_file: { icon: FileIcon, label: TOOL_LABELS.read_file },
   glob: { icon: SearchIcon, label: TOOL_LABELS.glob },
   grep: { icon: SearchIcon, label: TOOL_LABELS.grep },
-  web_search: { icon: SearchIcon, label: TOOL_LABELS.web_search },
+  web_fetch: { icon: SearchIcon, label: TOOL_LABELS.web_fetch },
 };
 
 function getToolConfig(toolName: string) {

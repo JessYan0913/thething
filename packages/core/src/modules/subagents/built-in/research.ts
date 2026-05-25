@@ -5,14 +5,14 @@ import type { AgentDefinition } from '../types';
  *
  * 特点：
  * - 使用智能模型（opus/max）
- * - 只读访问，但可以使用 web_search
+ * - 只读访问，但可以使用 web_fetch
  * - 适合深度分析和信息综合
  */
 export const RESEARCH_AGENT: AgentDefinition = {
   agentType: 'research',
   displayName: 'Research Agent',
   description: 'Deep research on topics using web search, document analysis, and information synthesis.',
-  tools: ['web_search', 'read_file', 'grep', 'glob', 'web_fetch'],
+  tools: ['web_fetch', 'read_file', 'grep', 'glob'],
   disallowedTools: ['write_file', 'edit_file', 'bash'],
   model: 'smart',
   maxTurns: 25,

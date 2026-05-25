@@ -81,7 +81,6 @@ export interface LoadToolsConfig {
   /** 预加载的 skills（来自 AppContext 快照） */
   skills?: Skill[]
   /** WebSearch API Key（由应用层显式传入） */
-  webSearchApiKey?: string
   /** 是否开启调试日志 */
   debugEnabled?: boolean
   /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */

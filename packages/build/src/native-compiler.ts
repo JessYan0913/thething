@@ -57,6 +57,24 @@ function copyBetterSqlite3Package(nativeDir: string): void {
     fs.mkdirSync(targetPkgDir, { recursive: true })
   }
 
+  // Copy the package metadata and JS wrapper tree intact.
+  // better-sqlite3/lib/database.js requires nested files under lib/methods/*,
+  // so copying only a few top-level files is not enough for SEA runtime.
+  for (const entry of fs.readdirSync(pkgPath, { withFileTypes: true })) {
+    if (entry.name === 'build') continue
+    if (entry.name === 'src') continue
+    if (entry.name === 'node_modules') continue
+
+    const sourcePath = path.join(pkgPath, entry.name)
+    const targetPath = path.join(targetPkgDir, entry.name)
+
+    if (entry.isDirectory()) {
+      copyDirectory(sourcePath, targetPath)
+    } else if (entry.isFile()) {
+      fs.copyFileSync(sourcePath, targetPath)
+    }
+  }
+
   // Copy native binding (.node file)
   const nativeBindingPath = path.join(pkgPath, 'build', 'Release', 'better_sqlite3.node')
   if (fs.existsSync(nativeBindingPath)) {
@@ -68,20 +86,7 @@ function copyBetterSqlite3Package(nativeDir: string): void {
     console.log(`[Native] Copied native binding from ${nativeBindingPath}`)
   }
 
-  // Copy lib/ directory (wrapper files)
-  const libPath = path.join(pkgPath, 'lib')
-  if (fs.existsSync(libPath)) {
-    const targetLibDir = path.join(targetPkgDir, 'lib')
-    copyDirectory(libPath, targetLibDir)
-    console.log(`[Native] Copied lib/ wrapper files`)
-  }
-
-  // Copy necessary dependencies
-  const depsPath = path.join(pkgPath, 'deps')
-  if (fs.existsSync(depsPath)) {
-    copyDirectory(depsPath, path.join(targetPkgDir, 'deps'))
-    console.log(`[Native] Copied deps/ directory`)
-  }
+  console.log(`[Native] Copied better-sqlite3 package files`)
 
   // Copy bindings helper (needed by lib/database.js)
   const bindingsPath = findBindingsPackagePath()
@@ -90,11 +95,13 @@ function copyBetterSqlite3Package(nativeDir: string): void {
     if (!fs.existsSync(targetBindingsDir)) {
       fs.mkdirSync(targetBindingsDir, { recursive: true })
     }
-    // Copy bindings.js
-    fs.copyFileSync(
-      path.join(bindingsPath, 'bindings.js'),
-      path.join(targetBindingsDir, 'bindings.js')
-    )
+    for (const entry of fs.readdirSync(bindingsPath, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      fs.copyFileSync(
+        path.join(bindingsPath, entry.name),
+        path.join(targetBindingsDir, entry.name)
+      )
+    }
     console.log(`[Native] Copied bindings helper`)
   }
 

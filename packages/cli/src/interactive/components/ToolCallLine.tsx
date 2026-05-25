@@ -11,7 +11,7 @@ const TOOL_ICONS: Record<string, string> = {
   grep: '?',
   glob: '?',
   agent: 'A',
-  web_search: 'S',
+  web_fetch: 'S',
 }
 
 interface Props {

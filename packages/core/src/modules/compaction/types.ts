@@ -56,6 +56,5 @@ export const DEFAULT_COMPACTABLE = new Set([
   'glob',
   'edit_file',
   'write_file',
-  'web_search',
   'web_fetch',
 ]);

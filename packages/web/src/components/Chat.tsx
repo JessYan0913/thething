@@ -74,7 +74,7 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
     case 'bash':
       return { title: `Bash: ${String(i.command ?? '').slice(0, 40)}...`, icon: TerminalIcon };
     case 'search':
-    case 'exa_search':
+    case 'web_fetch':
       return { title: `Search: ${i.query ?? ''}`, icon: SearchIcon };
     case 'agent':
       return { title: `${i.agentType ?? 'Agent'}: ${String(i.task ?? '').slice(0, 30)}...`, icon: UserIcon };

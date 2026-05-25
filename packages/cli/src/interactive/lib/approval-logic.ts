@@ -118,7 +118,7 @@ export function formatToolInputSummary(toolName: string, input: unknown): string
       return String(inp.pattern || '')
     case 'agent':
       return String(inp.description || inp.prompt || '').slice(0, 80)
-    case 'web_search':
+    case 'web_fetch':
       return String(inp.query || '').slice(0, 80)
     default:
       return ''
