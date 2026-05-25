@@ -53,7 +53,7 @@ export async function dbBackup(backupPath: string): Promise<void> {
   console.log(chalk.blue(`Backing up database to: ${backupPath}`))
 
   const cwd = resolveProjectDir({
-    monorepoPatterns: ['packages/server', 'packages/cli'],
+    monorepoPatterns: ['packages/app', 'packages/cli'],
   })
   const envSnapshot: Record<string, string | undefined> = { ...process.env }
   const runtime = await bootstrap({

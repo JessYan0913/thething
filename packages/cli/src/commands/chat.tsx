@@ -145,7 +145,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
   }
 
   const cwd = resolveProjectDir({
-    monorepoPatterns: ['packages/server', 'packages/cli'],
+    monorepoPatterns: ['packages/app', 'packages/cli'],
   })
 
   const runtime = await bootstrap({

@@ -21,22 +21,20 @@ fn spawn_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
 
     let resource_dir = app.path().resource_dir()?;
-    let web_dir = resource_dir.join("web");
+    let next_app_dir = resource_dir.join("app");
     let resource_root = env::current_dir()?;
     let home_dir = app.path().home_dir()?;
 
-    let sidecar = app.shell().sidecar("thing")?;
+    // sidecar: 运行 Node.js + Next.js standalone server
+    let sidecar = app.shell().sidecar("node")?;
     let (mut rx, _child) = sidecar
-        .current_dir(&resource_root)
+        .current_dir(&next_app_dir)
+        .env("THETHING_DATA_DIR", &resource_root)
         .env("THETHING_RESOURCE_ROOT", &resource_root)
         .env("THETHING_HOME_DIR", &home_dir)
         .env("HOME", &home_dir)
         .env("USERPROFILE", &home_dir)
-        .args(&[
-            "serve",
-            "--port", "0",
-            "--web-dir", &web_dir.to_string_lossy(),
-        ])
+        .args(&["start-standalone.js", "-p", "0"])
         .spawn()?;
 
     eprintln!("[desktop] sidecar resource root: {}", resource_root.display());
