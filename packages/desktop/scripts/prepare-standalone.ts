@@ -2,8 +2,7 @@
 // Prepare Next.js Standalone for Tauri Packaging
 // ============================================================
 
-import { execSync } from 'child_process';
-import { mkdirSync, cpSync, existsSync, copyFileSync } from 'fs';
+import { mkdirSync, cpSync, existsSync, copyFileSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 
 const ROOT_DIR = join(__dirname, '..', '..');
@@ -14,14 +13,15 @@ const TAURI_RESOURCES_DIR = join(__dirname, '..', 'src-tauri', 'resources', 'app
 async function main() {
   console.log('[Prepare Standalone] Starting...');
 
-  // 1. Build Next.js standalone
-  console.log('[Prepare Standalone] Building Next.js...');
-  execSync('npm run build', { cwd: NEXT_APP_DIR, stdio: 'inherit' });
+  // 1. Verify standalone build exists (built by `pnpm build:next` upstream)
+  if (!existsSync(STANDALONE_DIR)) {
+    throw new Error(`Standalone build not found at ${STANDALONE_DIR}. Run "pnpm build:next" first.`);
+  }
 
   // 2. Copy standalone output to Tauri resources
   console.log('[Prepare Standalone] Copying standalone output...');
   if (existsSync(TAURI_RESOURCES_DIR)) {
-    execSync(`rm -rf ${TAURI_RESOURCES_DIR}`);
+    rmSync(TAURI_RESOURCES_DIR, { recursive: true, force: true });
   }
   mkdirSync(TAURI_RESOURCES_DIR, { recursive: true });
   cpSync(STANDALONE_DIR, TAURI_RESOURCES_DIR, { recursive: true });
@@ -70,7 +70,7 @@ server.listen(port === 0 ? 0 : port, '127.0.0.1', () => {
 `;
 
   const wrapperPath = join(TAURI_RESOURCES_DIR, 'start-standalone.js');
-  require('fs').writeFileSync(wrapperPath, wrapperScript);
+  writeFileSync(wrapperPath, wrapperScript);
 
   console.log('[Prepare Standalone] Done!');
 }

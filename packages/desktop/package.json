@@ -4,11 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "tauri dev",
-    "build": "pnpm run prepare:sidecar && tauri build",
-    "prepare:sidecar": "tsx scripts/prepare-sidecar.ts"
+    "build": "tauri build",
+    "prepare:standalone": "tsx scripts/prepare-standalone.ts",
+    "download:node": "tsx scripts/download-node.ts"
   },
   "devDependencies": {
-    "@the-thing/build": "workspace:*",
     "@tauri-apps/cli": "^2",
     "tsx": "^4.19.3"
   }

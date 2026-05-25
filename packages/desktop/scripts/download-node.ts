@@ -1,73 +1,68 @@
-// ============================================================
-// Download Node.js Binary for Tauri Packaging
-// ============================================================
-
 import { execSync } from 'child_process';
-import { mkdirSync, existsSync, chmodSync } from 'fs';
+import { mkdirSync, existsSync, chmodSync, renameSync, rmSync } from 'fs';
 import { join } from 'path';
-import https from 'https';
-import http from 'http';
 
 const NODE_VERSION = 'v20.11.1';
-const TARGET_TRIPLES = [
-  'aarch64-apple-darwin',
-  'x86_64-apple-darwin',
-  'x86_64-pc-windows-msvc',
-  'x86_64-unknown-linux-gnu',
-];
 
 const BINARIES_DIR = join(__dirname, '..', 'src-tauri', 'binaries');
 
-function getNodeUrl(targetTriple: string): string {
-  const platform = targetTriple.includes('apple') ? 'darwin' : 
-                   targetTriple.includes('windows') ? 'win' : 'linux';
-  const arch = targetTriple.includes('aarch64') ? 'arm64' : 'x64';
-  const ext = targetTriple.includes('windows') ? 'zip' : 'tar.gz';
-  
-  return `https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-${platform}-${arch}.${ext}`;
+function getTargetTriple(): string {
+  const platform = process.platform;
+  const arch = process.arch;
+  if (platform === 'darwin' && arch === 'arm64') return 'aarch64-apple-darwin';
+  if (platform === 'darwin' && arch === 'x64') return 'x86_64-apple-darwin';
+  if (platform === 'win32' && arch === 'x64') return 'x86_64-pc-windows-msvc';
+  if (platform === 'linux' && arch === 'x64') return 'x86_64-unknown-linux-gnu';
+  throw new Error(`Unsupported platform: ${platform}-${arch}`);
 }
 
-function downloadFile(url: string, dest: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : http;
-    client.get(url, (response) => {
-      if (response.statusCode === 302 || response.statusCode === 301) {
-        downloadFile(response.headers.location!, dest).then(resolve).catch(reject);
-        return;
-      }
-      
-      const file = require('fs').createWriteStream(dest);
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        resolve();
-      });
-    }).on('error', reject);
-  });
+function getNodeArchiveName(triple: string): { dirName: string; platform: string; arch: string; ext: string } {
+  const platform = triple.includes('apple') ? 'darwin' :
+                   triple.includes('windows') ? 'win' : 'linux';
+  const arch = triple.includes('aarch64') ? 'arm64' : 'x64';
+  const ext = triple.includes('windows') ? 'zip' : 'tar.gz';
+  const dirName = `node-${NODE_VERSION}-${platform}-${arch}`;
+  return { dirName, platform, arch, ext };
 }
 
 async function main() {
-  const targetTriple = process.argv[2] || 'aarch64-apple-darwin';
-  
-  console.log(`[Download Node] Downloading Node.js ${NODE_VERSION} for ${targetTriple}...`);
-  
+  const triple = process.argv[2] || getTargetTriple();
+  const { dirName, ext } = getNodeArchiveName(triple);
+  const isWindows = triple.includes('windows');
+
+  const binaryName = `node-${triple}${isWindows ? '.exe' : ''}`;
+  const binaryPath = join(BINARIES_DIR, binaryName);
+
+  if (existsSync(binaryPath)) {
+    console.log(`[Download Node] ${binaryName} already exists, skipping.`);
+    return;
+  }
+
   mkdirSync(BINARIES_DIR, { recursive: true });
-  
-  const url = getNodeUrl(targetTriple);
-  const ext = targetTriple.includes('windows') ? 'zip' : 'tar.gz';
-  const archivePath = join(BINARIES_DIR, `node-${targetTriple}.${ext}`);
-  
-  console.log(`[Download Node] Downloading from ${url}...`);
-  await downloadFile(url, archivePath);
-  
+
+  const url = `https://nodejs.org/dist/${NODE_VERSION}/${dirName}.${ext}`;
+  const archivePath = join(BINARIES_DIR, `${dirName}.${ext}`);
+
+  console.log(`[Download Node] Downloading Node.js ${NODE_VERSION} for ${triple}...`);
+  execSync(`curl -fSL -o "${archivePath}" "${url}"`, { stdio: 'inherit' });
+
   console.log(`[Download Node] Extracting...`);
   if (ext === 'tar.gz') {
-    execSync(`tar -xzf ${archivePath} -C ${BINARIES_DIR}`);
+    execSync(`tar -xzf "${archivePath}" -C "${BINARIES_DIR}"`);
+    const nodeSrc = join(BINARIES_DIR, dirName, 'bin', 'node');
+    renameSync(nodeSrc, binaryPath);
+    chmodSync(binaryPath, 0o755);
   } else {
-    execSync(`unzip -o ${archivePath} -d ${BINARIES_DIR}`);
+    execSync(`unzip -o "${archivePath}" -d "${BINARIES_DIR}"`);
+    const nodeSrc = join(BINARIES_DIR, dirName, 'node.exe');
+    renameSync(nodeSrc, binaryPath);
   }
-  
-  console.log(`[Download Node] Done!`);
+
+  // Clean up
+  rmSync(archivePath, { force: true });
+  rmSync(join(BINARIES_DIR, dirName), { recursive: true, force: true });
+
+  console.log(`[Download Node] Ready: ${binaryPath}`);
 }
 
 main().catch((error) => {
