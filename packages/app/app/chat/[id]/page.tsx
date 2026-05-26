@@ -1,11 +1,13 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Chat from '@/components/Chat';
 
 export default function ChatPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const conversationId = params.id as string;
-  
-  return <Chat conversationId={conversationId} />;
+  const initialMessage = searchParams.get('msg') ?? undefined;
+
+  return <Chat conversationId={conversationId} initialMessage={initialMessage} />;
 }
