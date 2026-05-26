@@ -13,6 +13,7 @@ async function initializeRuntime(): Promise<CoreRuntime> {
       dataDir: process.env.THETHING_DATA_DIR,
     },
     env: envSnapshot,
+    debug: true,
   });
 
   context = await createContext({ runtime });

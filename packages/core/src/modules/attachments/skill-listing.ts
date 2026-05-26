@@ -19,11 +19,11 @@ export const SKILL_LISTING_CONFIG = {
   // 最大技能数量
   MAX_SKILLS: 30,
 
-  // 哪些来源总是显示（project 技能也应该显示）
-  ALWAYS_VISIBLE: ['bundled', 'mcp', 'project'] as string[],
+  // 哪些来源总是显示（所有来源的技能都应该显示）
+  ALWAYS_VISIBLE: ['bundled', 'mcp', 'project', 'user'] as string[],
 
   // 哪些技能来源需要完整描述
-  ALWAYS_FULL: ['bundled', 'project'] as string[],
+  ALWAYS_FULL: ['bundled', 'project', 'user'] as string[],
 } as const;
 
 /**
@@ -43,7 +43,7 @@ export function filterVisibleSkills(
     );
   }
 
-  // 默认：只显示 bundled 和 mcp
+  // 默认：显示 ALWAYS_VISIBLE 中配置的来源
   return skills.filter(s =>
     SKILL_LISTING_CONFIG.ALWAYS_VISIBLE.includes(s.source ?? 'project')
   );

@@ -90,6 +90,8 @@ export interface BootstrapOptions {
   behavior?: Partial<BehaviorConfig>;
   /** 环境变量快照（由应用层显式传入） */
   env?: Record<string, string | undefined>;
+  /** 是否启用调试日志（默认 false） */
+  debug?: boolean;
   /** 自定义 DataStore 实例（可选，替换默认 SQLite 实现） */
   dataStore?: DataStore;
   /** 数据库配置（可选，仅当使用默认 SQLite 时生效） */
@@ -161,8 +163,8 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   const layout = resolveLayout(options.layout);
   const env = Object.freeze({ ...(options.env ?? {}) });
 
-  // 初始化日志系统
-  setDebugEnabled(Boolean(env.DEBUG));
+  // 初始化日志系统（优先使用显式 debug 参数，其次 fallback 到 env.DEBUG）
+  setDebugEnabled(options.debug ?? Boolean(env.DEBUG));
 
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);
