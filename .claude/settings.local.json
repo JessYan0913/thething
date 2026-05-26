@@ -54,7 +54,25 @@
       "Bash(cp extensions/subagents/built-in/*.ts modules/subagents/built-in/)",
       "Bash(cp extensions/memory/*.ts modules/memory/)",
       "Bash(cp extensions/permissions/*.ts modules/permissions/)",
-      "Bash(cp extensions/system-prompt/*.ts modules/system-prompt/)"
+      "Bash(cp extensions/system-prompt/*.ts modules/system-prompt/)",
+      "Read(//private/tmp/**)",
+      "Bash(echo \"console.log\\('electron:', typeof require\\('electron'\\)\\);\")",
+      "Bash(ELECTRON_RUN_AS_NODE=1 \"/Users/yanheng/Documents/work/thething/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron\" test.js)",
+      "Bash(rm -f test.js)",
+      "Bash(\"/Users/yanheng/Documents/work/thething/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron\" /tmp/test-main.js)",
+      "Bash(rm -f /tmp/test-main.js)",
+      "Bash(xattr -l \"/Users/yanheng/Documents/work/thething/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron\")",
+      "Bash(npx node-gyp *)",
+      "Bash(xcode-select -p)",
+      "Bash(ls /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk/usr/include/c++/ 2>/dev/null | head -5)",
+      "Read(//Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk/usr/include/c++/**)",
+      "Bash(clang++ --version)",
+      "Bash(find /Library/Developer/CommandLineTools /Applications/Xcode.app -name \"climits\" 2>/dev/null | head -5)",
+      "Read(//Library/Developer/CommandLineTools/**)",
+      "Bash(pkg-config --cflags-only-I libc++)",
+      "Bash(cat ~/.npmrc 2>/dev/null; echo \"---\"; cat /Users/yanheng/Documents/work/thething/.npmrc 2>/dev/null)",
+      "Read(//Users/yanheng/**)",
+      "Bash(npx electron-rebuild *)"
     ]
   }
 }
