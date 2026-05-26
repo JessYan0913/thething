@@ -2,6 +2,7 @@
   "sidebar": {
     "general": "一般",
     "generalSettings": "一般設定",
+    "models": "モデル設定",
     "resourceManagement": "リソース管理",
     "mcpServers": "MCPサーバー",
     "connectors": "コネクタ管理",
@@ -31,6 +32,35 @@
         "en": "English",
         "ja": "日本語"
       }
+    }
+  },
+  "models": {
+    "badge": "モデル設定",
+    "save": "保存",
+    "saved": "保存済み",
+    "saveError": "保存に失敗しました",
+    "providerSection": "プロバイダー設定",
+    "apiKey": {
+      "title": "API Key",
+      "description": "モデルプロバイダーのAPIキー",
+      "placeholder": "sk-..."
+    },
+    "baseURL": {
+      "title": "Base URL",
+      "description": "モデルプロバイダーのAPIエンドポイント",
+      "placeholder": "https://api.example.com/v1"
+    },
+    "model": {
+      "title": "デフォルトモデル",
+      "description": "会話に使用するデフォルトモデル名",
+      "placeholder": "qwen-plus"
+    },
+    "aliasSection": "モデルエイリアス",
+    "aliasHint": "会話でエイリアスを使ってモデルを素早く切り替えられます",
+    "alias": {
+      "fast": "高速",
+      "smart": "スマート",
+      "default": "デフォルト"
     }
   }
 }

@@ -21,6 +21,7 @@ import {
   ArrowLeftIcon,
   PaletteIcon,
   CableIcon,
+  CpuIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -34,6 +35,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
   const generalItems = [
     { to: "/settings/general", icon: PaletteIcon, label: t('sidebar.generalSettings') },
+    { to: "/settings/models", icon: CpuIcon, label: t('sidebar.models') },
   ]
 
   const resourceItems = [

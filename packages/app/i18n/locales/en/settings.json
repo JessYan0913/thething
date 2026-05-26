@@ -2,6 +2,7 @@
   "sidebar": {
     "general": "General",
     "generalSettings": "General Settings",
+    "models": "Model Settings",
     "resourceManagement": "Resource Management",
     "mcpServers": "MCP Servers",
     "connectors": "Connectors",
@@ -31,6 +32,35 @@
         "en": "English",
         "ja": "日本語"
       }
+    }
+  },
+  "models": {
+    "badge": "Model Configuration",
+    "save": "Save",
+    "saved": "Saved",
+    "saveError": "Save failed",
+    "providerSection": "Provider Configuration",
+    "apiKey": {
+      "title": "API Key",
+      "description": "API key for the model provider",
+      "placeholder": "sk-..."
+    },
+    "baseURL": {
+      "title": "Base URL",
+      "description": "API endpoint for the model provider",
+      "placeholder": "https://api.example.com/v1"
+    },
+    "model": {
+      "title": "Default Model",
+      "description": "Default model name for conversations",
+      "placeholder": "qwen-plus"
+    },
+    "aliasSection": "Model Aliases",
+    "aliasHint": "Switch models quickly using aliases in conversations",
+    "alias": {
+      "fast": "Fast",
+      "smart": "Smart",
+      "default": "Default"
     }
   }
 }
