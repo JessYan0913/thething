@@ -2,6 +2,8 @@ import { app, BrowserWindow } from 'electron';
 import { fork, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
+import * as http from 'http';
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
@@ -16,6 +18,18 @@ function getStandaloneDir(): string {
 
 function getDataDir(): string {
   return app.getPath('userData');
+}
+
+function getLogFile(): string {
+  return path.join(getDataDir(), 'server.log');
+}
+
+function logToFile(message: string): void {
+  try {
+    fs.appendFileSync(getLogFile(), `[${new Date().toISOString()}] ${message}\n`);
+  } catch {
+    // ignore
+  }
 }
 
 function getResourceRoot(): string {
@@ -50,6 +64,25 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+function pollDevServer(url: string, timeout = 60000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tryConnect = () => {
+      http.get(url, (res) => {
+        res.resume();
+        resolve();
+      }).on('error', () => {
+        if (Date.now() - start > timeout) {
+          reject(new Error(`Dev server at ${url} did not respond within ${timeout / 1000}s`));
+          return;
+        }
+        setTimeout(tryConnect, 500);
+      });
+    };
+    tryConnect();
+  });
+}
+
 function startNextServer(): Promise<number> {
   return new Promise((resolve, reject) => {
     const standaloneDir = getStandaloneDir();
@@ -77,7 +110,10 @@ function startNextServer(): Promise<number> {
     serverProcess.stdout?.on('data', (data: Buffer) => {
       const lines = data.toString().split('\n');
       for (const line of lines) {
-        if (line.trim()) console.log('[server]', line);
+        if (line.trim()) {
+          console.log('[server]', line);
+          logToFile(`[stdout] ${line}`);
+        }
         const match = line.match(/^THETHING_PORT=(\d+)/);
         if (match && !resolved) {
           resolved = true;
@@ -87,11 +123,14 @@ function startNextServer(): Promise<number> {
     });
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      console.error('[server]', data.toString().trimEnd());
+      const msg = data.toString().trimEnd();
+      console.error('[server]', msg);
+      logToFile(`[stderr] ${msg}`);
     });
 
     serverProcess.on('error', (err) => {
       console.error('[server] Failed to start:', err);
+      logToFile(`[error] ${err}`);
       if (!resolved) {
         resolved = true;
         reject(err);
@@ -100,6 +139,7 @@ function startNextServer(): Promise<number> {
 
     serverProcess.on('exit', (code) => {
       console.log('[server] Exited with code:', code);
+      logToFile(`[exit] code=${code}`);
       serverProcess = null;
       if (!resolved) {
         resolved = true;
@@ -123,23 +163,30 @@ function killServer(): void {
   }
 }
 
+function showError(message: string): void {
+  mainWindow?.webContents.executeJavaScript(
+    `document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif;color:#111827;"><h2>Failed to start</h2><pre style="margin-top:12px;color:#dc2626;">${message.replace(/</g, '&lt;')}</pre></div>'`
+  );
+}
+
 app.whenReady().then(async () => {
   mainWindow = createWindow();
 
-  if (isDev()) {
-    mainWindow.loadURL('http://localhost:3000');
-    return;
-  }
-
   try {
-    const port = await startNextServer();
-    console.log(`[desktop] Next.js server ready on port ${port}`);
-    mainWindow!.loadURL(`http://localhost:${port}`);
+    if (isDev()) {
+      const devUrl = 'http://localhost:3000';
+      console.log('[desktop] Waiting for dev server at', devUrl);
+      await pollDevServer(devUrl);
+      console.log('[desktop] Dev server ready');
+      mainWindow!.loadURL(devUrl);
+    } else {
+      const port = await startNextServer();
+      console.log(`[desktop] Next.js server ready on port ${port}`);
+      mainWindow!.loadURL(`http://localhost:${port}`);
+    }
   } catch (err) {
-    console.error('[desktop] Failed to start server:', err);
-    mainWindow!.webContents.executeJavaScript(
-      `document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif;color:#111827;"><h2>Failed to start</h2><pre style="margin-top:12px;color:#dc2626;">${String(err)}</pre></div>'`
-    );
+    console.error('[desktop] Failed to start:', err);
+    showError(String(err));
   }
 });
 
@@ -156,7 +203,9 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createWindow();
     if (isDev()) {
-      mainWindow.loadURL('http://localhost:3000');
+      pollDevServer('http://localhost:3000').then(() => {
+        mainWindow?.loadURL('http://localhost:3000');
+      });
     }
   }
 });

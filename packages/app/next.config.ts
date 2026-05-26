@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  experimental: {
+    outputFileTracingIncludes: {
+      '/**': ['./node_modules/styled-jsx/**', './node_modules/@swc/helpers/**'],
+    },
+  },
 };
 
 export default nextConfig;

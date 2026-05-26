@@ -235,8 +235,11 @@ export default function AgentsSettings() {
 
 function AgentCard({ agent, onClick, onEdit }: { agent: AgentView; onClick: () => void; onEdit: () => void }) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       className="rounded-lg border p-4 space-y-3 w-full text-left hover:border-accent/50 hover:bg-accent/20 transition-colors cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
@@ -304,6 +307,6 @@ function AgentCard({ agent, onClick, onEdit }: { agent: AgentView; onClick: () =
           <span className="truncate">{agent.filePath}</span>
         </div>
       )}
-    </button>
+    </div>
   )
 }
