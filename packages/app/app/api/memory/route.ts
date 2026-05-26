@@ -78,6 +78,28 @@ async function scanUserMemoryDir(userMemoryDir: string, userId: string): Promise
   return results;
 }
 
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const filePath = searchParams.get('filePath');
+    if (!filePath) {
+      return NextResponse.json({ error: 'Missing filePath query parameter' }, { status: 400 });
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch {
+      return NextResponse.json({ error: 'Memory file not found' }, { status: 404 });
+    }
+
+    await fs.unlink(filePath);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[Memory API] DELETE error:', error);
+    return NextResponse.json({ error: 'Failed to delete memory file' }, { status: 500 });
+  }
+}
+
 export async function GET() {
   try {
     const rt = await getServerRuntime();

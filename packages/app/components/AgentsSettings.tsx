@@ -4,7 +4,9 @@ import {
   BotIcon, RefreshCwIcon, WrenchIcon,
   FileTextIcon, ArrowLeftIcon,
   CpuIcon, MessageSquareIcon, PlusIcon, PencilIcon,
+  TrashIcon, CheckIcon, XIcon,
 } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FilePreview } from "@/components/FilePreview"
@@ -37,6 +39,7 @@ export default function AgentsSettings() {
   const [isLoading, setIsLoading] = useState(true)
   // Detail view state
   const [selectedAgent, setSelectedAgent] = useState<AgentView | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const loadAgents = useCallback(async () => {
     setIsLoading(true)
@@ -54,6 +57,14 @@ export default function AgentsSettings() {
   }, [])
 
   useEffect(() => { loadAgents() }, [loadAgents])
+
+  const handleDelete = useCallback(async (agentType: string) => {
+    const res = await fetch(`/api/agents?agentType=${encodeURIComponent(agentType)}`, { method: "DELETE" })
+    if (res.ok) {
+      setAgents((prev) => prev.filter((a) => a.agentType !== agentType))
+    }
+    setConfirmDelete(null)
+  }, [])
 
   // Detail view
   if (selectedAgent) {
@@ -224,6 +235,10 @@ export default function AgentsSettings() {
                 agent={agent}
                 onClick={() => setSelectedAgent(agent)}
                 onEdit={() => router.push(`/agent-workbench/${agent.agentType}`)}
+                onDelete={() => handleDelete(agent.agentType)}
+                confirmDelete={confirmDelete === agent.agentType}
+                onConfirmDelete={() => setConfirmDelete(agent.agentType)}
+                onCancelDelete={() => setConfirmDelete(null)}
               />
             ))}
           </div>
@@ -233,7 +248,15 @@ export default function AgentsSettings() {
   )
 }
 
-function AgentCard({ agent, onClick, onEdit }: { agent: AgentView; onClick: () => void; onEdit: () => void }) {
+function AgentCard({ agent, onClick, onEdit, onDelete, confirmDelete, onConfirmDelete, onCancelDelete }: {
+  agent: AgentView
+  onClick: () => void
+  onEdit: () => void
+  onDelete: () => void
+  confirmDelete: boolean
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+}) {
   return (
     <div
       role="button"
@@ -266,15 +289,37 @@ function AgentCard({ agent, onClick, onEdit }: { agent: AgentView; onClick: () =
             </p>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="shrink-0"
-          onClick={(e) => { e.stopPropagation(); onEdit() }}
-        >
-          <PencilIcon className="size-3.5 mr-1" />
-          编辑
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+          >
+            <PencilIcon className="size-3.5 mr-1" />
+            编辑
+          </Button>
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }}>
+                <CheckIcon className="size-3" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onCancelDelete() }}>
+                <XIcon className="size-3" />
+              </Button>
+            </div>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={(e) => { e.stopPropagation(); onConfirmDelete() }}>
+                    <TrashIcon className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>删除后无法恢复</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

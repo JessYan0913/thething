@@ -38,6 +38,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
+    lng: 'zh-CN',
     fallbackLng: 'en',
     defaultNS: 'common',
     ns: ['common', 'settings', 'chat'],

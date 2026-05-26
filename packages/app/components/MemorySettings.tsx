@@ -3,7 +3,9 @@ import {
   DatabaseIcon, RefreshCwIcon, FileTextIcon, RulerIcon,
   FolderIcon, UserIcon, ArrowLeftIcon, PanelLeftOpenIcon,
   PanelRightOpenIcon, BookOpenIcon, HardDriveIcon,
+  TrashIcon, CheckIcon, XIcon,
 } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DirectoryTree } from "@/components/DirectoryTree"
@@ -50,6 +52,7 @@ export default function MemorySettings() {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [showTree, setShowTree] = useState(true)
   const [showPreview, setShowPreview] = useState(true)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const loadMemory = useCallback(async () => {
     setIsLoading(true)
@@ -69,6 +72,14 @@ export default function MemorySettings() {
   }, [])
 
   useEffect(() => { loadMemory() }, [loadMemory])
+
+  const handleDelete = useCallback(async (filePath: string) => {
+    const res = await fetch(`/api/memory?filePath=${encodeURIComponent(filePath)}`, { method: "DELETE" })
+    if (res.ok) {
+      setEntries((prev) => prev.filter((e) => e.filePath !== filePath))
+    }
+    setConfirmDelete(null)
+  }, [])
 
   const handleEntryClick = (entry: MemoryEntryView) => {
     const memoryDir = entry.filePath.replace(/\/[^/]+\.md$/, "")
@@ -290,9 +301,12 @@ export default function MemorySettings() {
                   const typeInfo = typeLabels[entry.type] ?? { label: entry.type, color: "" }
 
                   return (
-                    <button
+                    <div
                       key={i}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleEntryClick(entry)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEntryClick(entry); } }}
                       className="rounded-lg border p-4 space-y-3 w-full text-left hover:border-accent/50 hover:bg-accent/20 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -321,6 +335,27 @@ export default function MemorySettings() {
                             <span>{entry.lines} 行</span>
                           </div>
                           <span>{entry.sizeKb.toFixed(1)} KB</span>
+                          {confirmDelete === entry.filePath ? (
+                            <div className="flex items-center gap-1">
+                              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); handleDelete(entry.filePath) }}>
+                                <CheckIcon className="size-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setConfirmDelete(null) }}>
+                                <XIcon className="size-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry.filePath) }}>
+                                    <TrashIcon className="size-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>删除后无法恢复</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </div>
 
@@ -337,7 +372,7 @@ export default function MemorySettings() {
                           {entry.filePath}
                         </div>
                       )}
-                    </button>
+                    </div>
                   )
                 })}
               </div>

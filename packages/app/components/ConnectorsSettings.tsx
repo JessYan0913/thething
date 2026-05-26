@@ -3,7 +3,9 @@ import {
   CableIcon, RefreshCwIcon, WrenchIcon,
   FileTextIcon, ArrowLeftIcon, GlobeIcon,
   ShieldIcon, WebhookIcon, ChevronDownIcon,
+  TrashIcon, CheckIcon, XIcon,
 } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FilePreview } from "@/components/FilePreview"
@@ -53,6 +55,7 @@ export default function ConnectorsSettings() {
   const [connectors, setConnectors] = useState<ConnectorView[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedConnector, setSelectedConnector] = useState<ConnectorView | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const loadConnectors = useCallback(async () => {
     setIsLoading(true)
@@ -70,6 +73,14 @@ export default function ConnectorsSettings() {
   }, [])
 
   useEffect(() => { loadConnectors() }, [loadConnectors])
+
+  const handleDelete = useCallback(async (id: string) => {
+    const res = await fetch(`/api/connectors?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+    if (res.ok) {
+      setConnectors((prev) => prev.filter((c) => c.id !== id))
+    }
+    setConfirmDelete(null)
+  }, [])
 
   // Detail view
   if (selectedConnector) {
@@ -119,6 +130,10 @@ export default function ConnectorsSettings() {
                 key={connector.id}
                 connector={connector}
                 onClick={() => setSelectedConnector(connector)}
+                onDelete={() => handleDelete(connector.id)}
+                confirmDelete={confirmDelete === connector.id}
+                onConfirmDelete={() => setConfirmDelete(connector.id)}
+                onCancelDelete={() => setConfirmDelete(null)}
               />
             ))}
           </div>
@@ -128,10 +143,20 @@ export default function ConnectorsSettings() {
   )
 }
 
-function ConnectorCard({ connector, onClick }: { connector: ConnectorView; onClick: () => void }) {
+function ConnectorCard({ connector, onClick, onDelete, confirmDelete, onConfirmDelete, onCancelDelete }: {
+  connector: ConnectorView
+  onClick: () => void
+  onDelete: () => void
+  confirmDelete: boolean
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+}) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       className="rounded-lg border p-4 space-y-3 w-full text-left hover:border-accent/50 hover:bg-accent/20 transition-colors cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
@@ -156,6 +181,29 @@ function ConnectorCard({ connector, onClick }: { connector: ConnectorView; onCli
               </p>
             )}
           </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }}>
+                <CheckIcon className="size-3" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onCancelDelete() }}>
+                <XIcon className="size-3" />
+              </Button>
+            </div>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={(e) => { e.stopPropagation(); onConfirmDelete() }}>
+                    <TrashIcon className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>删除后无法恢复</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
 
@@ -187,7 +235,7 @@ function ConnectorCard({ connector, onClick }: { connector: ConnectorView; onCli
       <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
         <span className="font-mono">{connector.id}</span>
       </div>
-    </button>
+    </div>
   )
 }
 
