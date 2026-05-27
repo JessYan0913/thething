@@ -20,6 +20,9 @@ export const logger = {
       console.log(`[${tag}] ${message}`, data ?? '');
     }
   },
+  info(tag: string, message: string, data?: unknown): void {
+    console.log(`[${tag}] ${message}`, data ?? '');
+  },
   warn(tag: string, message: string, data?: unknown): void {
     console.warn(`[${tag}] ${message}`, data ?? '');
   },

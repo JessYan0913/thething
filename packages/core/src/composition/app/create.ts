@@ -238,6 +238,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     sessionState,
     maxSteps,
     debugEnabled: Boolean(context.runtime.env.DEBUG),
+    instructions,
+    tools: finalTools,
+    contextLimit: sessionOptions.maxContextTokens,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

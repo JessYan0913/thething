@@ -1,6 +1,8 @@
-import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage } from 'ai';
+import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool } from 'ai';
 import type { PipelineContext } from '../session/interfaces';
 import { enforceToolResultBudget } from '../budget/message-budget';
+import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
+import { getModelContextLimit } from '../../services/model';
 import { logger } from '../../primitives/logger';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
@@ -14,6 +16,9 @@ export interface AgentPipelineConfig {
   maxSteps?: number;
   maxBudgetUsd?: number;
   debugEnabled?: boolean;
+  instructions?: string;
+  tools?: Record<string, Tool>;
+  contextLimit?: number;
 }
 
 export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipelineConfig): PrepareStepFunction<TOOLS> {
@@ -95,6 +100,20 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       }
     }
 
+    // Context usage progress bar
+    if (config.instructions != null && config.tools) {
+      const estimation = await estimateFullRequest(
+        messages as unknown as UIMessage[],
+        config.instructions,
+        config.tools,
+        sessionState.model,
+      );
+      const limit = config.contextLimit
+        ? getModelContextLimit(sessionState.model, config.contextLimit)
+        : estimation.modelLimit;
+      logger.info('Context', formatContextBar(estimation, limit));
+    }
+
     return {
       messages,
       continue: true,
@@ -102,4 +121,28 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
   };
 
   return prepareStep;
+}
+
+const BAR_WIDTH = 20;
+const TRIGGER_PERCENT = 0.85;
+
+function formatTokens(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+function formatContextBar(est: FullRequestEstimation, contextLimit: number): string {
+  const used = est.messagesTokens + est.instructionsTokens + est.toolsTokens + est.outputReserve;
+  const pct = contextLimit > 0 ? used / contextLimit : 0;
+  const filled = Math.min(BAR_WIDTH, Math.round(pct * BAR_WIDTH));
+  const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
+  const pctStr = (pct * 100).toFixed(1);
+  const trigger = pct >= TRIGGER_PERCENT ? ' ⚠ TRIGGER' : '';
+  return (
+    `${bar} ${pctStr}% (${formatTokens(used)}/${formatTokens(contextLimit)})${trigger}` +
+    ` │ msgs ${formatTokens(est.messagesTokens)}` +
+    ` │ sys ${formatTokens(est.instructionsTokens)}` +
+    ` │ tools ${formatTokens(est.toolsTokens)}` +
+    ` │ out ${formatTokens(est.outputReserve)}`
+  );
 }
