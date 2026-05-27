@@ -83,6 +83,8 @@ export interface LoadToolsConfig {
   /** WebSearch API Key（由应用层显式传入） */
   /** 是否开启调试日志 */
   debugEnabled?: boolean
+  /** 共享 MCP 注册表（来自 AppContext，跨请求复用连接） */
+  mcpRegistry?: import('../mcp').McpRegistry
   /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */
   dynamicReload?: boolean
 }

@@ -115,9 +115,10 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     try {
       const mcpConfigs = config.mcps ?? []
       if (mcpConfigs.length > 0) {
-        mcpRegistry = createMcpRegistry(mcpConfigs)
-        await mcpRegistry.connectAll()
-        const mcpTools = mcpRegistry.getAllTools()
+        const sharedRegistry = config.mcpRegistry
+        const activeRegistry = sharedRegistry ?? createMcpRegistry(mcpConfigs)
+        await activeRegistry.connectAll()
+        const mcpTools = activeRegistry.getAllTools()
 
         const wrappedMcpTools = wrapMcpToolsWithOutputHandler(
           mcpTools as Record<string, Tool>,
@@ -134,12 +135,16 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
             tools[toolName] = toolDef
           }
         }
-        const mcpSnapshot = mcpRegistry.snapshot()
+        const mcpSnapshot = activeRegistry.snapshot()
         const connected = mcpSnapshot.servers.filter(s => s.connected)
         const failed = mcpSnapshot.servers.filter(s => !s.connected && s.enabled)
-        logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools from ${connected.length} server(s): ${Object.keys(mcpTools).join(', ')}`)
+        logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools from ${connected.length} server(s)${sharedRegistry ? ' (reused)' : ''}: ${Object.keys(mcpTools).join(', ')}`)
         if (failed.length > 0) {
           logger.warn('MCP', `Failed servers: ${failed.map(s => `${s.name}(${s.error})`).join(', ')}`)
+        }
+        // 共享 registry 时不返回 mcpRegistry，防止下游 dispose/finalize 断开连接
+        if (!sharedRegistry) {
+          mcpRegistry = activeRegistry
         }
       } else {
         logger.debug('MCP', 'No MCP configs found')

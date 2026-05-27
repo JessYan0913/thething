@@ -66,6 +66,9 @@ export interface AppContext {
   // 加载错误
   readonly errors?: LoadError[];
 
+  /** 共享 MCP 注册表（跨请求复用连接，生命周期由 AppContext 管理） */
+  readonly mcpRegistry?: McpRegistry;
+
   /**
    * 重新加载所有资源，返回新的 AppContext 快照。
    * 原 context 实例保持不变（不可变设计）。
