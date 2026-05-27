@@ -38,6 +38,7 @@ export async function compactBeforeStep(
     dataStore: DataStore;
     instructionsTokens?: number;
     toolsTokens?: number;
+    contextLimit?: number;
   },
 ): Promise<UIMessage[]> {
   let current = messages;
@@ -54,7 +55,7 @@ export async function compactBeforeStep(
 
   // ── Layer 3: 上下文窗口检查（异步，极少触发）──
   const estimation = await estimateFullRequest(current, '', {}, context.modelName);
-  const contextLimit = getModelContextLimit(context.modelName);
+  const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
   const triggerTokens = Math.floor(contextLimit * config.contextWindow.triggerPercent);
 
   if (estimation.messagesTokens >= triggerTokens) {
@@ -65,6 +66,7 @@ export async function compactBeforeStep(
       conversationId: context.conversationId,
       dataStore: context.dataStore,
       config: config.contextWindow,
+      contextLimit: context.contextLimit,
     });
     if (windowResult.executed) {
       current = windowResult.messages;

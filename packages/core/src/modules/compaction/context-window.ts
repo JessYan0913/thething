@@ -63,13 +63,14 @@ export async function enforceContextWindow(
     conversationId: string;
     dataStore: DataStore;
     config: ContextWindowConfig;
+    contextLimit?: number;
   },
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
   const config = context.config ?? DEFAULT_CONTEXT_WINDOW_CONFIG;
 
   // 估算当前 token 总量
   const estimation = await estimateFullRequest(messages, '', {}, context.modelName);
-  const contextLimit = getModelContextLimit(context.modelName);
+  const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
   const triggerTokens = Math.floor(contextLimit * config.triggerPercent);
 
   if (estimation.messagesTokens < triggerTokens) {

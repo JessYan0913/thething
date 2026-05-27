@@ -47,6 +47,7 @@ export async function handleReactiveRetry(
     modelName: string;
     conversationId: string;
     dataStore: DataStore;
+    contextLimit?: number;
   },
 ): Promise<{ messages: UIMessage[] }> {
   if (!isContextLengthError(error)) throw error;
@@ -68,6 +69,7 @@ export async function handleReactiveRetry(
       conversationId: context.conversationId,
       dataStore: context.dataStore,
       config: { ...config.contextWindow, targetPercent: 0.50 },
+      contextLimit: context.contextLimit,
     });
     current = windowResult.messages;
   } catch (err) {

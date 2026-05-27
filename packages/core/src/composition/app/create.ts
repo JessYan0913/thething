@@ -139,6 +139,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         modelName: sessionState.model,
         conversationId,
         dataStore: sessionState.dataStore,
+        contextLimit: sessionOptions.maxContextTokens,
       })
       const tokensFreed = await estimateTokensDiff(msgs, afterResult)
       return {
