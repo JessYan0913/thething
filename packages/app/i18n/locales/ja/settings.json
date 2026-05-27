@@ -55,12 +55,35 @@
       "description": "会話に使用するデフォルトモデル名",
       "placeholder": "qwen-plus"
     },
+    "contextLimit": {
+      "title": "コンテキスト長",
+      "description": "モデルのコンテキストウィンドウサイズ（トークン数）、空欄でデフォルト値を使用",
+      "placeholder": "例: 128000"
+    },
     "aliasSection": "モデルエイリアス",
     "aliasHint": "会話でエイリアスを使ってモデルを素早く切り替えられます",
     "alias": {
-      "fast": "高速",
-      "smart": "スマート",
-      "default": "デフォルト"
+      "fast": "高速モデル",
+      "smart": "スマートモデル",
+      "default": "デフォルトモデル",
+      "required": "必須",
+      "defaultRequired": "デフォルトモデルは必須です",
+      "defaultDescription": "会話のデフォルトモデル。チャットで「デフォルトを使用」と入力するとこのモデルに切り替わります",
+      "optionalHint": "会話でモデルを素早く切り替えるためのオプションエイリアス",
+      "fastDescription": "シンプルなタスク向けの低コスト・高速モデル",
+      "smartDescription": "複雑なタスク向けの高性能モデル"
+    },
+    "fetchModels": {
+      "button": "モデル取得",
+      "dialogTitle": "モデルを選択",
+      "dialogDescription": "プロバイダーから利用可能なモデル一覧を取得し、{alias}として選択",
+      "searchPlaceholder": "モデルを検索...",
+      "fetchButton": "モデル一覧を取得",
+      "fetching": "取得中...",
+      "loading": "読み込み中...",
+      "noModels": "利用可能なモデルがありません",
+      "baseURLRequired": "先にBase URLを入力してください",
+      "error": "モデル一覧の取得に失敗しました"
     }
   }
 }

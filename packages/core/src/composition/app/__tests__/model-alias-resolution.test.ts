@@ -9,8 +9,7 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
-import { resolveModelAlias, MODEL_MAPPING } from '../../../services/model';
-import { DEFAULT_MODEL_ALIASES } from '../../../services/config/behavior';
+import { resolveModelAlias } from '../../../services/model';
 import { detectModelSwitchIntent, ModelSwapper, type ModelProvider } from '../../../modules/session/model-switching';
 import { buildBehaviorConfig } from '../../../services/config/behavior';
 import { createLanguageModel } from '../../../services/model';
@@ -20,16 +19,18 @@ import { createLanguageModel } from '../../../services/model';
 // ============================================================
 
 describe('1. Alias keywords resolve to real model IDs', () => {
-  it('resolves "fast" to DEFAULT_MODEL_ALIASES.fast', () => {
-    expect(resolveModelAlias('fast')).toBe(DEFAULT_MODEL_ALIASES.fast);
+  const customAliases = { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o' };
+
+  it('resolves "fast" to provided alias', () => {
+    expect(resolveModelAlias('fast', customAliases)).toBe('gpt-4o-mini');
   });
 
-  it('resolves "smart" to DEFAULT_MODEL_ALIASES.smart', () => {
-    expect(resolveModelAlias('smart')).toBe(DEFAULT_MODEL_ALIASES.smart);
+  it('resolves "smart" to provided alias', () => {
+    expect(resolveModelAlias('smart', customAliases)).toBe('gpt-4o');
   });
 
-  it('resolves "default" to DEFAULT_MODEL_ALIASES.default', () => {
-    expect(resolveModelAlias('default')).toBe(DEFAULT_MODEL_ALIASES.default);
+  it('resolves "default" to provided alias', () => {
+    expect(resolveModelAlias('default', customAliases)).toBe('gpt-4o');
   });
 
   it('resolves custom aliases when provided', () => {
@@ -39,17 +40,11 @@ describe('1. Alias keywords resolve to real model IDs', () => {
     expect(resolveModelAlias('default', aliases)).toBe('gpt-4o-mini');
   });
 
-  it('falls back to DEFAULT_MODEL_ALIASES when custom alias is missing', () => {
-    // Partial aliases — only 'smart' is overridden
-    const aliases = { fast: DEFAULT_MODEL_ALIASES.fast, smart: 'custom-smart', default: DEFAULT_MODEL_ALIASES.default };
-    expect(resolveModelAlias('fast', aliases)).toBe(DEFAULT_MODEL_ALIASES.fast);
-    expect(resolveModelAlias('smart', aliases)).toBe('custom-smart');
-  });
-
-  it('MODEL_MAPPING re-export equals DEFAULT_MODEL_ALIASES', () => {
-    expect(MODEL_MAPPING.fast).toBe(DEFAULT_MODEL_ALIASES.fast);
-    expect(MODEL_MAPPING.smart).toBe(DEFAULT_MODEL_ALIASES.smart);
-    expect(MODEL_MAPPING.default).toBe(DEFAULT_MODEL_ALIASES.default);
+  it('returns empty string for missing aliases', () => {
+    const aliases = { fast: 'gpt-4o-mini', smart: '', default: '' };
+    expect(resolveModelAlias('fast', aliases)).toBe('gpt-4o-mini');
+    expect(resolveModelAlias('smart', aliases)).toBe('');
+    expect(resolveModelAlias('default', aliases)).toBe('');
   });
 });
 
@@ -58,21 +53,20 @@ describe('1. Alias keywords resolve to real model IDs', () => {
 // ============================================================
 
 describe('2. All model selection points use unified alias resolution', () => {
-  it('createLanguageModel fallback uses DEFAULT_MODEL_ALIASES.default', () => {
-    // When modelName is not provided, should use DEFAULT_MODEL_ALIASES.default
-    const model = createLanguageModel({
+  it('createLanguageModel throws when modelName is not provided', () => {
+    expect(() => createLanguageModel({
       apiKey: 'test-key',
       baseURL: 'https://test.example',
-    });
-    // model.modelId should be DEFAULT_MODEL_ALIASES.default ('qwen-plus')
-    expect(model.modelId).toBe(DEFAULT_MODEL_ALIASES.default);
+    })).toThrow('modelName is required but was not provided');
   });
 
-  it('BehaviorConfig.modelAliases is built from DEFAULT_MODEL_ALIASES', () => {
-    const behavior = buildBehaviorConfig();
-    expect(behavior.modelAliases.fast).toBe(DEFAULT_MODEL_ALIASES.fast);
-    expect(behavior.modelAliases.smart).toBe(DEFAULT_MODEL_ALIASES.smart);
-    expect(behavior.modelAliases.default).toBe(DEFAULT_MODEL_ALIASES.default);
+  it('BehaviorConfig.modelAliases uses provided values', () => {
+    const behavior = buildBehaviorConfig({
+      modelAliases: { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o' },
+    });
+    expect(behavior.modelAliases.fast).toBe('gpt-4o-mini');
+    expect(behavior.modelAliases.smart).toBe('gpt-4o');
+    expect(behavior.modelAliases.default).toBe('gpt-4o');
   });
 
   it('custom modelAliases override defaults in BehaviorConfig', () => {
@@ -131,21 +125,15 @@ describe('2. All model selection points use unified alias resolution', () => {
       expect(result.newModel).toBe('gpt-4o-mini-2');
     });
 
-    it('uses DEFAULT_MODEL_ALIASES when modelAliases not provided', () => {
-      const defaultModels: ModelProvider[] = [
-        { id: 'qwen-turbo', name: 'Qwen Turbo', costMultiplier: 0.1, capabilityTier: 1 },
-        { id: 'qwen-max', name: 'Qwen Max', costMultiplier: 1.0, capabilityTier: 3 },
-        { id: 'qwen-plus', name: 'Qwen Plus', costMultiplier: 0.4, capabilityTier: 2 },
-      ];
+    it('returns no switch when modelAliases not provided', () => {
       const swapper = new ModelSwapper({
-        availableModels: defaultModels,
-        currentModel: 'qwen-max',
+        availableModels,
+        currentModel: 'gpt-4o',
       });
       const result = swapper.checkUserIntent(
         [{ role: 'user', content: '使用 fast' }] as any,
       );
-      expect(result.switched).toBe(true);
-      expect(result.newModel).toBe('qwen-turbo');
+      expect(result.switched).toBe(false);
     });
 
     it('still matches concrete model names', () => {
@@ -181,11 +169,11 @@ describe('3. Unknown aliases do not produce silent wrong mappings', () => {
 
   it('ModelSwapper returns no switch for unrecognized alias keywords', () => {
     const models: ModelProvider[] = [
-      { id: 'qwen-max', name: 'Qwen Max', costMultiplier: 1.0, capabilityTier: 3 },
+      { id: 'gpt-4o', name: 'GPT-4o', costMultiplier: 1.0, capabilityTier: 3 },
     ];
     const swapper = new ModelSwapper({
       availableModels: models,
-      currentModel: 'qwen-max',
+      currentModel: 'gpt-4o',
     });
     // "turbo" is not a recognized alias keyword
     const result = swapper.checkUserIntent(
@@ -201,9 +189,9 @@ describe('3. Unknown aliases do not produce silent wrong mappings', () => {
     const swapper = new ModelSwapper({
       availableModels: models,
       currentModel: 'gpt-4o',
-      modelAliases: { fast: 'qwen-turbo', smart: 'qwen-max', default: 'qwen-plus' },
+      modelAliases: { fast: 'other-model', smart: 'another-model', default: 'third-model' },
     });
-    // "fast" resolves to 'qwen-turbo' but that model isn't in availableModels
+    // "fast" resolves to 'other-model' but that model isn't in availableModels
     const result = swapper.checkUserIntent(
       [{ role: 'user', content: '使用 fast' }] as any,
     );
@@ -216,17 +204,16 @@ describe('3. Unknown aliases do not produce silent wrong mappings', () => {
 // ============================================================
 
 describe('4. Fallback scenarios', () => {
-  it('resolveModelAlias falls back to DEFAULT_MODEL_ALIASES when no aliases provided', () => {
-    expect(resolveModelAlias('fast', undefined)).toBe(DEFAULT_MODEL_ALIASES.fast);
-    expect(resolveModelAlias('smart', undefined)).toBe(DEFAULT_MODEL_ALIASES.smart);
-    expect(resolveModelAlias('default', undefined)).toBe(DEFAULT_MODEL_ALIASES.default);
+  it('resolveModelAlias returns empty string when no aliases provided', () => {
+    expect(resolveModelAlias('fast', undefined)).toBe('');
+    expect(resolveModelAlias('smart', undefined)).toBe('');
+    expect(resolveModelAlias('default', undefined)).toBe('');
   });
 
-  it('createLanguageModel uses DEFAULT_MODEL_ALIASES.default when modelName omitted', () => {
-    const model = createLanguageModel({
+  it('createLanguageModel throws when modelName omitted', () => {
+    expect(() => createLanguageModel({
       apiKey: 'test-key',
       baseURL: 'https://test.example',
-    });
-    expect(model.modelId).toBe(DEFAULT_MODEL_ALIASES.default);
+    })).toThrow('modelName is required but was not provided');
   });
 });

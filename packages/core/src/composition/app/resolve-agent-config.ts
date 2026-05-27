@@ -13,11 +13,17 @@ import type { SessionStateOptions } from '../../modules/session/types';
 
 type AgentCompactionOptions = NonNullable<CreateAgentOptions['compaction']>;
 
-export function resolveAgentModelConfig(model: CreateAgentOptions['model']): ModelProviderConfig {
+export function resolveAgentModelConfig(
+  model: CreateAgentOptions['model'],
+  modelAliases?: BehaviorConfig['modelAliases'],
+): ModelProviderConfig {
+  // 如果未指定 modelName，使用 modelAliases.default
+  const resolvedModelName = model.modelName || modelAliases?.default || '';
+
   return {
     apiKey: model.apiKey,
     baseURL: model.baseURL,
-    modelName: model.modelName,
+    modelName: resolvedModelName,
     includeUsage: model.includeUsage ?? true,
     enableThinking: model.enableThinking,
   };
@@ -77,7 +83,7 @@ export function resolveAgentConfig(options: CreateAgentOptions): ResolvedAgentCo
   const { behavior } = context;
 
   const modules = resolveAgentModules(options.modules);
-  const modelConfig = resolveAgentModelConfig(options.model);
+  const modelConfig = resolveAgentModelConfig(options.model, behavior.modelAliases);
   const compactionConfig = resolveAgentCompactionConfig(behavior, options.compaction);
   const compactThreshold = resolveAgentCompactThreshold(behavior, {
     session: options.session,

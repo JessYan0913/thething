@@ -4,7 +4,10 @@ import { loadGlobalConfig, saveGlobalConfig, getGlobalConfigPath } from '@the-th
 export async function GET() {
   const config = loadGlobalConfig()
   return NextResponse.json({
-    config: config ?? { apiKey: '', baseURL: '', model: '' },
+    apiKey: config?.apiKey ?? '',
+    baseURL: config?.baseURL ?? '',
+    contextLimit: config?.contextLimit,
+    modelAliases: config?.modelAliases ?? { fast: '', smart: '', default: '' },
     path: getGlobalConfigPath(),
   })
 }
@@ -14,7 +17,14 @@ export async function PUT(request: NextRequest) {
   const config = {
     apiKey: body.apiKey ?? '',
     baseURL: body.baseURL ?? '',
-    model: body.model ?? '',
+    ...(body.contextLimit ? { contextLimit: Number(body.contextLimit) } : {}),
+    ...(body.modelAliases ? {
+      modelAliases: {
+        fast: body.modelAliases.fast ?? '',
+        smart: body.modelAliases.smart ?? '',
+        default: body.modelAliases.default ?? '',
+      }
+    } : {}),
   }
   saveGlobalConfig(config)
   return NextResponse.json({ ok: true })

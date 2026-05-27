@@ -84,8 +84,6 @@ export { type ConnectorRegistry } from './modules/connector';
 // ============================================================
 export {
   buildBehaviorConfig,
-  DEFAULT_MODEL_SPECS,
-  DEFAULT_MODEL_ALIASES,
   type BehaviorConfig,
   type ModelSpec,
 } from './services/config/behavior';
@@ -137,7 +135,6 @@ export {
   getEffectiveContextBudget,
   // Pricing（定价配置）
   createPricingResolver,
-  DEFAULT_PRICING,
 } from './services/model';
 export type {
   ModelCapabilities,

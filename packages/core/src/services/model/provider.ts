@@ -28,14 +28,18 @@ export function createModelProvider(config: ModelProviderConfig): ModelProviderF
 /**
  * Get a LanguageModel instance from the provider config.
  * Uses defaultSettingsMiddleware to configure providerOptions for thinking mode.
+ *
+ * @throws 如果 modelName 未提供
  */
 export function createLanguageModel(config: ModelProviderConfig): LanguageModelV3 {
   const provider = createModelProvider(config);
-  // modelName fallback in caller's responsibility; here we require a valid name
-  const modelName = config.modelName || 'qwen-plus';
+
+  if (!config.modelName) {
+    throw new Error('modelName is required but was not provided');
+  }
 
   // Base model from provider
-  const baseModel = provider(modelName);
+  const baseModel = provider(config.modelName);
 
   // If thinking mode is enabled, wrap with defaultSettingsMiddleware
   if (config.enableThinking) {

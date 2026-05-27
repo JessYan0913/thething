@@ -222,7 +222,7 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
       model: {
         apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
         baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: process.env.THETHING_MODEL || globalConfig?.model || 'qwen-max',
+        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default,
         includeUsage: true,
       },
     });

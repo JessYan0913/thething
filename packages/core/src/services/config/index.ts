@@ -24,8 +24,6 @@
 // BehaviorConfig - 运行时行为配置
 export {
   buildBehaviorConfig,
-  DEFAULT_MODEL_SPECS,
-  DEFAULT_MODEL_ALIASES,
   type BehaviorConfig,
   type ModelSpec,
   // 新增：子配置类型导出（behavior.ts 中定义）

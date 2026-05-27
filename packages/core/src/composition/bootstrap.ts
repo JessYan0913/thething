@@ -170,7 +170,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   const behavior = buildBehaviorConfig(options.behavior);
 
   // 3. 创建定价解析器（实例级，避免多次 bootstrap 互相污染）
-  const pricingResolver = createPricingResolver(behavior.modelPricing);
+  const pricingResolver = createPricingResolver(behavior.modelPricing, behavior.availableModels);
 
   // 4. 初始化数据存储
   // 如果传入自定义 DataStore，直接使用；否则创建默认 SQLite 实现

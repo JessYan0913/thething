@@ -55,12 +55,35 @@
       "description": "Default model name for conversations",
       "placeholder": "qwen-plus"
     },
+    "contextLimit": {
+      "title": "Context Length",
+      "description": "Model context window size (tokens), leave empty for default",
+      "placeholder": "e.g. 128000"
+    },
     "aliasSection": "Model Aliases",
     "aliasHint": "Switch models quickly using aliases in conversations",
     "alias": {
-      "fast": "Fast",
-      "smart": "Smart",
-      "default": "Default"
+      "fast": "Fast Model",
+      "smart": "Smart Model",
+      "default": "Default Model",
+      "required": "Required",
+      "defaultRequired": "Default model is required",
+      "defaultDescription": "Default model for conversations. Type \"use default\" in chat to switch back to this model",
+      "optionalHint": "Optional aliases for quick model switching in conversations",
+      "fastDescription": "Low-cost, fast model for simple tasks",
+      "smartDescription": "High-capability model for complex tasks"
+    },
+    "fetchModels": {
+      "button": "Fetch Models",
+      "dialogTitle": "Select Model",
+      "dialogDescription": "Fetch available models from provider and select as {alias}",
+      "searchPlaceholder": "Search models...",
+      "fetchButton": "Fetch Model List",
+      "fetching": "Fetching...",
+      "loading": "Loading...",
+      "noModels": "No available models",
+      "baseURLRequired": "Please enter Base URL first",
+      "error": "Failed to fetch model list"
     }
   }
 }

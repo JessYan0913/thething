@@ -5,7 +5,6 @@ import type { CostStore } from '../../../primitives/datastore/types';
 import { TokenBudgetTracker } from '../token-budget';
 import { CostTracker } from '../cost';
 import { createPricingResolver } from '../../../services/model/pricing';
-import { DEFAULT_PRICING } from '../../../services/model/pricing';
 
 // ============================================================
 // Helper: Mock CostStore
@@ -196,31 +195,18 @@ describe('token-budget', () => {
 // Cost Tracker Tests
 // ============================================================
 describe('cost', () => {
-  describe('DEFAULT_PRICING', () => {
-    it('should have pricing for qwen-max', () => {
-      expect(DEFAULT_PRICING['qwen-max']).toBeDefined();
-      expect(DEFAULT_PRICING['qwen-max'].input).toBe(4);
-      expect(DEFAULT_PRICING['qwen-max'].output).toBe(12);
-    });
-
-    it('should have pricing for qwen-plus', () => {
-      expect(DEFAULT_PRICING['qwen-plus']).toBeDefined();
-      expect(DEFAULT_PRICING['qwen-plus'].input).toBe(1.5);
-    });
-
-    it('should have pricing for deepseek-v3', () => {
-      expect(DEFAULT_PRICING['deepseek-v3']).toBeDefined();
-    });
-  });
-
   describe('CostTracker', () => {
     let tracker: CostTracker;
 
     beforeEach(() => {
+      // 使用自定义定价配置
+      const pricingResolver = createPricingResolver({
+        'test-model': { input: 4, output: 12, cached: 1 },
+      });
       tracker = new CostTracker('test-conv-1', createMockCostStore(), {
-        model: 'qwen-max',
+        model: 'test-model',
         maxBudgetUsd: 5.0,
-        pricingResolver: createPricingResolver(),
+        pricingResolver,
       });
     });
 
@@ -235,7 +221,7 @@ describe('cost', () => {
     });
 
     describe('calculateDelta', () => {
-      it('should calculate cost delta for qwen-max', () => {
+      it('should calculate cost delta for test-model', () => {
         const delta = tracker.calculateDelta(100_000, 50_000, 10_000);
         // input: 100K * 4 / 1M = 0.4
         // output: 50K * 12 / 1M = 0.6
@@ -246,13 +232,13 @@ describe('cost', () => {
         expect(delta.totalCost).toBeCloseTo(1.01, 2);
       });
 
-      it('should use default pricing for unknown model', () => {
+      it('should use fallback pricing for unknown model', () => {
         const unknownTracker = new CostTracker('test-conv', createMockCostStore(), {
           model: 'unknown-model',
           pricingResolver: createPricingResolver(),
         });
         const delta = unknownTracker.calculateDelta(100_000, 50_000, 0);
-        // default pricing: input 1.5, output 4.5
+        // fallback pricing: input 1.5, output 4.5
         expect(delta.inputCost).toBeCloseTo(0.15, 2);
         expect(delta.outputCost).toBeCloseTo(0.225, 2);
       });
@@ -290,6 +276,9 @@ describe('cost', () => {
 
       it('should return true when over budget', () => {
         // Accumulate enough to exceed 5.0 budget
+        // input: 1_000_000 * 4 / 1M = 4.0
+        // output: 500_000 * 12 / 1M = 6.0
+        // total = 10.0 > 5.0
         tracker.accumulateFromUsage(1_000_000, 500_000, 0);
         expect(tracker.isOverBudget).toBe(true);
       });

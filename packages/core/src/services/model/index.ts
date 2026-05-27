@@ -20,10 +20,9 @@ export type { ModelCapabilities } from './capabilities-types';
 
 // Pricing（定价配置）
 export {
-  DEFAULT_PRICING,
   createPricingResolver,
 } from './pricing';
 export type { ModelPricing, PricingRegistry, PricingResolver } from './pricing';
 
 // Alias（模型别名解析）
-export { resolveModelAlias, MODEL_MAPPING, type ModelAliases } from './alias';
+export { resolveModelAlias, type ModelAliases } from './alias';

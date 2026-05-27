@@ -55,12 +55,35 @@
       "description": "对话使用的默认模型名称",
       "placeholder": "qwen-plus"
     },
+    "contextLimit": {
+      "title": "上下文长度",
+      "description": "模型的上下文窗口大小（token 数），留空使用默认值",
+      "placeholder": "例如 128000"
+    },
     "aliasSection": "模型别名",
     "aliasHint": "对话中可通过别名快速切换模型",
     "alias": {
-      "fast": "快速",
-      "smart": "智能",
-      "default": "默认"
+      "fast": "快速模型",
+      "smart": "智能模型",
+      "default": "默认模型",
+      "required": "必填",
+      "defaultRequired": "默认模型不能为空",
+      "defaultDescription": "对话使用的默认模型，对话中输入\"使用默认\"可切换回此模型",
+      "optionalHint": "以下别名可选配置，用于在对话中快速切换模型",
+      "fastDescription": "成本低、速度快的模型，适合简单任务",
+      "smartDescription": "能力强的模型，适合复杂任务"
+    },
+    "fetchModels": {
+      "button": "获取模型",
+      "dialogTitle": "选择模型",
+      "dialogDescription": "从服务商获取可用模型列表，选择作为{alias}",
+      "searchPlaceholder": "搜索模型...",
+      "fetchButton": "获取模型列表",
+      "fetching": "获取中...",
+      "loading": "加载中...",
+      "noModels": "暂无可用模型",
+      "baseURLRequired": "请先填写 Base URL",
+      "error": "获取模型列表失败"
     }
   }
 }

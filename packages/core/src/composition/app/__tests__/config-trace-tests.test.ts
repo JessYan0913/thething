@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildBehaviorConfig, DEFAULT_MODEL_ALIASES, DEFAULT_MODEL_SPECS } from '../../../services/config/behavior';
+import { buildBehaviorConfig } from '../../../services/config/behavior';
 import { resolveLayout } from '../../../services/config/layout';
 import { createPricingResolver } from '../../../services/model/pricing';
 import { resolveAgentConfig, traceResolvedAgentConfig } from '../../app/resolve-agent-config';
@@ -132,8 +132,8 @@ describe('traceResolvedAgentConfig', () => {
   it('keeps behavior and layout defaults visible on the resolved config', () => {
     const resolved = resolveAgentConfig(createBaseOptions());
 
-    expect(resolved.behavior.availableModels).toEqual(DEFAULT_MODEL_SPECS);
-    expect(resolved.behavior.modelAliases).toEqual(DEFAULT_MODEL_ALIASES);
+    expect(resolved.behavior.availableModels).toEqual([]);
+    expect(resolved.behavior.modelAliases).toEqual({ fast: '', smart: '', default: '' });
     expect(resolved.layout.dataDir).toBe('/tmp/test-data');
     expect(resolved.layout.contextFileNames).toEqual(['THING.md']);
   });

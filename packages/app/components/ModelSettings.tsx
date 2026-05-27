@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import {
   KeyRoundIcon,
   GlobeIcon,
-  CpuIcon,
   SaveIcon,
   EyeIcon,
   EyeOffIcon,
@@ -11,32 +10,61 @@ import {
   ZapIcon,
   BrainIcon,
   SparklesIcon,
-  InfoIcon,
+  LayersIcon,
+  AlertCircleIcon,
+  DownloadIcon,
+  SearchIcon,
+  CheckIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
-interface ModelConfig {
+interface Config {
   apiKey: string
   baseURL: string
-  model: string
+  contextLimit?: number
 }
 
-const DEFAULT_ALIASES = {
-  fast: "qwen-turbo",
-  smart: "qwen-max",
-  default: "qwen-plus",
+interface ModelAliases {
+  fast: string
+  smart: string
+  default: string
 }
+
+interface ModelInfo {
+  id: string
+  name: string
+  owned_by?: string
+}
+
+type AliasType = "fast" | "smart" | "default"
 
 export default function ModelSettings() {
   const { t } = useTranslation("settings")
-  const [config, setConfig] = useState<ModelConfig>({ apiKey: "", baseURL: "", model: "" })
+  const [config, setConfig] = useState<Config>({ apiKey: "", baseURL: "" })
+  const [aliases, setAliases] = useState<ModelAliases>({ fast: "", smart: "", default: "" })
   const [showApiKey, setShowApiKey] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
+  const [errors, setErrors] = useState<{ default?: string }>({})
+
+  // 模型列表相关状态
+  const [isFetchingModels, setIsFetchingModels] = useState(false)
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [isModelsDialogOpen, setIsModelsDialogOpen] = useState(false)
+  const [selectingAlias, setSelectingAlias] = useState<AliasType | null>(null)
+  const [modelSearch, setModelSearch] = useState("")
 
   const loadConfig = useCallback(async () => {
     setIsLoading(true)
@@ -44,7 +72,8 @@ export default function ModelSettings() {
       const res = await fetch("/api/config")
       if (res.ok) {
         const data = await res.json()
-        setConfig(data.config)
+        setConfig({ apiKey: data.apiKey, baseURL: data.baseURL, contextLimit: data.contextLimit })
+        setAliases(data.modelAliases)
       }
     } catch {
       // ignore
@@ -57,14 +86,25 @@ export default function ModelSettings() {
     loadConfig()
   }, [loadConfig])
 
+  const validate = useCallback((): boolean => {
+    const newErrors: { default?: string } = {}
+    if (!aliases.default.trim()) {
+      newErrors.default = t("models.alias.defaultRequired")
+    }
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }, [aliases.default, t])
+
   const handleSave = useCallback(async () => {
+    if (!validate()) return
+
     setIsSaving(true)
     setSaveStatus("idle")
     try {
       const res = await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ ...config, modelAliases: aliases }),
       })
       if (res.ok) {
         setSaveStatus("success")
@@ -77,12 +117,76 @@ export default function ModelSettings() {
     } finally {
       setIsSaving(false)
     }
-  }, [config])
+  }, [config, aliases, validate])
 
-  const updateField = useCallback((field: keyof ModelConfig, value: string) => {
+  const updateField = useCallback((field: keyof Config, value: string) => {
     setConfig((prev) => ({ ...prev, [field]: value }))
     setSaveStatus("idle")
   }, [])
+
+  const updateAlias = useCallback((field: keyof ModelAliases, value: string) => {
+    setAliases((prev) => ({ ...prev, [field]: value }))
+    setSaveStatus("idle")
+    if (field === "default" && errors.default) {
+      setErrors((prev) => ({ ...prev, default: undefined }))
+    }
+  }, [errors.default])
+
+  const fetchModels = useCallback(async () => {
+    if (!config.baseURL) {
+      setModelsError(t("models.fetchModels.baseURLRequired"))
+      return
+    }
+
+    setIsFetchingModels(true)
+    setModelsError(null)
+    setModels([])
+
+    try {
+      const params = new URLSearchParams()
+      if (config.baseURL) params.set("baseURL", config.baseURL)
+      if (config.apiKey) params.set("apiKey", config.apiKey)
+
+      const res = await fetch(`/api/models?${params.toString()}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        setModelsError(data.error || t("models.fetchModels.error"))
+        return
+      }
+
+      setModels(data.models || [])
+      if (data.models?.length === 0) {
+        setModelsError(t("models.fetchModels.noModels"))
+      }
+    } catch {
+      setModelsError(t("models.fetchModels.error"))
+    } finally {
+      setIsFetchingModels(false)
+    }
+  }, [config.baseURL, config.apiKey, t])
+
+  const handleOpenModelsDialog = useCallback((alias: AliasType) => {
+    setSelectingAlias(alias)
+    setModelSearch("")
+    setIsModelsDialogOpen(true)
+    if (models.length === 0) {
+      fetchModels()
+    }
+  }, [models.length, fetchModels])
+
+  const handleSelectModel = useCallback((modelId: string) => {
+    if (selectingAlias) {
+      updateAlias(selectingAlias, modelId)
+    }
+    setIsModelsDialogOpen(false)
+    setSelectingAlias(null)
+  }, [selectingAlias, updateAlias])
+
+  const filteredModels = models.filter((model) =>
+    model.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
+    model.name.toLowerCase().includes(modelSearch.toLowerCase())
+  )
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -190,26 +294,31 @@ export default function ModelSettings() {
 
             <Separator />
 
-            {/* Model Name */}
+            {/* Context Limit */}
             <div className="flex items-center gap-4 px-4 py-3">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
-                  <CpuIcon className="size-4" />
+                  <LayersIcon className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <span className="text-sm font-medium">{t("models.model.title")}</span>
+                  <span className="text-sm font-medium">{t("models.contextLimit.title")}</span>
                   <p className="text-xs text-muted-foreground truncate">
-                    {t("models.model.description")}
+                    {t("models.contextLimit.description")}
                   </p>
                 </div>
               </div>
               <div className="shrink-0 w-64">
                 <Input
-                  type="text"
-                  value={config.model}
-                  onChange={(e) => updateField("model", e.target.value)}
-                  placeholder={t("models.model.placeholder")}
+                  type="number"
+                  value={config.contextLimit ?? ""}
+                  onChange={(e) => {
+                    const val = e.target.value ? Number(e.target.value) : undefined
+                    setConfig((prev) => ({ ...prev, contextLimit: val }))
+                    setSaveStatus("idle")
+                  }}
+                  placeholder={t("models.contextLimit.placeholder")}
                   className="font-mono text-xs"
+                  min={0}
                   disabled={isLoading}
                 />
               </div>
@@ -222,37 +331,110 @@ export default function ModelSettings() {
               </span>
             </div>
 
-            <div className="px-4 py-3 space-y-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <InfoIcon className="size-3.5" />
-                <span>{t("models.aliasHint")}</span>
+            <div className="px-4 py-4 space-y-4">
+              {/* Default Model - Required */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SparklesIcon className="size-4 text-green-500" />
+                    <label className="text-sm font-medium">{t("models.alias.default")}</label>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {t("models.alias.required")}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOpenModelsDialog("default")}
+                    disabled={!config.baseURL || !config.apiKey}
+                  >
+                    <DownloadIcon className="size-3.5 mr-1.5" />
+                    {t("models.fetchModels.button")}
+                  </Button>
+                </div>
+                <Input
+                  type="text"
+                  value={aliases.default}
+                  onChange={(e) => updateAlias("default", e.target.value)}
+                  placeholder="e.g. gpt-4o, qwen-plus"
+                  className={`font-mono text-sm ${errors.default ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  disabled={isLoading}
+                />
+                {errors.default && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-500">
+                    <AlertCircleIcon className="size-3.5" />
+                    <span>{errors.default}</span>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {t("models.alias.defaultDescription")}
+                </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="flex items-center gap-2 rounded-md border p-2.5">
-                  <ZapIcon className="size-3.5 text-yellow-500" />
-                  <div className="min-w-0">
-                    <span className="text-xs font-medium">{t("models.alias.fast")}</span>
-                    <p className="text-xs text-muted-foreground font-mono truncate">
-                      {DEFAULT_ALIASES.fast}
+              <Separator />
+
+              {/* Optional Aliases */}
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  {t("models.alias.optionalHint")}
+                </p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Fast Model */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ZapIcon className="size-4 text-yellow-500" />
+                        <label className="text-sm font-medium">{t("models.alias.fast")}</label>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenModelsDialog("fast")}
+                        disabled={!config.baseURL || !config.apiKey}
+                      >
+                        <DownloadIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                    <Input
+                      type="text"
+                      value={aliases.fast}
+                      onChange={(e) => updateAlias("fast", e.target.value)}
+                      placeholder="e.g. gpt-4o-mini"
+                      className="font-mono text-sm"
+                      disabled={isLoading}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("models.alias.fastDescription")}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 rounded-md border p-2.5">
-                  <BrainIcon className="size-3.5 text-blue-500" />
-                  <div className="min-w-0">
-                    <span className="text-xs font-medium">{t("models.alias.smart")}</span>
-                    <p className="text-xs text-muted-foreground font-mono truncate">
-                      {DEFAULT_ALIASES.smart}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 rounded-md border p-2.5">
-                  <SparklesIcon className="size-3.5 text-green-500" />
-                  <div className="min-w-0">
-                    <span className="text-xs font-medium">{t("models.alias.default")}</span>
-                    <p className="text-xs text-muted-foreground font-mono truncate">
-                      {DEFAULT_ALIASES.default}
+
+                  {/* Smart Model */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BrainIcon className="size-4 text-blue-500" />
+                        <label className="text-sm font-medium">{t("models.alias.smart")}</label>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenModelsDialog("smart")}
+                        disabled={!config.baseURL || !config.apiKey}
+                      >
+                        <DownloadIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                    <Input
+                      type="text"
+                      value={aliases.smart}
+                      onChange={(e) => updateAlias("smart", e.target.value)}
+                      placeholder="e.g. gpt-4o"
+                      className="font-mono text-sm"
+                      disabled={isLoading}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("models.alias.smartDescription")}
                     </p>
                   </div>
                 </div>
@@ -261,6 +443,94 @@ export default function ModelSettings() {
           </div>
         </div>
       </div>
+
+      {/* Model Selection Dialog */}
+      <Dialog open={isModelsDialogOpen} onOpenChange={setIsModelsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("models.fetchModels.dialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("models.fetchModels.dialogDescription", {
+                alias: selectingAlias ? t(`models.alias.${selectingAlias}`) : ""
+              })}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Search */}
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder={t("models.fetchModels.searchPlaceholder")}
+                className="pl-9"
+              />
+            </div>
+
+            {/* Fetch Button */}
+            <Button
+              variant="outline"
+              onClick={fetchModels}
+              disabled={isFetchingModels || !config.baseURL || !config.apiKey}
+              className="w-full"
+            >
+              {isFetchingModels ? (
+                <>
+                  <RefreshCwIcon className="size-4 mr-2 animate-spin" />
+                  {t("models.fetchModels.fetching")}
+                </>
+              ) : (
+                <>
+                  <DownloadIcon className="size-4 mr-2" />
+                  {t("models.fetchModels.fetchButton")}
+                </>
+              )}
+            </Button>
+
+            {/* Error */}
+            {modelsError && (
+              <div className="flex items-center gap-2 text-sm text-red-500">
+                <AlertCircleIcon className="size-4" />
+                <span>{modelsError}</span>
+              </div>
+            )}
+
+            {/* Model List */}
+            <div className="border rounded-lg max-h-64 overflow-auto">
+              {filteredModels.length > 0 ? (
+                <div className="divide-y">
+                  {filteredModels.map((model) => (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => handleSelectModel(model.id)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/50 transition-colors text-left"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-mono text-sm truncate">{model.id}</div>
+                        {model.owned_by && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {model.owned_by}
+                          </div>
+                        )}
+                      </div>
+                      {aliases[selectingAlias || "default"] === model.id && (
+                        <CheckIcon className="size-4 text-green-500 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  {isFetchingModels ? t("models.fetchModels.loading") : t("models.fetchModels.noModels")}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

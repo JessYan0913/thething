@@ -106,15 +106,17 @@ export interface LoadEvent {
 // ============================================================
 
 /**
- * 模型配置（必填）
+ * 模型配置（apiKey 和 baseURL 必填）
  *
  * core 包是库，不是应用。库不应该假设环境变量的存在。
  * API Key、Base URL 等变量由应用层（CLI/Server）管理，通过参数显式传入。
+ *
+ * modelName 可选：如果未指定，将使用 runtime.behavior.modelAliases.default
  */
 export interface ModelConfig {
   apiKey: string;
   baseURL: string;
-  modelName: string;
+  modelName?: string;
   includeUsage?: boolean;
   enableThinking?: boolean;
 }

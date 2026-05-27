@@ -5,7 +5,14 @@ import os from 'os'
 export interface GlobalConfig {
   apiKey?: string
   baseURL?: string
-  model?: string
+  /** 模型上下文窗口大小（token 数），覆盖 core 内置的默认值 */
+  contextLimit?: number
+  /** 模型别名映射（default 用作默认模型） */
+  modelAliases?: {
+    fast?: string
+    smart?: string
+    default?: string
+  }
 }
 
 const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.thething')

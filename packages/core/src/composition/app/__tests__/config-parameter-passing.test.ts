@@ -174,8 +174,8 @@ describe('config parameter passing', () => {
     expect(createPermissionsSection([]).content).toBeNull();
   });
 
-  it('resolves model aliases from behavior defaults or explicit aliases', () => {
-    expect(resolveModelAlias('fast')).toBe('qwen-turbo');
+  it('resolves model aliases from explicit aliases', () => {
+    expect(resolveModelAlias('fast')).toBe('');
     expect(resolveModelAlias('smart', {
       fast: 'gpt-4o-mini',
       smart: 'gpt-4o',

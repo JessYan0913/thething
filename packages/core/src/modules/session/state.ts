@@ -14,7 +14,6 @@ import { cleanupSessionToolResults } from '../budget/tool-result-storage';
 import { CostTracker } from './cost';
 import { TokenBudgetTracker } from './token-budget';
 import type { SessionState, SessionStateOptions } from './types';
-import { DEFAULT_MODEL_SPECS } from '../../services/config/behavior';
 import { createPricingResolver } from '../../services/model/pricing';
 import {
   COMPACT_TOKEN_THRESHOLD,
@@ -42,9 +41,9 @@ export function createSessionState(
     layout,
     toolOutputConfig,
     dataStore,
-    pricingResolver = createPricingResolver(),
+    pricingResolver,
     todoStore = dataStore.todoStore,
-    availableModels = DEFAULT_MODEL_SPECS,
+    availableModels = [],
     autoDowngradeCostThreshold = 80,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
     compactionEnabled = true,
@@ -53,11 +52,14 @@ export function createSessionState(
     extraSensitivePaths = [],
   } = options;
 
+  // 创建 pricingResolver，传入 availableModels 以获取定价信息
+  const resolvedPricingResolver = pricingResolver ?? createPricingResolver(undefined, availableModels);
+
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
   const costTracker = new CostTracker(conversationId, dataStore.costStore, {
     model,
     maxBudgetUsd,
-    pricingResolver,
+    pricingResolver: resolvedPricingResolver,
   });
   const denialTracker = new DenialTracker({
     maxDenialsPerTool: options?.maxDenialsPerTool,

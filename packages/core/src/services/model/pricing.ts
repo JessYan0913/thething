@@ -2,9 +2,11 @@
 // Model Pricing Configuration - 模型定价配置
 // ============================================================
 //
-// 定价数据通过 bootstrap({ modelPricing }) 注入，
-// 内置定价表作为兜底默认值。
+// Core 模块不包含任何特定模型的硬编码定价。
+// 所有定价信息必须通过 ModelSpec.pricing 或 bootstrap({ modelPricing }) 注入。
 // ============================================================
+
+import type { ModelSpec } from '../config/behavior';
 
 /**
  * 模型定价配置
@@ -25,27 +27,9 @@ export interface ModelPricing {
 export type PricingRegistry = Record<string, ModelPricing>;
 
 export interface PricingResolver {
-  getModelPricing(model: string): ModelPricing;
+  getModelPricing(model: string, modelSpec?: ModelSpec): ModelPricing;
   getPricingRegistry(): PricingRegistry;
 }
-
-/**
- * 内置定价表（作为兜底默认值）
- *
- * 数据来源：各厂商公开文档，不保证实时准确。
- * 生产部署时建议通过 bootstrap({ modelPricing }) 覆盖。
- */
-export const DEFAULT_PRICING: PricingRegistry = {
-  // Qwen 系列
-  'qwen-max': { input: 4, output: 12, cached: 1 },
-  'qwen-max-latest': { input: 4, output: 12, cached: 1 },
-  'qwen-plus': { input: 1.5, output: 4.5, cached: 0.5 },
-  'qwen-plus-latest': { input: 1.5, output: 4.5, cached: 0.5 },
-  'qwen-turbo': { input: 0.5, output: 1.5, cached: 0.2 },
-  'qwen-turbo-latest': { input: 0.5, output: 1.5, cached: 0.2 },
-  // DeepSeek 系列
-  'deepseek-v3': { input: 1.2, output: 4.8, cached: 0.4 },
-};
 
 /**
  * 默认定价（未知模型时使用）
@@ -63,34 +47,61 @@ const FALLBACK_PRICING: ModelPricing = {
 function resolvePricing(
   registry: PricingRegistry,
   model: string,
+  modelSpec?: ModelSpec,
 ): ModelPricing {
-  // 精确匹配
+  // 1. 优先使用 ModelSpec 中的定价配置
+  if (modelSpec?.pricing) {
+    return {
+      input: modelSpec.pricing.input,
+      output: modelSpec.pricing.output,
+      cached: modelSpec.pricing.cached ?? 0,
+    };
+  }
+
+  // 2. 精确匹配注册表
   if (registry[model]) {
     return registry[model];
   }
 
-  // 前缀模糊匹配（处理 'qwen-max-2025-01-01' 这类带日期后缀的模型名）
+  // 3. 前缀模糊匹配
   const prefix = Object.keys(registry).find(k => model.startsWith(k));
   if (prefix) {
     return registry[prefix];
   }
 
-  // 未找到，返回默认定价
+  // 4. 未找到，返回默认定价
   return FALLBACK_PRICING;
 }
 
 /**
  * 创建定价解析器（实例级，不共享进程全局状态）
  */
-export function createPricingResolver(overrides?: PricingRegistry): PricingResolver {
+export function createPricingResolver(
+  overrides?: PricingRegistry,
+  modelSpecs?: ModelSpec[],
+): PricingResolver {
+  // 从 ModelSpec 列表构建定价注册表
+  const specsRegistry: PricingRegistry = {};
+  if (modelSpecs) {
+    for (const spec of modelSpecs) {
+      if (spec.pricing) {
+        specsRegistry[spec.id] = {
+          input: spec.pricing.input,
+          output: spec.pricing.output,
+          cached: spec.pricing.cached ?? 0,
+        };
+      }
+    }
+  }
+
   const registry: PricingRegistry = {
-    ...DEFAULT_PRICING,
+    ...specsRegistry,
     ...(overrides ?? {}),
   };
 
   return {
-    getModelPricing(model: string): ModelPricing {
-      return resolvePricing(registry, model);
+    getModelPricing(model: string, modelSpec?: ModelSpec): ModelPricing {
+      return resolvePricing(registry, model, modelSpec);
     },
     getPricingRegistry(): PricingRegistry {
       return { ...registry };

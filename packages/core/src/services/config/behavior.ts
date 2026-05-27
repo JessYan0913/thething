@@ -44,6 +44,24 @@ export interface ModelSpec {
    * 用于模型选择逻辑
    */
   capabilityTier: number;
+
+  // ── 模型能力配置 ──────────────────────────────────────────────
+
+  /**
+   * 上下文窗口大小（Token 数）
+   * 用于自动压缩和上下文管理
+   */
+  contextLimit?: number;
+
+  /**
+   * 模型定价（USD / 百万 token）
+   * 用于估算费用和触发自动降级
+   */
+  pricing?: {
+    input: number;
+    output: number;
+    cached?: number;
+  };
 }
 
 import type { LifecycleConfig, ContextWindowConfig } from './compaction-types';
@@ -226,24 +244,6 @@ export interface BehaviorConfig {
 }
 
 /**
- * 默认模型规格
- */
-export const DEFAULT_MODEL_SPECS: ModelSpec[] = [
-  { id: 'qwen-turbo', name: 'Qwen Turbo', costMultiplier: 0.1, capabilityTier: 1 },
-  { id: 'qwen-plus', name: 'Qwen Plus', costMultiplier: 0.4, capabilityTier: 2 },
-  { id: 'qwen-max', name: 'Qwen Max', costMultiplier: 1.0, capabilityTier: 3 },
-];
-
-/**
- * 默认模型快捷名映射
- */
-export const DEFAULT_MODEL_ALIASES = {
-  fast: 'qwen-turbo',
-  smart: 'qwen-max',
-  default: 'qwen-plus',
-};
-
-/**
  * 默认 memory 入口限制
  */
 export const DEFAULT_MEMORY_ENTRYPOINT_LIMITS = {
@@ -269,8 +269,8 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     maxContextTokens: partial?.maxContextTokens ?? DEFAULT_CONTEXT_LIMIT,
     compactionThreshold: partial?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD,
     maxDenialsPerTool: partial?.maxDenialsPerTool ?? DEFAULT_MAX_DENIALS_PER_TOOL,
-    availableModels: partial?.availableModels ?? DEFAULT_MODEL_SPECS,
-    modelAliases: partial?.modelAliases ?? DEFAULT_MODEL_ALIASES,
+    availableModels: partial?.availableModels ?? [],
+    modelAliases: partial?.modelAliases ?? { fast: '', smart: '', default: '' },
     autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
     modelPricing: partial?.modelPricing,
     extraSensitivePaths: partial?.extraSensitivePaths ?? ([] as readonly string[]),
