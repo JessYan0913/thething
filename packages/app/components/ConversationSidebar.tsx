@@ -30,7 +30,6 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 
 // ============================================================================
@@ -259,22 +258,22 @@ const ConversationItem = ({
           >
             <span className="truncate text-destructive text-xs">{t('chat:conversation.deleteConfirm')}</span>
             <div className="flex items-center gap-0.5">
-              <Button
-                className="size-5 rounded-sm"
+              <div
+                className="inline-flex size-5 items-center justify-center rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
                 onClick={handleConfirmDelete}
-                size="icon"
-                variant="ghost"
+                role="button"
+                tabIndex={0}
               >
                 <CheckIcon className="size-3 text-destructive" />
-              </Button>
-              <Button
-                className="size-5 rounded-sm"
+              </div>
+              <div
+                className="inline-flex size-5 items-center justify-center rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
                 onClick={handleCancelDelete}
-                size="icon"
-                variant="ghost"
+                role="button"
+                tabIndex={0}
               >
                 <XIcon className="size-3" />
-              </Button>
+              </div>
             </div>
           </div>
         ) : (
