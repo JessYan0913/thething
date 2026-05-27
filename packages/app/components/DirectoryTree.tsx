@@ -61,7 +61,7 @@ function TreeNode({ name, path: dirPath, depth, defaultOpen, selectedFile, onFil
     setIsLoading(true)
     setLoadError(null)
     try {
-      const res = await fetch(`/api/fs/list?dir=${encodeURIComponent(dirPath)}`)
+      const res = await fetch(`/api/fs?action=list&dir=${encodeURIComponent(dirPath)}`)
       if (res.ok) {
         const data = await res.json()
         setChildren(data.items ?? [])

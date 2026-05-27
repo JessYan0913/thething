@@ -97,7 +97,7 @@ export function FilePreview({
     const detected = getLanguageExt(filePath, extHint)
     setLangExt(detected)
 
-    fetch(`/api/fs/read?path=${encodeURIComponent(filePath)}`)
+    fetch(`/api/fs?action=read&path=${encodeURIComponent(filePath)}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
