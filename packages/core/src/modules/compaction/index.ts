@@ -15,8 +15,8 @@ import type { ToolOutputState } from '../session/interfaces';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle, extractToolMeta } from './lifecycle';
 import { enforceContextWindow } from './context-window';
-import { estimateFullRequest } from './token-counter';
-import { getModelContextLimit } from '../../services/model';
+import { estimateMessagesTokens } from './token-counter';
+import { getModelContextLimit, getDefaultOutputTokens } from '../../services/model';
 import type { CompactedToolResult } from './types';
 
 // ============================================================
@@ -54,11 +54,15 @@ export async function compactBeforeStep(
   current = lifecycle.messages;
 
   // ── Layer 3: 上下文窗口检查（异步，极少触发）──
-  const estimation = await estimateFullRequest(current, '', {}, context.modelName);
+  const msgTokens = await estimateMessagesTokens(current, context.modelName);
   const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
+  const overhead = (context.instructionsTokens ?? 0)
+    + (context.toolsTokens ?? 0)
+    + getDefaultOutputTokens();
+  const totalEstimate = msgTokens + overhead;
   const triggerTokens = Math.floor(contextLimit * config.contextWindow.triggerPercent);
 
-  if (estimation.messagesTokens >= triggerTokens) {
+  if (totalEstimate >= triggerTokens) {
     const windowResult = await enforceContextWindow(current, {
       model: context.model,
       fallbackModels: context.fallbackModels,
@@ -67,6 +71,8 @@ export async function compactBeforeStep(
       dataStore: context.dataStore,
       config: config.contextWindow,
       contextLimit: context.contextLimit,
+      instructionsTokens: context.instructionsTokens,
+      toolsTokens: context.toolsTokens,
     });
     if (windowResult.executed) {
       current = windowResult.messages;

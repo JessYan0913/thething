@@ -19,6 +19,7 @@ export interface AgentPipelineConfig {
   instructions?: string;
   tools?: Record<string, Tool>;
   contextLimit?: number;
+  triggerPercent?: number;
 }
 
 export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipelineConfig): PrepareStepFunction<TOOLS> {
@@ -111,7 +112,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       const limit = config.contextLimit
         ? getModelContextLimit(sessionState.model, config.contextLimit)
         : estimation.modelLimit;
-      logger.info('Context', formatContextBar(estimation, limit));
+      logger.info('Context', formatContextBar(estimation, limit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
     }
 
     return {
@@ -124,20 +125,20 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 }
 
 const BAR_WIDTH = 20;
-const TRIGGER_PERCENT = 0.85;
+const DEFAULT_TRIGGER_PERCENT = 0.85;
 
 function formatTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
 
-function formatContextBar(est: FullRequestEstimation, contextLimit: number): string {
+function formatContextBar(est: FullRequestEstimation, contextLimit: number, triggerPercent: number = DEFAULT_TRIGGER_PERCENT): string {
   const used = est.messagesTokens + est.instructionsTokens + est.toolsTokens + est.outputReserve;
   const pct = contextLimit > 0 ? used / contextLimit : 0;
   const filled = Math.min(BAR_WIDTH, Math.round(pct * BAR_WIDTH));
   const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
   const pctStr = (pct * 100).toFixed(1);
-  const trigger = pct >= TRIGGER_PERCENT ? ' ⚠ TRIGGER' : '';
+  const trigger = pct >= triggerPercent ? ' ⚠ TRIGGER' : '';
   return (
     `${bar} ${pctStr}% (${formatTokens(used)}/${formatTokens(contextLimit)})${trigger}` +
     ` │ msgs ${formatTokens(est.messagesTokens)}` +

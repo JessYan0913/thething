@@ -131,33 +131,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   sessionState.compactModel = modelInstance
 
   const compactionCfg: CompactionConfig = sessionOptions.compactionConfig ?? DEFAULT_COMPACTION_CONFIG
-  sessionState.compact = async (msgs) => {
-    if (sessionState.compactModel && sessionState.dataStore) {
-      const afterResult = await compactBeforeStep(msgs, sessionState, compactionCfg, {
-        model: sessionState.compactModel,
-        fallbackModels: sessionState.fallbackModels,
-        modelName: sessionState.model,
-        conversationId,
-        dataStore: sessionState.dataStore,
-        contextLimit: sessionOptions.maxContextTokens,
-      })
-      const tokensFreed = await estimateTokensDiff(msgs, afterResult)
-      return {
-        messages: afterResult,
-        executed: tokensFreed > 0,
-        tokensFreed,
-        actions: tokensFreed > 0 ? [`compactBeforeStep: freed ${tokensFreed} tokens`] : [],
-      }
-    }
-    const { manageToolOutputLifecycle } = await import('../../modules/compaction/lifecycle')
-    const result = manageToolOutputLifecycle(msgs, compactionCfg.lifecycle)
-    return {
-      messages: result.messages,
-      executed: result.tokensFreed > 0,
-      tokensFreed: result.tokensFreed,
-      actions: result.tokensFreed > 0 ? [`Layer 2: freed ${result.tokensFreed} tokens`] : [],
-    }
-  }
 
   const wrappedModel = wrapLanguageModel({
     model: modelInstance,
@@ -202,6 +175,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       dataStore,
       conversationId,
       model: modelInstance,
+      contextLimit: sessionOptions.maxContextTokens,
     },
   )
 
@@ -229,6 +203,42 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   }
 
   // ============================================================
+  // Compact 注入（在 budget check + finalTools 之后，使用真实 overhead）
+  // ============================================================
+  const overheadInstructions = budgetCheck.estimation.instructionsTokens
+  const overheadTools = budgetCheck.estimation.toolsTokens
+
+  sessionState.compact = async (msgs) => {
+    if (sessionState.compactModel && sessionState.dataStore) {
+      const afterResult = await compactBeforeStep(msgs, sessionState, compactionCfg, {
+        model: sessionState.compactModel,
+        fallbackModels: sessionState.fallbackModels,
+        modelName: sessionState.model,
+        conversationId,
+        dataStore: sessionState.dataStore,
+        contextLimit: sessionOptions.maxContextTokens,
+        instructionsTokens: overheadInstructions,
+        toolsTokens: overheadTools,
+      })
+      const tokensFreed = await estimateTokensDiff(msgs, afterResult)
+      return {
+        messages: afterResult,
+        executed: tokensFreed > 0,
+        tokensFreed,
+        actions: tokensFreed > 0 ? [`compactBeforeStep: freed ${tokensFreed} tokens`] : [],
+      }
+    }
+    const { manageToolOutputLifecycle } = await import('../../modules/compaction/lifecycle')
+    const result = manageToolOutputLifecycle(msgs, compactionCfg.lifecycle)
+    return {
+      messages: result.messages,
+      executed: result.tokensFreed > 0,
+      tokensFreed: result.tokensFreed,
+      actions: result.tokensFreed > 0 ? [`Layer 2: freed ${result.tokensFreed} tokens`] : [],
+    }
+  }
+
+  // ============================================================
   // Agent pipeline + ToolLoopAgent
   // ============================================================
   type ChatToolsType = Record<string, any>
@@ -241,6 +251,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     instructions,
     tools: finalTools,
     contextLimit: sessionOptions.maxContextTokens,
+    triggerPercent: compactionCfg.contextWindow.triggerPercent,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

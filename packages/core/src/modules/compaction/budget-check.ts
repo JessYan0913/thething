@@ -64,9 +64,11 @@ export async function checkInitialBudget(
     conversationId?: string;
     model?: LanguageModelV3;
     fallbackModels?: LanguageModelV3[];
+    contextLimit?: number;
   },
 ): Promise<InitialBudgetCheckResult> {
-  const initialEstimation = await estimateFullRequest(messages, instructions, tools, modelName);
+  const contextLimit = context?.contextLimit;
+  const initialEstimation = await estimateFullRequest(messages, instructions, tools, modelName, contextLimit);
   const actions: string[] = [];
 
   logger.debug('Budget', `Model: ${modelName}, Limit: ${initialEstimation.modelLimit}`);
@@ -90,7 +92,7 @@ export async function checkInitialBudget(
       currentMessages = lifecycleResult.messages;
       actions.push(`Layer 2: freed ${lifecycleResult.tokensFreed} tokens`);
 
-      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
       logger.debug('Budget', `After Layer 2: ${currentEstimation.totalTokens} tokens`);
 
       if (!currentEstimation.exceedsLimit) {
@@ -107,7 +109,7 @@ export async function checkInitialBudget(
       currentTools = filtered;
       actions.push(`Tool filter: removed ${removed} tools`);
 
-      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
       logger.debug('Budget', `After tool filter: ${currentEstimation.totalTokens} tokens`);
 
       if (!currentEstimation.exceedsLimit) {
@@ -126,12 +128,15 @@ export async function checkInitialBudget(
         conversationId: context.conversationId,
         dataStore: context.dataStore!,
         config: config.contextWindow,
+        contextLimit,
+        instructionsTokens: currentEstimation.instructionsTokens,
+        toolsTokens: currentEstimation.toolsTokens,
       });
       if (windowResult.executed) {
         currentMessages = windowResult.messages;
         actions.push(`Layer 3: freed ${windowResult.tokensFreed} tokens`);
 
-        currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+        currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
         logger.debug('Budget', `After Layer 3: ${currentEstimation.totalTokens} tokens`);
 
         if (!currentEstimation.exceedsLimit) {
@@ -155,7 +160,7 @@ export async function checkInitialBudget(
     }
   }
 
-  const finalEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName);
+  const finalEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
   logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimit ? 'EXCEEDS' : 'OK'}`);
 
   return {

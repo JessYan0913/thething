@@ -10,12 +10,12 @@ import type { DataStore } from '../../primitives/datastore/types';
 import { type ContextWindowConfig, DEFAULT_CONTEXT_WINDOW_CONFIG } from './types';
 import { logger } from '../../primitives/logger';
 import {
-  estimateFullRequest,
   estimateMessageTokens,
+  estimateMessagesTokens,
   extractMessageText,
   stripImagesFromMessages,
 } from './token-counter';
-import { getModelContextLimit } from '../../services/model';
+import { getModelContextLimit, getDefaultOutputTokens } from '../../services/model';
 
 // ============================================================
 // Summary Prompt
@@ -64,23 +64,35 @@ export async function enforceContextWindow(
     dataStore: DataStore;
     config: ContextWindowConfig;
     contextLimit?: number;
+    instructionsTokens?: number;
+    toolsTokens?: number;
   },
 ): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
   const config = context.config ?? DEFAULT_CONTEXT_WINDOW_CONFIG;
 
-  // 估算当前 token 总量
-  const estimation = await estimateFullRequest(messages, '', {}, context.modelName);
+  const msgTokens = await estimateMessagesTokens(messages, context.modelName);
   const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
+  const realInstructions = context.instructionsTokens ?? 0;
+  const realTools = context.toolsTokens ?? 0;
+  const outputReserve = getDefaultOutputTokens();
+  const overhead = realInstructions + realTools + outputReserve;
+  const totalEstimate = msgTokens + overhead;
   const triggerTokens = Math.floor(contextLimit * config.triggerPercent);
 
-  if (estimation.messagesTokens < triggerTokens) {
+  if (totalEstimate < triggerTokens) {
     return { messages, executed: false, tokensFreed: 0 };
   }
 
-  // 计算目标 token 数
   const targetTokens = Math.floor(contextLimit * config.targetPercent);
-  const targetMessageTokens = Math.max(0, targetTokens - estimation.instructionsTokens
-    - estimation.toolsTokens - estimation.outputReserve);
+  const MIN_MESSAGE_BUDGET_TOKENS = 2000;
+  const rawBudget = targetTokens - overhead;
+  const targetMessageTokens = Math.max(MIN_MESSAGE_BUDGET_TOKENS, rawBudget);
+
+  if (rawBudget < MIN_MESSAGE_BUDGET_TOKENS) {
+    logger.warn('ContextWindow', `contextLimit ${contextLimit} too small for overhead `
+      + `(instructions=${realInstructions}, tools=${realTools}, output=${outputReserve}), `
+      + `message budget forced to minimum ${MIN_MESSAGE_BUDGET_TOKENS}`);
+  }
 
   // 找到分割点：保留后段 token 数 ≈ targetMessageTokens
   const splitIndex = await findSplitIndex(messages, targetMessageTokens, context.modelName);
@@ -106,8 +118,8 @@ export async function enforceContextWindow(
 
   const result = [summaryMessage, ...newerMessages];
 
-  const newEstimation = await estimateFullRequest(result, '', {}, context.modelName);
-  const tokensFreed = Math.max(0, estimation.messagesTokens - newEstimation.messagesTokens);
+  const newMsgTokens = await estimateMessagesTokens(result, context.modelName);
+  const tokensFreed = Math.max(0, msgTokens - newMsgTokens);
 
   return { messages: result, executed: true, tokensFreed };
 }

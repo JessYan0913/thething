@@ -237,9 +237,10 @@ export async function estimateFullRequest(
   messages: UIMessage[],
   instructions: string,
   tools: Record<string, Tool>,
-  modelName: string
+  modelName: string,
+  contextLimitOverride?: number,
 ): Promise<FullRequestEstimation> {
-  const caps = getModelCapabilities(modelName);
+  const caps = getModelCapabilities(modelName, { contextLimitOverride });
 
   // 并行计算各部分（使用正确的 tokenizer）
   const [messagesTokens, instructionsTokens, toolsTokens] = await Promise.all([
