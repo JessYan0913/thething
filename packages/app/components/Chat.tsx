@@ -5,6 +5,7 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
+  AutoScrollToBottom,
 } from '@/components/ai-elements/conversation';
 import {
   Message,
@@ -664,7 +665,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
           />
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto pt-4">
+        <div className="flex flex-1 min-h-0 flex-col pt-4">
           <Conversation>
             <ConversationContent>
               {messages.map((message, messageIndex) => {
@@ -830,6 +831,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                 );
               })}
             </ConversationContent>
+            <AutoScrollToBottom trigger={isInitialLoadDone && messages.length > 0} />
             <ConversationScrollButton />
           </Conversation>
         </div>

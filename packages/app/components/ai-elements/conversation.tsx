@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -98,6 +98,26 @@ export const ConversationScrollButton = ({
       </Button>
     )
   );
+};
+
+export type AutoScrollToBottomProps = {
+  trigger: unknown;
+};
+
+export const AutoScrollToBottom = ({ trigger }: AutoScrollToBottomProps) => {
+  const { scrollToBottom } = useStickToBottomContext();
+  const hasScrolled = useRef(false);
+
+  useEffect(() => {
+    if (trigger && !hasScrolled.current) {
+      hasScrolled.current = true;
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }
+  }, [trigger, scrollToBottom]);
+
+  return null;
 };
 
 const getMessageText = (message: UIMessage): string =>
