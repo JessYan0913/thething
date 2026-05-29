@@ -240,6 +240,8 @@ export type {
   RespondResult,
 } from './modules/connector/inbound/types';
 export { ConnectorInboundGateway, ConnectorResponder } from './modules/connector/inbound';
+export { FeishuWsClient } from './modules/connector/inbound/feishu-ws-client';
+export type { FeishuWsClientConfig } from './modules/connector/inbound/feishu-ws-client';
 export {
   InboundEventProcessor,
 } from './modules/connector/inbound/inbound-processor';

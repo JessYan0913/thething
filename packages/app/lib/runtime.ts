@@ -1,4 +1,6 @@
-import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
+import path from 'path';
+import os from 'os';
+import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, FeishuWsClient, type CoreRuntime, type AppContext } from '@the-thing/core';
 
 let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
@@ -11,6 +13,9 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     layout: {
       resourceRoot: process.cwd(),
       dataDir: process.env.THETHING_DATA_DIR,
+    },
+    connectorConfig: {
+      configDir: path.join(os.homedir(), '.thething', 'connectors'),
     },
     env: envSnapshot,
     debug: true,
@@ -28,6 +33,20 @@ async function initializeRuntime(): Promise<CoreRuntime> {
       modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default || '',
     },
   });
+
+  // Start Feishu WebSocket long connection if credentials are configured
+  const feishuDef = runtime.connectorRegistry.getDefinition('feishu');
+  const feishuAppId = process.env.FEISHU_APP_ID || feishuDef?.credentials?.app_id;
+  const feishuAppSecret = process.env.FEISHU_APP_SECRET || feishuDef?.credentials?.app_secret;
+  if (feishuAppId && feishuAppSecret && runtime.connectorInbound) {
+    const feishuWs = new FeishuWsClient(
+      { appId: feishuAppId, appSecret: feishuAppSecret, connectorId: 'feishu' },
+      runtime.connectorInbound,
+    );
+    feishuWs.start().catch((err) => {
+      console.error('[Runtime] Feishu WS client failed to start:', err);
+    });
+  }
 
   return runtime;
 }
