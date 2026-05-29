@@ -1,4 +1,4 @@
-import { bootstrap, createContext, type CoreRuntime, type AppContext } from '@the-thing/core';
+import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
 
 let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
@@ -17,6 +17,18 @@ async function initializeRuntime(): Promise<CoreRuntime> {
   });
 
   context = await createContext({ runtime });
+
+  // Wire up connector inbound: bind AI agent handler to Feishu/WeChat webhooks
+  const globalConfig = loadGlobalConfig();
+  configureConnectorInboundRuntime(runtime.connectorRuntime, {
+    appContext: context,
+    modelConfig: {
+      apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
+      baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
+      modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default || '',
+    },
+  });
+
   return runtime;
 }
 
