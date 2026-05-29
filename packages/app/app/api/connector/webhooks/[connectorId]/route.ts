@@ -1,16 +1,14 @@
 import { getServerRuntime } from '@/lib/runtime';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(request: Request) {
-  const startTime = Date.now();
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ connectorId: string }> }
+) {
+  const { connectorId } = await params;
   const url = new URL(request.url);
-  // Extract connectorId from the URL path: /api/connector/webhooks/[connectorId]
-  const pathParts = url.pathname.split('/');
-  const connectorId = pathParts[pathParts.length - 1];
-
-  console.log('[Webhook] Received request for connector:', connectorId);
 
   try {
     const query: Record<string, string> = {};
@@ -42,15 +40,12 @@ export async function POST(request: Request) {
       transport: 'http',
     });
 
-    console.log('[Webhook] Gateway result:', result.eventId, result.reason ?? 'accepted', 'duration:', Date.now() - startTime, 'ms');
-
     return NextResponse.json(result.body ?? {
       success: result.accepted,
       event_id: result.eventId,
       error: result.reason,
     }, { status: result.status });
   } catch (error) {
-    console.error('[Webhook] Error:', error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 }
@@ -58,10 +53,12 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ connectorId: string }> }
+) {
+  const { connectorId } = await params;
   const url = new URL(request.url);
-  const pathParts = url.pathname.split('/');
-  const connectorId = pathParts[pathParts.length - 1];
 
   const query: Record<string, string> = {};
   url.searchParams.forEach((value, key) => {
@@ -100,7 +97,6 @@ export async function GET(request: Request) {
       timestamp: Date.now(),
     });
   } catch (error) {
-    console.error('[Webhook] GET Error:', error);
     return NextResponse.json(
       { status: 'error', error: error instanceof Error ? error.message : String(error) },
       { status: 500 }
