@@ -4,6 +4,7 @@
 
 // 前向声明类型（避免循环导入）
 import type { ConnectorRegistry } from './registry'
+import type { AuditLogger } from './audit-logger'
 import type { ConnectorInboundRuntime, InboundEvent } from './inbound/types'
 
 /**
@@ -55,14 +56,14 @@ export interface ConnectorDefinition {
  */
 export interface ConnectorReplyDefinition {
   tool: string
-  input: Record<string, unknown>
+  input?: Record<string, unknown>
 }
 
 /**
  * 认证配置
  */
 export interface AuthConfig {
-  type: 'none' | 'api_key' | 'bearer' | 'custom'
+  type: 'none' | 'api_key' | 'bearer' | 'custom' | 'database'
   config: {
     // API Key 认证
     header?: string        // e.g., "X-API-Token"
@@ -75,9 +76,15 @@ export interface AuthConfig {
     token_body?: Record<string, string>
     token_field?: string           // 返回 JSON 中 token 字段名
     expires_in_field?: string      // 返回 JSON 中过期时间字段名
+    refresh_before_expiry_ms?: number  // 提前刷新时间（毫秒）
 
-    // Bearer 认证
-    bearer_token?: string
+    // Bearer Token 认证
+    token?: string
+
+    // Database 认证
+    db_path?: string
+    query?: string
+    token_column?: string
   }
 }
 
@@ -87,53 +94,52 @@ export interface AuthConfig {
 export interface ToolDefinition {
   name: string
   description: string
-  input_schema: {
-    type: 'object'
-    properties: Record<string, SchemaProperty>
-    required?: string[]
-    additionalProperties?: boolean
-  }
-  retryable?: boolean
-  timeout_ms?: number
-  executor: 'http' | 'mock'
-  executor_config: HttpExecutorConfig | MockExecutorConfig
-}
-
-/**
- * JSON Schema 属性
- */
-export interface SchemaProperty {
-  type: string
-  description?: string
-  enum?: string[]
-  default?: unknown
-  items?: SchemaProperty
-  properties?: Record<string, SchemaProperty>
+  executor: 'http' | 'mock' | 'sql' | 'script'
+  executor_config: HttpExecutorConfig | MockExecutorConfig | SqlExecutorConfig | ScriptExecutorConfig
+  input_schema?: Record<string, unknown>
+  output_schema?: Record<string, unknown>
 }
 
 /**
  * HTTP 执行器配置
  */
 export interface HttpExecutorConfig {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   url: string
+  method: string
   headers?: Record<string, string>
   query_params?: Record<string, string>
-  body?: Record<string, unknown>
-  body_type?: 'json' | 'form' | 'xml'
+  body_template?: string
+  response_path?: string
+  timeout_ms?: number
 }
 
 /**
- * Mock 执行器配置（用于测试）
+ * Mock 执行器配置
  */
 export interface MockExecutorConfig {
   response: unknown
   delay_ms?: number
-  error?: string
 }
 
 /**
- * core 内部标准工具调用模型。
+ * SQL 执行器配置
+ */
+export interface SqlExecutorConfig {
+  db_path: string
+  query: string
+  params?: unknown[]
+}
+
+/**
+ * Script 执行器配置
+ */
+export interface ScriptExecutorConfig {
+  script: string
+  timeout_ms?: number
+}
+
+/**
+ * Connector 工具调用
  */
 export interface ConnectorToolCall {
   connectorId: string
@@ -146,49 +152,37 @@ export interface ConnectorToolCall {
  */
 export interface ToolCallResponse {
   success: boolean
-  result?: unknown
-  error?: string
-  metadata?: {
-    durationMs: number
-    connectorId: string
-    toolName: string
-  }
-}
-
-/**
- * Executor 执行结果
- */
-export interface ExecutorResult {
-  success: boolean
   data?: unknown
   error?: string
   metadata?: Record<string, unknown>
 }
 
-// ============================================================
-// ConnectorRuntime - 实例管理接口
-// ============================================================
-
-import type { LanguageModelV3 } from '@ai-sdk/provider'
-import type { DataStore } from '../../primitives/datastore/types'
-import type { PermissionRule } from '../permissions/types'
-import type { ResolvedLayout } from '../../services/config/layout'
-import type { BehaviorConfig } from '../../services/config/behavior'
+/**
+ * Connector Frontmatter（从 loader 加载）
+ */
+export interface ConnectorFrontmatter {
+  id: string
+  name: string
+  version: string
+  description: string
+  enabled: boolean
+  inbound?: ConnectorDefinition['inbound']
+  auth: AuthConfig
+  credentials?: Record<string, string>
+  custom_settings?: Record<string, unknown>
+  base_url?: string
+  tools: ToolDefinition[]
+}
 
 /**
- * 最小化的应用上下文接口（供 Connector 模块使用）
- *
- * 避免直接依赖 composition/app 层的 AppContext，
- * 仅声明 connector inbound handler 实际需要的属性。
+ * Permission Rule
  */
-export interface ConnectorAppContext {
-  readonly runtime: {
-    readonly dataStore: DataStore;
-    readonly env?: Record<string, string | undefined>;
-  };
-  readonly layout: ResolvedLayout;
-  readonly behavior: BehaviorConfig;
-  readonly permissions: readonly PermissionRule[];
+export interface PermissionRule {
+  id: string
+  connector_id: string
+  tool_name: string
+  behavior: 'allow' | 'deny' | 'prompt'
+  conditions?: Record<string, unknown>
 }
 
 /**
@@ -230,6 +224,11 @@ export interface ConnectorRuntimeConfig {
   /** 环境变量快照，由 server/cli 显式传入；core 不自行读取 process.env */
   env?: Record<string, string | undefined>
 
+  /** 显式允许不安全 script executor；默认 false */
+  allowUnsafeScriptExecutor?: boolean
+
+  /** 使用内存 Inbox（测试用） */
+  useMemoryInbox?: boolean
 }
 
 /**
@@ -241,6 +240,9 @@ export interface ConnectorRuntimeConfig {
 export interface ConnectorRuntime {
   /** Connector 注册表 */
   registry: ConnectorRegistry
+
+  /** 审计日志器 */
+  auditLogger: AuditLogger
 
   /** 入站运行时（标准事件、网关、收件箱、回复器） */
   inbound: ConnectorInboundRuntime

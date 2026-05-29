@@ -1,6 +1,7 @@
 import path from 'path';
 import os from 'os';
-import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, FeishuWsClient, type CoreRuntime, type AppContext } from '@the-thing/core';
+import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
+import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
 let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
@@ -34,18 +35,14 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     },
   });
 
-  // Start Feishu WebSocket long connection if credentials are configured
-  const feishuDef = runtime.connectorRegistry.getDefinition('feishu');
-  const feishuAppId = process.env.FEISHU_APP_ID || feishuDef?.credentials?.app_id;
-  const feishuAppSecret = process.env.FEISHU_APP_SECRET || feishuDef?.credentials?.app_secret;
-  if (feishuAppId && feishuAppSecret && runtime.connectorInbound) {
-    const feishuWs = new FeishuWsClient(
-      { appId: feishuAppId, appSecret: feishuAppSecret, connectorId: 'feishu' },
-      runtime.connectorInbound,
+  // Start all Feishu WebSocket long connections
+  try {
+    await startAllFeishuLongConnections(
+      runtime.connectorRegistry,
+      runtime.connectorRuntime.inbound.gateway
     );
-    feishuWs.start().catch((err) => {
-      console.error('[Runtime] Feishu WS client failed to start:', err);
-    });
+  } catch (err) {
+    console.error('[Runtime] Failed to start Feishu long connections:', err);
   }
 
   return runtime;
@@ -83,4 +80,14 @@ export async function reloadServerContext(): Promise<AppContext> {
 export async function getServerDataStore() {
   const rt = await getServerRuntime();
   return rt.dataStore;
+}
+
+// Cleanup function to stop all connections
+export async function shutdownRuntime(): Promise<void> {
+  stopAllFeishuLongConnections();
+  if (runtime) {
+    await runtime.dispose();
+    runtime = null;
+    context = null;
+  }
 }

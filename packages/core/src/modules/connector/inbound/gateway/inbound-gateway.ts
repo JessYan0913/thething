@@ -8,6 +8,8 @@ import type {
 } from '../types'
 import { FeishuHttpProtocolAdapter, FeishuWsProtocolAdapter } from '../adapters/feishu'
 import { TestProtocolAdapter } from '../adapters/test-adapter'
+import { TaskTriggerProtocolAdapter } from '../adapters/task-trigger-adapter'
+import { RestApiProtocolAdapter } from '../adapters/rest-api-adapter'
 import { isWechatProtocol, WechatProtocolAdapter } from '../adapters/wechat'
 import type { ProtocolAdapter } from '../adapters/protocol-adapter'
 import type { InboundHttpRequest } from './http-request'
@@ -28,6 +30,8 @@ export class ConnectorInboundGateway {
       new WechatProtocolAdapter('wecom'),
       new WechatProtocolAdapter('wechat-mp'),
       new WechatProtocolAdapter('wechat-kf'),
+      new TaskTriggerProtocolAdapter(),
+      new RestApiProtocolAdapter(),
       ...(options.adapters ?? []),
     ]) {
       this.adapters.set(adapter.protocol, adapter)
@@ -49,6 +53,8 @@ export class ConnectorInboundGateway {
       connectorId: resolved.config.connectorId,
       protocol: resolved.config.protocol,
       transport: request.transport || 'http',
+      method: request.method,
+      path: request.path,
       query: request.query,
       headers: normalizeHeaders(request.headers),
       body: request.body,

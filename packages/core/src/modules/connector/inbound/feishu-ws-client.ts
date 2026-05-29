@@ -73,30 +73,17 @@ export class FeishuWsClient {
     try {
       const eventData = data as Record<string, unknown>
       const header = eventData.header as Record<string, unknown> | undefined
-      const event = eventData.event as Record<string, unknown> | undefined
 
       logger.debug('FeishuWsClient', `Received event: ${header?.event_type || 'unknown'}`, {
         eventId: header?.event_id,
       })
 
-      // Build the full Feishu event envelope for the adapter parser
-      const fullPayload: Record<string, unknown> = {
-        header: header ?? {
-          event_id: `ws-${Date.now()}`,
-          event_type: 'im.message.receive_v1',
-          create_time: String(Date.now()),
-          token: '',
-          app_id: this.config.appId,
-          tenant_key: '',
-        },
-        event: event ?? eventData,
-      }
-
+      // Pass the raw event data directly to the gateway (like ai-chatbot project)
       const result = await this.inboundRuntime.gateway.acceptExternal({
         connectorId,
         protocol: 'feishu',
         transport: 'websocket',
-        raw: fullPayload,
+        raw: eventData,
         receivedAt: Date.now(),
       })
 

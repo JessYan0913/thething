@@ -4,6 +4,7 @@
 
 export * from './types'
 export { ConnectorRegistry } from './registry'
+export { AuditLogger } from './audit-logger'
 export { ConnectorToolExecutor } from './executor'
 export { MockExecutor } from './executors/mock'
 export {
