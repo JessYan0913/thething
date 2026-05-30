@@ -565,20 +565,92 @@ export class AgentInboundHandler implements InboundEventHandler {
     while (round < MAX_ROUNDS) {
       round++
 
-      // ── 流式执行（带 ECONNRESET 重试）──
+      // ── 流式执行（带 ECONNRESET / NoOutputGeneratedError 重试）──
       const MAX_RETRIES = 2
       let streamResult!: Awaited<ReturnType<typeof agent.stream>>
+      let responseTextBeforeStream = responseText
+      let approvalRequests: Array<{
+        approvalId: string
+        toolCallId: string
+        toolName: string
+        input: Record<string, unknown>
+      }> = []
+      let stepContent: Array<{
+        type: string
+        toolCallId?: string
+        toolName?: string
+        input?: Record<string, unknown>
+        text?: string
+      }> = []
+      let steps: any[] = []
       for (let attempt = 0; ; attempt++) {
         try {
           streamResult = await agent.stream({ messages: currentMessages })
-          break
+
+          // ── 消费流 ──
+          approvalRequests = []
+          stepContent = []
+
+          for await (const part of streamResult.fullStream) {
+            if (part.type === 'text-delta') {
+              responseText += part.text
+            }
+
+            if (part.type === 'reasoning' && typeof (part as { text?: string }).text === 'string') {
+              stepContent.push({ type: 'reasoning', text: (part as { text: string }).text })
+            }
+
+            if (part.type === 'tool-call') {
+              const tc = part as { type: 'tool-call'; toolCallId: string; toolName: string; input: Record<string, unknown> }
+              stepContent.push({ type: 'tool-call', toolCallId: tc.toolCallId, toolName: tc.toolName, input: tc.input })
+              if (tc.toolName === 'write_file' && tc.input?.content && tc.input?.filePath) {
+                writtenFiles.push({ path: tc.input.filePath as string, content: tc.input.content as string })
+              }
+            }
+
+            if (part.type === 'tool-approval-request') {
+              const ap = part as unknown as {
+                type: 'tool-approval-request'
+                approvalId: string
+                toolCall: { toolCallId: string; toolName: string; input: Record<string, unknown> }
+              }
+              logger.debug('AgentInboundHandler', `Tool approval request: id=${ap.approvalId} tool=${ap.toolCall.toolName} callId=${ap.toolCall.toolCallId}`)
+              approvalRequests.push({
+                approvalId: ap.approvalId,
+                toolCallId: ap.toolCall.toolCallId,
+                toolName: ap.toolCall.toolName,
+                input: ap.toolCall.input,
+              })
+            }
+          }
+
+          finishReason = await streamResult.finishReason
+          steps = await streamResult.steps
+          allSteps = [...allSteps, ...steps]
+          lastStreamText = await streamResult.text || ''
+
+          break // 成功消费流，退出重试循环
         } catch (err) {
+          // 回滚 responseText 到本次尝试前的状态
+          responseText = responseTextBeforeStream
+
+          // 检查是否为永久性错误（如 API Key 无效），这类错误不应重试
+          const isPermanentError =
+            err instanceof Error &&
+            ((err as { statusCode?: number }).statusCode === 401 ||
+             (err as { statusCode?: number }).statusCode === 403 ||
+             err.message?.includes('Invalid API Key') ||
+             err.message?.includes('invalid_key'))
+
           const isRetriable =
+            !isPermanentError &&
             err instanceof Error &&
             (err.message === 'terminated' ||
               (err as NodeJS.ErrnoException).code === 'ECONNRESET' ||
               ((err as { cause?: unknown }).cause instanceof Error &&
-                ((err as { cause?: NodeJS.ErrnoException }).cause as NodeJS.ErrnoException).code === 'ECONNRESET'))
+                ((err as { cause?: NodeJS.ErrnoException }).cause as NodeJS.ErrnoException).code === 'ECONNRESET') ||
+              // NoOutputGeneratedError: 流完成但无输出
+              err.name === 'AI_NoOutputGeneratedError')
           if (isRetriable && attempt < MAX_RETRIES) {
             const delay = 1500 * (attempt + 1)
             logger.warn('AgentInboundHandler', `Stream error, retrying in ${delay}ms (${attempt + 1}/${MAX_RETRIES}): ${err instanceof Error ? err.message : err}`)
@@ -588,60 +660,6 @@ export class AgentInboundHandler implements InboundEventHandler {
           throw err
         }
       }
-
-      // ── 消费流 ──
-      const approvalRequests: Array<{
-        approvalId: string
-        toolCallId: string
-        toolName: string
-        input: Record<string, unknown>
-      }> = []
-
-      const stepContent: Array<{
-        type: string
-        toolCallId?: string
-        toolName?: string
-        input?: Record<string, unknown>
-        text?: string
-      }> = []
-
-      for await (const part of streamResult.fullStream) {
-        if (part.type === 'text-delta') {
-          responseText += part.text
-        }
-
-        if (part.type === 'reasoning' && typeof (part as { text?: string }).text === 'string') {
-          stepContent.push({ type: 'reasoning', text: (part as { text: string }).text })
-        }
-
-        if (part.type === 'tool-call') {
-          const tc = part as { type: 'tool-call'; toolCallId: string; toolName: string; input: Record<string, unknown> }
-          stepContent.push({ type: 'tool-call', toolCallId: tc.toolCallId, toolName: tc.toolName, input: tc.input })
-          if (tc.toolName === 'write_file' && tc.input?.content && tc.input?.filePath) {
-            writtenFiles.push({ path: tc.input.filePath as string, content: tc.input.content as string })
-          }
-        }
-
-        if (part.type === 'tool-approval-request') {
-          const ap = part as unknown as {
-            type: 'tool-approval-request'
-            approvalId: string
-            toolCall: { toolCallId: string; toolName: string; input: Record<string, unknown> }
-          }
-          logger.debug('AgentInboundHandler', `Tool approval request: id=${ap.approvalId} tool=${ap.toolCall.toolName} callId=${ap.toolCall.toolCallId}`)
-          approvalRequests.push({
-            approvalId: ap.approvalId,
-            toolCallId: ap.toolCall.toolCallId,
-            toolName: ap.toolCall.toolName,
-            input: ap.toolCall.input,
-          })
-        }
-      }
-
-      finishReason = await streamResult.finishReason
-      const steps = await streamResult.steps
-      allSteps = [...allSteps, ...steps]
-      lastStreamText = await streamResult.text || ''
 
       logger.debug('AgentInboundHandler', `Stream result (round ${round}): steps=${steps.length} textLen=${responseText.length} finish=${finishReason} approvals=${approvalRequests.length} tools=${stepContent.filter(c => c.type === 'tool-call').map(c => c.toolName).join(',')}`)
 

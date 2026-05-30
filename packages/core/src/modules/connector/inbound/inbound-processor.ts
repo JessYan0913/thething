@@ -67,8 +67,15 @@ export class InboundEventProcessor {
     try {
       const result = await this.handler.handle(event)
 
-      if (result.success && result.response && this.registry) {
-        await this.sendReply(event, result.response)
+      if (this.registry) {
+        if (result.success && result.response) {
+          // 成功：发送正常回复
+          await this.sendReply(event, result.response)
+        } else if (!result.success && result.error) {
+          // 失败：发送错误回复给用户
+          const errorMessage = `❌ 处理消息时出错：${result.error}`
+          await this.sendReply(event, errorMessage)
+        }
       }
 
       if (indicatorResultId && this.registry) {
