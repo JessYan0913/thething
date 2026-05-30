@@ -157,7 +157,7 @@ function ConnectorCard({ connector, onClick, onDelete, confirmDelete, onConfirmD
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
-      className="rounded-lg border p-4 space-y-3 w-full text-left hover:border-accent/50 hover:bg-accent/20 transition-colors cursor-pointer"
+      className="rounded-lg border p-4 space-y-3 w-full text-left cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0">
