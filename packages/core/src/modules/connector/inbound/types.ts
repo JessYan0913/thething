@@ -25,6 +25,7 @@ export interface InboundEvent {
   }
   replyAddress: ReplyAddress
   receivedAt: number
+  agentType?: string
 }
 
 export interface ReplyAddress {
@@ -63,6 +64,8 @@ export interface AdapterInput {
   query: Record<string, string>
   headers: Record<string, string>
   body?: string
+  method?: string
+  path?: string
   raw?: unknown
   receivedAt: number
 }

@@ -17,7 +17,7 @@ import crypto from 'crypto'
 export class RestApiProtocolAdapter implements ProtocolAdapter {
   readonly protocol = 'rest-api'
 
-  async verify(): Promise<boolean> {
+  async verify(_input: AdapterInput, _config: ConnectorInboundConfig): Promise<boolean> {
     return true
   }
 

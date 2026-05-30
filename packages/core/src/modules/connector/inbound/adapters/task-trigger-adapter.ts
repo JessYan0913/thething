@@ -11,7 +11,7 @@ import type { ProtocolAdapter } from './protocol-adapter'
 export class TaskTriggerProtocolAdapter implements ProtocolAdapter {
   readonly protocol = 'task-trigger'
 
-  async verify(): Promise<boolean> {
+  async verify(_input: AdapterInput, _config: ConnectorInboundConfig): Promise<boolean> {
     return true
   }
 
