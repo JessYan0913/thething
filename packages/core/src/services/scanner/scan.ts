@@ -2,11 +2,13 @@
 // Scanner - 目录扫描
 // ============================================================
 
-import fs from 'fs/promises';
-import path from 'path';
 import { minimatch } from 'minimatch';
 import type { ScanOptions, ScanConfig, ScanResult } from './types';
 import type { ConfigSource } from '../../primitives/constants';
+
+// Dynamic imports: avoid Turbopack Edge Runtime static analysis on Node.js built-ins.
+const { default: fs } = await import('fs/promises');
+const { default: path } = await import('path');
 
 export type { ScanOptions, ScanConfig, ScanResult };
 

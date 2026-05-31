@@ -20,7 +20,6 @@ import { createPricingResolver, type PricingResolver } from '../services/model/p
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from '../services/config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from '../services/config/behavior';
 import { setDebugEnabled, logger } from '../primitives/logger';
-import path from 'path';
 
 // ============================================================
 // Tokenizer 配置类型
@@ -180,6 +179,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   });
 
   // 5. 初始化 Connector Runtime（只加载 Registry；Inbound handler 在应用层有 AppContext 后绑定）
+  const { default: path } = await import('path');
   const connectorConfigDir = options.connectorConfig?.configDir
     ?? layout.resources.connectors[layout.resources.connectors.length - 1]
     ?? path.join(layout.resourceRoot, layout.configDirName, 'connectors');
