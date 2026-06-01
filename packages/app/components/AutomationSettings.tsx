@@ -3,6 +3,7 @@ import {
   TimerIcon, RefreshCwIcon, PlusIcon,
   TrashIcon, CheckIcon, XIcon,
   PlayIcon, PauseIcon, AlertCircleIcon,
+  ZapIcon,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
@@ -161,6 +162,15 @@ export default function AutomationSettings() {
     if (res.ok) loadJobs()
   }, [loadJobs])
 
+  const handleTrigger = useCallback(async (job: CronJob) => {
+    await fetch(`/api/cron/${job.id}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "trigger" }),
+    })
+    loadJobs()
+  }, [loadJobs])
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
@@ -202,6 +212,7 @@ export default function AutomationSettings() {
                 key={job.id}
                 job={job}
                 onEdit={() => openEdit(job)}
+                onTrigger={() => handleTrigger(job)}
                 onToggle={() => handleToggle(job)}
                 onDelete={() => handleDelete(job.id)}
                 confirmDelete={confirmDelete === job.id}
@@ -299,6 +310,7 @@ export default function AutomationSettings() {
 function JobCard({
   job,
   onEdit,
+  onTrigger,
   onToggle,
   onDelete,
   confirmDelete,
@@ -307,6 +319,7 @@ function JobCard({
 }: {
   job: CronJob
   onEdit: () => void
+  onTrigger: () => void
   onToggle: () => void
   onDelete: () => void
   confirmDelete: boolean
@@ -344,6 +357,21 @@ function JobCard({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={e => { e.stopPropagation(); onTrigger() }}
+                >
+                  <ZapIcon className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>立即执行</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

@@ -69,6 +69,12 @@ export class CronScheduler {
     return fired
   }
 
+  async triggerJob(jobId: string): Promise<void> {
+    const job = this.store.getById(jobId)
+    if (!job) throw new Error(`Job not found: ${jobId}`)
+    await this.fireJob(job, Date.now())
+  }
+
   private async fireJob(job: CronJob, now: number): Promise<void> {
     const eventId = `cron-${job.id}-${now}`
     const event: InboundEvent = {

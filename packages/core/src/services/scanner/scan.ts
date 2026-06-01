@@ -7,8 +7,11 @@ import type { ScanOptions, ScanConfig, ScanResult } from './types';
 import type { ConfigSource } from '../../primitives/constants';
 
 // Dynamic imports: avoid Turbopack Edge Runtime static analysis on Node.js built-ins.
-const { default: fs } = await import('fs/promises');
-const { default: path } = await import('path');
+// Use indirect string to prevent Turbopack from statically resolving the module name.
+const _path = 'path'
+const _fs = 'fs/promises'
+const { default: fs } = await import(/* webpackIgnore: true */ _fs);
+const { default: path } = await import(/* webpackIgnore: true */ _path);
 
 export type { ScanOptions, ScanConfig, ScanResult };
 

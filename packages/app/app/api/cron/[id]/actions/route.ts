@@ -1,5 +1,4 @@
 import { getServerRuntime } from '@/lib/runtime';
-import { nextOccurrence } from '@the-thing/core';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -24,8 +23,8 @@ export async function POST(
 
     switch (body.action) {
       case 'trigger': {
-        const fired = await rt.cronScheduler.tick();
-        return NextResponse.json({ success: true, message: `Triggered tick, ${fired} jobs fired` });
+        await rt.cronScheduler.triggerJob(id);
+        return NextResponse.json({ success: true, message: `任务「${job.name}」已触发执行` });
       }
 
       case 'enable': {
