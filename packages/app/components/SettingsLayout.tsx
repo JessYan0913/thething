@@ -22,6 +22,7 @@ import {
   PaletteIcon,
   CableIcon,
   CpuIcon,
+  TimerIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -45,6 +46,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     { to: "/settings/agents", icon: BotIcon, label: t('sidebar.agents') },
     { to: "/settings/permissions", icon: ShieldIcon, label: t('sidebar.permissions') },
     { to: "/settings/memory", icon: DatabaseIcon, label: t('sidebar.memory') },
+    { to: "/settings/automation", icon: TimerIcon, label: t('sidebar.automation') },
   ]
 
   const allItems = [...generalItems, ...resourceItems]

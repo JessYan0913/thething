@@ -67,12 +67,12 @@ export class InboundEventProcessor {
     try {
       const result = await this.handler.handle(event)
 
-      if (this.registry) {
+      // 内部事件（如 cron）不需要回复
+      const isInternalEvent = event.transport === 'internal'
+      if (this.registry && !isInternalEvent) {
         if (result.success && result.response) {
-          // 成功：发送正常回复
           await this.sendReply(event, result.response)
         } else if (!result.success && result.error) {
-          // 失败：发送错误回复给用户
           const errorMessage = `❌ 处理消息时出错：${result.error}`
           await this.sendReply(event, errorMessage)
         }

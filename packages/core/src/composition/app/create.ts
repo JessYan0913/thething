@@ -159,6 +159,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     debugEnabled: Boolean(context.runtime.env.DEBUG),
     modelAliases: behavior.modelAliases,
     dynamicReload: resolved.dynamicReload,
+    cronStore: context.runtime.cronStore ?? undefined,
   })
 
   // ============================================================

@@ -16,6 +16,7 @@ import {
   type ConnectorRegistry,
 } from '../modules/connector';
 import type { ConnectorInboundRuntime } from '../modules/connector/inbound/types';
+import { CronScheduler, SQLiteCronJobStore, type CronJobStore } from '../modules/cron';
 import { createPricingResolver, type PricingResolver } from '../services/model/pricing';
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from '../services/config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from '../services/config/behavior';
@@ -127,6 +128,10 @@ export interface CoreRuntime {
   readonly pricingResolver: PricingResolver;
   /** Connector 入站运行时 */
   readonly connectorInbound: ConnectorInboundRuntime | null;
+  /** Cron 调度器 */
+  readonly cronScheduler: CronScheduler | null;
+  /** Cron 任务存储 */
+  readonly cronStore: CronJobStore | null;
   /** 销毁所有资源（关闭数据库连接、停止 gateway 等） */
   dispose(): Promise<void>;
 }
@@ -198,22 +203,32 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
   const connectorRegistry = connectorRuntime.registry;
 
-  // 6. Tokenizer（已替换为字符估算，无需初始化）
+  // 6. Cron Scheduler（创建但不启动，启动在应用层绑定 Agent handler 之后）
+  let cronStore: CronJobStore | null = null;
+  let cronScheduler: CronScheduler | null = null;
+  if (connectorRuntime.inbound) {
+    cronStore = new SQLiteCronJobStore({ dataDir: layout.dataDir });
+    cronScheduler = new CronScheduler({
+      store: cronStore,
+      inbox: connectorRuntime.inbound.inbox,
+    });
+  }
 
   return {
     layout,
     behavior,
     dataStore,
-      connectorRegistry,
-      connectorRuntime,
-      env,
-      pricingResolver,
-      connectorInbound: connectorRuntime.inbound,
+    connectorRegistry,
+    connectorRuntime,
+    env,
+    pricingResolver,
+    connectorInbound: connectorRuntime.inbound,
+    cronScheduler,
+    cronStore,
     async dispose() {
-      // 1. 关闭 Connector Runtime
+      cronScheduler?.stop();
+      cronStore?.close();
       await disposeConnectorRuntime(connectorRuntime);
-
-      // 3. 关闭数据库连接
       dataStore.close();
     },
   };

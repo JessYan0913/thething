@@ -28,6 +28,8 @@ function createMockContext(behaviorOverrides?: Record<string, unknown>) {
         env: {},
         pricingResolver: createPricingResolver(),
         connectorInbound: {} as any,
+        cronScheduler: null,
+        cronStore: null,
         dispose: vi.fn(),
     },
     layout,

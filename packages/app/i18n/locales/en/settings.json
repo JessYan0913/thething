@@ -10,6 +10,7 @@
     "agents": "Agents",
     "permissions": "Permissions",
     "memory": "Memory",
+    "automation": "Automation",
     "backToChat": "Back to Chat",
     "systemSettings": "System Settings"
   },

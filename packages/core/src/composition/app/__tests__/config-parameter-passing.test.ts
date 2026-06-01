@@ -59,6 +59,8 @@ function createMockContext(behaviorOverrides?: Parameters<typeof buildBehaviorCo
       env: {},
       pricingResolver: createPricingResolver(),
       connectorInbound: {} as any,
+      cronScheduler: null,
+      cronStore: null,
       dispose: vi.fn(),
     },
     layout,

@@ -45,6 +45,9 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     console.error('[Runtime] Failed to start Feishu long connections:', err);
   }
 
+  // Start cron scheduler
+  runtime.cronScheduler?.start();
+
   return runtime;
 }
 

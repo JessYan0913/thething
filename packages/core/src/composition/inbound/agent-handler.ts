@@ -419,11 +419,30 @@ export class AgentInboundHandler implements InboundEventHandler {
         return this.startFreshRun(event, conversationId, existingMessages, store, isFirstMessage, startTime)
       })
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
       logger.error('AgentInboundHandler', 'Error:', error)
       logger.error('AgentInboundHandler', `Error stack: ${error instanceof Error ? error.stack : 'No stack trace'}`)
+
+      // 将错误信息保存到对话中，方便用户在 UI 上看到失败原因
+      try {
+        const conversationId = await this.conversationResolver.resolve(event)
+        const store = this.config.context.runtime.dataStore
+        const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
+        if (existingMessages.length > 0) {
+          const errorAssistantMsg: UIMessage = {
+            id: nanoid(),
+            role: 'assistant',
+            parts: [{ type: 'text', text: `⚠️ Agent 执行失败：${errorMsg}` }],
+          }
+          store.messageStore.saveMessages(conversationId, [...existingMessages, errorAssistantMsg])
+        }
+      } catch {
+        // 保存错误消息失败不影响主流程
+      }
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMsg,
       }
     }
   }

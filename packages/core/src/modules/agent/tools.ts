@@ -16,6 +16,7 @@ import {
   createWriteFileTool,
   askUserQuestionTool,
   createSkillTool,
+  createCronTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool } from '../../modules/subagents'
@@ -78,6 +79,10 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   })
 
   Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId))
+
+  if (config.cronStore) {
+    tools.cron = createCronTool({ cronStore: config.cronStore })
+  }
 
   // 1. 注册内置 Agent
   registerBuiltinAgents(agentRegistry)

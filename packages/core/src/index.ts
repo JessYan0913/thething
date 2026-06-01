@@ -278,6 +278,23 @@ export { generateConversationTitle } from './modules/compaction';
 // SubAgent types
 export type { SubAgentStreamWriter } from './modules/subagents';
 
+// Cron Scheduler
+export {
+  CronScheduler,
+  SQLiteCronJobStore,
+  nextOccurrence,
+  matches as matchesCronExpression,
+  validateCronExpression,
+} from './modules/cron';
+export type {
+  CronJob,
+  CronExecution,
+  CronJobCreateInput,
+  CronJobUpdateInput,
+  CronJobStore,
+  CronSchedulerOptions,
+} from './modules/cron';
+
 // ============================================================
 // DataStore exports（补充）
 // ============================================================

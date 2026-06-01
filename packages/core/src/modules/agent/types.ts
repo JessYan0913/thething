@@ -13,6 +13,7 @@ import type { BehaviorConfig } from '../../services/config/behavior'
 import type { ConnectorRegistry } from '../../modules/connector'
 import type { ResolvedLayout } from '../../services/config/layout'
 import type { ToolOutputConfig } from '../budget/tool-output-manager'
+import type { CronJobStore } from '../cron/types'
 
 // ============================================================
 // AgentModules - 模块开关（已解析，全部 required boolean）
@@ -87,6 +88,8 @@ export interface LoadToolsConfig {
   mcpRegistry?: import('../mcp').McpRegistry
   /** 是否允许动态重载（默认 false，仅显式 opt-in 时为 true） */
   dynamicReload?: boolean
+  /** Cron 任务存储（来自 CoreRuntime，用于 cron 工具） */
+  cronStore?: CronJobStore
 }
 
 export interface MemoryContext {

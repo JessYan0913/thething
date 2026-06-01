@@ -10,6 +10,7 @@
     "agents": "エージェント管理",
     "permissions": "権限管理",
     "memory": "メモリ管理",
+    "automation": "自動化タスク",
     "backToChat": "チャットに戻る",
     "systemSettings": "システム設定"
   },
