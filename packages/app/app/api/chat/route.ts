@@ -69,25 +69,6 @@ export async function POST(request: Request) {
 
     const messages: UIMessage[] = [...existingMessages, message];
 
-    // Convert unsupported file types (e.g. docx) to text before passing to LLM
-    for (const msg of messages) {
-      if (msg.role !== 'user') continue;
-      const newParts: typeof msg.parts = [];
-      for (const part of msg.parts) {
-        if (part.type === 'file') {
-          const fp = part as { mediaType: string; url: string; filename?: string };
-          const text = await convertFileToText(fp.url, fp.mediaType);
-          if (text !== null) {
-            const label = fp.filename ? `[文件: ${fp.filename}]\n\n` : '';
-            newParts.push({ type: 'text', text: label + text } as (typeof msg.parts)[number]);
-            continue;
-          }
-        }
-        newParts.push(part);
-      }
-      msg.parts = newParts;
-    }
-
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
@@ -117,9 +98,33 @@ export async function POST(request: Request) {
 
     const messagesWithAttachments = adjustedMessages ?? messages;
 
+    // Convert unsupported file types (e.g. docx, xlsx, pptx) to text for the LLM.
+    // We create a new array so original messages (with file parts) are preserved for storage.
+    const llmMessages: UIMessage[] = await Promise.all(
+      messagesWithAttachments.map(async (msg) => {
+        if (msg.role !== 'user') return msg;
+        const newParts: typeof msg.parts = [];
+        let changed = false;
+        for (const part of msg.parts) {
+          if (part.type === 'file') {
+            const fp = part as { mediaType: string; url: string; filename?: string };
+            const text = await convertFileToText(fp.url, fp.mediaType);
+            if (text !== null) {
+              const label = fp.filename ? `[文件: ${fp.filename}]\n\n` : '';
+              newParts.push({ type: 'text', text: label + text } as (typeof msg.parts)[number]);
+              changed = true;
+              continue;
+            }
+          }
+          newParts.push(part);
+        }
+        return changed ? { ...msg, parts: newParts } : msg;
+      })
+    );
+
     console.log(
-      `[LLM Input] ${messagesWithAttachments.length} messages:\n` +
-        messagesWithAttachments
+      `[LLM Input] ${llmMessages.length} messages:\n` +
+        llmMessages
           .map((m, i) => {
             const partSummaries = m.parts.map((p) => {
               if (p.type === 'text') return `text(${(p as { text: string }).text.slice(0, 40)})`;
@@ -142,12 +147,12 @@ export async function POST(request: Request) {
 
         const agentStream = await createAgentUIStream({
           agent,
-          uiMessages: messagesWithAttachments,
+          uiMessages: llmMessages,
           abortSignal: abortController.signal,
           sendReasoning: true,
           onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
-              const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length);
+              const newAssistantMessages = completedMessages.slice(llmMessages.length);
               const messagesToSave = [...messages, ...newAssistantMessages];
 
               console.log(

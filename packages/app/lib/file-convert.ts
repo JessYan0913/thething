@@ -1,14 +1,17 @@
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 /**
  * Decode a data URL to a Buffer.
  * Input format: data:<mediaType>;base64,<base64data>
  */
 function decodeDataUrl(dataUrl: string): Buffer | null {
-  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
-  if (!match) return null;
-  return Buffer.from(match[1], 'base64');
+  const marker = ';base64,';
+  const idx = dataUrl.indexOf(marker);
+  if (idx === -1) return null;
+  const base64 = dataUrl.slice(idx + marker.length).replace(/\s/g, '');
+  return Buffer.from(base64, 'base64');
 }
 
 /**
@@ -50,6 +53,42 @@ async function convertXlsx(buf: Buffer): Promise<string> {
 }
 
 /**
+ * Extract text content from a pptx buffer by parsing slide XML.
+ * Each slide becomes a section with extracted text paragraphs.
+ */
+async function convertPptx(buf: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(buf);
+  const sections: string[] = [];
+
+  // Collect slide files (ppt/slides/slide1.xml, slide2.xml, ...)
+  const slideFiles = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => {
+      const na = parseInt(a.match(/slide(\d+)\.xml$/)![1]);
+      const nb = parseInt(b.match(/slide(\d+)\.xml$/)![1]);
+      return na - nb;
+    });
+
+  for (const slideFile of slideFiles) {
+    const xml = await zip.file(slideFile)!.async('string');
+    // Extract text from <a:t> tags (text runs in PowerPoint XML)
+    const texts: string[] = [];
+    const regex = /<a:t>([^<]*)<\/a:t>/g;
+    let match;
+    while ((match = regex.exec(xml)) !== null) {
+      const t = match[1].trim();
+      if (t) texts.push(t);
+    }
+    if (texts.length === 0) continue;
+
+    const slideNum = slideFile.match(/slide(\d+)\.xml/)![1];
+    sections.push(`### 幻灯片 ${slideNum}\n\n${texts.join('\n')}`);
+  }
+
+  return sections.join('\n\n') || '(空演示文稿)';
+}
+
+/**
  * MIME types that can be converted to text.
  * Each converter takes a Buffer and returns text content.
  */
@@ -57,6 +96,8 @@ const CONVERTERS: Record<string, (buf: Buffer) => Promise<string>> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': convertDocx,
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': convertXlsx,
   'application/vnd.ms-excel': convertXlsx,
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': convertPptx,
+  'application/vnd.ms-powerpoint': convertPptx,
 };
 
 /**

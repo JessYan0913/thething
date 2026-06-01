@@ -118,26 +118,25 @@ const convertBlobUrlToDataUrl = async (
   try {
     const response = await fetch(url);
     const blob = await response.blob();
-    return new Promise((resolve) => {
+    // Use readAsArrayBuffer to avoid base64 newline issues with large files
+    // that readAsDataURL can produce.
+    const arrayBuffer = await new Promise<ArrayBuffer | null>((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        // If a resolved mediaType is provided and differs from the browser's,
-        // rebuild the data URL with the correct type so the AI SDK doesn't
-        // override our explicit mediaType with an unsupported one (e.g. application/json).
-        if (mediaType && dataUrl) {
-          const browserMediaType = dataUrl.split(";")[0].split(":")[1];
-          if (browserMediaType !== mediaType) {
-            const base64Content = dataUrl.split(",")[1];
-            resolve(`data:${mediaType};base64,${base64Content}`);
-            return;
-          }
-        }
-        resolve(dataUrl);
-      };
+      reader.onloadend = () => resolve(reader.result as ArrayBuffer);
       reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
+      reader.readAsArrayBuffer(blob);
     });
+    if (!arrayBuffer) return null;
+
+    const bytes = new Uint8Array(arrayBuffer);
+    // Uint8Array → base64
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const type = mediaType || 'application/octet-stream';
+    return `data:${type};base64,${base64}`;
   } catch {
     return null;
   }
