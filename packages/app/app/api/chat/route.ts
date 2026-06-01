@@ -1,4 +1,5 @@
 import { getServerRuntime, getServerContext } from '@/lib/runtime';
+import { convertFileToText } from '@/lib/file-convert';
 import {
   createAgent,
   generateConversationTitle,
@@ -67,6 +68,25 @@ export async function POST(request: Request) {
     }
 
     const messages: UIMessage[] = [...existingMessages, message];
+
+    // Convert unsupported file types (e.g. docx) to text before passing to LLM
+    for (const msg of messages) {
+      if (msg.role !== 'user') continue;
+      const newParts: typeof msg.parts = [];
+      for (const part of msg.parts) {
+        if (part.type === 'file') {
+          const fp = part as { mediaType: string; url: string; filename?: string };
+          const text = await convertFileToText(fp.url, fp.mediaType);
+          if (text !== null) {
+            const label = fp.filename ? `[文件: ${fp.filename}]\n\n` : '';
+            newParts.push({ type: 'text', text: label + text } as (typeof msg.parts)[number]);
+            continue;
+          }
+        }
+        newParts.push(part);
+      }
+      msg.parts = newParts;
+    }
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';

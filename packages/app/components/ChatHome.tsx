@@ -87,7 +87,7 @@ export default function ChatHome() {
           </p>
         </div>
 
-        <PromptInput onSubmit={handleSubmit} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh" multiple>
+        <PromptInput onSubmit={handleSubmit} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
           <AttachmentPreview />
           <PromptInputTextarea
             placeholder={t('input.placeholder')}

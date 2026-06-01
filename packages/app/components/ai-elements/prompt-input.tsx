@@ -85,6 +85,19 @@ const TEXT_FILE_EXTENSIONS = new Set([
   '.log', '.diff', '.patch',
 ]);
 
+// Office file extensions that can be converted to text on the server
+const CONVERTIBLE_FILE_TYPES: Record<string, string> = {
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.doc': 'application/msword',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+  '.odp': 'application/vnd.oasis.opendocument.presentation',
+};
+
 function resolveMediaType(file: File): string {
   if (file.type && file.type !== 'application/octet-stream') {
     if (file.type.startsWith('text/')) return file.type;
@@ -94,16 +107,34 @@ function resolveMediaType(file: File): string {
   }
   const ext = '.' + file.name.split('.').pop()?.toLowerCase();
   if (ext && TEXT_FILE_EXTENSIONS.has(ext)) return 'text/plain';
+  if (ext && CONVERTIBLE_FILE_TYPES[ext]) return CONVERTIBLE_FILE_TYPES[ext];
   return file.type || 'application/octet-stream';
 }
 
-const convertBlobUrlToDataUrl = async (url: string): Promise<string | null> => {
+const convertBlobUrlToDataUrl = async (
+  url: string,
+  mediaType?: string
+): Promise<string | null> => {
   try {
     const response = await fetch(url);
     const blob = await response.blob();
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        // If a resolved mediaType is provided and differs from the browser's,
+        // rebuild the data URL with the correct type so the AI SDK doesn't
+        // override our explicit mediaType with an unsupported one (e.g. application/json).
+        if (mediaType && dataUrl) {
+          const browserMediaType = dataUrl.split(";")[0].split(":")[1];
+          if (browserMediaType !== mediaType) {
+            const base64Content = dataUrl.split(",")[1];
+            resolve(`data:${mediaType};base64,${base64Content}`);
+            return;
+          }
+        }
+        resolve(dataUrl);
+      };
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
@@ -839,7 +870,7 @@ export const PromptInput = ({
         const convertedFiles: FileUIPart[] = await Promise.all(
           files.map(async ({ id: _id, ...item }) => {
             if (item.url?.startsWith("blob:")) {
-              const dataUrl = await convertBlobUrlToDataUrl(item.url);
+              const dataUrl = await convertBlobUrlToDataUrl(item.url, item.mediaType);
               return {
                 ...item,
                 url: dataUrl ?? item.url,
