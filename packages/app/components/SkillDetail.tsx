@@ -22,7 +22,7 @@ import { yaml } from "@codemirror/lang-yaml"
 import { javascript } from "@codemirror/lang-javascript"
 import { python } from "@codemirror/lang-python"
 import { css } from "@codemirror/lang-css"
-import { oneDark } from "@codemirror/theme-one-dark"
+import { useDarkMode, createThemeCompartment, getCodeMirrorTheme } from "@/lib/codemirror-theme"
 import {
   indentOnInput,
   foldGutter,
@@ -111,6 +111,8 @@ export default function SkillDetail({ skill, onBack }: SkillDetailProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const langCompartment = useRef(new Compartment())
+  const themeCompartment = useRef(createThemeCompartment())
+  const isDarkMode = useDarkMode()
 
   useEffect(() => {
     setTreeLoading(true)
@@ -181,7 +183,7 @@ export default function SkillDetail({ skill, onBack }: SkillDetailProps) {
           ".cm-foldGutter .cm-gutterElement": { cursor: "pointer" },
           "&.cm-editor.cm-focused": { outline: "none" },
         }),
-        oneDark,
+        themeCompartment.current.of(getCodeMirrorTheme(isDarkMode)),
         langCompartment.current.of(langExtension),
       ],
     })
@@ -196,6 +198,14 @@ export default function SkillDetail({ skill, onBack }: SkillDetailProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileContent, selectedFilePath])
+
+  // 响应主题变化，动态切换 CodeMirror 亮/暗主题
+  useEffect(() => {
+    if (!viewRef.current) return
+    viewRef.current.dispatch({
+      effects: themeCompartment.current.reconfigure(getCodeMirrorTheme(isDarkMode)),
+    })
+  }, [isDarkMode])
 
   return (
     <div className="flex flex-col h-full min-h-0">

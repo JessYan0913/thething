@@ -17,7 +17,7 @@ import {
 import { EditorState } from "@codemirror/state"
 import { defaultKeymap } from "@codemirror/commands"
 import { markdown } from "@codemirror/lang-markdown"
-import { oneDark } from "@codemirror/theme-one-dark"
+import { useDarkMode, createThemeCompartment, getCodeMirrorTheme } from "@/lib/codemirror-theme"
 import {
   indentOnInput,
   foldGutter,
@@ -74,6 +74,8 @@ export default function AgentWorkbench() {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const contentRef = useRef(content)
+  const themeCompartment = useRef(createThemeCompartment())
+  const isDarkMode = useDarkMode()
 
   // Snapshot existing agents on mount for new-agent detection
   useEffect(() => {
@@ -140,7 +142,7 @@ export default function AgentWorkbench() {
           "&.cm-editor.cm-focused": { outline: "none" },
           "&.cm-editor": { height: "100%" },
         }),
-        oneDark,
+        themeCompartment.current.of(getCodeMirrorTheme(isDarkMode)),
         markdown(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -163,6 +165,14 @@ export default function AgentWorkbench() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded])
+
+  // 响应主题变化，动态切换 CodeMirror 亮/暗主题
+  useEffect(() => {
+    if (!viewRef.current) return
+    viewRef.current.dispatch({
+      effects: themeCompartment.current.reconfigure(getCodeMirrorTheme(isDarkMode)),
+    })
+  }, [isDarkMode])
 
   // Sync external content changes (from AI config apply) into CodeMirror
   const lastAppliedContentRef = useRef(content)

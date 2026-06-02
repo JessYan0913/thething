@@ -8,7 +8,7 @@ import { yaml } from "@codemirror/lang-yaml"
 import { javascript } from "@codemirror/lang-javascript"
 import { python } from "@codemirror/lang-python"
 import { css } from "@codemirror/lang-css"
-import { oneDark } from "@codemirror/theme-one-dark"
+import { useDarkMode, createThemeCompartment, getCodeMirrorTheme } from "@/lib/codemirror-theme"
 import { indentOnInput, foldGutter, indentUnit } from "@codemirror/language"
 import { searchKeymap, closeSearchPanel } from "@codemirror/search"
 import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete"
@@ -72,6 +72,8 @@ export function FilePreview({
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const langCompartment = useRef(new Compartment())
+  const themeCompartment = useRef(createThemeCompartment())
+  const isDarkMode = useDarkMode()
   const [content, setContent] = useState<string | null>(initialContent ?? null)
   const [fileName, setFileName] = useState("")
   const [isLoading, setIsLoading] = useState(!initialContent)
@@ -166,7 +168,7 @@ export function FilePreview({
             outline: "none",
           },
         }),
-        oneDark,
+        themeCompartment.current.of(getCodeMirrorTheme(isDarkMode)),
         langCompartment.current.of(langExtension),
       ],
     })
@@ -184,6 +186,14 @@ export function FilePreview({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, filePath, fileName, extHint])
+
+  // 响应主题变化，动态切换 CodeMirror 亮/暗主题
+  useEffect(() => {
+    if (!viewRef.current) return
+    viewRef.current.dispatch({
+      effects: themeCompartment.current.reconfigure(getCodeMirrorTheme(isDarkMode)),
+    })
+  }, [isDarkMode])
 
   if (!filePath && !initialContent) {
     return (
@@ -224,7 +234,7 @@ export function FilePreview({
           <span className="text-xs text-muted-foreground/50 font-mono">.{langExt}</span>
         </div>
       )}
-      <div ref={editorRef} className="overflow-auto" />
+      <div ref={editorRef} className="flex-1 min-h-0 overflow-auto" />
     </div>
   )
 }

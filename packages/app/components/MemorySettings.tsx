@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  DatabaseIcon, RefreshCwIcon, FileTextIcon, RulerIcon,
-  FolderIcon, UserIcon, ArrowLeftIcon, PanelLeftOpenIcon,
-  PanelRightOpenIcon, BookOpenIcon, HardDriveIcon,
-  TrashIcon, CheckIcon, XIcon,
+  DatabaseIcon, RefreshCwIcon, SearchIcon,
+  TrashIcon, CheckIcon, XIcon, FileTextIcon,
+  UserIcon, ChevronRightIcon,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { DirectoryTree } from "@/components/DirectoryTree"
-import { FilePreview } from "@/components/FilePreview"
 import { cn } from "@/lib/utils"
 
 interface MemoryEntryView {
@@ -23,18 +20,6 @@ interface MemoryEntryView {
   userId: string
 }
 
-interface EntrypointView {
-  userId: string
-  content: string
-  filePath: string
-}
-
-interface SelectedDetail {
-  userId: string
-  filePath: string
-  memoryDir: string
-}
-
 const typeLabels: Record<string, { label: string; color: string }> = {
   user: { label: "用户记忆", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/25" },
   feedback: { label: "反馈记忆", color: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/25" },
@@ -42,16 +27,21 @@ const typeLabels: Record<string, { label: string; color: string }> = {
   reference: { label: "参考记忆", color: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25" },
 }
 
+const typeOptions = [
+  { value: null, label: "全部" },
+  { value: "user", label: "用户" },
+  { value: "feedback", label: "反馈" },
+  { value: "project", label: "项目" },
+  { value: "reference", label: "参考" },
+]
+
 export default function MemorySettings() {
   const [entries, setEntries] = useState<MemoryEntryView[]>([])
-  const [entrypoints, setEntrypoints] = useState<EntrypointView[]>([])
-  const [baseDir, setBaseDir] = useState("")
   const [isLoading, setIsLoading] = useState(true)
-  // Detail view state
-  const [detail, setDetail] = useState<SelectedDetail | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
-  const [showTree, setShowTree] = useState(true)
-  const [showPreview, setShowPreview] = useState(true)
+  const [activeUser, setActiveUser] = useState<string | null>(null)
+  const [selected, setSelected] = useState<MemoryEntryView | null>(null)
+  const [search, setSearch] = useState("")
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const loadMemory = useCallback(async () => {
@@ -61,8 +51,6 @@ export default function MemorySettings() {
       if (res.ok) {
         const data = await res.json()
         setEntries(data.memory ?? [])
-        setEntrypoints(data.entrypoints ?? [])
-        setBaseDir(data.baseDir ?? "")
       }
     } catch {
       setEntries([])
@@ -73,312 +61,251 @@ export default function MemorySettings() {
 
   useEffect(() => { loadMemory() }, [loadMemory])
 
+  // 用户目录列表（按条目数排序）
+  const users = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const e of entries) {
+      map.set(e.userId, (map.get(e.userId) ?? 0) + 1)
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, count]) => ({ id, count }))
+  }, [entries])
+
+  // 自动选中第一个用户目录
+  useEffect(() => {
+    if (!isLoading && users.length > 0 && !activeUser) {
+      setActiveUser(users[0].id)
+    }
+  }, [isLoading, users, activeUser])
+
+  // 当前用户目录下的记忆 + 筛选
+  const filtered = useMemo(() => {
+    let result = entries
+    if (activeUser) {
+      result = result.filter((e) => e.userId === activeUser)
+    }
+    if (typeFilter) {
+      result = result.filter((e) => e.type === typeFilter)
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          e.description.toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [entries, activeUser, typeFilter, search])
+
+  // 自动选中第一条
+  useEffect(() => {
+    if (isLoading || filtered.length === 0) {
+      if (filtered.length === 0) setSelected(null)
+      return
+    }
+    if (!selected || !filtered.some((e) => e.filePath === selected.filePath)) {
+      setSelected(filtered[0])
+    }
+  }, [isLoading, filtered, selected])
+
   const handleDelete = useCallback(async (filePath: string) => {
     const res = await fetch(`/api/memory?filePath=${encodeURIComponent(filePath)}`, { method: "DELETE" })
     if (res.ok) {
       setEntries((prev) => prev.filter((e) => e.filePath !== filePath))
+      setSelected((prev) => (prev?.filePath === filePath ? null : prev))
     }
     setConfirmDelete(null)
   }, [])
 
-  const handleEntryClick = (entry: MemoryEntryView) => {
-    const memoryDir = entry.filePath.replace(/\/[^/]+\.md$/, "")
-    setDetail({ userId: entry.userId, filePath: entry.filePath, memoryDir })
-    setSelectedFilePath(entry.filePath)
-    setShowTree(true)
-    setShowPreview(true)
+  const getContentBody = (content: string) => {
+    return content.replace(/^---[\s\S]*?---\s*/, "").trim() || content.trim()
   }
 
-  const handleEntrypointClick = (ep: EntrypointView) => {
-    const memoryDir = ep.filePath.replace(/\/[^/]+\.md$/, "")
-    setDetail({ userId: ep.userId, filePath: ep.filePath, memoryDir })
-    setSelectedFilePath(ep.filePath)
-    setShowTree(true)
-    setShowPreview(true)
-  }
+  const activeUserCount = activeUser ? entries.filter((e) => e.userId === activeUser).length : entries.length
 
-  const handleBack = () => {
-    setDetail(null)
-    setSelectedFilePath(null)
-  }
-
-  const totalLines = entries.reduce((sum, e) => sum + e.lines, 0)
-  const totalSizeKb = entries.reduce((sum, e) => sum + e.sizeKb, 0)
-
-  // Detail view
-  if (detail) {
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="sm" onClick={handleBack}>
-              <ArrowLeftIcon className="size-4" />
-              返回
-            </Button>
-            <div className="flex items-center gap-2 min-w-0">
-              <DatabaseIcon className="size-5 shrink-0" />
-              <h1 className="text-lg font-semibold truncate">{detail.userId}</h1>
-              <Badge variant="secondary" className="text-xs shrink-0">
-                记忆详情
-              </Badge>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowTree(!showTree)}
-              className={cn(showTree && "bg-accent")}
-            >
-              <PanelLeftOpenIcon className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPreview(!showPreview)}
-              className={cn(showPreview && "bg-accent")}
-            >
-              <PanelRightOpenIcon className="size-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={loadMemory} disabled={isLoading}>
-              <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-        </div>
-
-        {/* Split view */}
-        <div className="flex-1 flex overflow-hidden">
-          {showTree && (
-            <div className="w-72 border-r overflow-hidden flex flex-col shrink-0">
-              <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <UserIcon className="size-3.5" />
-                  <span className="truncate max-w-44">{detail.userId}</span>
-                  <span className="text-muted-foreground/40">/</span>
-                  <span className="text-muted-foreground/70">memory</span>
-                </div>
-              </div>
-              <DirectoryTree
-                rootPath={detail.memoryDir}
-                selectedFile={selectedFilePath}
-                onFileSelect={setSelectedFilePath}
-                className="flex-1 py-1"
-              />
-            </div>
-          )}
-
-          {showPreview && (
-            <div className="flex-1 overflow-hidden p-4">
-              <FilePreview
-                filePath={selectedFilePath}
-                className="h-full"
-                minHeight={400}
-              />
-            </div>
-          )}
-
-          {!showTree && !showPreview && (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground/40 text-sm">
-              使用顶栏按钮切换面板显示
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // List view
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-        <Badge variant="secondary" className="text-xs">
-          {entries.length} 条记忆
-        </Badge>
+      {/* 顶栏 */}
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <DatabaseIcon className="size-4 text-muted-foreground" />
+        <span className="text-sm font-medium">记忆管理</span>
+        <div className="flex items-center gap-2 ml-auto text-xs text-muted-foreground">
+          <span>{entries.length} 条</span>
+          <span>·</span>
+          <span>{users.length} 个用户</span>
+        </div>
         <Button variant="ghost" size="sm" onClick={loadMemory} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8 space-y-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
-            加载中...
+      {/* 三栏主体 */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* 左栏：用户目录 */}
+        <div className="w-48 border-r overflow-auto shrink-0">
+          <div className="px-3 py-2 border-b">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">用户目录</span>
           </div>
-        ) : entries.length === 0 && entrypoints.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-4 py-12 text-muted-foreground">
-            <DatabaseIcon className="size-12 opacity-20" />
-            <div className="text-center max-w-md space-y-1">
-              <p className="text-sm font-medium">暂无记忆</p>
-              <p className="text-xs">
-                在 .thething/memory/users/{`{userId}`}/memory/ 目录下创建 Markdown 文件来添加记忆
-              </p>
+          {isLoading ? (
+            <div className="px-3 py-4 text-xs text-muted-foreground">加载中...</div>
+          ) : users.length === 0 ? (
+            <div className="px-3 py-4 text-xs text-muted-foreground">暂无记忆</div>
+          ) : (
+            <div className="py-1">
+              {users.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => { setActiveUser(u.id); setSelected(null); setSearch(""); setTypeFilter(null) }}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                    activeUser === u.id
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  )}
+                >
+                  <UserIcon className="size-3.5 shrink-0" />
+                  <span className="text-sm truncate flex-1">{u.id}</span>
+                  <span className="text-[10px] text-muted-foreground/50">{u.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 中栏：记忆列表 */}
+        <div className="w-72 border-r overflow-auto shrink-0 flex flex-col">
+          {/* 搜索 + 类型筛选 */}
+          <div className="shrink-0 space-y-2 px-3 py-2.5 border-b">
+            <div className="relative">
+              <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50" />
+              <input
+                type="text"
+                placeholder="搜索..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-7 pl-7 pr-2 text-xs bg-background border rounded-md outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/40"
+              />
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {typeOptions.map((opt) => (
+                <button
+                  key={opt.value ?? "all"}
+                  onClick={() => setTypeFilter(opt.value)}
+                  className={cn(
+                    "px-2 h-5 text-[10px] rounded transition-colors",
+                    typeFilter === opt.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <span className="ml-auto text-[10px] text-muted-foreground/40">
+                {filtered.length} 条
+              </span>
             </div>
           </div>
-        ) : (
-          <>
-            {/* Summary cards */}
-            <div className="grid grid-cols-4 gap-4">
-              <div className="rounded-lg border p-4 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <DatabaseIcon className="size-3" />
-                  记忆条目
-                </div>
-                <p className="text-2xl font-semibold">{entries.length}</p>
+          {/* 列表 */}
+          <div className="flex-1 overflow-auto">
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
+                <FileTextIcon className="size-6 opacity-20" />
+                <p className="text-xs">暂无记忆</p>
               </div>
-              <div className="rounded-lg border p-4 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <UserIcon className="size-3" />
-                  用户目录
-                </div>
-                <p className="text-2xl font-semibold">{entrypoints.length}</p>
-              </div>
-              <div className="rounded-lg border p-4 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <RulerIcon className="size-3" />
-                  总行数
-                </div>
-                <p className="text-2xl font-semibold">{totalLines.toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg border p-4 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <HardDriveIcon className="size-3" />
-                  总大小
-                </div>
-                <p className="text-2xl font-semibold">{totalSizeKb.toFixed(1)} KB</p>
-              </div>
-            </div>
-
-            {/* Base directory */}
-            {baseDir && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-                <FolderIcon className="size-3" />
-                <span className="font-mono">{baseDir}</span>
-              </div>
-            )}
-
-            {/* Entrypoints */}
-            {entrypoints.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-sm font-medium flex items-center gap-1.5">
-                  <BookOpenIcon className="size-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">入口文件 (MEMORY.md)</span>
-                </h2>
-                {entrypoints.map((ep, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleEntrypointClick(ep)}
-                    className="rounded-lg border p-4 space-y-2 w-full text-left hover:border-accent/50 hover:bg-accent/20 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 text-sm">
-                      <UserIcon className="size-4 text-muted-foreground" />
-                      <span className="font-medium">{ep.userId}</span>
-                      <span className="text-xs text-muted-foreground/50 truncate font-mono">
-                        {ep.filePath}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground/70 bg-muted/50 rounded-md p-3 overflow-x-auto whitespace-pre-wrap max-h-32">
-                      {ep.content.slice(0, 500)}
-                      {ep.content.length > 500 && (
-                        <span className="text-muted-foreground/40">...</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Memory files */}
-            {entries.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-sm font-medium flex items-center gap-1.5">
-                  <FileTextIcon className="size-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">记忆文件</span>
-                </h2>
-                {entries.map((entry, i) => {
+            ) : (
+              <div className="py-0.5">
+                {filtered.map((entry, i) => {
                   const typeInfo = typeLabels[entry.type] ?? { label: entry.type, color: "" }
+                  const isSelected = selected?.filePath === entry.filePath
 
                   return (
-                    <div
+                    <button
                       key={i}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleEntryClick(entry)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEntryClick(entry); } }}
-                      className="rounded-lg border p-4 space-y-3 w-full text-left hover:border-accent/50 hover:bg-accent/20 transition-colors cursor-pointer"
+                      onClick={() => setSelected(entry)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+                        isSelected
+                          ? "bg-accent"
+                          : "hover:bg-accent/50"
+                      )}
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium truncate">{entry.name}</span>
-                              <Badge className={`text-xs border-0 ${typeInfo.color}`}>
-                                {typeInfo.label}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground/60">
-                                @{entry.userId}
-                              </span>
-                            </div>
-                            {entry.description && (
-                              <p className="text-xs text-muted-foreground/70 mt-0.5">
-                                {entry.description}
-                              </p>
-                            )}
-                          </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm truncate">{entry.name}</span>
+                          <Badge className={`text-[9px] border-0 px-1 py-0 leading-tight ${typeInfo.color}`}>
+                            {typeInfo.label}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-                          <div className="flex items-center gap-1">
-                            <RulerIcon className="size-3" />
-                            <span>{entry.lines} 行</span>
-                          </div>
-                          <span>{entry.sizeKb.toFixed(1)} KB</span>
-                          {confirmDelete === entry.filePath ? (
-                            <div className="flex items-center gap-1">
-                              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); handleDelete(entry.filePath) }}>
-                                <CheckIcon className="size-3" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setConfirmDelete(null) }}>
-                                <XIcon className="size-3" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry.filePath) }}>
-                                    <TrashIcon className="size-3" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>删除后无法恢复</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="text-xs text-muted-foreground/60 bg-muted/50 rounded-md p-3 overflow-x-auto whitespace-pre-wrap max-h-24">
-                        {entry.content.slice(0, 200)}
-                        {entry.content.length > 200 && (
-                          <span className="text-muted-foreground/40">...</span>
+                        {entry.description && (
+                          <p className="text-[11px] text-muted-foreground/50 truncate mt-0.5">
+                            {entry.description}
+                          </p>
                         )}
                       </div>
-
-                      {entry.filePath && (
-                        <div className="text-xs text-muted-foreground/50 font-mono truncate" title={entry.filePath}>
-                          <FolderIcon className="size-3 inline mr-1" />
-                          {entry.filePath}
-                        </div>
-                      )}
-                    </div>
+                      <ChevronRightIcon className="size-3 text-muted-foreground/30 shrink-0" />
+                    </button>
                   )
                 })}
               </div>
             )}
-          </>
-        )}
+          </div>
+        </div>
+
+        {/* 右栏：内容预览 */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {selected ? (
+            <>
+              <div className="flex items-center justify-between px-6 py-3 border-b shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <h2 className="text-sm font-semibold truncate">{selected.name}</h2>
+                  {(() => {
+                    const typeInfo = typeLabels[selected.type] ?? { label: selected.type, color: "" }
+                    return <Badge className={`text-xs border-0 ${typeInfo.color}`}>{typeInfo.label}</Badge>
+                  })()}
+                  <span className="text-xs text-muted-foreground/40">@{selected.userId}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs text-muted-foreground/30 mr-2">
+                    {selected.lines} 行 · {selected.sizeKb.toFixed(1)} KB
+                  </span>
+                  {confirmDelete === selected.filePath ? (
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(selected.filePath)}>
+                        <CheckIcon className="size-3 mr-1" />确认
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
+                        <XIcon className="size-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={() => setConfirmDelete(selected.filePath)}>
+                            <TrashIcon className="size-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>删除后无法恢复</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto p-6">
+                <pre className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap wrap-break-word font-sans">
+                  {getContentBody(selected.content)}
+                </pre>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground/30 text-sm">
+              选择一条记忆以查看内容
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
