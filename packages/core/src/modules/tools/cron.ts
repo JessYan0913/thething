@@ -87,6 +87,7 @@ export function createCronTool(options: CronToolOptions) {
             recentExecutions: executions.map(e => ({
               status: e.status,
               triggeredAt: new Date(e.triggeredAt).toLocaleString(),
+              duration: e.duration != null ? `${e.duration}ms` : null,
               error: e.error,
             })),
           }

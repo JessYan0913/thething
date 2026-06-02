@@ -103,14 +103,16 @@ export class SQLiteCronJobStore implements CronJobStore {
   logExecution(execution: Omit<CronExecution, 'id'>): CronExecution {
     const id = nanoid()
     this.db.prepare(`
-      INSERT INTO cron_executions (id, job_id, status, triggered_at, completed_at, error, event_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cron_executions (id, job_id, status, triggered_at, completed_at, duration, conversation_id, error, event_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       execution.jobId,
       execution.status,
       execution.triggeredAt,
       execution.completedAt ?? null,
+      execution.duration ?? null,
+      execution.conversationId ?? null,
       execution.error ?? null,
       execution.eventId ?? null,
     )
@@ -151,6 +153,8 @@ export class SQLiteCronJobStore implements CronJobStore {
         status TEXT NOT NULL DEFAULT 'triggered',
         triggered_at INTEGER NOT NULL,
         completed_at INTEGER,
+        duration INTEGER,
+        conversation_id TEXT,
         error TEXT,
         event_id TEXT,
         FOREIGN KEY (job_id) REFERENCES cron_jobs(id) ON DELETE CASCADE
@@ -162,6 +166,15 @@ export class SQLiteCronJobStore implements CronJobStore {
       CREATE INDEX IF NOT EXISTS idx_cron_executions_job
       ON cron_executions (job_id, triggered_at DESC);
     `)
+
+    // Migration: add columns to existing cron_executions tables
+    for (const col of ['duration INTEGER', 'conversation_id TEXT']) {
+      try {
+        this.db.prepare(`ALTER TABLE cron_executions ADD COLUMN ${col}`).run()
+      } catch {
+        // Column already exists, ignore
+      }
+    }
   }
 
   private rowToJob(row: Record<string, unknown>): CronJob {
@@ -188,6 +201,8 @@ export class SQLiteCronJobStore implements CronJobStore {
       status: row.status as CronExecution['status'],
       triggeredAt: row.triggered_at as number,
       completedAt: (row.completed_at as number) ?? null,
+      duration: (row.duration as number) ?? null,
+      conversationId: (row.conversation_id as string) ?? null,
       error: (row.error as string) ?? null,
       eventId: (row.event_id as string) ?? null,
     }

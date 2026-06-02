@@ -4,8 +4,17 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
+/** Extract plain text from UIMessage parts */
+function extractText(parts: unknown[]): string {
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .filter((p): p is { type: string; text: string } => typeof p === 'object' && p !== null && 'text' in p && (p as { type: string }).type === 'text')
+    .map(p => p.text)
+    .join('');
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -20,7 +29,26 @@ export async function GET(
       return NextResponse.json({ error: 'Cron job not found' }, { status: 404 });
     }
 
-    const executions = rt.cronStore.getExecutions(id, 20);
+    const url = new URL(request.url);
+    const includeMessages = url.searchParams.get('messages') === 'true';
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+
+    const executions = rt.cronStore.getExecutions(id, limit);
+
+    if (includeMessages && rt.dataStore?.messageStore) {
+      const executionsWithMessages = executions.map(exec => {
+        if (!exec.conversationId) return { ...exec, messages: [] };
+        const rawMessages = rt.dataStore.messageStore.getMessagesByConversation(exec.conversationId);
+        const messages = rawMessages.map(m => ({
+          id: m.id,
+          role: m.role,
+          text: extractText(m.parts as unknown[]),
+        }));
+        return { ...exec, messages };
+      });
+      return NextResponse.json({ job, executions: executionsWithMessages });
+    }
+
     return NextResponse.json({ job, executions });
   } catch (error) {
     console.error('[Cron API] GET error:', error);

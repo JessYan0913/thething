@@ -20,6 +20,8 @@ export interface CronExecution {
   status: 'triggered' | 'completed' | 'failed'
   triggeredAt: number
   completedAt: number | null
+  duration: number | null
+  conversationId: string | null
   error: string | null
   eventId: string | null
 }

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
 import {
   TimerIcon, RefreshCwIcon, PlusIcon,
   TrashIcon, CheckIcon, XIcon,
   PlayIcon, PauseIcon, AlertCircleIcon,
-  ZapIcon,
+  ZapIcon, HistoryIcon, StopCircleIcon,
 } from "lucide-react"
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -327,115 +327,121 @@ function JobCard({
   onCancelDelete: () => void
 }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onEdit}
-      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEdit() } }}
-      className="rounded-lg border p-4 space-y-3 w-full text-left cursor-pointer"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3 min-w-0">
-          <TimerIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm">{job.name}</span>
-              <Badge
-                variant={job.enabled ? "default" : "secondary"}
-                className="text-xs"
-              >
-                {job.enabled ? "已启用" : "已禁用"}
-              </Badge>
-              <code className="text-xs text-muted-foreground/70 font-mono bg-muted px-1.5 py-0.5 rounded">
-                {job.schedule}
-              </code>
+    <div className="rounded-lg border w-full text-left">
+      {/* Main card content */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onEdit}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEdit() } }}
+        className="p-4 space-y-3 cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <TimerIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium text-sm">{job.name}</span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    job.enabled
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  }`}
+                >
+                  <span className={`size-1.5 rounded-full ${job.enabled ? "bg-green-500" : "bg-red-500"}`} />
+                  {job.enabled ? "运行中" : "已停止"}
+                </span>
+                <code className="text-xs text-muted-foreground/70 font-mono bg-muted px-1.5 py-0.5 rounded">
+                  {job.schedule}
+                </code>
+              </div>
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {job.prompt}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground line-clamp-2">
-              {job.prompt}
-            </p>
           </div>
-        </div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs gap-1"
+              onClick={e => { e.stopPropagation(); onTrigger() }}
+            >
+              <ZapIcon className="size-3" />
+              执行
+            </Button>
+
+            <Button
+              variant={job.enabled ? "secondary" : "default"}
+              size="sm"
+              className="h-7 px-2 text-xs gap-1"
+              onClick={e => { e.stopPropagation(); onToggle() }}
+            >
+              {job.enabled
+                ? <><StopCircleIcon className="size-3" /> 停用</>
+                : <><PlayIcon className="size-3" /> 启用</>
+              }
+            </Button>
+
+            {confirmDelete ? (
+              <div className="flex items-center gap-0.5">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={e => { e.stopPropagation(); onTrigger() }}
+                  className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={e => { e.stopPropagation(); onDelete() }}
                 >
-                  <ZapIcon className="size-3" />
+                  <CheckIcon className="size-3" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>立即执行</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={e => { e.stopPropagation(); onToggle() }}
+                  className="h-7 px-2 text-xs"
+                  onClick={e => { e.stopPropagation(); onCancelDelete() }}
                 >
-                  {job.enabled
-                    ? <PauseIcon className="size-3" />
-                    : <PlayIcon className="size-3" />
-                  }
+                  <XIcon className="size-3" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>{job.enabled ? "暂停" : "启用"}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {confirmDelete ? (
-            <div className="flex items-center gap-1">
+              </div>
+            ) : (
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={e => { e.stopPropagation(); onDelete() }}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={e => { e.stopPropagation(); onConfirmDelete() }}
               >
-                <CheckIcon className="size-3" />
+                <TrashIcon className="size-3" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); onCancelDelete() }}>
-                <XIcon className="size-3" />
-              </Button>
-            </div>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="hover:text-destructive"
-                    onClick={e => { e.stopPropagation(); onConfirmDelete() }}
-                  >
-                    <TrashIcon className="size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>删除</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          {job.agentType && (
+            <Badge variant="outline" className="text-xs">{job.agentType}</Badge>
           )}
+          {job.lastRunAt && (
+            <span>上次执行: {new Date(job.lastRunAt).toLocaleString()}</span>
+          )}
+          <span>下次执行: {new Date(job.nextRunAt).toLocaleString()}</span>
+        </div>
+
+        <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
+          <span className="font-mono">{job.id}</span>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        {job.agentType && (
-          <Badge variant="outline" className="text-xs">{job.agentType}</Badge>
-        )}
-        {job.lastRunAt && (
-          <span>上次执行: {new Date(job.lastRunAt).toLocaleString()}</span>
-        )}
-        <span>下次执行: {new Date(job.nextRunAt).toLocaleString()}</span>
-      </div>
-
-      <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
-        <span className="font-mono">{job.id}</span>
+      {/* Execution history link */}
+      <div className="border-t">
+        <Link
+          href={`/settings/automation/${job.id}`}
+          onClick={e => e.stopPropagation()}
+          className="flex items-center gap-1.5 w-full px-4 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+        >
+          <HistoryIcon className="size-3" />
+          <span>执行记录</span>
+        </Link>
       </div>
     </div>
   )

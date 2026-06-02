@@ -16,6 +16,7 @@ export class CronScheduler {
   private readonly tickIntervalMs: number
   private timer?: ReturnType<typeof setInterval>
   private ticking = false
+  private readonly inFlight = new Set<string>()
 
   constructor(options: CronSchedulerOptions) {
     this.store = options.store
@@ -47,20 +48,13 @@ export class CronScheduler {
       const dueJobs = this.store.listDue(now)
 
       for (const job of dueJobs) {
+        if (this.inFlight.has(job.id)) continue
         try {
+          this.inFlight.add(job.id)
           await this.fireJob(job, now)
           fired++
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          logger.error('CronScheduler', `Failed to fire job "${job.name}" (${job.id}): ${message}`)
-          this.store.logExecution({
-            jobId: job.id,
-            status: 'failed',
-            triggeredAt: now,
-            completedAt: Date.now(),
-            error: message,
-            eventId: null,
-          })
+        } finally {
+          this.inFlight.delete(job.id)
         }
       }
     } finally {
@@ -73,7 +67,16 @@ export class CronScheduler {
   async triggerJob(jobId: string): Promise<void> {
     const job = this.store.getById(jobId)
     if (!job) throw new Error(`Job not found: ${jobId}`)
-    await this.fireJob(job, Date.now())
+    if (this.inFlight.has(jobId)) {
+      logger.warn('CronScheduler', `Job "${job.name}" (${jobId}) already in flight, skipping`)
+      return
+    }
+    this.inFlight.add(jobId)
+    try {
+      await this.fireJob(job, Date.now())
+    } finally {
+      this.inFlight.delete(jobId)
+    }
   }
 
   private async fireJob(job: CronJob, now: number): Promise<void> {
@@ -110,20 +113,57 @@ export class CronScheduler {
       agentType: job.agentType,
     }
 
-    const result = await this.inbox.publish(event)
-
-    logger.debug('CronScheduler', `Fired job "${job.name}" (${job.id}), accepted: ${result.accepted}`)
-
+    // Mark next run BEFORE publishing to prevent concurrent triggers.
+    // If the process crashes after this point, the job will skip this execution
+    // and run at the next scheduled time — acceptable tradeoff for atomicity.
     const nextRun = nextOccurrence(job.schedule, new Date(now)).getTime()
     this.store.markRun(job.id, now, nextRun)
+
+    // Compute conversation ID (same formula as DefaultConversationResolver)
+    const conversationId = `connector:${event.connectorId}:channel:${event.channel.id}`
 
     this.store.logExecution({
       jobId: job.id,
       status: 'triggered',
       triggeredAt: now,
       completedAt: null,
+      duration: null,
+      conversationId,
       error: null,
       eventId: event.id,
     })
+
+    try {
+      const result = await this.inbox.publish(event)
+
+      const duration = Date.now() - now
+      this.store.logExecution({
+        jobId: job.id,
+        status: 'completed',
+        triggeredAt: now,
+        completedAt: Date.now(),
+        duration,
+        conversationId,
+        error: null,
+        eventId: event.id,
+      })
+
+      logger.info('CronScheduler', `Completed job "${job.name}" (${job.id}) in ${duration}ms, accepted: ${result.accepted}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const duration = Date.now() - now
+      logger.error('CronScheduler', `Failed job "${job.name}" (${job.id}) after ${duration}ms: ${message}`)
+      this.store.logExecution({
+        jobId: job.id,
+        status: 'failed',
+        triggeredAt: now,
+        completedAt: Date.now(),
+        duration,
+        conversationId,
+        error: message,
+        eventId: event.id,
+      })
+      throw error
+    }
   }
 }
