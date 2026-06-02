@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid'
 import { logger } from '../../primitives/logger'
 import type { InboundEvent, InboundInbox } from '../connector/inbound/types'
 import type { CronJob, CronJobStore } from './types'
@@ -77,6 +78,9 @@ export class CronScheduler {
 
   private async fireJob(job: CronJob, now: number): Promise<void> {
     const eventId = `cron-${job.id}-${now}`
+    // Each execution gets its own unique conversation to avoid context pollution.
+    // If job.conversationId is explicitly set, the user wants to reuse that conversation.
+    const channelId = job.conversationId || `cron-${job.id}-${nanoid(8)}`
     const event: InboundEvent = {
       id: `cron:${job.id}:${now}`,
       connectorId: '__cron__',
@@ -84,7 +88,7 @@ export class CronScheduler {
       transport: 'internal',
       externalEventId: eventId,
       channel: {
-        id: job.conversationId || `cron-${job.id}`,
+        id: channelId,
         type: 'cron',
       },
       sender: {
@@ -100,7 +104,7 @@ export class CronScheduler {
       replyAddress: {
         connectorId: '__cron__',
         protocol: 'task-trigger',
-        channelId: job.conversationId || `cron-${job.id}`,
+        channelId,
       },
       receivedAt: now,
       agentType: job.agentType,

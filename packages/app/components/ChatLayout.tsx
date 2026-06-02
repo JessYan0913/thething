@@ -226,8 +226,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     for (const c of connectors) {
       options.push({ value: `connector:${c.id}`, label: c.name, group: "chat:conversation.filter.connectors" });
     }
-    if (cronJobs.length > 0) {
-      options.push({ value: "cron", label: "chat:conversation.filter.automation" });
+    for (const job of cronJobs) {
+      options.push({ value: `cron:${job.id}`, label: job.name, group: "chat:conversation.filter.automation" });
     }
     return options;
   }, [connectors, cronJobs]);
@@ -238,8 +238,10 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     if (sourceFilter === "user") {
       return conversations.filter((c) => !c.id.startsWith("connector:"));
     }
-    if (sourceFilter === "cron") {
-      return conversations.filter((c) => c.id.startsWith("connector:__cron__:"));
+    // cron:{jobId} — filter by specific cron job
+    if (sourceFilter.startsWith("cron:")) {
+      const jobId = sourceFilter.slice("cron:".length);
+      return conversations.filter((c) => c.id.includes(`cron-${jobId}`));
     }
     // connector:{connectorId}
     if (sourceFilter.startsWith("connector:")) {
