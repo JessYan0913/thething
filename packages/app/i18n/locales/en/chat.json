@@ -11,7 +11,12 @@
     "noConversations": "No conversations yet",
     "rename": "Rename",
     "delete": "Delete",
-    "deleteConfirm": "Delete?"
+    "deleteConfirm": "Delete?",
+    "filter": {
+      "conversations": "Local Sessions",
+      "connectors": "Connectors",
+      "automation": "Automation"
+    }
   },
   "input": {
     "placeholder": "Message AI Assistant..."

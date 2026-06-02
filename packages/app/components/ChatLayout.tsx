@@ -5,12 +5,18 @@ import {
 import { ModeToggle } from "@/components/ModeToggle";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { nanoid } from "nanoid";
-import { useCallback, createContext, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 
 // ============================================================================
 // ChatContext - Share sidebar state with child pages
 // ============================================================================
+
+export interface FilterOption {
+  value: string;
+  label: string;
+  group?: string;
+}
 
 interface ChatContextValue {
   activeConversationId: string | null;
@@ -49,6 +55,11 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
+  // Source filter state
+  const [sourceFilter, setSourceFilter] = useState<string>("user");
+  const [connectors, setConnectors] = useState<{ id: string; name: string }[]>([]);
+  const [cronJobs, setCronJobs] = useState<{ id: string; name: string }[]>([]);
+
   // Track the active conversation ID
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     urlConversationId
@@ -57,22 +68,44 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   // Ref to prevent double-initialization
   const initializedRef = useRef(false);
 
-  // Load conversations on mount
+  // Load conversations, connectors, and cron jobs on mount
   useEffect(() => {
-    async function loadConversations() {
+    async function loadData() {
       try {
-        const res = await fetch("/api/conversations");
-        if (res.ok) {
-          const data = await res.json();
+        const [convRes, connRes, cronRes] = await Promise.all([
+          fetch("/api/conversations"),
+          fetch("/api/connectors"),
+          fetch("/api/cron"),
+        ]);
+        if (convRes.ok) {
+          const data = await convRes.json();
           setConversations(data.conversations || []);
         }
+        if (connRes.ok) {
+          const data = await connRes.json();
+          setConnectors(
+            (data.connectors || []).map((c: { id: string; name: string }) => ({
+              id: c.id,
+              name: c.name,
+            }))
+          );
+        }
+        if (cronRes.ok) {
+          const data = await cronRes.json();
+          setCronJobs(
+            (data.jobs || []).map((j: { id: string; name: string }) => ({
+              id: j.id,
+              name: j.name,
+            }))
+          );
+        }
       } catch {
-        // Failed to load conversations
+        // Failed to load data
       } finally {
         setIsLoadingConversations(false);
       }
     }
-    loadConversations();
+    loadData();
   }, []);
 
   // Sync activeConversationId when URL param changes
@@ -185,6 +218,38 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   }, []);
 
   // ============================================================================
+  // Source filter
+  // ============================================================================
+
+  const filterOptions = useMemo<FilterOption[]>(() => {
+    const options: FilterOption[] = [{ value: "user", label: "chat:conversation.filter.conversations" }];
+    for (const c of connectors) {
+      options.push({ value: `connector:${c.id}`, label: c.name, group: "chat:conversation.filter.connectors" });
+    }
+    if (cronJobs.length > 0) {
+      options.push({ value: "cron", label: "chat:conversation.filter.automation" });
+    }
+    return options;
+  }, [connectors, cronJobs]);
+
+  const showFilter = connectors.length > 0 || cronJobs.length > 0;
+
+  const filteredConversations = useMemo(() => {
+    if (sourceFilter === "user") {
+      return conversations.filter((c) => !c.id.startsWith("connector:"));
+    }
+    if (sourceFilter === "cron") {
+      return conversations.filter((c) => c.id.startsWith("connector:__cron__:"));
+    }
+    // connector:{connectorId}
+    if (sourceFilter.startsWith("connector:")) {
+      const prefix = `${sourceFilter}:channel:`;
+      return conversations.filter((c) => c.id.startsWith(prefix));
+    }
+    return conversations;
+  }, [conversations, sourceFilter]);
+
+  // ============================================================================
   // Context value
   // ============================================================================
 
@@ -210,12 +275,15 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
           {/* Sidebar - persists across route changes */}
           <ConversationSidebar
             activeConversationId={activeConversationId}
-            conversations={conversations}
+            conversations={filteredConversations}
             isLoading={isLoadingConversations}
             onCreateConversation={handleCreateConversation}
             onDeleteConversation={handleDeleteConversation}
             onRenameConversation={handleRenameConversation}
             onSelectConversation={handleSelectConversation}
+            filterOptions={showFilter ? filterOptions : undefined}
+            activeFilter={sourceFilter}
+            onFilterChange={setSourceFilter}
           />
 
           {/* Main Content - changes per route */}

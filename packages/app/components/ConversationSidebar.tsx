@@ -11,6 +11,16 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   CheckIcon,
@@ -31,6 +41,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import type { FilterOption } from "@/components/ChatLayout";
 
 // ============================================================================
 // Types
@@ -55,6 +66,9 @@ export type ConversationSidebarProps = {
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
   isLoading?: boolean;
+  filterOptions?: FilterOption[];
+  activeFilter?: string;
+  onFilterChange?: (value: string) => void;
 };
 
 export const ConversationSidebar = ({
@@ -65,6 +79,9 @@ export const ConversationSidebar = ({
   onDeleteConversation,
   onRenameConversation,
   isLoading = false,
+  filterOptions,
+  activeFilter = "user",
+  onFilterChange,
 }: ConversationSidebarProps) => {
   const { t } = useTranslation();
 
@@ -84,6 +101,50 @@ export const ConversationSidebar = ({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
+      {/* Source Filter - fixed, not scrollable */}
+      {filterOptions && filterOptions.length > 1 && onFilterChange && (
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden pt-0">
+          <SidebarGroupContent>
+            <div className="px-2">
+              <Select value={activeFilter} onValueChange={onFilterChange}>
+                <SelectTrigger size="sm" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(() => {
+                    const ungrouped = filterOptions.filter((o) => !o.group);
+                    const grouped = filterOptions.filter((o) => o.group);
+                    const groups = [...new Set(grouped.map((o) => o.group!))];
+                    return (
+                      <>
+                        {ungrouped.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {t(option.label)}
+                          </SelectItem>
+                        ))}
+                        {groups.map((groupKey) => (
+                          <SelectGroup key={groupKey}>
+                            <SelectSeparator />
+                            <SelectLabel>{t(groupKey)}</SelectLabel>
+                            {grouped
+                              .filter((o) => o.group === groupKey)
+                              .map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </SelectContent>
+              </Select>
+            </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
 
       {/* Conversation List - hidden when collapsed */}
       <SidebarContent>

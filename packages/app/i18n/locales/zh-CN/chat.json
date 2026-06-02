@@ -11,7 +11,12 @@
     "noConversations": "暂无对话",
     "rename": "重命名",
     "delete": "删除",
-    "deleteConfirm": "删除？"
+    "deleteConfirm": "删除？",
+    "filter": {
+      "conversations": "本地会话",
+      "connectors": "连接器",
+      "automation": "自动化任务"
+    }
   },
   "input": {
     "placeholder": "向 AI 助手发送消息..."

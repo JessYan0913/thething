@@ -11,7 +11,12 @@
     "noConversations": "会話がありません",
     "rename": "名前変更",
     "delete": "削除",
-    "deleteConfirm": "削除？"
+    "deleteConfirm": "削除？",
+    "filter": {
+      "conversations": "ローカルセッション",
+      "connectors": "コネクタ",
+      "automation": "自動化タスク"
+    }
   },
   "input": {
     "placeholder": "AIアシスタントにメッセージ..."
