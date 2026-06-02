@@ -6,7 +6,6 @@ export async function GET() {
   return NextResponse.json({
     apiKey: config?.apiKey ?? '',
     baseURL: config?.baseURL ?? '',
-    contextLimit: config?.contextLimit,
     modelAliases: config?.modelAliases ?? { fast: '', smart: '', default: '' },
     path: getGlobalConfigPath(),
   })
@@ -17,7 +16,6 @@ export async function PUT(request: NextRequest) {
   const config = {
     apiKey: body.apiKey ?? '',
     baseURL: body.baseURL ?? '',
-    ...(body.contextLimit ? { contextLimit: Number(body.contextLimit) } : {}),
     ...(body.modelAliases ? {
       modelAliases: {
         fast: body.modelAliases.fast ?? '',

@@ -5,8 +5,6 @@ import os from 'os'
 export interface GlobalConfig {
   apiKey?: string
   baseURL?: string
-  /** 模型上下文窗口大小（token 数），覆盖 core 内置的默认值 */
-  contextLimit?: number
   /** 模型别名映射（default 用作默认模型） */
   modelAliases?: {
     fast?: string

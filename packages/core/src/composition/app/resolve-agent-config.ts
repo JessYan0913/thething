@@ -17,8 +17,8 @@ export function resolveAgentModelConfig(
   model: CreateAgentOptions['model'],
   modelAliases?: BehaviorConfig['modelAliases'],
 ): ModelProviderConfig {
-  // 如果未指定 modelName，使用 modelAliases.default
-  const resolvedModelName = model.modelName || modelAliases?.default || '';
+  // 如果未指定 modelName，使用 modelAliases.default.model
+  const resolvedModelName = model.modelName || modelAliases?.default?.model || '';
 
   return {
     apiKey: model.apiKey,
@@ -104,6 +104,7 @@ export function resolveAgentConfig(options: CreateAgentOptions): ResolvedAgentCo
     availableModels: behavior.availableModels,
     modelAliases: behavior.modelAliases,
     autoDowngradeCostThreshold: behavior.autoDowngradeCostThreshold,
+    taskComplexitySwitch: behavior.taskComplexitySwitch,
     compactionConfig,
     compactionEnabled: modules.compaction,
     toolOutputConfig,

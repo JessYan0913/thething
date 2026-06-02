@@ -6,6 +6,7 @@ export interface ModelProvider {
   name: string;
   costMultiplier: number;
   capabilityTier: number;
+  contextLimit?: number;
 }
 
 export interface ModelSwitchConfig {
@@ -15,6 +16,11 @@ export interface ModelSwitchConfig {
   notifyOnSwitch?: boolean;
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
   modelAliases?: { fast: string; smart: string; default: string };
+  /** 任务复杂度切换配置 */
+  taskComplexitySwitch?: {
+    enabled: boolean;
+    complexityThreshold?: number;
+  };
 }
 
 export interface ModelSwitchResult {
@@ -38,7 +44,12 @@ const SWITCH_KEYWORDS = [
 
 const ALIAS_KEYWORDS = ['fast', 'smart', 'default'];
 
-export function detectModelSwitchIntent(messages: ModelMessage[], availableModels: ModelProvider[], currentModel: string, modelAliases?: { fast: string; smart: string; default: string }): string | null {
+export function detectModelSwitchIntent(
+  messages: ModelMessage[],
+  availableModels: ModelProvider[],
+  currentModel: string,
+  modelAliases?: { fast: string; smart: string; default: string }
+): string | null {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 
   if (!lastUserMessage) return null;
@@ -147,7 +158,13 @@ export class ModelSwapper {
   }
 
   checkTaskComplexity(complexityScore: number): ModelSwitchResult {
-    if (complexityScore < 70) {
+    // 检查是否启用了任务复杂度切换
+    if (!this._config.taskComplexitySwitch?.enabled) {
+      return { switched: false, reason: 'Task complexity switching is disabled' };
+    }
+
+    const threshold = this._config.taskComplexitySwitch.complexityThreshold ?? 70;
+    if (complexityScore < threshold) {
       return { switched: false };
     }
 
@@ -203,6 +220,14 @@ export class ModelSwapper {
 
   getCurrentModel(): string {
     return this._currentModel;
+  }
+
+  getCurrentContextLimit(): number | undefined {
+    // 从 availableModels 中查找当前模型的 contextLimit
+    const currentModel = this._config.availableModels.find(
+      (m) => m.id === this._currentModel
+    );
+    return currentModel?.contextLimit;
   }
 
   getSwitchHistory(): typeof this._switchHistory {

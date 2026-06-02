@@ -204,6 +204,17 @@ export interface BehaviorConfig {
   autoDowngradeCostThreshold: number;
 
   /**
+   * 任务复杂度切换配置
+   * 启用后，系统会根据任务复杂度自动选择合适的模型
+   */
+  taskComplexitySwitch?: {
+    /** 是否启用任务复杂度切换 */
+    enabled: boolean;
+    /** 复杂度阈值（0-100），超过此值时切换到更高级模型 */
+    complexityThreshold?: number;
+  };
+
+  /**
    * 模型定价表（USD / 百万 token）
    * 用于估算费用和触发自动降级
    * 传入值会覆盖内置定价，未覆盖的模型使用内置值
@@ -272,6 +283,10 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     availableModels: partial?.availableModels ?? [],
     modelAliases: partial?.modelAliases ?? { fast: '', smart: '', default: '' },
     autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
+    taskComplexitySwitch: partial?.taskComplexitySwitch ?? {
+      enabled: false,
+      complexityThreshold: 70,
+    },
     modelPricing: partial?.modelPricing,
     extraSensitivePaths: partial?.extraSensitivePaths ?? ([] as readonly string[]),
     // 压缩配置

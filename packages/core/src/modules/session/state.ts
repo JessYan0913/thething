@@ -45,6 +45,7 @@ export function createSessionState(
     todoStore = dataStore.todoStore,
     availableModels = [],
     autoDowngradeCostThreshold = 80,
+    taskComplexitySwitch,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
     compactionEnabled = true,
     compact: compactFn,
@@ -76,6 +77,7 @@ export function createSessionState(
     autoDowngradeCostThreshold,
     notifyOnSwitch: true,
     modelAliases: options?.modelAliases,
+    taskComplexitySwitch,
   });
 
   // 构建 压缩配置

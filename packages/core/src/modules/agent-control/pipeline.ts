@@ -4,6 +4,7 @@ import { enforceToolResultBudget } from '../budget/message-budget';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
 import { getModelContextLimit } from '../../services/model';
 import { logger } from '../../primitives/logger';
+import { estimateTaskComplexity } from '../session/task-complexity';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -59,8 +60,31 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     if (modelSwitchResult.switched) {
       debugLog(debugEnabled, `[Agent] Model switched: ${sessionState.model} -> ${modelSwitchResult.newModel}`);
       sessionState.model = modelSwitchResult.newModel!;
+      // 更新上下文长度限制
+      const newContextLimit = sessionState.modelSwapper.getCurrentContextLimit();
+      if (newContextLimit) {
+        config.contextLimit = newContextLimit;
+        debugLog(debugEnabled, `[Agent] Context limit updated to: ${newContextLimit}`);
+      }
       if (modelSwitchResult.notification) {
         debugLog(debugEnabled, `[Agent] ${modelSwitchResult.notification}`);
+      }
+    }
+
+    // 任务复杂度检查
+    const complexityScore = estimateTaskComplexity(messages as unknown as import('ai').ModelMessage[]);
+    const complexityResult = sessionState.modelSwapper.checkTaskComplexity(complexityScore);
+    if (complexityResult.switched) {
+      debugLog(debugEnabled, `[Agent] Model switched due to complexity (${complexityScore}): ${sessionState.model} -> ${complexityResult.newModel}`);
+      sessionState.model = complexityResult.newModel!;
+      // 更新上下文长度限制
+      const newContextLimit = sessionState.modelSwapper.getCurrentContextLimit();
+      if (newContextLimit) {
+        config.contextLimit = newContextLimit;
+        debugLog(debugEnabled, `[Agent] Context limit updated to: ${newContextLimit}`);
+      }
+      if (complexityResult.notification) {
+        debugLog(debugEnabled, `[Agent] ${complexityResult.notification}`);
       }
     }
 
@@ -70,6 +94,12 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     if (costSwitchResult.switched) {
       debugLog(debugEnabled, `[Agent] Auto-downgrade model due to cost: ${costSwitchResult.newModel}`);
       sessionState.model = costSwitchResult.newModel!;
+      // 更新上下文长度限制
+      const newContextLimit = sessionState.modelSwapper.getCurrentContextLimit();
+      if (newContextLimit) {
+        config.contextLimit = newContextLimit;
+        debugLog(debugEnabled, `[Agent] Context limit updated to: ${newContextLimit}`);
+      }
     }
 
     // 每步调用 compactBeforeStep（Layer 1 + Layer 2 + Layer 3）

@@ -78,7 +78,14 @@ export interface ModelSwitching {
     reason?: string;
     notification?: string;
   };
+  checkTaskComplexity(complexityScore: number): {
+    switched: boolean;
+    newModel?: string;
+    reason?: string;
+    notification?: string;
+  };
   getCurrentModel(): string;
+  getCurrentContextLimit(): number | undefined;
 }
 
 // ============================================================

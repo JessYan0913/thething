@@ -46,6 +46,11 @@ export interface SessionStateOptions {
   autoDowngradeCostThreshold?: number;
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
   modelAliases?: { fast: string; smart: string; default: string };
+  /** 任务复杂度切换配置 */
+  taskComplexitySwitch?: {
+    enabled: boolean;
+    complexityThreshold?: number;
+  };
   /** Compaction 配置（来自 BehaviorConfig.compaction） */
   compactionConfig?: CompactionConfig;
   /** 是否启用普通自动压缩（modules.compaction !== false） */
