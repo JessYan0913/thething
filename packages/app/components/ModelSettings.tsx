@@ -33,9 +33,9 @@ interface Config {
 }
 
 interface ModelAliases {
-  fast: string
-  smart: string
-  default: string
+  fast: { model: string; contextLimit?: number }
+  smart: { model: string; contextLimit?: number }
+  default: { model: string; contextLimit?: number }
 }
 
 interface ModelInfo {
@@ -49,7 +49,11 @@ type AliasType = "fast" | "smart" | "default"
 export default function ModelSettings() {
   const { t } = useTranslation("settings")
   const [config, setConfig] = useState<Config>({ apiKey: "", baseURL: "" })
-  const [aliases, setAliases] = useState<ModelAliases>({ fast: "", smart: "", default: "" })
+  const [aliases, setAliases] = useState<ModelAliases>({
+    fast: { model: "" },
+    smart: { model: "" },
+    default: { model: "" },
+  })
   const [showApiKey, setShowApiKey] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -71,7 +75,11 @@ export default function ModelSettings() {
       if (res.ok) {
         const data = await res.json()
         setConfig({ apiKey: data.apiKey, baseURL: data.baseURL })
-        setAliases(data.modelAliases || { fast: "", smart: "", default: "" })
+        setAliases({
+          fast: { model: data.modelAliases?.fast?.model || "", contextLimit: data.modelAliases?.fast?.contextLimit },
+          smart: { model: data.modelAliases?.smart?.model || "", contextLimit: data.modelAliases?.smart?.contextLimit },
+          default: { model: data.modelAliases?.default?.model || "", contextLimit: data.modelAliases?.default?.contextLimit },
+        })
       }
     } catch {
       // ignore
@@ -86,12 +94,12 @@ export default function ModelSettings() {
 
   const validate = useCallback((): boolean => {
     const newErrors: { default?: string } = {}
-    if (!aliases.default.trim()) {
+    if (!aliases.default.model.trim()) {
       newErrors.default = t("models.alias.defaultRequired")
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
-  }, [aliases.default, t])
+  }, [aliases.default.model, t])
 
   const handleSave = useCallback(async () => {
     if (!validate()) return
@@ -123,12 +131,20 @@ export default function ModelSettings() {
   }, [])
 
   const updateAlias = useCallback((field: keyof ModelAliases, value: string) => {
-    setAliases((prev) => ({ ...prev, [field]: value }))
+    setAliases((prev) => ({ ...prev, [field]: { ...prev[field], model: value } }))
     setSaveStatus("idle")
     if (field === "default" && errors.default) {
       setErrors((prev) => ({ ...prev, default: undefined }))
     }
   }, [errors.default])
+
+  const updateContextLimit = useCallback((alias: "fast" | "smart" | "default", value: number | undefined) => {
+    setAliases((prev) => ({
+      ...prev,
+      [alias]: { ...prev[alias], contextLimit: value }
+    }))
+    setSaveStatus("idle")
+  }, [])
 
   const fetchModels = useCallback(async () => {
     if (!config.baseURL) {
@@ -337,6 +353,21 @@ export default function ModelSettings() {
                     <DownloadIcon className="size-3.5 mr-1.5" />
                     {t("models.fetchModels.button")}
                   </Button>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Context:</label>
+                    <Input
+                      type="number"
+                      value={aliases.default.contextLimit ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : undefined
+                        updateContextLimit("default", val)
+                      }}
+                      placeholder="128000"
+                      className="font-mono text-xs w-24"
+                      min={0}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -350,7 +381,7 @@ export default function ModelSettings() {
                     <span className="text-sm font-medium">{t("models.alias.fast")}</span>
                     <Input
                       type="text"
-                      value={aliases.fast}
+                      value={aliases.fast.model}
                       onChange={(e) => updateAlias("fast", e.target.value)}
                       placeholder="e.g. gpt-4o-mini"
                       className="font-mono text-sm mt-1"
@@ -361,7 +392,7 @@ export default function ModelSettings() {
                     </p>
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="shrink-0 flex flex-col items-end gap-1">
                   <Button
                     variant="outline"
                     size="sm"
@@ -371,6 +402,21 @@ export default function ModelSettings() {
                     <DownloadIcon className="size-3.5 mr-1.5" />
                     {t("models.fetchModels.button")}
                   </Button>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Context:</label>
+                    <Input
+                      type="number"
+                      value={aliases.fast.contextLimit ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : undefined
+                        updateContextLimit("fast", val)
+                      }}
+                      placeholder="128000"
+                      className="font-mono text-xs w-24"
+                      min={0}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -384,7 +430,7 @@ export default function ModelSettings() {
                     <span className="text-sm font-medium">{t("models.alias.smart")}</span>
                     <Input
                       type="text"
-                      value={aliases.smart}
+                      value={aliases.smart.model}
                       onChange={(e) => updateAlias("smart", e.target.value)}
                       placeholder="e.g. gpt-4o"
                       className="font-mono text-sm mt-1"
@@ -395,7 +441,7 @@ export default function ModelSettings() {
                     </p>
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="shrink-0 flex flex-col items-end gap-1">
                   <Button
                     variant="outline"
                     size="sm"
@@ -405,6 +451,21 @@ export default function ModelSettings() {
                     <DownloadIcon className="size-3.5 mr-1.5" />
                     {t("models.fetchModels.button")}
                   </Button>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Context:</label>
+                    <Input
+                      type="number"
+                      value={aliases.smart.contextLimit ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : undefined
+                        updateContextLimit("smart", val)
+                      }}
+                      placeholder="200000"
+                      className="font-mono text-xs w-24"
+                      min={0}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -484,7 +545,7 @@ export default function ModelSettings() {
                           </div>
                         )}
                       </div>
-                      {aliases[selectingAlias || "default"] === model.id && (
+                      {aliases[selectingAlias || "default"].model === model.id && (
                         <CheckIcon className="size-4 text-green-500 shrink-0" />
                       )}
                     </button>

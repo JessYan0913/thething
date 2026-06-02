@@ -189,11 +189,11 @@ export interface BehaviorConfig {
    */
   modelAliases: {
     /** 快速模型（成本低） */
-    fast: string;
+    fast: { model: string; contextLimit?: number };
     /** 智能模型（能力强） */
-    smart: string;
+    smart: { model: string; contextLimit?: number };
     /** 默认模型 */
-    default: string;
+    default: { model: string; contextLimit?: number };
   };
 
   /**
@@ -281,7 +281,11 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     compactionThreshold: partial?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD,
     maxDenialsPerTool: partial?.maxDenialsPerTool ?? DEFAULT_MAX_DENIALS_PER_TOOL,
     availableModels: partial?.availableModels ?? [],
-    modelAliases: partial?.modelAliases ?? { fast: '', smart: '', default: '' },
+    modelAliases: partial?.modelAliases ?? {
+      fast: { model: '' },
+      smart: { model: '' },
+      default: { model: '' },
+    },
     autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
     taskComplexitySwitch: partial?.taskComplexitySwitch ?? {
       enabled: false,

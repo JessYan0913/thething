@@ -45,7 +45,11 @@ export interface SessionStateOptions {
   /** 自动降级成本阈值（来自 BehaviorConfig） */
   autoDowngradeCostThreshold?: number;
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
-  modelAliases?: { fast: string; smart: string; default: string };
+  modelAliases?: {
+    fast: { model: string; contextLimit?: number };
+    smart: { model: string; contextLimit?: number };
+    default: { model: string; contextLimit?: number };
+  };
   /** 任务复杂度切换配置 */
   taskComplexitySwitch?: {
     enabled: boolean;

@@ -15,7 +15,11 @@ export interface ModelSwitchConfig {
   autoDowngradeCostThreshold?: number;
   notifyOnSwitch?: boolean;
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
-  modelAliases?: { fast: string; smart: string; default: string };
+  modelAliases?: {
+    fast: { model: string; contextLimit?: number };
+    smart: { model: string; contextLimit?: number };
+    default: { model: string; contextLimit?: number };
+  };
   /** 任务复杂度切换配置 */
   taskComplexitySwitch?: {
     enabled: boolean;
@@ -48,7 +52,11 @@ export function detectModelSwitchIntent(
   messages: ModelMessage[],
   availableModels: ModelProvider[],
   currentModel: string,
-  modelAliases?: { fast: string; smart: string; default: string }
+  modelAliases?: {
+    fast: { model: string; contextLimit?: number };
+    smart: { model: string; contextLimit?: number };
+    default: { model: string; contextLimit?: number };
+  }
 ): string | null {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 
@@ -223,11 +231,22 @@ export class ModelSwapper {
   }
 
   getCurrentContextLimit(): number | undefined {
-    // 从 availableModels 中查找当前模型的 contextLimit
-    const currentModel = this._config.availableModels.find(
-      (m) => m.id === this._currentModel
-    );
-    return currentModel?.contextLimit;
+    // 根据当前模型查找对应的别名
+    const aliases = this._config.modelAliases;
+    if (!aliases) return undefined;
+
+    // 查找当前模型对应的别名
+    if (aliases.default.model === this._currentModel) {
+      return aliases.default.contextLimit;
+    }
+    if (aliases.fast.model === this._currentModel) {
+      return aliases.fast.contextLimit;
+    }
+    if (aliases.smart.model === this._currentModel) {
+      return aliases.smart.contextLimit;
+    }
+
+    return undefined;
   }
 
   getSwitchHistory(): typeof this._switchHistory {

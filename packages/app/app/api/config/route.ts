@@ -6,7 +6,20 @@ export async function GET() {
   return NextResponse.json({
     apiKey: config?.apiKey ?? '',
     baseURL: config?.baseURL ?? '',
-    modelAliases: config?.modelAliases ?? { fast: '', smart: '', default: '' },
+    modelAliases: {
+      fast: {
+        model: config?.modelAliases?.fast?.model ?? '',
+        contextLimit: config?.modelAliases?.fast?.contextLimit,
+      },
+      smart: {
+        model: config?.modelAliases?.smart?.model ?? '',
+        contextLimit: config?.modelAliases?.smart?.contextLimit,
+      },
+      default: {
+        model: config?.modelAliases?.default?.model ?? '',
+        contextLimit: config?.modelAliases?.default?.contextLimit,
+      },
+    },
     path: getGlobalConfigPath(),
   })
 }
@@ -18,9 +31,18 @@ export async function PUT(request: NextRequest) {
     baseURL: body.baseURL ?? '',
     ...(body.modelAliases ? {
       modelAliases: {
-        fast: body.modelAliases.fast ?? '',
-        smart: body.modelAliases.smart ?? '',
-        default: body.modelAliases.default ?? '',
+        fast: {
+          model: body.modelAliases.fast?.model ?? '',
+          contextLimit: body.modelAliases.fast?.contextLimit ? Number(body.modelAliases.fast.contextLimit) : undefined,
+        },
+        smart: {
+          model: body.modelAliases.smart?.model ?? '',
+          contextLimit: body.modelAliases.smart?.contextLimit ? Number(body.modelAliases.smart.contextLimit) : undefined,
+        },
+        default: {
+          model: body.modelAliases.default?.model ?? '',
+          contextLimit: body.modelAliases.default?.contextLimit ? Number(body.modelAliases.default.contextLimit) : undefined,
+        },
       }
     } : {}),
   }
