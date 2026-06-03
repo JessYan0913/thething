@@ -41,7 +41,8 @@ import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel'
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector } from '@/components/chat-selectors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -250,6 +251,10 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
       multiSelect?: boolean;
     }>;
   } | null>(null);
+
+  // 消息编辑状态
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   // 模型和 Agent 选择状态（持久化到 localStorage）
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -682,6 +687,45 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     [messages, setMessages, sendMessage],
   );
 
+  const handleEditStart = useCallback((messageId: string, currentText: string) => {
+    setEditingMessageId(messageId);
+    setEditingText(currentText);
+  }, []);
+
+  const handleEditCancel = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingText('');
+  }, []);
+
+  const handleEditConfirm = useCallback(() => {
+    if (!editingMessageId || !editingText.trim()) return;
+
+    const messageIndex = messages.findIndex(m => m.id === editingMessageId);
+    if (messageIndex === -1) return;
+
+    const originalMessage = messages[messageIndex];
+
+    // 截断：保留被编辑消息之前的所有消息
+    const truncated = messages.slice(0, messageIndex);
+
+    // 更新被编辑消息的文本内容
+    const updatedMessage = {
+      ...originalMessage,
+      parts: originalMessage.parts.map(p =>
+        p.type === 'text' ? { ...p, text: editingText } : p
+      ),
+    };
+
+    // 设置截断后的消息 + 更新后的消息
+    setMessages([...truncated, updatedMessage]);
+
+    // 发送 — 相同 ID 触发后端 re-send 截断逻辑
+    sendMessage(updatedMessage);
+
+    setEditingMessageId(null);
+    setEditingText('');
+  }, [editingMessageId, editingText, messages, setMessages, sendMessage]);
+
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
       {error && (
@@ -708,46 +752,88 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                 const isReasoningStreaming =
                   messageIndex === messages.length - 1 && status === 'streaming' && lastPart?.type === 'reasoning';
 
+                const isEditing = editingMessageId === message.id;
+                const userMessageText = message.role === 'user'
+                  ? message.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
+                  : '';
+
                 return (
                   <Message from={message.role} key={message.id}>
-                    <MessageContent>
-                      {hasReasoning && (
-                        <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
-                          <ReasoningTrigger />
-                          <ReasoningContent>{reasoningText}</ReasoningContent>
-                        </Reasoning>
-                      )}
-                      {message.parts.map((part, index) => {
-                        if (part.type === 'text') {
-                          return <MessageResponse key={`${message.id}-${index}`}>{part.text}</MessageResponse>;
-                        }
+                    {message.role === 'user' && isEditing ? (
+                      <div className="ml-auto w-fit max-w-[95%] rounded-lg bg-secondary px-4 py-3">
+                        <textarea
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleEditConfirm();
+                            }
+                            if (e.key === 'Escape') {
+                              handleEditCancel();
+                            }
+                          }}
+                          className="w-full resize-none bg-transparent text-sm text-foreground outline-none min-h-10"
+                          rows={Math.min(editingText.split('\n').length + 1, 10)}
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-1 mt-2">
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={handleEditCancel}
+                            type="button"
+                          >
+                            <XIcon className="size-3" />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            onClick={handleEditConfirm}
+                            type="button"
+                          >
+                            <CheckIcon className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <MessageContent>
+                        {hasReasoning && (
+                          <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
+                            <ReasoningTrigger />
+                            <ReasoningContent>{reasoningText}</ReasoningContent>
+                          </Reasoning>
+                        )}
+                        {message.parts.map((part, index) => {
+                          if (part.type === 'text') {
+                            return <MessageResponse key={`${message.id}-${index}`}>{part.text}</MessageResponse>;
+                          }
 
-                        if (part.type === 'file') {
-                          const filePart = part as { type: 'file'; mediaType?: string; url: string; filename?: string };
-                          if (filePart.mediaType?.startsWith('image/')) {
+                          if (part.type === 'file') {
+                            const filePart = part as { type: 'file'; mediaType?: string; url: string; filename?: string };
+                            if (filePart.mediaType?.startsWith('image/')) {
+                              return (
+                                <img
+                                  key={`${message.id}-${index}`}
+                                  src={filePart.url}
+                                  alt={filePart.filename ?? 'image'}
+                                  className="max-h-64 rounded-md border"
+                                />
+                              );
+                            }
                             return (
-                              <img
-                                key={`${message.id}-${index}`}
-                                src={filePart.url}
-                                alt={filePart.filename ?? 'image'}
-                                className="max-h-64 rounded-md border"
-                              />
+                              <div key={`${message.id}-${index}`} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                <FileTextIcon className="size-4 text-muted-foreground" />
+                                <span>{filePart.filename ?? 'file'}</span>
+                              </div>
                             );
                           }
-                          return (
-                            <div key={`${message.id}-${index}`} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                              <FileTextIcon className="size-4 text-muted-foreground" />
-                              <span>{filePart.filename ?? 'file'}</span>
-                            </div>
-                          );
-                        }
 
-                        if (part.type.startsWith('data-sub-')) {
-                          return null;
-                        }
+                          if (part.type.startsWith('data-sub-')) {
+                            return null;
+                          }
 
-                        if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
-                          const toolPart = part as ToolUIPart;
+                          if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+                            const toolPart = part as ToolUIPart;
 
                           if (TODO_TOOL_TYPES.has(toolPart.type)) {
                             return null;
@@ -825,6 +911,28 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                         return null;
                       })}
                     </MessageContent>
+                    )}
+
+                    {message.role === 'user' && !isEditing && status !== 'streaming' && status !== 'submitted' && (
+                      <MessageToolbar className="mt-0! opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                        <MessageActions>
+                          <MessageAction
+                            label="Edit"
+                            onClick={() => handleEditStart(message.id, userMessageText)}
+                            tooltip="Edit message"
+                          >
+                            <EditIcon className="size-4" />
+                          </MessageAction>
+                          <MessageAction
+                            label="Copy"
+                            onClick={() => handleCopy(userMessageText)}
+                            tooltip="Copy to clipboard"
+                          >
+                            <CopyIcon className="size-4" />
+                          </MessageAction>
+                        </MessageActions>
+                      </MessageToolbar>
+                    )}
 
                     {message.role === 'assistant' && messageIndex === messages.length - 1 && thinkingState ? (
                       <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
@@ -832,7 +940,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                         <span className="animate-pulse">{thinkingState.label}</span>
                       </div>
                     ) : message.role === 'assistant' && (
-                      <MessageToolbar>
+                      <MessageToolbar className="mt-0! opacity-0 group-hover:opacity-100 transition-opacity">
                         <MessageActions>
                           <MessageAction
                             label="Regenerate"
