@@ -144,6 +144,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
     } : undefined,
     customInstructions: selectedAgentDef?.instructions,
+    // 当选择自定义 Agent 时，跳过默认 identity section
+    excludeSections: selectedAgentDef ? ['identity'] : undefined,
   })
 
   // ============================================================

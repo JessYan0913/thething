@@ -31,6 +31,8 @@ export interface BuildInstructionsOptions {
   }
   /** 自定义指令（如 Agent 定义的 instructions），追加到系统提示词末尾 */
   customInstructions?: string
+  /** 要跳过的 section 名称列表（如 ['identity'] 用于自定义 Agent） */
+  excludeSections?: string[]
 }
 
 export async function buildAgentInstructions(
@@ -48,6 +50,7 @@ export async function buildAgentInstructions(
     memoryContext: memoryContext ?? undefined,
     memoryBaseDir: options?.memoryBaseDir,
     customInstructions: options?.customInstructions ?? null,
+    excludeSections: options?.excludeSections,
   })
 
   const compactionHint = '\n\nWhen you finish using a tool\'s output, call compact_tool_result to free context space.'

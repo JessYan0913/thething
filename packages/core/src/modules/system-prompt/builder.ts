@@ -257,6 +257,11 @@ export async function buildSystemPrompt(
 
   // Add static sections (synchronous)
   for (const factory of STATIC_SECTION_FACTORIES) {
+    // Skip sections that are explicitly excluded
+    if (opts.excludeSections?.includes(factory.name)) {
+      continue;
+    }
+
     const section = factory.create(opts) as SystemPromptSection;
     if (section.content) {
       allSections.push(section);

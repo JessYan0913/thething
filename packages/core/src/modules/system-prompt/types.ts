@@ -65,6 +65,9 @@ export interface BuildSystemPromptOptions {
     teamId?: string;
     recalledMemoriesContent?: string;
   };
+
+  /** Sections to exclude from the system prompt (e.g., ['identity'] for custom agents) */
+  excludeSections?: string[];
 }
 
 /**
