@@ -155,7 +155,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     const resolvedModel = typeof agentModel === 'string'
       ? resolveModelAlias(agentModel, behavior.modelAliases)
       : agentModel
-    if (typeof resolvedModel === 'string') {
+    if (typeof resolvedModel === 'string' && resolvedModel) {
       modelConfig.modelName = resolvedModel
       logger.debug('AgentCreate', `Model overridden by agent: ${resolvedModel}`)
     }
@@ -222,7 +222,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // 初始预算检查
   // ============================================================
-  const modelName = modelConfig.modelName || behavior.modelAliases.default
+  const modelName = modelConfig.modelName || behavior.modelAliases.default?.model
   const budgetCheck = await checkInitialBudget(
     messagesWithAttachments,
     instructions,
