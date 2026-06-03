@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resolveAgentRoute } from '../router';
-import { globalAgentRegistry } from '../registry';
+import { AgentRegistry } from '../registry';
 import { registerBuiltinAgents } from '../built-in';
 import type { AgentExecutionContext } from '../types';
 
 describe('subagents/router', () => {
+  let registry: AgentRegistry;
+
   // Create minimal execution context
   const createMockContext = (): AgentExecutionContext => ({
     parentTools: {},
@@ -15,11 +17,12 @@ describe('subagents/router', () => {
     abortSignal: new AbortController().signal,
     toolCallId: 'test-tool-call',
     recursionDepth: 0,
+    agentRegistry: registry,
   });
 
   beforeEach(() => {
-    // Register builtin agents before each test
-    registerBuiltinAgents();
+    registry = new AgentRegistry();
+    registerBuiltinAgents(registry);
   });
 
   describe('resolveAgentRoute', () => {

@@ -12,6 +12,40 @@ import yaml from 'js-yaml';
 // 辅助函数
 // ============================================================
 
+/**
+ * 从原始数据构建 AgentDefinition，消除多处重复映射
+ */
+function buildAgentDefinitionFromData(
+  data: Record<string, unknown>,
+  body: string,
+  source: AgentSource,
+  filePath?: string,
+): AgentDefinition {
+  return {
+    agentType: extractAgentType(data as { name?: string; agentType?: string; displayName?: string }, filePath),
+    displayName: data.displayName as string | undefined,
+    description: data.description as string,
+    tools: parseToolsList(data.tools as string[] | undefined),
+    disallowedTools: parseToolsList(data.disallowedTools as string[] | undefined),
+    model: (data.model as string) ?? 'inherit',
+    effort: data.effort as 'low' | 'medium' | 'high' | number | undefined,
+    maxTurns: (data.maxTurns as number) ?? 20,
+    permissionMode: data.permissionMode as 'acceptEdits' | 'plan' | 'bypassPermissions' | undefined,
+    background: data.background as boolean | undefined,
+    initialPrompt: data.initialPrompt as string | undefined,
+    isolation: data.isolation as 'worktree' | undefined,
+    memory: data.memory as 'user' | 'project' | 'local' | undefined,
+    skills: parseToolsList(data.skills as string[] | undefined),
+    instructions: body,
+    includeParentContext: (data.includeParentContext as boolean) ?? false,
+    maxParentMessages: data.maxParentMessages as number | undefined,
+    summarizeOutput: (data.summarizeOutput as boolean) ?? true,
+    metadata: data.metadata as Record<string, unknown> | undefined,
+    source,
+    filePath,
+  };
+}
+
 function extractAgentType(data: { name?: string; agentType?: string; displayName?: string }, filePath?: string): string {
   if (data.agentType) return data.agentType;
   if (data.name) return data.name;
@@ -40,29 +74,7 @@ const agentsLoader = createMultiSourceLoader<AgentDefinition>({
   filePattern: '*.md',
   parse: async (filePath, source) => {
     const result = await parseFrontmatterFile(filePath, AgentFrontmatterSchema);
-    return {
-      agentType: extractAgentType(result.data, result.filePath),
-      displayName: result.data.displayName,
-      description: result.data.description,
-      tools: parseToolsList(result.data.tools),
-      disallowedTools: parseToolsList(result.data.disallowedTools),
-      model: result.data.model ?? 'inherit',
-      effort: result.data.effort,
-      maxTurns: result.data.maxTurns ?? 20,
-      permissionMode: result.data.permissionMode,
-      background: result.data.background,
-      initialPrompt: result.data.initialPrompt,
-      isolation: result.data.isolation,
-      memory: result.data.memory,
-      skills: parseToolsList(result.data.skills),
-      instructions: result.body,
-      includeParentContext: result.data.includeParentContext ?? false,
-      maxParentMessages: result.data.maxParentMessages,
-      summarizeOutput: result.data.summarizeOutput ?? true,
-      metadata: result.data.metadata,
-      filePath: result.filePath,
-      source,
-    };
+    return buildAgentDefinitionFromData(result.data, result.body, source, result.filePath);
   },
   getMergeKey: (item) => item.agentType,
 });
@@ -93,30 +105,7 @@ export async function loadAgentFile(
   source: 'user' | 'project',
 ): Promise<AgentDefinition> {
   const result = await parseFrontmatterFile(filePath, AgentFrontmatterSchema);
-
-  return {
-    agentType: extractAgentType(result.data, result.filePath),
-    displayName: result.data.displayName,
-    description: result.data.description,
-    tools: parseToolsList(result.data.tools),
-    disallowedTools: parseToolsList(result.data.disallowedTools),
-    model: result.data.model ?? 'inherit',
-    effort: result.data.effort,
-    maxTurns: result.data.maxTurns ?? 20,
-    permissionMode: result.data.permissionMode,
-    background: result.data.background,
-    initialPrompt: result.data.initialPrompt,
-    isolation: result.data.isolation,
-    memory: result.data.memory,
-    skills: parseToolsList(result.data.skills),
-    instructions: result.body,
-    includeParentContext: result.data.includeParentContext ?? false,
-    maxParentMessages: result.data.maxParentMessages,
-    summarizeOutput: result.data.summarizeOutput ?? true,
-    metadata: result.data.metadata,
-    filePath: result.filePath,
-    source,
-  };
+  return buildAgentDefinitionFromData(result.data, result.body, source, result.filePath);
 }
 
 export function parseAgentMarkdown(
@@ -129,28 +118,7 @@ export function parseAgentMarkdown(
     throw new ParseError('(inline content)');
   }
 
-  return {
-    agentType: extractAgentType(result.data),
-    displayName: result.data.displayName,
-    description: result.data.description,
-    tools: parseToolsList(result.data.tools),
-    disallowedTools: parseToolsList(result.data.disallowedTools),
-    model: result.data.model ?? 'inherit',
-    effort: result.data.effort,
-    maxTurns: result.data.maxTurns ?? 20,
-    permissionMode: result.data.permissionMode,
-    background: result.data.background,
-    initialPrompt: result.data.initialPrompt,
-    isolation: result.data.isolation,
-    memory: result.data.memory,
-    skills: parseToolsList(result.data.skills),
-    instructions: result.body,
-    includeParentContext: result.data.includeParentContext ?? false,
-    maxParentMessages: result.data.maxParentMessages,
-    summarizeOutput: result.data.summarizeOutput ?? true,
-    metadata: result.data.metadata,
-    source,
-  };
+  return buildAgentDefinitionFromData(result.data, result.body, source);
 }
 
 export function serializeAgentMarkdown(def: AgentDefinition): string {

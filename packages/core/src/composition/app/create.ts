@@ -5,7 +5,7 @@
 // 让组装逻辑正确归属于 composition 层。
 
 import { ToolLoopAgent, wrapLanguageModel } from 'ai'
-import type { SubAgentStreamWriter } from '../../modules/subagents'
+import type { SubAgentStreamWriter } from '../../modules/agent'
 import type { CompactionConfig } from '../../modules/compaction/types'
 import type { CreateAgentOptions, CreateAgentResult } from './types'
 import { resolveAgentConfig } from './resolve-agent-config'
@@ -18,7 +18,7 @@ import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
 import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
-import type { AgentDefinition } from '../../modules/subagents/types'
+import type { AgentDefinition } from '../../modules/agent/types'
 import { resolveModelAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
 import {

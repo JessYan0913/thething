@@ -3,7 +3,7 @@
 // ============================================================================
 
 import type { Skill, SkillMetadata } from '../skills/types';
-import type { AgentDefinition } from '../subagents/types';
+import type { AgentDefinition } from '../agent/types';
 import type { PermissionRule } from '../permissions/types';
 import type { MemoryEntry } from '../memory/types';
 import type { LoadedContextFile, LoadedProjectContext } from './sections/project-context';

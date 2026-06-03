@@ -3,8 +3,8 @@
 // ============================================================
 
 import type { AppModule, ModuleContext } from '../module-types';
-import { loadAgents, type LoadAgentsOptions } from '../../../modules/subagents/loader';
-import type { AgentDefinition } from '../../../modules/subagents/types';
+import { loadAgents, type LoadAgentsOptions } from '../../../modules/agent/loader';
+import type { AgentDefinition } from '../../../modules/agent/types';
 
 export function createAgentsModule(loadOptions?: LoadAgentsOptions): AppModule<AgentDefinition[]> {
   let loadedAgents: AgentDefinition[] = [];

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAgentMarkdown } from '../../../modules/subagents/loader';
+import { parseAgentMarkdown } from '../../../modules/agent/loader';
 import { ParseError } from '../../../primitives/parser';
 
 describe('parseAgentMarkdown', () => {

@@ -19,7 +19,7 @@ import {
   createCronTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
-import { AgentRegistry, registerBuiltinAgents, createAgentTool } from '../../modules/subagents'
+import { AgentRegistry, registerBuiltinAgents, createAgentTool } from '.'
 import { createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
 import type { LoadToolsConfig } from './types'

@@ -208,8 +208,8 @@ export type {
 export type { Skill } from './modules/skills/types';
 
 // Agent types
-export type { AgentDefinition } from './modules/subagents/types';
-export { serializeAgentMarkdown } from './modules/subagents/loader';
+export type { AgentDefinition } from './modules/agent/types';
+export { serializeAgentMarkdown } from './modules/agent/loader';
 
 // MCP types
 export type { McpServerConfig, McpServerConfigSource } from './modules/mcp/types';
@@ -276,7 +276,7 @@ export {
 export { generateConversationTitle } from './modules/compaction';
 
 // SubAgent types
-export type { SubAgentStreamWriter } from './modules/subagents';
+export type { SubAgentStreamWriter } from './modules/agent';
 
 // Cron Scheduler
 export {

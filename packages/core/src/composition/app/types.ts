@@ -5,7 +5,7 @@
 import type { UIMessage, Tool, ToolLoopAgent } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { Skill } from '../../modules/skills/types';
-import type { AgentDefinition } from '../../modules/subagents/types';
+import type { AgentDefinition } from '../../modules/agent/types';
 import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
-import { scanAgentDirs, registerBuiltinAgents, globalAgentRegistry } from '../index';
+import { scanAgentDirs, registerBuiltinAgents } from '../index';
+import { AgentRegistry } from '../registry';
 import { resolveAgentRoute } from '../router';
 import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
 
@@ -26,10 +27,11 @@ You are a test agent.
 
 describe('Agent Loader Integration', () => {
   let root: string | undefined;
+  let registry: AgentRegistry;
 
   beforeEach(() => {
-    globalAgentRegistry.clear();
-    registerBuiltinAgents();
+    registry = new AgentRegistry();
+    registerBuiltinAgents(registry);
   });
 
   afterEach(async () => {
@@ -37,11 +39,11 @@ describe('Agent Loader Integration', () => {
       await rm(root, { recursive: true, force: true }).catch(() => {});
       root = undefined;
     }
-    globalAgentRegistry.clear();
+    registry.clear();
   });
 
   it('keeps builtin agents registered', () => {
-    const builtinAgents = globalAgentRegistry.getAll().filter(agent => agent.source === 'builtin');
+    const builtinAgents = registry.getAll().filter(agent => agent.source === 'builtin');
 
     expect(builtinAgents.length).toBeGreaterThan(0);
     expect(builtinAgents.some(agent => agent.agentType === 'explore')).toBe(true);
@@ -53,7 +55,7 @@ describe('Agent Loader Integration', () => {
     root = project.root;
 
     const customAgents = await scanAgentDirs(root, { dirs: [project.agentDir] });
-    customAgents.forEach(agent => globalAgentRegistry.register(agent));
+    customAgents.forEach(agent => registry.register(agent));
 
     const testAgent = customAgents.find(agent => agent.agentType === 'test-agent');
     expect(testAgent).toBeDefined();
@@ -69,7 +71,7 @@ describe('Agent Loader Integration', () => {
     root = project.root;
 
     const customAgents = await scanAgentDirs(root, { dirs: [project.agentDir] });
-    customAgents.forEach(agent => globalAgentRegistry.register(agent));
+    customAgents.forEach(agent => registry.register(agent));
 
     const route = resolveAgentRoute(
       { agentType: 'test-agent', task: '验证加载' },
@@ -82,6 +84,7 @@ describe('Agent Loader Integration', () => {
         abortSignal: new AbortController().signal,
         toolCallId: 'test',
         recursionDepth: 0,
+        agentRegistry: registry,
       },
     );
 
@@ -101,6 +104,7 @@ describe('Agent Loader Integration', () => {
         abortSignal: new AbortController().signal,
         toolCallId: 'test',
         recursionDepth: 0,
+        agentRegistry: registry,
       },
     );
 

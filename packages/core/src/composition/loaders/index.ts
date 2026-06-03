@@ -14,7 +14,7 @@ export {
   parseAgentMarkdown,
   serializeAgentMarkdown,
   type LoadAgentsOptions,
-} from '../../modules/subagents/loader';
+} from '../../modules/agent/loader';
 
 export {
   loadMcpServers,
@@ -59,7 +59,7 @@ export {
 
 import type { ResourceDirs } from '../../services/config/layout';
 import type { Skill } from '../../modules/skills/types';
-import type { AgentDefinition } from '../../modules/subagents/types';
+import type { AgentDefinition } from '../../modules/agent/types';
 import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';
