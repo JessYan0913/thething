@@ -18,6 +18,8 @@ import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
 import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
+import type { AgentDefinition } from '../../modules/subagents/types'
+import { resolveModelAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
 import {
   injectMessageAttachments,
@@ -48,6 +50,27 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
 
   const projectRoot = sessionOptions.projectRoot ?? context.layout.resourceRoot
   const memoryBaseDir = getPrimaryMemoryDir(context.layout)
+
+  // ============================================================
+  // Agent 定义查找（如果指定了 agentType）
+  // ============================================================
+  let selectedAgentDef: AgentDefinition | undefined
+  if (options.agentType) {
+    selectedAgentDef = context.agents.find(
+      (a) => a.agentType === options.agentType,
+    )
+    if (selectedAgentDef) {
+      logger.debug(
+        'AgentCreate',
+        `Using agent definition: ${selectedAgentDef.agentType} (${selectedAgentDef.displayName ?? selectedAgentDef.agentType})`,
+      )
+    } else {
+      logger.warn(
+        'AgentCreate',
+        `Agent type "${options.agentType}" not found, using default behavior`,
+      )
+    }
+  }
 
   // ============================================================
   // 技能附件注入
@@ -120,11 +143,24 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       isNewConversation: options.conversationMeta.isNewConversation,
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
     } : undefined,
+    customInstructions: selectedAgentDef?.instructions,
   })
 
   // ============================================================
   // Model + compact 注入
   // ============================================================
+  // 如果 Agent 定义了非 'inherit' 的模型，覆盖 modelName
+  if (selectedAgentDef?.model && selectedAgentDef.model !== 'inherit') {
+    const agentModel = selectedAgentDef.model
+    const resolvedModel = typeof agentModel === 'string'
+      ? resolveModelAlias(agentModel, behavior.modelAliases)
+      : agentModel
+    if (typeof resolvedModel === 'string') {
+      modelConfig.modelName = resolvedModel
+      logger.debug('AgentCreate', `Model overridden by agent: ${resolvedModel}`)
+    }
+  }
+
   const modelInstance = createLanguageModel(modelConfig)
   const provider = createModelProvider(modelConfig)
 
@@ -162,6 +198,27 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     cronStore: context.runtime.cronStore ?? undefined,
   })
 
+  // 如果 Agent 定义了工具限制，过滤工具集
+  let filteredTools = tools
+  if (selectedAgentDef) {
+    const allowedTools = selectedAgentDef.tools
+    const disallowedTools = selectedAgentDef.disallowedTools
+
+    if (allowedTools && allowedTools.length > 0) {
+      filteredTools = Object.fromEntries(
+        Object.entries(tools).filter(([name]) => allowedTools.includes(name)),
+      )
+      logger.debug('AgentCreate', `Tools filtered by allowlist: ${Object.keys(filteredTools).join(', ')}`)
+    }
+
+    if (disallowedTools && disallowedTools.length > 0) {
+      filteredTools = Object.fromEntries(
+        Object.entries(filteredTools).filter(([name]) => !disallowedTools.includes(name)),
+      )
+      logger.debug('AgentCreate', `Tools filtered by blocklist: ${Object.keys(filteredTools).join(', ')}`)
+    }
+  }
+
   // ============================================================
   // 初始预算检查
   // ============================================================
@@ -169,7 +226,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const budgetCheck = await checkInitialBudget(
     messagesWithAttachments,
     instructions,
-    tools,
+    filteredTools,
     modelName,
     compactionCfg,
     {
@@ -194,7 +251,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     )
   }
 
-  const finalTools = budgetCheck.adjustedTools ?? tools
+  const finalTools = budgetCheck.adjustedTools ?? filteredTools
   const finalMessages = budgetCheck.adjustedMessages ?? messagesWithAttachments
 
   if (options.autoApprove) {

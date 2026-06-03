@@ -29,6 +29,8 @@ export interface BuildInstructionsOptions {
     isNewConversation: boolean
     conversationStartTime: number
   }
+  /** 自定义指令（如 Agent 定义的 instructions），追加到系统提示词末尾 */
+  customInstructions?: string
 }
 
 export async function buildAgentInstructions(
@@ -45,6 +47,7 @@ export async function buildAgentInstructions(
     conversationMeta: options?.conversationMeta ?? undefined,
     memoryContext: memoryContext ?? undefined,
     memoryBaseDir: options?.memoryBaseDir,
+    customInstructions: options?.customInstructions ?? null,
   })
 
   const compactionHint = '\n\nWhen you finish using a tool\'s output, call compact_tool_result to free context space.'

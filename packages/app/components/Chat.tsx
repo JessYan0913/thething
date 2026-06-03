@@ -42,9 +42,12 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon } from 'lucide-react';
+import { ModelSelector, AgentSelector } from '@/components/chat-selectors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
+const SELECTED_MODEL_KEY = 'chat_selected_model';
+const SELECTED_AGENT_KEY = 'chat_selected_agent';
 
 const TODO_TOOL_TYPES = new Set([
   'tool-todo_create',
@@ -248,8 +251,36 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     }>;
   } | null>(null);
 
+  // 模型和 Agent 选择状态（持久化到 localStorage）
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(SELECTED_MODEL_KEY) || 'default';
+    }
+    return 'default';
+  });
+  const [selectedAgent, setSelectedAgent] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(SELECTED_AGENT_KEY) || 'auto';
+    }
+    return 'auto';
+  });
+
+  const handleModelChange = useCallback((value: string) => {
+    setSelectedModel(value);
+    localStorage.setItem(SELECTED_MODEL_KEY, value);
+  }, []);
+
+  const handleAgentChange = useCallback((value: string) => {
+    setSelectedAgent(value);
+    localStorage.setItem(SELECTED_AGENT_KEY, value);
+  }, []);
+
   const extraBodyRef = useRef<Record<string, unknown> | undefined>(extraBody);
-  extraBodyRef.current = extraBody;
+  extraBodyRef.current = {
+    ...extraBody,
+    modelName: selectedModel === 'default' ? undefined : selectedModel,
+    agentType: selectedAgent === 'auto' ? undefined : selectedAgent,
+  };
 
   const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef), [conversationId, apiEndpoint]);
 
@@ -876,6 +907,8 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                     <PromptInputActionAddScreenshot />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
+                <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
+                <ModelSelector value={selectedModel} onChange={handleModelChange} />
               </PromptInputTools>
               <PromptInputSubmit status={status} onStop={stop} />
             </PromptInputFooter>

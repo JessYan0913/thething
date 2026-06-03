@@ -140,6 +140,16 @@ export interface CreateAgentOptions {
   /** 模型配置（必填） */
   model: ModelConfig;
 
+  /**
+   * 指定主 Agent 类型（可选）。
+   *
+   * 如果提供，将从 context.agents 中查找对应的 AgentDefinition，
+   * 并使用其 instructions、tools、model 等配置覆盖主 Agent 的默认行为。
+   *
+   * 如果不提供或找不到对应定义，使用默认的通用 Agent 行为。
+   */
+  agentType?: string;
+
   /** Session 配置 */
   session?: {
     maxContextTokens?: number;

@@ -16,6 +16,7 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
 import { useChatContext } from "./ChatLayout"
+import { ModelSelector, AgentSelector } from "@/components/chat-selectors"
 
 function AttachmentPreview() {
   const { files, remove } = usePromptInputAttachments()
@@ -55,10 +56,36 @@ function AttachmentPreview() {
   )
 }
 
+const SELECTED_MODEL_KEY = 'chat_selected_model'
+const SELECTED_AGENT_KEY = 'chat_selected_agent'
+
 export default function ChatHome() {
   const { t } = useTranslation('chat')
   const { handleCreateConversation } = useChatContext()
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(SELECTED_MODEL_KEY) || 'default'
+    }
+    return 'default'
+  })
+  const [selectedAgent, setSelectedAgent] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(SELECTED_AGENT_KEY) || 'auto'
+    }
+    return 'auto'
+  })
+
+  const handleModelChange = useCallback((value: string) => {
+    setSelectedModel(value)
+    localStorage.setItem(SELECTED_MODEL_KEY, value)
+  }, [])
+
+  const handleAgentChange = useCallback((value: string) => {
+    setSelectedAgent(value)
+    localStorage.setItem(SELECTED_AGENT_KEY, value)
+  }, [])
 
   const handleSubmit = useCallback(
     async ({ text }: PromptInputMessage) => {
@@ -102,6 +129,8 @@ export default function ChatHome() {
                   <PromptInputActionAddScreenshot />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
+              <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
+              <ModelSelector value={selectedModel} onChange={handleModelChange} />
             </PromptInputTools>
             <PromptInputSubmit
               disabled={isSubmitting}

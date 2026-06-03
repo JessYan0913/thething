@@ -43,9 +43,11 @@ export async function POST(request: Request) {
       message: UIMessage;
       conversationId: string;
       userId?: string;
+      modelName?: string;
+      agentType?: string;
     }>();
 
-    const { message, conversationId, userId: messageUserId } = body;
+    const { message, conversationId, userId: messageUserId, modelName, agentType } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
@@ -85,10 +87,11 @@ export async function POST(request: Request) {
       conversationId,
       messages,
       userId,
+      agentType,
       model: {
         apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
         baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default,
+        modelName: modelName || process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
         includeUsage: true,
       },
       session: globalConfig?.contextLimit
