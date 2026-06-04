@@ -15,10 +15,10 @@ function decodeDataUrl(dataUrl: string): Buffer | null {
 }
 
 /**
- * Convert docx buffer to markdown text.
+ * Convert docx buffer to text.
  */
 async function convertDocx(buf: Buffer): Promise<string> {
-  const result = await mammoth.convertToMarkdown({ buffer: buf });
+  const result = await mammoth.extractRawText({ buffer: buf });
   return result.value;
 }
 

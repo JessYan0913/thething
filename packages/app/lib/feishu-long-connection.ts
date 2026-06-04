@@ -5,7 +5,7 @@
 // 消息接收走 WebSocket，回复走 HTTP REST API
 
 import * as Lark from '@larksuiteoapi/node-sdk'
-import type { ConnectorRegistry } from '@the-thing/core'
+import type { ConnectorRegistry, ExternalInboundInput, InboundAcceptResult } from '@the-thing/core'
 
 // 存储多个飞书长连接实例
 const wsClients = new Map<string, Lark.WSClient>()
@@ -21,7 +21,7 @@ const larkClients = new Map<string, Lark.Client>()
 export async function startFeishuLongConnection(
   connectorId: string | undefined,
   registry: ConnectorRegistry,
-  gateway: { acceptExternal: (input: unknown) => Promise<{ accepted: boolean; eventId?: string; reason?: string }> }
+  gateway: { acceptExternal: (input: ExternalInboundInput) => Promise<InboundAcceptResult> }
 ): Promise<void> {
   const effectiveConnectorId = connectorId || 'feishu'
 
@@ -87,7 +87,7 @@ export async function startFeishuLongConnection(
  */
 export async function startAllFeishuLongConnections(
   registry: ConnectorRegistry,
-  gateway: { acceptExternal: (input: unknown) => Promise<{ accepted: boolean; eventId?: string; reason?: string }> }
+  gateway: { acceptExternal: (input: ExternalInboundInput) => Promise<InboundAcceptResult> }
 ): Promise<void> {
   const connectorIds = registry.getConnectorIds()
 
@@ -144,7 +144,7 @@ export function getFeishuClient(connectorId?: string): Lark.Client | null {
 async function handleMessage(
   data: Record<string, unknown>,
   connectorId: string,
-  gateway: { acceptExternal: (input: unknown) => Promise<{ accepted: boolean; eventId?: string; reason?: string }> }
+  gateway: { acceptExternal: (input: ExternalInboundInput) => Promise<InboundAcceptResult> }
 ): Promise<void> {
   const result = await gateway.acceptExternal({
     connectorId,

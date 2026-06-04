@@ -9,6 +9,7 @@ let initPromise: Promise<CoreRuntime> | null = null;
 
 async function initializeRuntime(): Promise<CoreRuntime> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env };
+  const globalConfig = loadGlobalConfig();
 
   runtime = await bootstrap({
     layout: {
@@ -18,6 +19,13 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     connectorConfig: {
       configDir: path.join(os.homedir(), '.thething', 'connectors'),
     },
+    behavior: {
+      modelAliases: {
+        fast: globalConfig?.modelAliases?.fast ?? { model: '' },
+        smart: globalConfig?.modelAliases?.smart ?? { model: '' },
+        default: globalConfig?.modelAliases?.default ?? { model: '' },
+      },
+    },
     env: envSnapshot,
     debug: true,
   });
@@ -25,13 +33,12 @@ async function initializeRuntime(): Promise<CoreRuntime> {
   context = await createContext({ runtime });
 
   // Wire up connector inbound: bind AI agent handler to Feishu/WeChat webhooks
-  const globalConfig = loadGlobalConfig();
   configureConnectorInboundRuntime(runtime.connectorRuntime, {
     appContext: context,
     modelConfig: {
       apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
       baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-      modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default || '',
+      modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model || '',
     },
   });
 
