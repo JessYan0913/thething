@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation"
 import {
   BotIcon, RefreshCwIcon, SearchIcon, SparklesIcon,
   PlusIcon, PencilIcon, TrashIcon, CheckIcon, XIcon,
-  CpuIcon, WrenchIcon, ExternalLinkIcon,
+  CpuIcon, WrenchIcon, ExternalLinkIcon, MoreVerticalIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,12 +36,19 @@ interface AgentView {
   source: string
   filePath?: string
   metadata?: Record<string, unknown>
+  instructions?: string
 }
 
 const effortLabels: Record<string, string> = {
   low: "轻量",
   medium: "中等",
   high: "高开销",
+}
+
+const effortColors: Record<string, string> = {
+  low: "bg-green-500/15 text-green-700 dark:text-green-400",
+  medium: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
+  high: "bg-red-500/15 text-red-700 dark:text-red-400",
 }
 
 const modelLabels: Record<string, string> = {
@@ -63,6 +70,10 @@ const sourceColors: Record<string, string> = {
   project: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   plugin: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
 }
+
+// ============================================================
+// AgentForm — 创建/编辑表单
+// ============================================================
 
 function AgentForm({
   agent,
@@ -87,7 +98,7 @@ function AgentForm({
     permissionMode: agent.permissionMode ?? "",
     memory: agent.memory ?? "",
     background: agent.background ?? false,
-    instructions: (agent as Record<string, unknown>).instructions as string ?? "",
+    instructions: agent.instructions ?? "",
   })
 
   const isEdit = !!agent.agentType
@@ -257,6 +268,7 @@ function AgentForm({
             permissionMode: form.permissionMode || undefined,
             memory: form.memory || undefined,
             background: form.background,
+            instructions: form.instructions,
           })}
           disabled={saving || !form.agentType || !form.description}
         >
@@ -267,14 +279,199 @@ function AgentForm({
   )
 }
 
+// ============================================================
+// AgentCard — 代理列表卡片
+// ============================================================
+
+function AgentCard({
+  agent,
+  onEdit,
+  onDelete,
+  onToggleEnabled,
+  onOpenWorkbench,
+}: {
+  agent: AgentView
+  onEdit: () => void
+  onDelete: () => void
+  onToggleEnabled: (enabled: boolean) => void
+  onOpenWorkbench: () => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const enabled = agent.metadata?.enabled !== false
+
+  return (
+    <div className={`rounded-lg border p-4 space-y-3 w-full transition-colors relative ${
+      enabled
+        ? "hover:border-accent/50 hover:bg-accent/20"
+        : "opacity-60 border-dashed"
+    }`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <BotIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm">
+                {agent.displayName ?? agent.agentType}
+              </span>
+              <Badge
+                className={`text-xs border-0 ${
+                  enabled
+                    ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                    : "bg-red-500/10 text-red-600 dark:text-red-400"
+                }`}
+              >
+                {enabled ? "已启用" : "已禁用"}
+              </Badge>
+              {agent.effort && (
+                <Badge
+                  className={`text-xs border-0 ${effortColors[agent.effort] ?? effortColors.medium}`}
+                >
+                  {effortLabels[agent.effort] ?? agent.effort}
+                </Badge>
+              )}
+              <Badge
+                variant="secondary"
+                className={`text-xs ${sourceColors[agent.source] ?? ""}`}
+              >
+                {sourceLabels[agent.source] ?? agent.source}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground line-clamp-2">
+              {agent.description}
+            </p>
+            {agent.displayName && (
+              <p className="text-xs text-muted-foreground/60 font-mono">
+                {agent.agentType}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="relative shrink-0 flex items-center gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  disabled={agent.source === "builtin"}
+                  onClick={() => onToggleEnabled(!enabled)}
+                  className={`
+                    relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent
+                    transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                    focus-visible:ring-offset-2 focus-visible:ring-offset-background
+                    disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer
+                    ${enabled ? "bg-primary" : "bg-input"}
+                  `}
+                >
+                  <span
+                    className={`
+                      pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0
+                      transition-transform
+                      ${enabled ? "translate-x-5" : "translate-x-1"}
+                    `}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {agent.source === "builtin"
+                  ? "内置代理无法禁用"
+                  : enabled
+                    ? "点击禁用"
+                    : "点击启用"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <span className="text-xs text-muted-foreground select-none">
+            {enabled ? "启用" : "禁用"}
+          </span>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen(!menuOpen)
+            }}
+          >
+            <MoreVerticalIcon className="size-4" />
+          </Button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-8 z-50 w-40 rounded-md border bg-popover shadow-md">
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer rounded-md"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    onEdit()
+                  }}
+                >
+                  <PencilIcon className="size-3.5" />
+                  编辑
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer rounded-md"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    onOpenWorkbench()
+                  }}
+                >
+                  <ExternalLinkIcon className="size-3.5" />
+                  工作台
+                </button>
+                {agent.source !== "builtin" && (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 cursor-pointer rounded-md"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMenuOpen(false)
+                      onDelete()
+                    }}
+                  >
+                    <TrashIcon className="size-3.5" />
+                    删除
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <CpuIcon className="size-3" />
+          <span className="font-mono">
+            {modelLabels[agent.model ?? ""] ?? agent.model ?? "inherit"}
+          </span>
+        </div>
+        <span className="text-muted-foreground/40">|</span>
+        <div className="flex items-center gap-1">
+          <WrenchIcon className="size-3" />
+          <span>{agent.tools?.length ?? 0} 个工具</span>
+        </div>
+        <span className="text-muted-foreground/40">|</span>
+        <span>{agent.maxTurns ?? 20} 轮次</span>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// AgentsSettings — 主组件
+// ============================================================
+
 export default function AgentsSettings() {
   const router = useRouter()
   const [agents, setAgents] = useState<AgentView[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [filterModel, setFilterModel] = useState("all")
-  const [filterSource, setFilterSource] = useState("all")
-  const [filterEffort, setFilterEffort] = useState("all")
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingAgent, setEditingAgent] = useState<AgentView | null>(null)
@@ -310,7 +507,6 @@ export default function AgentsSettings() {
         body: JSON.stringify({ metadata: { enabled } }),
       })
     } catch {
-      // Revert on error
       setAgents((prev) => prev.map((a) =>
         a.agentType === agentType
           ? { ...a, metadata: { ...a.metadata, enabled: !enabled } }
@@ -363,103 +559,49 @@ export default function AgentsSettings() {
   }, [editingAgent, loadAgents])
 
   const filteredAgents = useMemo(() => {
+    if (!search) return agents
+    const q = search.toLowerCase()
     return agents.filter((a) => {
-      if (search) {
-        const q = search.toLowerCase()
-        const name = (a.displayName ?? a.agentType).toLowerCase()
-        const type = a.agentType.toLowerCase()
-        const desc = (a.description ?? "").toLowerCase()
-        if (!name.includes(q) && !type.includes(q) && !desc.includes(q)) return false
-      }
-      if (filterModel !== "all" && a.model !== filterModel) return false
-      if (filterSource !== "all" && a.source !== filterSource) return false
-      if (filterEffort !== "all" && a.effort !== filterEffort) return false
-      return true
+      const name = (a.displayName ?? a.agentType).toLowerCase()
+      const type = a.agentType.toLowerCase()
+      const desc = (a.description ?? "").toLowerCase()
+      return name.includes(q) || type.includes(q) || desc.includes(q)
     })
-  }, [agents, search, filterModel, filterSource, filterEffort])
+  }, [agents, search])
 
-  const stats = useMemo(() => {
-    const bySource: Record<string, number> = {}
-    for (const a of agents) {
-      bySource[a.source] = (bySource[a.source] ?? 0) + 1
-    }
-    return { total: agents.length, bySource }
-  }, [agents])
+  const deleteTarget = confirmDelete ? agents.find((a) => a.agentType === confirmDelete) : null
 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
-      <div className="shrink-0 border-b bg-muted/30 px-6 py-3 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-sm">
-            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索代理名称或描述..."
-              className="h-8 pl-8 text-sm"
-            />
-          </div>
-          <Select value={filterModel} onValueChange={setFilterModel}>
-            <SelectTrigger className="h-8 w-28 text-xs">
-              <SelectValue placeholder="模型" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">所有模型</SelectItem>
-              <SelectItem value="inherit">继承</SelectItem>
-              <SelectItem value="fast">快速</SelectItem>
-              <SelectItem value="smart">智能</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterSource} onValueChange={setFilterSource}>
-            <SelectTrigger className="h-8 w-28 text-xs">
-              <SelectValue placeholder="来源" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">所有来源</SelectItem>
-              <SelectItem value="builtin">内置</SelectItem>
-              <SelectItem value="user">用户</SelectItem>
-              <SelectItem value="project">项目</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterEffort} onValueChange={setFilterEffort}>
-            <SelectTrigger className="h-8 w-28 text-xs">
-              <SelectValue placeholder="难度" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">所有难度</SelectItem>
-              <SelectItem value="low">轻量</SelectItem>
-              <SelectItem value="medium">中等</SelectItem>
-              <SelectItem value="high">高开销</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex-1" />
-          <Button variant="outline" size="sm" onClick={() => router.push("/workbench/agent")}>
-            <SparklesIcon className="size-3.5 mr-1" />
-            AI 创建
-          </Button>
-          <Button size="sm" onClick={() => setShowCreateDialog(true)}>
-            <PlusIcon className="size-3.5 mr-1" />
-            手动创建
-          </Button>
-          <Button variant="ghost" size="sm" onClick={loadAgents} disabled={isLoading}>
-            <RefreshCwIcon className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <Badge variant="secondary" className="text-xs px-2 py-0.5">
+          {agents.length}
+        </Badge>
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索代理..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
         </div>
-
-        {/* Stats */}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span>代理总数: <span className="font-medium text-foreground">{stats.total}</span></span>
-          {Object.entries(stats.bySource).map(([source, count]) => (
-            <span key={source}>
-              {sourceLabels[source] ?? source}: <span className="font-medium text-foreground">{count}</span>
-            </span>
-          ))}
-        </div>
+        <Button variant="ghost" size="sm" onClick={loadAgents} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => router.push("/workbench/agent")}>
+          <SparklesIcon className="mr-1 size-4" />
+          AI 创建
+        </Button>
+        <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+          <PlusIcon className="mr-1 size-4" />
+          手动创建
+        </Button>
       </div>
 
-      {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      {/* Content */}
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...
@@ -479,191 +621,17 @@ export default function AgentsSettings() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-background z-10">
-                <tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left px-6 py-2.5 font-medium">状态</th>
-                  <th className="text-left px-4 py-2.5 font-medium">名称</th>
-                  <th className="text-left px-4 py-2.5 font-medium">模型</th>
-                  <th className="text-center px-4 py-2.5 font-medium">工具</th>
-                  <th className="text-left px-4 py-2.5 font-medium">难度</th>
-                  <th className="text-center px-4 py-2.5 font-medium">轮次</th>
-                  <th className="text-left px-4 py-2.5 font-medium">来源</th>
-                  <th className="text-right px-6 py-2.5 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAgents.map((agent) => {
-                  const enabled = agent.metadata?.enabled !== false
-                  return (
-                    <tr
-                      key={agent.agentType}
-                      className="border-b last:border-0 hover:bg-muted/30 transition-colors"
-                    >
-                      {/* Status toggle */}
-                      <td className="px-6 py-3">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Switch
-                                checked={enabled}
-                                onCheckedChange={(v) => handleToggleEnabled(agent.agentType, v)}
-                                disabled={agent.source === "builtin"}
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {agent.source === "builtin"
-                                ? "内置代理无法禁用"
-                                : enabled
-                                  ? "点击禁用"
-                                  : "点击启用"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </td>
-
-                      {/* Name */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <div className="font-medium text-sm truncate">
-                              {agent.displayName ?? agent.agentType}
-                            </div>
-                            {agent.displayName && (
-                              <div className="text-xs text-muted-foreground/60 font-mono truncate">
-                                {agent.agentType}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Model */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 text-xs">
-                          <CpuIcon className="size-3 text-muted-foreground" />
-                          <span className="font-mono">
-                            {modelLabels[agent.model ?? ""] ?? agent.model ?? "inherit"}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Tools count */}
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                          <WrenchIcon className="size-3" />
-                          <span>{agent.tools?.length ?? 0}</span>
-                        </div>
-                      </td>
-
-                      {/* Effort */}
-                      <td className="px-4 py-3">
-                        {agent.effort && (
-                          <Badge variant="outline" className="text-xs">
-                            {effortLabels[agent.effort] ?? agent.effort}
-                          </Badge>
-                        )}
-                      </td>
-
-                      {/* Max turns */}
-                      <td className="px-4 py-3 text-center text-xs text-muted-foreground">
-                        {agent.maxTurns ?? "—"}
-                      </td>
-
-                      {/* Source */}
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs ${sourceColors[agent.source] ?? ""}`}
-                        >
-                          {sourceLabels[agent.source] ?? agent.source}
-                        </Badge>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2"
-                                  onClick={() => setEditingAgent(agent)}
-                                >
-                                  <PencilIcon className="size-3 mr-1" />
-                                  编辑
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>编辑代理配置</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2"
-                                  onClick={() => router.push(`/workbench/agent/${agent.agentType}`)}
-                                >
-                                  <ExternalLinkIcon className="size-3 mr-1" />
-                                  工作台
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>在 Agent 工作台中编辑</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          {agent.source !== "builtin" && (
-                            confirmDelete === agent.agentType ? (
-                              <div className="flex items-center gap-0.5">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                                  onClick={() => handleDelete(agent.agentType)}
-                                >
-                                  <CheckIcon className="size-3" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0"
-                                  onClick={() => setConfirmDelete(null)}
-                                >
-                                  <XIcon className="size-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 w-7 p-0 hover:text-destructive"
-                                      onClick={() => setConfirmDelete(agent.agentType)}
-                                    >
-                                      <TrashIcon className="size-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>删除后无法恢复</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="grid gap-4">
+            {filteredAgents.map((agent) => (
+              <AgentCard
+                key={agent.agentType}
+                agent={agent}
+                onEdit={() => setEditingAgent(agent)}
+                onDelete={() => setConfirmDelete(agent.agentType)}
+                onToggleEnabled={(v) => handleToggleEnabled(agent.agentType, v)}
+                onOpenWorkbench={() => router.push(`/workbench/agent/${agent.agentType}`)}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -710,6 +678,39 @@ export default function AgentsSettings() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmDelete(null)}>
+          <div
+            className="bg-background rounded-lg border shadow-lg max-w-sm w-full mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">确认删除</h3>
+              <p className="text-sm text-muted-foreground">
+                确定要删除代理 "{deleteTarget.displayName ?? deleteTarget.agentType}" 吗？此操作无法撤销。
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDelete(null)}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleDelete(deleteTarget.agentType)}
+              >
+                确认删除
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
