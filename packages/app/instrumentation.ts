@@ -1,10 +1,8 @@
-import { getServerRuntime } from './lib/runtime';
-
 export async function register() {
-  // Only run on the server
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     console.log('[Instrumentation] Initializing server runtime...');
     try {
+      const { getServerRuntime } = await import('./lib/runtime');
       await getServerRuntime();
       console.log('[Instrumentation] Server runtime initialized successfully');
     } catch (error) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGlobalConfig } from '@the-thing/core'
 
+export const runtime = 'nodejs'
+
 interface ModelInfo {
   id: string
   name?: string

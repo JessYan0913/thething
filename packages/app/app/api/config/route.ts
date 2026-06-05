@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGlobalConfig, saveGlobalConfig, getGlobalConfigPath } from '@the-thing/core'
 
+export const runtime = 'nodejs'
+
 export async function GET() {
   const config = loadGlobalConfig()
   return NextResponse.json({
