@@ -501,11 +501,14 @@ export default function AgentsSettings() {
         : a,
     ))
     try {
-      await fetch(`/api/agents?agentType=${encodeURIComponent(agentType)}`, {
+      const res = await fetch(`/api/agents?agentType=${encodeURIComponent(agentType)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ metadata: { enabled } }),
       })
+      if (!res.ok) {
+        throw new Error("Failed to toggle agent")
+      }
     } catch {
       setAgents((prev) => prev.map((a) =>
         a.agentType === agentType

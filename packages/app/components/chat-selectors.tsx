@@ -99,11 +99,17 @@ export function AgentSelector({ value, onChange }: AgentSelectorProps) {
       .then((res) => res.json())
       .then((data) => {
         if (data.agents) {
-          // 只显示用户自定义 Agent（非 built-in）
+          // 只显示已启用的用户自定义 Agent（非 built-in）
           const userAgents = data.agents.filter(
-            (a: AgentDef) => a.source === 'user' || a.source === 'project',
+            (a: AgentDef) =>
+              (a.source === 'user' || a.source === 'project') &&
+              a.metadata?.enabled !== false,
           );
           setAgents(userAgents);
+          // 如果当前选中的 Agent 已被禁用或不存在，重置为 auto
+          if (value !== 'auto' && !userAgents.some((a) => a.agentType === value)) {
+            onChange('auto');
+          }
         }
       })
       .catch(() => {

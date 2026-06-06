@@ -161,21 +161,26 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Missing agentType query parameter' }, { status: 400 });
     }
 
+    const context = await getServerContext();
+    const agent = context.agents.find((a) => a.agentType === agentType);
+    if (!agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
     const body = await request.json();
-    const agentsDir = await getPrimaryAgentsDir();
-    const filePath = path.join(agentsDir, `${agentType}.md`);
+    const filePath = agent.filePath;
 
     try {
       await fs.access(filePath);
     } catch {
-      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Agent file not found' }, { status: 404 });
     }
 
     const def = buildAgentDefinitionFromPayload(body, 'project', agentType);
 
     if (body.agentType && body.agentType !== agentType) {
       await fs.unlink(filePath);
-      const newPath = path.join(agentsDir, `${body.agentType}.md`);
+      const newPath = path.join(path.dirname(filePath), `${body.agentType}.md`);
       await fs.writeFile(newPath, serializeAgentMarkdown(def), 'utf-8');
     } else {
       await fs.writeFile(filePath, serializeAgentMarkdown(def), 'utf-8');
@@ -226,8 +231,7 @@ export async function PATCH(request: Request) {
     }
 
     // User/project agents: update the .md file
-    const agentsDir = await getPrimaryAgentsDir();
-    const filePath = path.join(agentsDir, `${agentType}.md`);
+    const filePath = agent.filePath;
 
     try {
       await fs.access(filePath);
@@ -258,13 +262,18 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing agentType query parameter' }, { status: 400 });
     }
 
-    const agentsDir = await getPrimaryAgentsDir();
-    const filePath = path.join(agentsDir, `${agentType}.md`);
+    const context = await getServerContext();
+    const agent = context.agents.find((a) => a.agentType === agentType);
+    if (!agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    const filePath = agent.filePath;
 
     try {
       await fs.access(filePath);
     } catch {
-      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Agent file not found' }, { status: 404 });
     }
 
     await fs.unlink(filePath);
