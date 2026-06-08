@@ -182,7 +182,7 @@ export function FilePreviewPanel({
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <Loader2Icon className="size-6 animate-spin" />
@@ -196,11 +196,13 @@ export function FilePreviewPanel({
             <MarkdownRenderer content={content} />
           </div>
         ) : (
-          <CodeEditor
-            content={content}
-            language={displayLang}
-            readOnly={true}
-          />
+          <div className="h-full [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto">
+            <CodeEditor
+              content={content}
+              language={displayLang}
+              readOnly={true}
+            />
+          </div>
         )}
       </div>
     </div>
