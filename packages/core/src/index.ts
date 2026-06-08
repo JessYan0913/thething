@@ -140,6 +140,7 @@ export type {
   ModelCapabilities,
   ModelProviderConfig,
   ModelPricing,
+  ModelAliases,
   PricingRegistry,
   PricingResolver,
 } from './services/model';

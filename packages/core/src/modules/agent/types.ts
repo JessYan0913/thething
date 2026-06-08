@@ -13,6 +13,7 @@ import type { ModelProviderConfig } from '../../services/model'
 import type { Skill } from '../../modules/skills/types'
 import type { McpServerConfig } from '../../modules/mcp/types'
 import type { BehaviorConfig } from '../../services/config/behavior'
+import type { ModelAliases } from '../../services/model'
 import type { ConnectorRegistry } from '../../modules/connector'
 import type { ResolvedLayout } from '../../services/config/layout'
 import type { ToolOutputConfig } from '../budget/tool-output-manager'
@@ -198,11 +199,7 @@ export interface AgentExecutionContext {
   provider?: (modelName: string) => LanguageModel;
 
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
-  modelAliases?: {
-    fast: { model: string; contextLimit?: number };
-    smart: { model: string; contextLimit?: number };
-    default: { model: string; contextLimit?: number };
-  };
+  modelAliases?: ModelAliases;
 
   /** 工作目录 */
   cwd?: string;
@@ -305,11 +302,7 @@ export interface AgentToolConfig {
   provider?: (modelName: string) => LanguageModel;
 
   /** 模型别名映射 */
-  modelAliases?: {
-    fast: { model: string; contextLimit?: number };
-    smart: { model: string; contextLimit?: number };
-    default: { model: string; contextLimit?: number };
-  };
+  modelAliases?: ModelAliases;
 
   /** 预加载的 Agent 定义 */
   agents?: AgentDefinition[];

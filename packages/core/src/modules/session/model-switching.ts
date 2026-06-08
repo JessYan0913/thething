@@ -1,5 +1,6 @@
 import type { ModelMessage } from 'ai';
 import { resolveModelAlias } from '../../services/model';
+import type { ModelAliases } from '../../services/model';
 
 export interface ModelProvider {
   id: string;
@@ -15,11 +16,7 @@ export interface ModelSwitchConfig {
   autoDowngradeCostThreshold?: number;
   notifyOnSwitch?: boolean;
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
-  modelAliases?: {
-    fast: { model: string; contextLimit?: number };
-    smart: { model: string; contextLimit?: number };
-    default: { model: string; contextLimit?: number };
-  };
+  modelAliases?: ModelAliases;
   /** 任务复杂度切换配置 */
   taskComplexitySwitch?: {
     enabled: boolean;
@@ -52,11 +49,7 @@ export function detectModelSwitchIntent(
   messages: ModelMessage[],
   availableModels: ModelProvider[],
   currentModel: string,
-  modelAliases?: {
-    fast: { model: string; contextLimit?: number };
-    smart: { model: string; contextLimit?: number };
-    default: { model: string; contextLimit?: number };
-  }
+  modelAliases?: ModelAliases
 ): string | null {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 

@@ -9,6 +9,7 @@
 //
 
 import type { ModelPricing } from '../model/pricing';
+import type { ModelAliases } from '../model';
 import {
   DEFAULT_CONTEXT_LIMIT,
 } from '../model/constants';
@@ -187,14 +188,7 @@ export interface BehaviorConfig {
    * 模型快捷名称映射
    * 让 Agent 定义文件可以用 'fast'/'smart'/'default' 代替具体模型名
    */
-  modelAliases: {
-    /** 快速模型（成本低） */
-    fast: { model: string; contextLimit?: number };
-    /** 智能模型（能力强） */
-    smart: { model: string; contextLimit?: number };
-    /** 默认模型 */
-    default: { model: string; contextLimit?: number };
-  };
+  modelAliases: ModelAliases;
 
   /**
    * 自动降级成本阈值（百分比）

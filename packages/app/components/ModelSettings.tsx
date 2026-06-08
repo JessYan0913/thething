@@ -26,16 +26,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { type ModelAliases } from "@the-thing/core"
 
 interface Config {
   apiKey: string
   baseURL: string
-}
-
-interface ModelAliases {
-  fast: { model: string; contextLimit?: number }
-  smart: { model: string; contextLimit?: number }
-  default: { model: string; contextLimit?: number }
 }
 
 interface ModelInfo {

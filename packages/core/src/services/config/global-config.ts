@@ -2,15 +2,13 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
+import type { ModelAliases } from '../model';
+
 export interface GlobalConfig {
   apiKey?: string
   baseURL?: string
   /** 模型别名映射（default 用作默认模型） */
-  modelAliases?: {
-    fast?: { model: string; contextLimit?: number }
-    smart?: { model: string; contextLimit?: number }
-    default?: { model: string; contextLimit?: number }
-  }
+  modelAliases?: Partial<ModelAliases>
 }
 
 const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.thething')

@@ -8,6 +8,7 @@ import type { Skill } from '../../modules/skills/types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { DataStore } from '../../primitives/datastore/types';
 import type { ModelSpec, CompactionConfig } from '../../services/config/behavior';
+import type { ModelAliases } from '../../services/model';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { PermissionRule } from '../../modules/permissions/types';
@@ -45,11 +46,7 @@ export interface SessionStateOptions {
   /** 自动降级成本阈值（来自 BehaviorConfig） */
   autoDowngradeCostThreshold?: number;
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
-  modelAliases?: {
-    fast: { model: string; contextLimit?: number };
-    smart: { model: string; contextLimit?: number };
-    default: { model: string; contextLimit?: number };
-  };
+  modelAliases?: ModelAliases;
   /** 任务复杂度切换配置 */
   taskComplexitySwitch?: {
     enabled: boolean;
