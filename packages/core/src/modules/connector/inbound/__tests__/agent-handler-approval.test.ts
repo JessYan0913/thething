@@ -119,8 +119,9 @@ describe('AgentInboundHandler approval resume', () => {
         toolName: 'edit_file',
         input: {
           filePath: 'DeepSeek-V4介绍.md',
-          oldString: '# DeepSeek V4',
-          newString: '# DeepSeek V4\n\n已更新',
+          edits: [
+            { oldText: '# DeepSeek V4', newText: '# DeepSeek V4\n\n已更新' },
+          ],
         },
       }),
       finalTextStream('文件已更新'),
@@ -404,8 +405,9 @@ function multiApprovalRequestStream(requests: Array<{
 function executedToolsWithApprovalRequestStream() {
   const editInput = {
     filePath: 'DeepSeek-V4介绍.md',
-    oldString: '# DeepSeek V4',
-    newString: '# DeepSeek V4\n\n已更新',
+    edits: [
+      { oldText: '# DeepSeek V4', newText: '# DeepSeek V4\n\n已更新' },
+    ],
   }
 
   return {

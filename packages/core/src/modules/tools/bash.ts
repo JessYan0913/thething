@@ -129,11 +129,41 @@ function isCommandSafe(command: string): boolean {
   return false;
 }
 
+/**
+ * 杀死进程树（包括所有子进程）
+ */
+function killProcessTree(pid: number): void {
+  try {
+    // 尝试杀死进程组
+    process.kill(-pid, 'SIGTERM');
+  } catch {
+    // 如果进程组杀死失败，尝试直接杀死进程
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // 进程可能已经退出
+    }
+  }
+
+  // 给进程一些时间来清理，然后强制杀死
+  setTimeout(() => {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        // 进程可能已经退出
+      }
+    }
+  }, 2000);
+}
+
 function execWithAbort(
   command: string,
   options: { timeout: number; maxBuffer: number; encoding: string; signal?: AbortSignal },
   cwd: string,
-): Promise<{ stdout: string; stderr: string }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve, reject) => {
     const child: ChildProcess = execCallback(command, {
       encoding: options.encoding as BufferEncoding,
@@ -144,7 +174,7 @@ function execWithAbort(
       if (error) {
         reject(error);
       } else {
-        resolve({ stdout, stderr });
+        resolve({ stdout, stderr, exitCode: 0 });
       }
     });
 
@@ -152,17 +182,12 @@ function execWithAbort(
       options.signal.addEventListener('abort', () => {
         const pid = child.pid;
         if (pid) {
-          try { process.kill(-pid, 'SIGTERM'); } catch {}
-          setTimeout(() => {
-            if (!child.killed) {
-              try { process.kill(-pid, 'SIGKILL'); } catch {}
-            }
-          }, 2000);
+          killProcessTree(pid);
         } else if (child.kill) {
           child.kill('SIGTERM');
         }
         reject(new DOMException('The operation was aborted.', 'AbortError'));
-      });
+      }, { once: true });
     }
   });
 }
@@ -173,7 +198,7 @@ export function createBashTool(options: BashToolOptions) {
       '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。部分命令需要用户审批后才能执行。',
     inputSchema: z.object({
       command: z.string().describe('要执行的 shell 命令'),
-      timeoutMs: z.number().min(1000).max(120000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒'),
+      timeoutMs: z.number().min(1000).max(300000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒，最大 5 分钟'),
     }),
     needsApproval: async ({ command }) => {
       const matchedRule = checkPermissionRules('bash', { command }, options.permissionRules);
@@ -211,20 +236,25 @@ export function createBashTool(options: BashToolOptions) {
         };
       }
 
+      const startTime = Date.now();
+
       try {
-        const { stdout, stderr } = await execWithAbort(command, {
+        const { stdout, stderr, exitCode } = await execWithAbort(command, {
           encoding: 'utf-8',
           timeout: timeoutMs,
           maxBuffer: BASH_MAX_BUFFER,
-          signal: execOptions?.abortSignal,
+          signal: execOptions.abortSignal,
         }, options.cwd);
+
+        const duration = Date.now() - startTime;
 
         return {
           stdout,
           stderr,
-          exitCode: 0,
+          exitCode,
           command,
           timedOut: false,
+          duration,
         };
       } catch (error: unknown) {
         const execError = error as Error & { killed?: boolean; code?: string | number; status?: number; stdout?: string; stderr?: string };
@@ -237,12 +267,13 @@ export function createBashTool(options: BashToolOptions) {
         }
 
         if (execError.code === 'E2BIG' || (execError.stdout?.length ?? 0) + (execError.stderr?.length ?? 0) > BASH_MAX_BUFFER) {
-          throw new Error(`命令输出过大。请重定向到文件或缩小输出范围。`);
+          throw new Error(`命令输出过大（超过 ${BASH_MAX_BUFFER / 1024}KB 限制）。请重定向到文件或缩小输出范围。`);
         }
 
         const stdout = (execError.stdout || '').toString();
         const stderr = (execError.stderr || '').toString();
         const exitCode = execError.code || execError.status || 1;
+        const duration = Date.now() - startTime;
 
         return {
           stdout,
@@ -250,6 +281,7 @@ export function createBashTool(options: BashToolOptions) {
           exitCode,
           command,
           timedOut: false,
+          duration,
         };
       }
     },
