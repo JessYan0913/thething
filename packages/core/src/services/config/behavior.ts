@@ -65,17 +65,9 @@ export interface ModelSpec {
   };
 }
 
-import type { LifecycleConfig, ContextWindowConfig } from './compaction-types';
+import type { CompactionConfig } from './compaction-types';
 
-/**
- * Compaction 配置
- */
-export interface CompactionConfig {
-  /** Layer 2: 工具输出生命周期管理配置 */
-  lifecycle: LifecycleConfig;
-  /** Layer 3: 上下文窗口管理配置 */
-  contextWindow: ContextWindowConfig;
-}
+export type { CompactionConfig };
 
 /**
  * Memory 大小限制配置

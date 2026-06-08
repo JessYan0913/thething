@@ -15,17 +15,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-
-interface CronJob {
-  id: string
-  name: string
-  schedule: string
-  prompt: string
-  agentType?: string
-  enabled: boolean
-  lastRunAt: number | null
-  nextRunAt: number
-}
+import { type CronJob, type CronExecution } from "@the-thing/core"
 
 interface ExecutionMessage {
   id: string
@@ -33,22 +23,13 @@ interface ExecutionMessage {
   text: string
 }
 
-interface CronExecution {
-  id: string
-  jobId: string
-  status: 'triggered' | 'completed' | 'failed'
-  triggeredAt: number
-  completedAt: number | null
-  duration: number | null
-  conversationId: string | null
-  error: string | null
-  eventId: string | null
+interface CronExecutionWithMessages extends CronExecution {
   messages?: ExecutionMessage[]
 }
 
 export default function AutomationExecutions({ jobId }: { jobId: string }) {
   const [job, setJob] = useState<CronJob | null>(null)
-  const [executions, setExecutions] = useState<CronExecution[]>([])
+  const [executions, setExecutions] = useState<CronExecutionWithMessages[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 

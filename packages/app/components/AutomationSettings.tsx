@@ -19,21 +19,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-
-interface CronJob {
-  id: string
-  name: string
-  schedule: string
-  prompt: string
-  agentType?: string
-  conversationId?: string
-  enabled: boolean
-  lastRunAt: number | null
-  nextRunAt: number
-  createdAt: number
-  updatedAt: number
-  metadata?: Record<string, unknown>
-}
+import { type CronJob } from "@the-thing/core"
 
 const SCHEDULE_PRESETS = [
   { label: "每分钟", value: "* * * * *" },

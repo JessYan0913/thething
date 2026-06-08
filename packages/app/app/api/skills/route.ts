@@ -2,6 +2,7 @@ import { getServerContext, getServerRuntime, reloadServerContext } from '@/lib/r
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
+import type { SkillFileNode } from '@/components/SkillFileTree';
 
 export const runtime = 'nodejs';
 
@@ -59,13 +60,6 @@ async function findSkillMd(dir: string): Promise<string | null> {
     return null;
   }
   return null;
-}
-
-interface SkillFileNode {
-  name: string;
-  path: string;
-  type: 'file' | 'directory';
-  children?: SkillFileNode[];
 }
 
 async function buildTree(dir: string, basePath: string): Promise<SkillFileNode[]> {
