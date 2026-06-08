@@ -29,11 +29,21 @@ const DANGEROUS_PATTERNS = [
 
 // 安全命令白名单 - 不需要审批
 const SAFE_COMMANDS = [
+  // Git 只读
   'git status',
   'git log',
   'git diff',
   'git branch',
   'git show',
+  // Git 安全写入（本地操作，可撤销）
+  'git add',
+  'git commit',
+  'git stash',
+  'git checkout',
+  'git switch',
+  'git restore',
+  'git tag',
+  // 文件查看
   'ls',
   'ls -la',
   'ls -l',
@@ -45,27 +55,74 @@ const SAFE_COMMANDS = [
   'wc',
   'echo',
   'which',
+  'file',
+  'stat',
+  'du',
+  'df',
+  'env',
+  'printenv',
+  'type',
+  // 环境检查
   'node --version',
   'npm --version',
   'pnpm --version',
+  'yarn --version',
+  'python --version',
+  'python3 --version',
+  'java --version',
+  'go version',
+  'cargo --version',
+  'rustc --version',
+  // 文件操作（安全，不删除）
+  'mkdir',
+  'touch',
+  'cp',
+  'mv',
+  'ln',
+  // npm/pnpm/yarn 构建和测试
   'npm run build',
   'npm run lint',
   'npm run test',
   'npm test',
+  'npm install',
+  'npm ci',
   'pnpm run',
   'pnpm build',
   'pnpm lint',
   'pnpm test',
+  'pnpm install',
+  'pnpm add',
   'yarn run',
   'yarn build',
   'yarn lint',
   'yarn test',
+  'yarn install',
+  'yarn add',
+  // 类型检查和代码质量
   'npx tsc --noEmit',
   'tsc --noEmit',
+  'npx tsc',
+  'tsc',
   'eslint',
   'prettier --check',
   'prettier --write',
   'tsx',
+  // Python
+  'python -m pytest',
+  'python3 -m pytest',
+  'pip install',
+  'pip3 install',
+  // Rust
+  'cargo build',
+  'cargo check',
+  'cargo test',
+  'cargo clippy',
+  'cargo fmt',
+  // Go
+  'go build',
+  'go test',
+  'go vet',
+  'go fmt',
 ];
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -103,26 +160,54 @@ function isCommandSafe(command: string): boolean {
     }
   }
 
-  // 模式匹配：git log/diff/show 后面带参数
-  if (/^git (log|diff|show|status|branch)(\s+|$)/.test(trimmed)) {
+  // 模式匹配：git 安全操作（带参数）
+  if (/^git (log|diff|show|status|branch|add|commit|stash|checkout|switch|restore|tag)(\s+|$)/.test(trimmed)) {
     return true;
   }
 
-  // 模式匹配：简单的文件查看命令
-  if (/^(cat|head|tail|wc)(\s+-\w+\s+|\s+)\S+/.test(trimmed)) {
+  // 模式匹配：文件查看命令（带参数）
+  if (/^(cat|head|tail|wc|less|more|file|stat|du|df|env|printenv|type)(\s+-\w+\s+|\s+)\S+/.test(trimmed)) {
     // 但不允许查看敏感文件
     if (!/\.(env|secret|key|pem|password)/i.test(trimmed)) {
       return true;
     }
   }
 
-  // 模式匹配：grep 搜索
-  if (/^grep(\s+-\w+)*\s+\S/.test(trimmed)) {
+  // 模式匹配：grep/ripgrep/ag/ack 搜索
+  if (/^(grep|rg|ag|ack)(\s+-\w+)*\s+\S/.test(trimmed)) {
     return true;
   }
 
   // 模式匹配：find 搜索（仅查找，不执行）
   if (/^find\s/.test(trimmed) && !/-exec/.test(trimmed) && !/-delete/.test(trimmed)) {
+    return true;
+  }
+
+  // 模式匹配：mkdir/touch/cp/mv（项目内操作）
+  if (/^(mkdir|touch|cp|mv)(\s+|$)/.test(trimmed)) {
+    // 不允许操作敏感路径
+    if (!/\.(env|secret|key|pem|password)/i.test(trimmed) && !/^\//.test(trimmed.replace(/^(mkdir|touch|cp|mv)\s+/, ''))) {
+      return true;
+    }
+  }
+
+  // 模式匹配：npm/pnpm/yarn 常见命令
+  if (/^(npm|pnpm|yarn|npx)\s+(install|ci|run |test|lint|build|add|exec|list|outdated|audit)(\s+|$)/.test(trimmed)) {
+    return true;
+  }
+
+  // 模式匹配：cargo 构建和测试
+  if (/^cargo\s+(build|check|test|clippy|fmt|doc|publish --dry-run)(\s+|$)/.test(trimmed)) {
+    return true;
+  }
+
+  // 模式匹配：go 构建和测试
+  if (/^go\s+(build|test|vet|fmt|mod tidy|list)(\s+|$)/.test(trimmed)) {
+    return true;
+  }
+
+  // 模式匹配：python pytest
+  if (/^(python3?)(\s+-m\s+pytest)(\s+|$)/.test(trimmed)) {
     return true;
   }
 
@@ -195,7 +280,7 @@ function execWithAbort(
 export function createBashTool(options: BashToolOptions) {
   return tool({
     description:
-      '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、curl、wget）会被拒绝。部分命令需要用户审批后才能执行。',
+      '在沙箱中执行 shell 命令。适用于运行构建、测试、git 操作或其他命令行任务。命令在隔离环境中运行，危险操作（如 rm -rf /、sudo、curl、wget）会被拒绝。安全操作（git commit、npm test、文件查看等）会自动执行，灰色地带的操作需要用户审批。',
     inputSchema: z.object({
       command: z.string().describe('要执行的 shell 命令'),
       timeoutMs: z.number().min(1000).max(300000).optional().default(30000).describe('超时时间（毫秒），默认 30 秒，最大 5 分钟'),
