@@ -308,48 +308,39 @@ export default function ModelSettings() {
               </span>
             </div>
 
-            <div className="px-4 py-4 space-y-4">
+            <div className="px-4 py-4 space-y-3">
               {/* Default Model - Required */}
-              <div className="flex items-center gap-4 px-4 py-3 border rounded-lg">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
-                    <SparklesIcon className="size-4 text-green-500" />
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-muted/30">
+                  <div className="size-7 rounded-md bg-muted flex items-center justify-center shrink-0">
+                    <SparklesIcon className="size-3.5 text-green-500" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{t("models.alias.default")}</span>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {t("models.alias.required")}
-                      </Badge>
-                    </div>
-                    <Input
-                      type="text"
-                      value={aliases.default.model}
-                      onChange={(e) => updateAlias("default", e.target.value)}
-                      placeholder="e.g. gpt-4o, qwen-plus"
-                      className={`font-mono text-sm mt-1 ${errors.default ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-                      disabled={isLoading}
-                    />
-                    {errors.default && (
-                      <div className="flex items-center gap-1.5 text-xs text-red-500 mt-1">
-                        <AlertCircleIcon className="size-3.5" />
-                        <span>{errors.default}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="shrink-0 flex flex-col items-end gap-1">
+                  <span className="text-sm font-medium flex-1 min-w-0">{t("models.alias.default")}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {t("models.alias.required")}
+                  </Badge>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenModelsDialog("default")}
                     disabled={!config.baseURL || !config.apiKey}
+                    className="h-7 text-xs"
                   >
-                    <DownloadIcon className="size-3.5 mr-1.5" />
+                    <DownloadIcon className="size-3.5 mr-1" />
                     {t("models.fetchModels.button")}
                   </Button>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">Context:</label>
+                </div>
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <Input
+                    type="text"
+                    value={aliases.default.model}
+                    onChange={(e) => updateAlias("default", e.target.value)}
+                    placeholder="e.g. gpt-4o, qwen-plus"
+                    className={`flex-1 font-mono text-sm ${errors.default ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                    disabled={isLoading}
+                  />
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <label className="text-xs text-muted-foreground whitespace-nowrap">Context:</label>
                     <Input
                       type="number"
                       value={aliases.default.contextLimit ?? ""}
@@ -364,41 +355,46 @@ export default function ModelSettings() {
                     />
                   </div>
                 </div>
+                {errors.default && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-500 px-4 pb-2.5">
+                    <AlertCircleIcon className="size-3.5" />
+                    <span>{errors.default}</span>
+                  </div>
+                )}
               </div>
 
               {/* Fast Model */}
-              <div className="flex items-center gap-4 px-4 py-3 border rounded-lg">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
-                    <ZapIcon className="size-4 text-yellow-500" />
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-muted/30">
+                  <div className="size-7 rounded-md bg-muted flex items-center justify-center shrink-0">
+                    <ZapIcon className="size-3.5 text-yellow-500" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium">{t("models.alias.fast")}</span>
-                    <Input
-                      type="text"
-                      value={aliases.fast.model}
-                      onChange={(e) => updateAlias("fast", e.target.value)}
-                      placeholder="e.g. gpt-4o-mini"
-                      className="font-mono text-sm mt-1"
-                      disabled={isLoading}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t("models.alias.fastDescription")}
-                    </p>
-                  </div>
-                </div>
-                <div className="shrink-0 flex flex-col items-end gap-1">
+                  <span className="text-sm font-medium flex-1 min-w-0">{t("models.alias.fast")}</span>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    {t("models.alias.fastDescription")}
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenModelsDialog("fast")}
                     disabled={!config.baseURL || !config.apiKey}
+                    className="h-7 text-xs"
                   >
-                    <DownloadIcon className="size-3.5 mr-1.5" />
+                    <DownloadIcon className="size-3.5 mr-1" />
                     {t("models.fetchModels.button")}
                   </Button>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">Context:</label>
+                </div>
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <Input
+                    type="text"
+                    value={aliases.fast.model}
+                    onChange={(e) => updateAlias("fast", e.target.value)}
+                    placeholder="e.g. gpt-4o-mini"
+                    className="flex-1 font-mono text-sm"
+                    disabled={isLoading}
+                  />
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <label className="text-xs text-muted-foreground whitespace-nowrap">Context:</label>
                     <Input
                       type="number"
                       value={aliases.fast.contextLimit ?? ""}
@@ -416,38 +412,37 @@ export default function ModelSettings() {
               </div>
 
               {/* Smart Model */}
-              <div className="flex items-center gap-4 px-4 py-3 border rounded-lg">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
-                    <BrainIcon className="size-4 text-blue-500" />
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-muted/30">
+                  <div className="size-7 rounded-md bg-muted flex items-center justify-center shrink-0">
+                    <BrainIcon className="size-3.5 text-blue-500" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium">{t("models.alias.smart")}</span>
-                    <Input
-                      type="text"
-                      value={aliases.smart.model}
-                      onChange={(e) => updateAlias("smart", e.target.value)}
-                      placeholder="e.g. gpt-4o"
-                      className="font-mono text-sm mt-1"
-                      disabled={isLoading}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t("models.alias.smartDescription")}
-                    </p>
-                  </div>
-                </div>
-                <div className="shrink-0 flex flex-col items-end gap-1">
+                  <span className="text-sm font-medium flex-1 min-w-0">{t("models.alias.smart")}</span>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    {t("models.alias.smartDescription")}
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenModelsDialog("smart")}
                     disabled={!config.baseURL || !config.apiKey}
+                    className="h-7 text-xs"
                   >
-                    <DownloadIcon className="size-3.5 mr-1.5" />
+                    <DownloadIcon className="size-3.5 mr-1" />
                     {t("models.fetchModels.button")}
                   </Button>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">Context:</label>
+                </div>
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <Input
+                    type="text"
+                    value={aliases.smart.model}
+                    onChange={(e) => updateAlias("smart", e.target.value)}
+                    placeholder="e.g. gpt-4o"
+                    className="flex-1 font-mono text-sm"
+                    disabled={isLoading}
+                  />
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <label className="text-xs text-muted-foreground whitespace-nowrap">Context:</label>
                     <Input
                       type="number"
                       value={aliases.smart.contextLimit ?? ""}

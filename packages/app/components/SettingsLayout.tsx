@@ -60,6 +60,20 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         {/* Settings Sidebar */}
         <Sidebar collapsible="icon">
           <SidebarContent>
+            {/* 返回聊天 - 放在侧边栏最顶部 */}
+            <div className="px-2 pt-2">
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')}>
+                    <Link href="/chat">
+                      <ArrowLeftIcon />
+                      <span>{t('sidebar.backToChat')}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </div>
+
             <SidebarGroup>
               <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
                 {t('sidebar.general')}
@@ -104,19 +118,6 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               </SidebarMenu>
             </SidebarGroup>
           </SidebarContent>
-
-          <SidebarFooter>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')}>
-                  <Link href="/chat">
-                    <ArrowLeftIcon />
-                    <span>{t('sidebar.backToChat')}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
 
           <SidebarRail />
         </Sidebar>
