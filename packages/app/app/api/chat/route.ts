@@ -39,13 +39,13 @@ export async function GET(request: Request) {
 // POST: Stream chat response
 export async function POST(request: Request) {
   try {
-    const body = await request.json<{
+    const body = await request.json() as {
       message: UIMessage;
       conversationId: string;
       userId?: string;
       modelName?: string;
       agentType?: string;
-    }>();
+    };
 
     const { message, conversationId, userId: messageUserId, modelName, agentType } = body;
 
@@ -202,7 +202,7 @@ export async function POST(request: Request) {
 // PATCH: Save messages
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json<{ conversationId: string; messages: UIMessage[] }>();
+    const body = await request.json() as { conversationId: string; messages: UIMessage[] };
     if (!body.conversationId || !body.messages) {
       return NextResponse.json({ error: 'Missing conversationId or messages' }, { status: 400 });
     }

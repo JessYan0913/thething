@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json<{ id?: string; title?: string }>();
+    const body = await request.json() as { id?: string; title?: string };
     if (!body.id) {
       return NextResponse.json({ error: 'Missing conversation id' }, { status: 400 });
     }
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json<{ id: string; title: string }>();
+    const body = await request.json() as { id: string; title: string };
     if (!body.id || !body.title) {
       return NextResponse.json({ error: 'Missing id or title' }, { status: 400 });
     }

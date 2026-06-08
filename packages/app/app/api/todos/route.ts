@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json<{ action: string; [key: string]: unknown }>();
+    const body = await request.json() as { action: string; [key: string]: unknown };
     const { action, ...params } = body;
 
     const rt = await getServerRuntime();

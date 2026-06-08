@@ -199,9 +199,9 @@ export interface AgentExecutionContext {
 
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
   modelAliases?: {
-    fast: string;
-    smart: string;
-    default: string;
+    fast: { model: string; contextLimit?: number };
+    smart: { model: string; contextLimit?: number };
+    default: { model: string; contextLimit?: number };
   };
 
   /** 工作目录 */
@@ -306,9 +306,9 @@ export interface AgentToolConfig {
 
   /** 模型别名映射 */
   modelAliases?: {
-    fast: string;
-    smart: string;
-    default: string;
+    fast: { model: string; contextLimit?: number };
+    smart: { model: string; contextLimit?: number };
+    default: { model: string; contextLimit?: number };
   };
 
   /** 预加载的 Agent 定义 */

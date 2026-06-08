@@ -87,12 +87,12 @@ async function readSkillContent(skillsDir: string, skillName: string): Promise<s
 // POST /chat — workbench chat streaming
 export async function POST(request: Request) {
   try {
-    const body = await request.json<{
+    const body = await request.json() as {
       message: UIMessage;
       conversationId: string;
       userId?: string;
       editSkillName?: string;
-    }>();
+    };
 
     const { message, conversationId, userId: messageUserId, editSkillName } = body;
 
@@ -168,7 +168,7 @@ export async function POST(request: Request) {
       model: {
         apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
         baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default,
+        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
         includeUsage: true,
       },
     });
@@ -288,7 +288,7 @@ export async function GET(request: Request) {
 // PATCH — save messages
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json<{ conversationId: string; messages: UIMessage[] }>();
+    const body = await request.json() as { conversationId: string; messages: UIMessage[] };
     if (!body.conversationId || !body.messages) {
       return NextResponse.json({ error: 'Missing conversationId or messages' }, { status: 400 });
     }

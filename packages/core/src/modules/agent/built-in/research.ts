@@ -11,7 +11,7 @@ import type { AgentDefinition } from '../types';
 export const RESEARCH_AGENT: AgentDefinition = {
   agentType: 'research',
   displayName: 'Research Agent',
-  description: 'Deep research on topics using web search, document analysis, and information synthesis.',
+  description: 'Deep research on topics using web_fetch, document analysis, and information synthesis.',
   tools: ['web_fetch', 'read_file', 'grep', 'glob'],
   disallowedTools: ['write_file', 'edit_file', 'bash'],
   model: 'smart',
@@ -24,6 +24,11 @@ export const RESEARCH_AGENT: AgentDefinition = {
 1. Gather comprehensive information from multiple sources
 2. Verify findings across sources when possible
 3. Return well-structured results with citations and evidence
+
+## Available Tools
+- **web_fetch**: Use this to fetch web page content. You do NOT have web_search.
+- **read_file**: Read local files
+- **grep/glob**: Search and find files
 
 ## Research Strategy
 1. Start broad, then narrow down to specific aspects

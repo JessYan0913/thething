@@ -22,7 +22,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json<{ toolName: string; pattern?: string; behavior?: PermissionBehavior }>();
+    const body = await request.json() as { toolName: string; pattern?: string; behavior?: PermissionBehavior };
     const { toolName, pattern, behavior } = body;
     if (!toolName) {
       return NextResponse.json({ error: 'Missing toolName' }, { status: 400 });
@@ -59,7 +59,7 @@ export async function PUT(request: Request) {
     if (!id) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     }
-    const body = await request.json<{ toolName?: string; pattern?: string; behavior?: PermissionBehavior }>();
+    const body = await request.json() as { toolName?: string; pattern?: string; behavior?: PermissionBehavior };
     const { toolName, pattern, behavior } = body;
     const resourceRoot = await getResourceRoot();
     const rule = await updateRule(id, { toolName, pattern, behavior }, resourceRoot);

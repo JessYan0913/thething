@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { resolveModelForAgent } from '../model-resolver';
-import { MODEL_MAPPING } from '../../../services/model';
 import type { AgentDefinition, AgentExecutionContext, LanguageModel } from '../types';
 
 // Helper: extract modelId from a LanguageModel result (test-only)
@@ -35,13 +34,6 @@ describe('subagents/model-resolver', () => {
     recursionDepth: 0,
     provider: createMockProvider(),
     ...overrides,
-  });
-
-  describe('MODEL_MAPPING', () => {
-    it('should have fast and smart model mappings', () => {
-      expect(MODEL_MAPPING.fast).toBeDefined();
-      expect(MODEL_MAPPING.smart).toBeDefined();
-    });
   });
 
   describe('resolveModelForAgent', () => {
@@ -107,7 +99,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(getModelId(result)).toBe(MODEL_MAPPING.fast);
+        expect(getModelId(result)).toBe('fast');
       });
 
       it('should resolve "smart" to smart model via provider', () => {
@@ -122,7 +114,7 @@ describe('subagents/model-resolver', () => {
 
         const result = resolveModelForAgent(definition, context);
 
-        expect(getModelId(result)).toBe(MODEL_MAPPING.smart);
+        expect(getModelId(result)).toBe('smart');
       });
 
       it('should resolve shortcuts from BehaviorConfig model aliases when provided', () => {
@@ -135,9 +127,9 @@ describe('subagents/model-resolver', () => {
         };
         const context = createMockContext({
           modelAliases: {
-            fast: 'custom-fast',
-            smart: 'custom-smart',
-            default: 'custom-default',
+            fast: { model: 'custom-fast' },
+            smart: { model: 'custom-smart' },
+            default: { model: 'custom-default' },
           },
         });
 
@@ -156,9 +148,9 @@ describe('subagents/model-resolver', () => {
         };
         const context = createMockContext({
           modelAliases: {
-            fast: 'custom-fast',
-            smart: 'custom-smart',
-            default: 'custom-default',
+            fast: { model: 'custom-fast' },
+            smart: { model: 'custom-smart' },
+            default: { model: 'custom-default' },
           },
         });
 
@@ -263,7 +255,7 @@ describe('subagents/model-resolver', () => {
         const result = resolveModelForAgent(definition, context);
 
         // Should use fast model, not parent
-        expect(getModelId(result)).toBe(MODEL_MAPPING.fast);
+        expect(getModelId(result)).toBe('fast');
         expect(getModelId(result)).not.toBe('parent-model');
       });
     });
