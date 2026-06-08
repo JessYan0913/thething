@@ -36,6 +36,8 @@ import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
+import { WriteFileResult } from '@/components/ai-elements/write-file-result';
+import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
@@ -162,7 +164,7 @@ function AttachmentPreview() {
 
   return (
     <div className="flex flex-wrap gap-2 px-3 pt-3">
-      {files.map((file) => {
+      {files.map((file: any) => {
         const isImage = file.mediaType?.startsWith('image/');
         return (
           <div key={file.id} className="group relative">
@@ -255,6 +257,13 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   // 消息编辑状态
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+
+  // 文件预览分栏状态
+  const [previewFile, setPreviewFile] = useState<{
+    path: string;
+    content: string;
+    language?: string;
+  } | null>(null);
 
   // 模型和 Agent 选择状态（持久化到 localStorage）
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -727,23 +736,25 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   }, [editingMessageId, editingText, messages, setMessages, sendMessage]);
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      {error && (
-        <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</div>
-      )}
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* 左侧：聊天内容 */}
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+        {error && (
+          <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</div>
+        )}
 
-      {messages.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center">
-          <ConversationEmptyState
-            title="How can I help you today?"
-            description="Start a conversation and I'll do my best to assist you."
-          />
-        </div>
-      ) : (
-        <div className="flex flex-1 min-h-0 flex-col pt-4">
-          <Conversation>
-            <ConversationContent>
-              {messages.map((message, messageIndex) => {
+        {messages.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center">
+            <ConversationEmptyState
+              title="How can I help you today?"
+              description="Start a conversation and I'll do my best to assist you."
+            />
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0 flex-col pt-4">
+            <Conversation>
+              <ConversationContent>
+                {messages.map((message, messageIndex) => {
                 const reasoningParts = message.parts.filter((part) => part.type === 'reasoning');
                 const reasoningText = reasoningParts.map((part) => part.text).join('\n\n');
                 const hasReasoning = reasoningParts.length > 0;
@@ -871,6 +882,18 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                           const toolTitle = toolInfo?.title;
                           const ToolIcon = toolInfo?.icon || SearchIcon;
 
+                          // write_file 完成后：简洁渲染，不显示折叠面板和参数
+                          if (toolPart.type === 'tool-write_file' && toolPart.state === 'output-available' && toolPart.output) {
+                            return (
+                              <WriteFileResult
+                                key={`${message.id}-${index}`}
+                                output={toolPart.output as Record<string, unknown>}
+                                input={toolPart.input as Record<string, unknown> | undefined}
+                                onPreview={(file: { path: string; content: string; language?: string }) => setPreviewFile(file)}
+                              />
+                            );
+                          }
+
                           return (
                             <Task
                               key={`${message.id}-${index}`}
@@ -900,7 +923,12 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                                 ) : (
                                   <>
                                     <ToolInput input={toolPart.input} />
-                                    <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                                    <ToolOutput
+                                      output={toolPart.output}
+                                      errorText={toolPart.errorText}
+                                      toolType={toolPart.type}
+                                      toolInput={toolPart.input}
+                                    />
                                   </>
                                 )}
                               </TaskContent>
@@ -1023,6 +1051,18 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
           </PromptInput>
         </div>
       </div>
+      </div>
+
+      {/* 右侧：文件预览分栏 */}
+      {previewFile && (
+        <FilePreviewPanel
+          open={!!previewFile}
+          onOpenChange={(open: boolean) => !open && setPreviewFile(null)}
+          filePath={previewFile.path}
+          content={previewFile.content}
+          language={previewFile.language}
+        />
+      )}
     </div>
   );
 }

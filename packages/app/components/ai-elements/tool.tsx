@@ -22,6 +22,7 @@ import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
 import { Shimmer } from "./shimmer";
+import { WriteFileResult } from "./write-file-result";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
@@ -140,16 +141,37 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
 export type ToolOutputProps = ComponentProps<"div"> & {
   output: ToolPart["output"];
   errorText: ToolPart["errorText"];
+  toolType?: string;
+  toolInput?: unknown;
 };
 
 export const ToolOutput = ({
   className,
   output,
   errorText,
+  toolType,
+  toolInput,
   ...props
 }: ToolOutputProps) => {
   if (!(output || errorText)) {
     return null;
+  }
+
+  // write_file 工具特殊渲染
+  if (
+    toolType === "tool-write_file" &&
+    typeof output === "object" &&
+    output !== null &&
+    !isValidElement(output)
+  ) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <WriteFileResult
+          output={output as Record<string, unknown>}
+          input={toolInput as Record<string, unknown> | undefined}
+        />
+      </div>
+    );
   }
 
   let Output = <div>{output as ReactNode}</div>;
