@@ -19,7 +19,7 @@ import {
   createCronTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
-import { AgentRegistry, registerBuiltinAgents, createAgentTool } from '.'
+import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
 import { createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
 import type { LoadToolsConfig } from './types'
@@ -99,8 +99,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   // Log total registered agents
   logger.debug('AgentRegistry', `Total registered: ${agentRegistry.getAll().map(a => `${a.agentType}(${a.source})`).join(', ')}`)
 
-  // 3. 创建统一的 agent 工具
-  tools.agent = createAgentTool({
+  // 3. 创建 agent 工具（共享配置）
+  const agentToolConfig = {
     parentTools: tools,
     parentModel: config.model,
     parentSystemPrompt: '',
@@ -114,7 +114,13 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     agentRegistry,
     configDirName: config.sessionState.layout.configDirName,
     dynamicReload: config.dynamicReload ?? false,
-  })
+  }
+
+  // 3. 创建统一的 agent 工具
+  tools.agent = createAgentTool(agentToolConfig)
+
+  // 4. 创建并行 agent 工具（多子 Agent 同时执行）
+  tools.parallel_agent = createParallelAgentTool(agentToolConfig)
 
   if (config.enableMcp) {
     try {

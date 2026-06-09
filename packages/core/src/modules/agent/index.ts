@@ -30,6 +30,7 @@ export { resolveToolsForAgent } from './tool-resolver'
 export { resolveModelForAgent } from './model-resolver'
 export { buildSubAgentPrompt, buildContextPrompt } from './context-builder'
 export { createAgentTool, formatAgentResult } from './agent-tool'
+export { createParallelAgentTool } from './parallel-agent-tool'
 
 // 内置 Agent
 export {

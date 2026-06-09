@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { ModelProviderConfig } from '../../services/model';
+import { resolveModelAlias } from '../../services/model/alias';
 import type { ToolOutputConfig } from '../../modules/budget/tool-output-manager';
 import type { BehaviorConfig } from '../../services/config/behavior';
 import type { CompactionConfig } from '../../modules/compaction/types';
@@ -17,8 +18,10 @@ export function resolveAgentModelConfig(
   model: CreateAgentOptions['model'],
   modelAliases?: BehaviorConfig['modelAliases'],
 ): ModelProviderConfig {
-  // 如果未指定 modelName，使用 modelAliases.default.model
-  const resolvedModelName = model.modelName || modelAliases?.default?.model || '';
+  // 解析模型别名：'smart' -> 实际模型名，未指定时用 default
+  const resolvedModelName = model.modelName
+    ? resolveModelAlias(model.modelName, modelAliases)
+    : modelAliases?.default?.model || '';
 
   return {
     apiKey: model.apiKey,

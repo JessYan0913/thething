@@ -7,6 +7,7 @@ import { createMultiSourceLoader } from '../../services/scanner/multi-source-loa
 import type { Skill, SkillLoaderConfig } from './types';
 import { SkillFrontmatterSchema } from './types';
 import type { ConfigSource } from '../../primitives/constants';
+import { BUNDLED_SKILLS } from './bundled';
 
 // ============================================================
 // 扩展类型（带 source 字段）
@@ -25,6 +26,7 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
   filePattern: 'SKILL.md',
   scanMode: 'configDir',
   dirPattern: '*',
+  priorityOrder: ['project', 'user', 'builtin'],
   parse: async (filePath, source) => {
     const result = await parseFrontmatterFile(filePath, SkillFrontmatterSchema);
     return {
@@ -54,17 +56,20 @@ export interface LoadSkillsOptions {
   dirs?: readonly string[];
   configDirName?: string;
   homeDir?: string;
+  builtinDir?: string;
 }
 
 export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> {
-  const items = await skillsLoader.load({
+  // 1. 加载文件级 skills（user + project + builtin dir）
+  const fileItems = await skillsLoader.load({
     cwd: options?.cwd,
     configDirName: options?.configDirName,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
+    builtinDir: options?.builtinDir,
   });
 
-  return items.map((s) => ({
+  const fileSkills = fileItems.map((s) => ({
     name: s.name,
     description: s.description,
     whenToUse: s.whenToUse,
@@ -77,6 +82,16 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     body: s.body,
     source: s.source,
   }));
+
+  // 2. 合并内置 skills（编程式定义，最低优先级）
+  //    同名时文件级 skill 覆盖内置 skill
+  const allSkills = [...BUNDLED_SKILLS, ...fileSkills];
+  const merged = new Map<string, Skill>();
+  for (const skill of allSkills) {
+    merged.set(skill.name, skill);
+  }
+
+  return Array.from(merged.values());
 }
 
 export async function loadSkillFile(

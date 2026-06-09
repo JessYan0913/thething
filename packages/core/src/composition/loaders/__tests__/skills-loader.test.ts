@@ -54,9 +54,11 @@ describe('Skills Loader Integration', () => {
 
     const skills = await loadSkills({ cwd: root, dirs: [project.skillDir] });
 
-    expect(skills.length).toBe(2);
+    // 2 个文件级 skill + 1 个内置 research skill
+    expect(skills.length).toBe(3);
     expect(skills.some(skill => skill.name === 'ai-sdk')).toBe(true);
     expect(skills.some(skill => skill.name === 'shadcn')).toBe(true);
+    expect(skills.some(skill => skill.name === 'research')).toBe(true);
   });
 
   it('returns complete skill metadata from parsed frontmatter and body', async () => {

@@ -45,6 +45,8 @@ export interface MultiSourceLoaderLoadOptions {
   homeDir?: string;
   /** 显式指定目录（跳过自动计算） */
   dirs?: readonly string[];
+  /** 内置配置目录（随产品分发，默认扫描包内 skills/ 等目录） */
+  builtinDir?: string;
 }
 
 export function createMultiSourceLoader<T extends { source: string }>(
@@ -84,6 +86,12 @@ export function createMultiSourceLoader<T extends { source: string }>(
         [userDir, 'user'],
         [projectDir, 'project'],
       ]);
+    }
+
+    // 追加内置目录（随产品分发的 skills/agents 等）
+    if (options?.builtinDir) {
+      dirs.push(options.builtinDir);
+      sourceByDir.set(options.builtinDir, 'builtin');
     }
 
     // 扫描文件
