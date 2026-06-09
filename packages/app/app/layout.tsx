@@ -5,6 +5,9 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'The Thing',
   description: 'Multi-form AI Agent',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({

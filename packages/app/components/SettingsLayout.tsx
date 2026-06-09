@@ -60,7 +60,20 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         {/* Settings Sidebar */}
         <Sidebar collapsible="icon">
           <SidebarContent>
-            {/* 返回聊天 - 放在侧边栏最顶部 */}
+            <div className="flex items-center gap-2 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
+              <img
+                src="/logo.png"
+                alt="The Thing"
+                width={28}
+                height={28}
+                className="rounded-md dark:invert dark:brightness-200"
+                priority
+              />
+              <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+                The Thing
+              </span>
+            </div>
+            {/* 返回聊天 */}
             <div className="px-2 pt-2">
               <SidebarMenu>
                 <SidebarMenuItem>

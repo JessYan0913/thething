@@ -89,6 +89,19 @@ export const ConversationSidebar = ({
     <Sidebar collapsible="icon">
       {/* Header with New Conversation button */}
       <SidebarHeader>
+        <div className="flex items-center gap-2 px-2 pt-1 pb-1 group-data-[collapsible=icon]:justify-center">
+          <img
+            src="/logo.png"
+            alt="The Thing"
+            width={28}
+            height={28}
+            className="rounded-md dark:invert dark:brightness-200"
+            priority
+          />
+          <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            The Thing
+          </span>
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

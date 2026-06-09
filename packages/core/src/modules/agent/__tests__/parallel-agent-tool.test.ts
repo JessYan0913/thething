@@ -88,7 +88,7 @@ describe('parallel-agent-tool', () => {
     it('should create a tool with correct schema', () => {
       const tool = createParallelAgentTool(createMockToolConfig({ agentRegistry: registry }));
       expect(tool).toBeDefined();
-      expect(tool.description.toLowerCase()).toContain('parallel');
+      expect(tool.description?.toLowerCase()).toContain('parallel');
     });
 
     it('should require at least 2 tasks', async () => {
