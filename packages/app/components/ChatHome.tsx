@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react"
+import Image from "next/image"
 import { useTranslation } from "react-i18next"
 import { FileTextIcon, XIcon } from "lucide-react"
 import {
@@ -106,6 +107,14 @@ export default function ChatHome() {
     <div className="flex flex-1 flex-col items-center justify-center p-8">
       <div className="w-full max-w-2xl space-y-6">
         <div className="text-center space-y-1">
+          <Image
+            src="/logo.png"
+            alt="The Thing"
+            width={64}
+            height={64}
+            className="mx-auto mb-4 rounded-xl dark:invert dark:brightness-200"
+            priority
+          />
           <h2 className="text-xl font-semibold">
             {t('emptyState.quickStartTitle')}
           </h2>
