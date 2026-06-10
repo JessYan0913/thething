@@ -30,6 +30,7 @@ import {
   TrashIcon,
   XIcon,
   SettingsIcon,
+  SearchIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { nanoid } from "nanoid";
@@ -42,6 +43,47 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { FilterOption } from "@/components/ChatLayout";
+
+// ============================================================================
+// Date Grouping Helper
+// ============================================================================
+
+function getDateGroup(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  if (date >= today) return 'today';
+  if (date >= yesterday) return 'yesterday';
+  if (date >= weekAgo) return 'thisWeek';
+  return 'earlier';
+}
+
+function getDateGroupLabel(group: string, t: (key: string) => string): string {
+  switch (group) {
+    case 'today': return t('chat:conversation.dateGroup.today');
+    case 'yesterday': return t('chat:conversation.dateGroup.yesterday');
+    case 'thisWeek': return t('chat:conversation.dateGroup.thisWeek');
+    case 'earlier': return t('chat:conversation.dateGroup.earlier');
+    default: return group;
+  }
+}
+
+const GROUP_ORDER = ['today', 'yesterday', 'thisWeek', 'earlier'];
+
+function groupConversations(conversations: ConversationItem[]): Map<string, ConversationItem[]> {
+  const groups = new Map<string, ConversationItem[]>();
+  for (const conv of conversations) {
+    const group = getDateGroup(conv.updatedAt || conv.createdAt);
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group)!.push(conv);
+  }
+  return groups;
+}
 
 // ============================================================================
 // Types
@@ -164,27 +206,50 @@ export const ConversationSidebar = ({
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent>
             {isLoading ? (
-              <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                {t('chat:conversation.loading')}
+              <div className="space-y-1 px-2 py-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-md px-2 py-2">
+                    <div className="size-4 shrink-0 rounded bg-muted animate-pulse" />
+                    <div className="h-3 flex-1 rounded bg-muted animate-pulse" style={{ width: `${60 + (i % 3) * 15}%` }} />
+                  </div>
+                ))}
               </div>
             ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-xs px-2">
-                <MessageSquareIcon className="size-6 opacity-50" />
-                <span>{t('chat:conversation.noConversations')}</span>
+              <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground text-xs px-4">
+                <div className="rounded-full bg-muted p-3">
+                  <MessageSquareIcon className="size-6 opacity-40" />
+                </div>
+                <span className="text-center leading-relaxed">{t('chat:conversation.noConversations')}</span>
               </div>
             ) : (
-              <SidebarMenu>
-                {conversations.map((conv) => (
-                  <ConversationItem
-                    key={conv.id}
-                    conversation={conv}
-                    isActive={conv.id === activeConversationId}
-                    onSelect={() => onSelectConversation(conv.id)}
-                    onDelete={() => onDeleteConversation(conv.id)}
-                    onRename={(title) => onRenameConversation(conv.id, title)}
-                  />
-                ))}
-              </SidebarMenu>
+              <div className="space-y-1">
+                {(() => {
+                  const grouped = groupConversations(conversations);
+                  return GROUP_ORDER.map((group) => {
+                    const items = grouped.get(group);
+                    if (!items || items.length === 0) return null;
+                    return (
+                      <div key={group}>
+                        <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                          {getDateGroupLabel(group, t)}
+                        </div>
+                        <SidebarMenu>
+                          {items.map((conv) => (
+                            <ConversationItem
+                              key={conv.id}
+                              conversation={conv}
+                              isActive={conv.id === activeConversationId}
+                              onSelect={() => onSelectConversation(conv.id)}
+                              onDelete={() => onDeleteConversation(conv.id)}
+                              onRename={(title) => onRenameConversation(conv.id, title)}
+                            />
+                          ))}
+                        </SidebarMenu>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
             )}
           </SidebarGroupContent>
         </SidebarGroup>

@@ -104,44 +104,46 @@ export default function ChatHome() {
   )
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center p-8">
-      <div className="w-full max-w-2xl space-y-6">
-        <div className="text-center space-y-1">
-          <div className="mx-auto mb-4" style={{ width: 150, height: 150 }}>
+    <div className="flex flex-1 flex-col items-center justify-center p-8 animate-page-in">
+      <div className="w-full max-w-2xl space-y-8">
+        <div className="text-center space-y-3">
+          <div className="mx-auto mb-2" style={{ width: 100, height: 100 }}>
             <TShapeBlink />
           </div>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-2xl font-bold text-gradient">
             {t('emptyState.quickStartTitle')}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
             {t('emptyState.quickStartDescription')}
           </p>
         </div>
 
-        <PromptInput onSubmit={handleSubmit} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
-          <AttachmentPreview />
-          <PromptInputTextarea
-            placeholder={t('input.placeholder')}
-            disabled={isSubmitting}
-          />
-          <PromptInputFooter>
-            <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger tooltip="Add attachments" />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                  <PromptInputActionAddScreenshot />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
-              <ModelSelector value={selectedModel} onChange={handleModelChange} />
-            </PromptInputTools>
-            <PromptInputSubmit
+        <div className="rounded-xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/50">
+          <PromptInput onSubmit={handleSubmit} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
+            <AttachmentPreview />
+            <PromptInputTextarea
+              placeholder={t('input.placeholder')}
               disabled={isSubmitting}
-              status={isSubmitting ? "submitted" : undefined}
             />
-          </PromptInputFooter>
-        </PromptInput>
+            <PromptInputFooter>
+              <PromptInputTools>
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger tooltip="Add attachments" />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments />
+                    <PromptInputActionAddScreenshot />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
+                <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
+                <ModelSelector value={selectedModel} onChange={handleModelChange} />
+              </PromptInputTools>
+              <PromptInputSubmit
+                disabled={isSubmitting}
+                status={isSubmitting ? "submitted" : undefined}
+              />
+            </PromptInputFooter>
+          </PromptInput>
+        </div>
       </div>
     </div>
   )

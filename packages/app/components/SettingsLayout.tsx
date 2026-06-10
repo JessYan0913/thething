@@ -137,11 +137,11 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
         {/* Settings Content */}
         <SidebarInset className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
+          <div className="flex shrink-0 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 h-12">
             <SidebarTrigger />
             <div className="h-4 w-px bg-border" />
             {activeItem && (
-              <h1 className="text-base font-semibold">{activeItem.label}</h1>
+              <h1 className="text-sm font-semibold">{activeItem.label}</h1>
             )}
             <div className="ml-auto">
               <ModeToggle />

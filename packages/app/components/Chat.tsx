@@ -963,8 +963,11 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                     )}
 
                     {message.role === 'assistant' && messageIndex === messages.length - 1 && thinkingState ? (
-                      <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
-                        <thinkingState.icon className="size-4 shrink-0 animate-building" />
+                      <div className="flex items-center gap-2.5 px-1 py-2 text-sm text-muted-foreground">
+                        <div className="relative">
+                          <thinkingState.icon className="size-4 shrink-0 animate-building" />
+                          <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+                        </div>
                         <span className="animate-pulse">{thinkingState.label}</span>
                       </div>
                     ) : message.role === 'assistant' && (
@@ -1004,8 +1007,8 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         </div>
       )}
 
-      <div className="shrink-0 border-t p-4">
-        <div className="mx-auto max-w-3xl">
+      <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
+        <div className="mx-auto max-w-3xl space-y-2">
           {/* Task List Panel - always visible above input */}
           <TodoPanel conversationId={conversationId} />
 
@@ -1031,24 +1034,26 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
             />
           )}
 
-          <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
-            <AttachmentPreview />
-            <PromptInputTextarea placeholder="Message AI Assistant..." />
-            <PromptInputFooter>
-              <PromptInputTools>
-                <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger tooltip="Add attachments" />
-                  <PromptInputActionMenuContent>
-                    <PromptInputActionAddAttachments />
-                    <PromptInputActionAddScreenshot />
-                  </PromptInputActionMenuContent>
-                </PromptInputActionMenu>
-                <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
-                <ModelSelector value={selectedModel} onChange={handleModelChange} />
-              </PromptInputTools>
-              <PromptInputSubmit status={status} onStop={stop} />
-            </PromptInputFooter>
-          </PromptInput>
+          <div className="rounded-xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/50">
+            <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
+              <AttachmentPreview />
+              <PromptInputTextarea placeholder="Message AI Assistant..." />
+              <PromptInputFooter>
+                <PromptInputTools>
+                  <PromptInputActionMenu>
+                    <PromptInputActionMenuTrigger tooltip="Add attachments" />
+                    <PromptInputActionMenuContent>
+                      <PromptInputActionAddAttachments />
+                      <PromptInputActionAddScreenshot />
+                    </PromptInputActionMenuContent>
+                  </PromptInputActionMenu>
+                  <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
+                  <ModelSelector value={selectedModel} onChange={handleModelChange} />
+                </PromptInputTools>
+                <PromptInputSubmit status={status} onStop={stop} />
+              </PromptInputFooter>
+            </PromptInput>
+          </div>
         </div>
       </div>
       </div>

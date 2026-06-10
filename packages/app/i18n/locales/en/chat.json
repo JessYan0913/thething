@@ -16,6 +16,12 @@
       "conversations": "Local Sessions",
       "connectors": "Connectors",
       "automation": "Automation"
+    },
+    "dateGroup": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "thisWeek": "This Week",
+      "earlier": "Earlier"
     }
   },
   "input": {

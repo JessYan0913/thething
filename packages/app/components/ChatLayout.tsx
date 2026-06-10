@@ -291,8 +291,12 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
           {/* Main Content - changes per route */}
           <SidebarInset className="flex flex-col flex-1 overflow-hidden">
             {/* Top bar with sidebar toggle */}
-            <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
-              <SidebarTrigger />
+            <div className="flex shrink-0 items-center justify-between border-b bg-background/80 backdrop-blur-md px-4 h-12">
+              <div className="flex items-center gap-2">
+                <SidebarTrigger />
+                <div className="h-4 w-px bg-border" />
+                <span className="text-sm font-medium text-muted-foreground">TheThing</span>
+              </div>
               <ModeToggle />
             </div>
             {/* Children renders child routes */}
