@@ -189,6 +189,17 @@ export class ConnectorRegistry {
     return this.callTool(request)
   }
 
+  /**
+   * 获取连接器的 access_token（用于直接调用 API）
+   */
+  async getToken(connectorId: string): Promise<string | null> {
+    const connector = this.connectors.get(connectorId)
+    if (!connector || !connector.enabled || connector.auth.type !== 'custom' || !connector.auth.config.token_url) {
+      return null
+    }
+    return this.executor.getToken(connectorId, connector)
+  }
+
   dispose(): void {
     // No-op
   }

@@ -192,7 +192,7 @@ export class ConnectorToolExecutor {
 
   // ---- Token management (was TokenManager) ----
 
-  private async getToken(connectorId: string, manifest: ConnectorDefinition): Promise<string> {
+  async getToken(connectorId: string, manifest: ConnectorDefinition): Promise<string> {
     const cached = this.tokenCache.get(connectorId)
     if (cached && cached.expiresAt > Date.now() + this.REFRESH_AHEAD_MS) {
       return cached.token

@@ -2,6 +2,24 @@ import type { ConnectorDefinition } from '../types'
 
 export type InboundTransport = 'http' | 'websocket' | 'test' | string
 
+/**
+ * 消息附件
+ * 用于携带图片、文件等二进制内容
+ */
+export interface MessageAttachment {
+  type: 'image' | 'file'
+  /** Data URL 或 Base64 编码的内容 */
+  url?: string
+  /** 原始数据 */
+  data?: ArrayBuffer
+  /** MIME 类型，如 image/png, application/pdf */
+  mediaType: string
+  /** 文件名（仅文件类型） */
+  name?: string
+  /** 文本文件的内容（仅文本文件） */
+  text?: string
+}
+
 export interface InboundEvent {
   id: string
   connectorId: string
@@ -22,6 +40,8 @@ export interface InboundEvent {
     type: 'text' | 'image' | 'file' | 'event' | string
     text?: string
     raw?: unknown
+    /** 附件列表（由适配器在 parse 阶段填充） */
+    attachments?: MessageAttachment[]
   }
   replyAddress: ReplyAddress
   receivedAt: number

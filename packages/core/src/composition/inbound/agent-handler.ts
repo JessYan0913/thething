@@ -456,7 +456,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     isFirstMessage: boolean,
     startTime: number,
   ): Promise<InboundEventResult> {
-    const userMessage = this.buildUserMessage(event)
+    const userMessage = await this.buildUserMessage(event)
     const uiMessagesForSave = [...existingMessages, userMessage]
 
     // Persist the inbound user turn before agent execution so suspend paths
@@ -965,11 +965,66 @@ export class AgentInboundHandler implements InboundEventHandler {
     return conversationId
   }
 
-  private buildUserMessage(event: InboundEvent): UIMessage {
+  private async buildUserMessage(event: InboundEvent): Promise<UIMessage> {
+    const text = event.message.text || ''
+    const type = event.message.type
+    const attachments = event.message.attachments || []
+
+    logger.debug('AgentInboundHandler', `buildUserMessage: type=${type}, text=${text.substring(0, 100)}, attachments=${attachments.length}`)
+
+    // 处理附件（由适配器在 parse 阶段下载）
+    if (attachments.length > 0) {
+      const parts: UIMessage['parts'] = []
+
+      for (const attachment of attachments) {
+        if (attachment.type === 'image' && attachment.url) {
+          // 图片附件
+          parts.push({ type: 'file', url: attachment.url, mediaType: attachment.mediaType })
+        } else if (attachment.type === 'file') {
+          // 文件附件
+          if (attachment.text) {
+            // 文本文件：直接显示内容
+            parts.push({ type: 'text', text: attachment.text })
+            if (attachment.name) {
+              parts.push({ type: 'text', text: `\n\n📄 文件: ${attachment.name}` })
+            }
+          } else if (attachment.url) {
+            // 二进制文件：作为文件附件
+            parts.push({ type: 'file', url: attachment.url, mediaType: attachment.mediaType })
+            if (attachment.name) {
+              parts.push({ type: 'text', text: `用户发送了文件: ${attachment.name}` })
+            }
+          }
+        }
+      }
+
+      // 添加文本
+      if (text && !text.startsWith('{')) {
+        parts.push({ type: 'text', text })
+      } else if (text && text.startsWith('{')) {
+        // 富文本消息，提取文本部分
+        try {
+          const parsed = JSON.parse(text) as { text?: string }
+          if (parsed.text) {
+            parts.push({ type: 'text', text: parsed.text })
+          }
+        } catch {
+          // 解析失败，忽略
+        }
+      }
+
+      return {
+        id: nanoid(),
+        role: 'user',
+        parts,
+      }
+    }
+
+    // 文本消息：直接返回
     return {
       id: nanoid(),
       role: 'user',
-      parts: [{ type: 'text', text: event.message.text || '' }],
+      parts: [{ type: 'text', text }],
     }
   }
 }

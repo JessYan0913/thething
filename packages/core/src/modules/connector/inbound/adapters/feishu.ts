@@ -4,8 +4,274 @@ import type {
   ConnectorInboundConfig,
   InboundAcceptResult,
   InboundEvent,
+  MessageAttachment,
   ProtocolAdapter,
 } from '../types'
+import { logger } from '../../../../primitives/logger'
+
+// ---- Feishu Media Helpers ----
+
+/**
+ * 根据文件扩展名获取媒体类型
+ */
+function getMediaType(fileName: string): string {
+  const ext = fileName.toLowerCase().split('.').pop() || ''
+  const mediaTypes: Record<string, string> = {
+    'txt': 'text/plain',
+    'md': 'text/markdown',
+    'json': 'application/json',
+    'xml': 'application/xml',
+    'yaml': 'text/yaml',
+    'yml': 'text/yaml',
+    'csv': 'text/csv',
+    'html': 'text/html',
+    'css': 'text/css',
+    'js': 'application/javascript',
+    'ts': 'application/typescript',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+  }
+  return mediaTypes[ext] || 'application/octet-stream'
+}
+
+/**
+ * 判断是否为文本文件
+ */
+function isTextFile(fileName: string): boolean {
+  const textExtensions = new Set([
+    'txt', 'md', 'json', 'xml', 'yaml', 'yml', 'csv', 'html', 'css',
+    'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp',
+    'go', 'rs', 'rb', 'php', 'swift', 'kt', 'scala', 'sql', 'sh', 'bash',
+    'zsh', 'fish', 'ps1', 'bat', 'cmd', 'log', 'ini', 'cfg', 'conf', 'toml',
+  ])
+  const ext = fileName.toLowerCase().split('.').pop() || ''
+  return textExtensions.has(ext)
+}
+
+/**
+ * 获取飞书 tenant_access_token
+ */
+async function getFeishuToken(config: ConnectorInboundConfig): Promise<string | null> {
+  const appId = getCredential(config, 'app_id', 'appId')
+  const appSecret = getCredential(config, 'app_secret', 'appSecret')
+  if (!appId || !appSecret) {
+    logger.warn('FeishuAdapter', 'Missing app_id or app_secret')
+    return null
+  }
+
+  try {
+    const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    })
+    const data = await response.json() as { tenant_access_token?: string; code?: number }
+    if (data.tenant_access_token) {
+      return data.tenant_access_token
+    }
+    logger.warn('FeishuAdapter', `Failed to get token: ${JSON.stringify(data)}`)
+    return null
+  } catch (error) {
+    logger.error('FeishuAdapter', 'Error getting token:', error)
+    return null
+  }
+}
+
+/**
+ * 下载飞书图片
+ */
+async function downloadFeishuImage(
+  messageId: string,
+  imageKey: string,
+  token: string,
+): Promise<MessageAttachment | null> {
+  try {
+    const imageUrl = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${imageKey}?type=image`
+    const response = await fetch(imageUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      logger.warn('FeishuAdapter', `Failed to download image: ${response.status} ${errorText}`)
+      return null
+    }
+
+    const buffer = await response.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString('base64')
+    const dataUrl = `data:image/png;base64,${base64}`
+
+    return {
+      type: 'image',
+      url: dataUrl,
+      mediaType: 'image/png',
+    }
+  } catch (error) {
+    logger.error('FeishuAdapter', 'Error downloading image:', error)
+    return null
+  }
+}
+
+/**
+ * 下载飞书文件
+ */
+async function downloadFeishuFile(
+  messageId: string,
+  fileKey: string,
+  fileName: string,
+  token: string,
+): Promise<MessageAttachment | null> {
+  try {
+    const fileUrl = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=file`
+    const response = await fetch(fileUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      logger.warn('FeishuAdapter', `Failed to download file: ${response.status} ${errorText}`)
+      return null
+    }
+
+    const buffer = await response.arrayBuffer()
+    const mediaType = getMediaType(fileName)
+
+    // 对于文本文件，读取为文本
+    if (isTextFile(fileName)) {
+      const textContent = Buffer.from(buffer).toString('utf-8')
+      return {
+        type: 'file',
+        name: fileName,
+        text: textContent,
+        mediaType,
+      }
+    }
+
+    // 对于二进制文件，转为 Base64 Data URL
+    const base64 = Buffer.from(buffer).toString('base64')
+    const dataUrl = `data:${mediaType};base64,${base64}`
+    return {
+      type: 'file',
+      url: dataUrl,
+      name: fileName,
+      mediaType,
+    }
+  } catch (error) {
+    logger.error('FeishuAdapter', 'Error downloading file:', error)
+    return null
+  }
+}
+
+/**
+ * 下载消息中的附件（图片/文件）
+ */
+async function downloadMessageAttachments(
+  event: InboundEvent,
+  config: ConnectorInboundConfig,
+): Promise<MessageAttachment[]> {
+  const attachments: MessageAttachment[] = []
+  const token = await getFeishuToken(config)
+  if (!token) return attachments
+
+  const messageId = event.message.id
+  const text = event.message.text || ''
+
+  logger.debug('FeishuAdapter', `downloadMessageAttachments: type=${event.message.type}, text=${text.substring(0, 100)}`)
+
+  if (event.message.type === 'image') {
+    // text 字段就是 image_key
+    logger.debug('FeishuAdapter', `Downloading image: ${text}`)
+    const attachment = await downloadFeishuImage(messageId, text, token)
+    if (attachment) attachments.push(attachment)
+  } else if (event.message.type === 'file') {
+    // text 字段是 file_key，需要从消息内容获取文件名
+    logger.debug('FeishuAdapter', `Downloading file: ${text}`)
+    const fileName = await getFileName(messageId, token) || text
+    const attachment = await downloadFeishuFile(messageId, text, fileName, token)
+    if (attachment) attachments.push(attachment)
+  } else if (event.message.type === 'text' && text.startsWith('{')) {
+    // 富文本消息，可能包含图片
+    logger.debug('FeishuAdapter', `Processing rich text message`)
+    const richTextAttachments = await downloadRichTextAttachments(event, token)
+    attachments.push(...richTextAttachments)
+  }
+
+  logger.debug('FeishuAdapter', `downloadMessageAttachments result: ${attachments.length} attachments`)
+  return attachments
+}
+
+/**
+ * 获取消息中的文件名
+ */
+async function getFileName(messageId: string, token: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://open.feishu.cn/open-apis/im/v1/messages/${messageId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    if (!response.ok) return null
+
+    const data = await response.json() as { data?: { items?: Array<{ body?: { content?: string } }> } }
+    const items = data.data?.items
+    if (!items || items.length === 0) return null
+
+    const content = items[0]?.body?.content
+    if (!content) return null
+
+    const contentObj = JSON.parse(content) as { file_name?: string }
+    return contentObj.file_name || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 下载富文本消息中的附件
+ */
+async function downloadRichTextAttachments(
+  event: InboundEvent,
+  token: string,
+): Promise<MessageAttachment[]> {
+  const attachments: MessageAttachment[] = []
+  const text = event.message.text || ''
+
+  try {
+    const parsed = JSON.parse(text) as { text?: string; imageKeys?: string[] }
+    logger.debug('FeishuAdapter', `Parsed rich text: text=${parsed.text}, imageKeys=${JSON.stringify(parsed.imageKeys)}`)
+
+    if (parsed.imageKeys && parsed.imageKeys.length > 0) {
+      for (const imageKey of parsed.imageKeys) {
+        logger.debug('FeishuAdapter', `Downloading image from rich text: ${imageKey}`)
+        const attachment = await downloadFeishuImage(event.message.id, imageKey, token)
+        if (attachment) {
+          logger.debug('FeishuAdapter', `Successfully downloaded image: ${imageKey}`)
+          attachments.push(attachment)
+        } else {
+          logger.warn('FeishuAdapter', `Failed to download image: ${imageKey}`)
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn('FeishuAdapter', `Failed to parse rich text: ${error}`)
+  }
+
+  return attachments
+}
 
 // ---- Feishu Crypto ----
 
@@ -107,12 +373,22 @@ export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
       throw new Error('INVALID_BODY_FORMAT')
     }
 
-    return feishuPayloadToInboundEvent(bodyJson, {
+    const event = feishuPayloadToInboundEvent(bodyJson, {
       connectorId: config.connectorId,
       transport: input.transport,
       receivedAt: input.receivedAt,
       raw: input.raw ?? bodyJson,
     })
+
+    // 在 parse 阶段下载附件（图片/文件）
+    if (event.message.type === 'image' || event.message.type === 'file' || event.message.type === 'text') {
+      const attachments = await downloadMessageAttachments(event, config)
+      if (attachments.length > 0) {
+        event.message.attachments = attachments
+      }
+    }
+
+    return event
   }
 }
 
@@ -131,12 +407,22 @@ export class FeishuWsProtocolAdapter implements ProtocolAdapter {
       throw new Error('INVALID_EXTERNAL_INPUT')
     }
 
-    return feishuPayloadToInboundEvent(raw as Record<string, unknown>, {
+    const event = feishuPayloadToInboundEvent(raw as Record<string, unknown>, {
       connectorId: config.connectorId,
       transport: input.transport,
       receivedAt: input.receivedAt,
       raw,
     })
+
+    // 在 parse 阶段下载附件（图片/文件）
+    if (event.message.type === 'image' || event.message.type === 'file' || event.message.type === 'text') {
+      const attachments = await downloadMessageAttachments(event, config)
+      if (attachments.length > 0) {
+        event.message.attachments = attachments
+      }
+    }
+
+    return event
   }
 }
 
@@ -162,6 +448,10 @@ export function feishuPayloadToInboundEvent(
   const externalEventId = (header?.event_id as string) || messageId
   const createTime = parseInt((header?.create_time as string) || (message?.create_time as string) || '', 10)
 
+  // Debug logging
+  logger.debug('FeishuAdapter', `messageType=${messageType}, content=${typeof message?.content === 'string' ? message.content.substring(0, 200) : 'non-string'}`)
+  logger.debug('FeishuAdapter', `extracted text=${extractFeishuContent(messageType, message?.content).substring(0, 200)}`)
+
   return {
     id: `${options.connectorId}:${options.transport}:${externalEventId}`,
     connectorId: options.connectorId,
@@ -178,8 +468,8 @@ export function feishuPayloadToInboundEvent(
     },
     message: {
       id: messageId,
-      type: messageType === 'text' ? 'text' : 'event',
-      text: extractFeishuText(message?.content),
+      type: mapFeishuMessageType(messageType),
+      text: extractFeishuContent(messageType, message?.content),
       raw: options.raw ?? body,
     },
     replyAddress: {
@@ -194,14 +484,59 @@ export function feishuPayloadToInboundEvent(
   }
 }
 
-function extractFeishuText(content: unknown): string {
+function mapFeishuMessageType(type: string): 'text' | 'image' | 'file' | 'event' {
+  if (type === 'text') return 'text'
+  if (type === 'image') return 'image'
+  if (type === 'post') return 'text'  // 富文本作为文本处理
+  if (['file', 'audio', 'media'].includes(type)) return 'file'
+  return 'event'
+}
+
+function extractFeishuContent(type: string, content: unknown): string {
   if (typeof content !== 'string') return ''
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>
-    return typeof parsed.text === 'string' ? parsed.text : content
+    switch (type) {
+      case 'text':
+        return typeof parsed.text === 'string' ? parsed.text : ''
+      case 'image':
+        return typeof parsed.image_key === 'string' ? parsed.image_key : ''
+      case 'file':
+        return typeof parsed.file_key === 'string' ? parsed.file_key : ''
+      case 'post':
+        return extractPostContent(parsed)
+      default:
+        return typeof parsed.text === 'string' ? parsed.text : ''
+    }
   } catch {
-    return content
+    return ''
   }
+}
+
+function extractPostContent(post: Record<string, unknown>): string {
+  const content = post.content
+  if (!Array.isArray(content)) return ''
+
+  const parts: string[] = []
+  const imageKeys: string[] = []
+
+  for (const paragraph of content) {
+    if (!Array.isArray(paragraph)) continue
+    for (const item of paragraph) {
+      if (typeof item !== 'object' || item === null) continue
+      const tag = (item as Record<string, unknown>).tag
+      if (tag === 'text') {
+        const text = (item as Record<string, unknown>).text
+        if (typeof text === 'string') parts.push(text)
+      } else if (tag === 'img') {
+        const imageKey = (item as Record<string, unknown>).image_key
+        if (typeof imageKey === 'string') imageKeys.push(imageKey)
+      }
+    }
+  }
+
+  // 返回 JSON 格式，包含文本和图片 keys
+  return JSON.stringify({ text: parts.join(' '), imageKeys })
 }
 
 function parseJsonObject(body: string | undefined): Record<string, unknown> | null {
