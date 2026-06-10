@@ -4,8 +4,8 @@ import type {
   ConnectorInboundConfig,
   InboundAcceptResult,
   InboundEvent,
+  ProtocolAdapter,
 } from '../types'
-import type { ProtocolAdapter } from './protocol-adapter'
 
 // ---- Feishu Crypto ----
 

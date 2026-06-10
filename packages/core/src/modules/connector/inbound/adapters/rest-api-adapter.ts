@@ -10,8 +10,7 @@
 // NO verify/decrypt/challenge — it accepts all generic HTTP
 // requests as-is.
 
-import type { AdapterInput, ConnectorInboundConfig, InboundEvent } from '../types'
-import type { ProtocolAdapter } from './protocol-adapter'
+import type { AdapterInput, ConnectorInboundConfig, InboundEvent, ProtocolAdapter } from '../types'
 import crypto from 'crypto'
 
 export class RestApiProtocolAdapter implements ProtocolAdapter {

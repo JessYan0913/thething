@@ -5,13 +5,11 @@ import type {
   ExternalInboundInput,
   InboundAcceptResult,
   InboundInbox,
+  ProtocolAdapter,
 } from '../types'
 import { FeishuHttpProtocolAdapter, FeishuWsProtocolAdapter } from '../adapters/feishu'
-import { TestProtocolAdapter } from '../adapters/test-adapter'
-import { TaskTriggerProtocolAdapter } from '../adapters/task-trigger-adapter'
 import { RestApiProtocolAdapter } from '../adapters/rest-api-adapter'
 import { isWechatProtocol, WechatProtocolAdapter } from '../adapters/wechat'
-import type { ProtocolAdapter } from '../adapters/protocol-adapter'
 import type { InboundHttpRequest } from './http-request'
 
 export interface ConnectorInboundGatewayOptions {
@@ -26,11 +24,9 @@ export class ConnectorInboundGateway {
   constructor(private readonly options: ConnectorInboundGatewayOptions) {
     for (const adapter of [
       new FeishuHttpProtocolAdapter(),
-      new TestProtocolAdapter(),
       new WechatProtocolAdapter('wecom'),
       new WechatProtocolAdapter('wechat-mp'),
       new WechatProtocolAdapter('wechat-kf'),
-      new TaskTriggerProtocolAdapter(),
       new RestApiProtocolAdapter(),
       ...(options.adapters ?? []),
     ]) {
