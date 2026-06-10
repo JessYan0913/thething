@@ -72,7 +72,8 @@
       "Bash(pkg-config --cflags-only-I libc++)",
       "Bash(cat ~/.npmrc 2>/dev/null; echo \"---\"; cat /Users/yanheng/Documents/work/thething/.npmrc 2>/dev/null)",
       "Read(//Users/yanheng/**)",
-      "Bash(npx electron-rebuild *)"
+      "Bash(npx electron-rebuild *)",
+      "Bash(open http://localhost:3000/test-motion)"
     ]
   }
 }

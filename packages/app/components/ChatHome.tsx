@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
-import Lottie from "lottie-react"
-import animationData from "@/public/mshk-fixed.json"
+import { TShapeBlink } from "@/components/TShapeBlink"
 import { FileTextIcon, XIcon } from "lucide-react"
 import {
   PromptInput,
@@ -108,13 +107,8 @@ export default function ChatHome() {
     <div className="flex flex-1 flex-col items-center justify-center p-8">
       <div className="w-full max-w-2xl space-y-6">
         <div className="text-center space-y-1">
-          <div className="mx-auto mb-4" style={{ width: 250, height: 250 }}>
-            <Lottie
-              animationData={animationData}
-              loop={true}
-              autoplay={true}
-              style={{ width: "100%", height: "100%" }}
-            />
+          <div className="mx-auto mb-4" style={{ width: 150, height: 150 }}>
+            <TShapeBlink />
           </div>
           <h2 className="text-xl font-semibold">
             {t('emptyState.quickStartTitle')}
