@@ -8,7 +8,6 @@ import {
   PromptInputSelectValue,
 } from '@/components/ai-elements/prompt-input';
 import { useEffect, useState } from 'react';
-import { BotIcon, CpuIcon } from 'lucide-react';
 
 // ============================================================
 // Model Selector
@@ -58,15 +57,14 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
       <PromptInputSelectTrigger className="gap-1.5 text-xs">
-        <CpuIcon className="size-3.5 shrink-0" />
         <PromptInputSelectValue placeholder="Model" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
         {availableModels.map(([key, config]) => (
           <PromptInputSelectItem key={key} value={key}>
-            <span className="font-medium">{MODEL_LABELS[key] ?? key}</span>
+            <span className="font-medium">{config.model.split('/').pop()}</span>
             <span className="ml-1.5 text-muted-foreground text-xs">
-              {config.model.split('/').pop()}
+              {MODEL_LABELS[key] ?? key}
             </span>
           </PromptInputSelectItem>
         ))}
@@ -125,7 +123,6 @@ export function AgentSelector({ value, onChange }: AgentSelectorProps) {
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
       <PromptInputSelectTrigger className="gap-1.5 text-xs">
-        <BotIcon className="size-3.5 shrink-0" />
         <PromptInputSelectValue placeholder="Agent" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>

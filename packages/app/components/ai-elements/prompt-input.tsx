@@ -1252,9 +1252,10 @@ export type PromptInputSelectContentProps = ComponentProps<
 
 export const PromptInputSelectContent = ({
   className,
+  position = "popper",
   ...props
 }: PromptInputSelectContentProps) => (
-  <SelectContent className={cn(className)} {...props} />
+  <SelectContent position={position} className={cn("min-w-48", className)} {...props} />
 );
 
 export type PromptInputSelectItemProps = ComponentProps<typeof SelectItem>;
