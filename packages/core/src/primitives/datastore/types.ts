@@ -74,6 +74,9 @@ export interface SqliteDatabaseConstructor {
 export interface Conversation {
   id: string;
   title: string;
+  source: string;
+  sourceId: string | null;
+  channelId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -128,7 +131,7 @@ export interface ConversationStore {
   /**
    * Create a new conversation
    */
-  createConversation(id: string, title?: string): Conversation;
+  createConversation(id: string, title?: string, metadata?: { source?: string; sourceId?: string; channelId?: string }): Conversation;
 
   /**
    * Get a conversation by ID
@@ -505,6 +508,9 @@ export interface TodoStore {
 export interface ConversationRow {
   id: string;
   title: string;
+  source: string;
+  source_id: string | null;
+  channel_id: string | null;
   created_at: string;
   updated_at: string;
 }

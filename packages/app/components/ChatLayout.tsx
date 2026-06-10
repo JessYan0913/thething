@@ -6,7 +6,7 @@ import { ModeToggle } from "@/components/ModeToggle";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { nanoid } from "nanoid";
 import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 
 // ============================================================================
 // ChatContext - Share sidebar state with child pages
@@ -48,22 +48,37 @@ export function useChatContext(): ChatContextValue {
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const params = useParams<{ id?: string }>();
-  const urlConversationId = params?.id ?? null;
+  const params = useParams<{ source?: string; chatId?: string }>();
+  const urlSearchParams = useSearchParams();
+  const urlConversationId = params?.chatId ?? null;
 
   // Conversation list state
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
-  // Source filter state
-  const [sourceFilter, setSourceFilter] = useState<string>("user");
+  // Source filter from URL: /chat/[source]?sid=subId
+  // /chat → 'user'
+  // /chat/connector → 'connector'
+  // /chat/connector?sid=feishu → 'connector:feishu'
+  // /chat/connector/{chatId}?sid=feishu → 'connector:feishu'
+  const sourceFilter = (() => {
+    if (!params.source) return 'user';
+    const sid = urlSearchParams.get('sid');
+    return sid ? `${params.source}:${sid}` : params.source;
+  })();
+
+  // List view when no chatId in URL
+  const isChatHome = !params.chatId;
   const [connectors, setConnectors] = useState<{ id: string; name: string }[]>([]);
   const [cronJobs, setCronJobs] = useState<{ id: string; name: string }[]>([]);
 
-  // Track the active conversation ID
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     urlConversationId
   );
+
+  // Derive active conversation title
+  const activeConversation = conversations.find(c => c.id === activeConversationId);
+  const activeConversationTitle = activeConversation?.title;
 
   // Ref to prevent double-initialization
   const initializedRef = useRef(false);
@@ -122,9 +137,18 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const switchToConversation = useCallback(
     (id: string) => {
       setActiveConversationId(id);
-      router.push(`/chat/${id}`);
+      // Find the conversation's source from loaded list
+      const conv = conversations.find(c => c.id === id);
+      const source = conv?.source || 'user';
+      const encodedId = encodeURIComponent(id);
+      // Preserve sub-filter (sid) when navigating from a filtered list view
+      const sid = sourceFilter.includes(':') ? sourceFilter.split(':').slice(1).join(':') : null;
+      const url = sid
+        ? `/chat/${source}/${encodedId}?sid=${encodeURIComponent(sid)}`
+        : `/chat/${source}/${encodedId}`;
+      router.push(url);
     },
-    [router]
+    [router, conversations, sourceFilter]
   );
 
   const handleSelectConversation = useCallback(
@@ -148,8 +172,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
         setConversations((prev) => [data.conversation, ...prev]);
         setActiveConversationId(newId);
         const url = options?.initialMessage
-          ? `/chat/${newId}?msg=${encodeURIComponent(options.initialMessage)}`
-          : `/chat/${newId}`;
+          ? `/chat/user/${newId}?msg=${encodeURIComponent(options.initialMessage)}`
+          : `/chat/user/${newId}`;
         router.push(url);
       }
     } catch {
@@ -221,6 +245,19 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   // Source filter
   // ============================================================================
 
+  // Handle filter change — navigate to new path
+  const handleFilterChange = useCallback((value: string) => {
+    if (value === 'user') {
+      router.push('/chat');
+    } else if (value.startsWith('connector:')) {
+      const sid = value.slice('connector:'.length);
+      router.push(sid ? `/chat/connector?sid=${encodeURIComponent(sid)}` : '/chat/connector');
+    } else if (value.startsWith('cron:')) {
+      const sid = value.slice('cron:'.length);
+      router.push(sid ? `/chat/cron?sid=${encodeURIComponent(sid)}` : '/chat/cron');
+    }
+  }, [router]);
+
   const filterOptions = useMemo<FilterOption[]>(() => {
     const options: FilterOption[] = [{ value: "user", label: "chat:conversation.filter.conversations" }];
     for (const c of connectors) {
@@ -236,17 +273,17 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
 
   const filteredConversations = useMemo(() => {
     if (sourceFilter === "user") {
-      return conversations.filter((c) => !c.id.startsWith("connector:"));
+      return conversations.filter((c) => c.source === 'user');
     }
-    // cron:{jobId} — filter by specific cron job
-    if (sourceFilter.startsWith("cron:")) {
-      const jobId = sourceFilter.slice("cron:".length);
-      return conversations.filter((c) => c.id.includes(`cron-${jobId}`));
+    // Parse sourceType and optional sub-id: "connector" / "connector:feishu" / "cron" / "cron:job1"
+    const colonIdx = sourceFilter.indexOf(':');
+    const sourceType = colonIdx >= 0 ? sourceFilter.slice(0, colonIdx) : sourceFilter;
+    const subId = colonIdx >= 0 ? sourceFilter.slice(colonIdx + 1) : '';
+    if (sourceType === 'connector') {
+      return conversations.filter((c) => c.source === 'connector' && (!subId || c.sourceId === subId));
     }
-    // connector:{connectorId}
-    if (sourceFilter.startsWith("connector:")) {
-      const prefix = `${sourceFilter}:channel:`;
-      return conversations.filter((c) => c.id.startsWith(prefix));
+    if (sourceType === 'cron') {
+      return conversations.filter((c) => c.source === 'cron' && (!subId || c.sourceId === subId));
     }
     return conversations;
   }, [conversations, sourceFilter]);
@@ -285,17 +322,19 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             onSelectConversation={handleSelectConversation}
             filterOptions={showFilter ? filterOptions : undefined}
             activeFilter={sourceFilter}
-            onFilterChange={setSourceFilter}
+            onFilterChange={handleFilterChange}
           />
 
           {/* Main Content - changes per route */}
           <SidebarInset className="flex flex-col flex-1 overflow-hidden">
-            {/* Top bar with sidebar toggle */}
+            {/* Top bar with sidebar toggle and current conversation title */}
             <div className="flex shrink-0 items-center justify-between border-b bg-background/80 backdrop-blur-md px-4 h-12">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <SidebarTrigger />
-                <div className="h-4 w-px bg-border" />
-                <span className="text-sm font-medium text-muted-foreground">TheThing</span>
+                <div className="h-4 w-px bg-border shrink-0" />
+                <span className="text-sm font-medium text-muted-foreground truncate">
+                  {activeConversationTitle || (isChatHome ? 'TheThing' : '...')}
+                </span>
               </div>
               <ModeToggle />
             </div>

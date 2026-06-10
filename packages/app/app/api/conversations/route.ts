@@ -3,10 +3,23 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const source = searchParams.get('source');
+    const sourceId = searchParams.get('sourceId');
+
     const rt = await getServerRuntime();
-    const conversations = rt.dataStore.conversationStore.listConversations();
+    let conversations = rt.dataStore.conversationStore.listConversations();
+
+    // Server-side filtering by source
+    if (source) {
+      conversations = conversations.filter((c) => c.source === source);
+    }
+    if (sourceId) {
+      conversations = conversations.filter((c) => c.sourceId === sourceId);
+    }
+
     return NextResponse.json({ conversations });
   } catch (error) {
     console.error('[Conversations API] GET error:', error);
@@ -21,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing conversation id' }, { status: 400 });
     }
     const rt = await getServerRuntime();
-    const conversation = rt.dataStore.conversationStore.createConversation(body.id, body.title);
+    const conversation = rt.dataStore.conversationStore.createConversation(body.id, body.title, { source: 'user' });
     return NextResponse.json({ conversation });
   } catch (error) {
     console.error('[Conversations API] POST error:', error);

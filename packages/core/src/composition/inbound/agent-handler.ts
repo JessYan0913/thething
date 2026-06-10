@@ -959,7 +959,13 @@ export class AgentInboundHandler implements InboundEventHandler {
     const existing = store.conversationStore.getConversation(conversationId)
     if (!existing) {
       const title = `${event.connectorId} - ${event.sender.name || event.sender.id}`
-      store.conversationStore.createConversation(conversationId, title)
+      // Determine source type from connectorId
+      const source = event.connectorId === '__cron__' ? 'cron' : 'connector'
+      store.conversationStore.createConversation(conversationId, title, {
+        source,
+        sourceId: event.connectorId === '__cron__' ? (event.message.raw as Record<string, unknown> | undefined)?.cronJobId as string | undefined || event.connectorId : event.connectorId,
+        channelId: event.channel.id,
+      })
     }
 
     return conversationId

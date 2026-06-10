@@ -11,11 +11,17 @@ import type { ConversationStore, Conversation, ConversationRow } from '../../../
 export class SQLiteConversationStore implements ConversationStore {
   constructor(private db: SqliteDatabase) {}
 
-  createConversation(id: string, title?: string): Conversation {
+  createConversation(id: string, title?: string, metadata?: { source?: string; sourceId?: string; channelId?: string }): Conversation {
     const stmt = this.db.prepare(
-      'INSERT INTO conversations (id, title) VALUES (?, ?)'
+      'INSERT INTO conversations (id, title, source, source_id, channel_id) VALUES (?, ?, ?, ?, ?)'
     );
-    stmt.run(id, title || 'New Conversation');
+    stmt.run(
+      id,
+      title || 'New Conversation',
+      metadata?.source || 'user',
+      metadata?.sourceId || null,
+      metadata?.channelId || null
+    );
     return this.getConversation(id)!;
   }
 
@@ -50,6 +56,9 @@ export class SQLiteConversationStore implements ConversationStore {
     return {
       id: row.id,
       title: row.title,
+      source: row.source,
+      sourceId: row.source_id,
+      channelId: row.channel_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

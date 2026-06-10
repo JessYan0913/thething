@@ -39,7 +39,7 @@ export class SQLiteMessageStore implements MessageStore {
             .join('')
             .slice(0, 50) || 'New Conversation'
         : 'New Conversation';
-      this.conversationStore.createConversation(conversationId, title);
+      this.conversationStore.createConversation(conversationId, title, { source: 'user' });
     }
 
     const insertStmt = this.db.prepare(

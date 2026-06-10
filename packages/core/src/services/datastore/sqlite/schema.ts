@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -118,6 +118,39 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v4: renamed tasks to todos');
   }
 
+  if (currentVersion < 5) {
+    // v5: add source tracking columns to conversations
+    db.exec(`
+      ALTER TABLE conversations ADD COLUMN source TEXT DEFAULT 'user';
+      ALTER TABLE conversations ADD COLUMN source_id TEXT DEFAULT NULL;
+      ALTER TABLE conversations ADD COLUMN channel_id TEXT DEFAULT NULL;
+    `);
+
+    // Populate source fields from existing compound IDs
+    db.exec(`
+      UPDATE conversations SET
+        source = 'connector',
+        source_id = SUBSTR(id, INSTR(id, 'connector:') + 10, INSTR(SUBSTR(id, INSTR(id, 'connector:') + 10), ':channel:') - 1),
+        channel_id = SUBSTR(id, INSTR(id, ':channel:') + 9)
+      WHERE id LIKE 'connector:%:channel:%'
+    `);
+
+    // Mark conversations that look like cron jobs
+    db.exec(`
+      UPDATE conversations SET source = 'cron'
+      WHERE id LIKE 'connector:__cron__:channel:%'
+    `);
+
+    // Update cron source_id extraction
+    db.exec(`
+      UPDATE conversations SET
+        source_id = SUBSTR(channel_id, 6, INSTR(channel_id || '-', '-') - 1)
+      WHERE source = 'cron' AND channel_id LIKE 'cron-%'
+    `);
+
+    logger.debug('Schema', 'Migrated to v5: added source/source_id/channel_id columns');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -132,6 +165,9 @@ export function initializeSchema(db: SqliteDatabase): void {
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       title TEXT DEFAULT 'New Conversation',
+      source TEXT DEFAULT 'user',
+      source_id TEXT DEFAULT NULL,
+      channel_id TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

@@ -12,6 +12,12 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -21,22 +27,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import {
-  CheckIcon,
   MessageSquareIcon,
   PencilIcon,
   PlusIcon,
   TrashIcon,
-  XIcon,
   SettingsIcon,
-  SearchIcon,
+  MoreHorizontalIcon,
+  XIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { nanoid } from "nanoid";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -45,7 +50,7 @@ import { useTranslation } from "react-i18next";
 import type { FilterOption } from "@/components/ChatLayout";
 
 // ============================================================================
-// Date Grouping Helper
+// Date & Time Helpers
 // ============================================================================
 
 function getDateGroup(dateStr: string): string {
@@ -92,6 +97,9 @@ function groupConversations(conversations: ConversationItem[]): Map<string, Conv
 export interface ConversationItem {
   id: string;
   title: string;
+  source: string;
+  sourceId: string | null;
+  channelId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -127,46 +135,29 @@ export const ConversationSidebar = ({
 }: ConversationSidebarProps) => {
   const { t } = useTranslation();
 
+  const grouped = useMemo(() => groupConversations(conversations), [conversations]);
+
   return (
     <Sidebar collapsible="icon">
-      {/* Header with New Conversation button */}
+      {/* Header with brand and source filter */}
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 pt-1 pb-1 group-data-[collapsible=icon]:justify-center">
+        <div className="flex items-center gap-2 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
           <img
             src="/logo.svg"
             alt="The Thing"
-            width={48}
-            height={48}
-            className="rounded-md"
+            width={36}
+            height={36}
+            className="rounded-md shrink-0"
             priority
           />
-          <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-            The Thing
-          </span>
-        </div>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={onCreateConversation}
-              tooltip={t('chat:conversation.new')}
-            >
-              <PlusIcon />
-              <span>{t('chat:conversation.new')}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-
-      {/* Source Filter - fixed, not scrollable */}
-      {filterOptions && filterOptions.length > 1 && onFilterChange && (
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden pt-0">
-          <SidebarGroupContent>
-            <div className="px-2">
+          {/* Source filter — pill-style select next to logo */}
+          {filterOptions && filterOptions.length > 1 && onFilterChange && (
+            <div className="group-data-[collapsible=icon]:hidden ml-auto">
               <Select value={activeFilter} onValueChange={onFilterChange}>
-                <SelectTrigger size="sm" className="w-full">
+                <SelectTrigger size="sm" className="h-8 min-w-32.5 gap-1 rounded-md bg-sidebar-accent/50 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors px-3 border-0 shadow-none [&>svg]:size-3">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="end" sideOffset={4} className="min-w-36">
                   {(() => {
                     const ungrouped = filterOptions.filter((o) => !o.group);
                     const grouped = filterOptions.filter((o) => o.group);
@@ -197,9 +188,22 @@ export const ConversationSidebar = ({
                 </SelectContent>
               </Select>
             </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      )}
+          )}
+        </div>
+        {activeFilter === 'user' && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={onCreateConversation}
+                tooltip={t('chat:conversation.new')}
+              >
+                <PlusIcon />
+                <span>{t('chat:conversation.new')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+      </SidebarHeader>
 
       {/* Conversation List - hidden when collapsed */}
       <SidebarContent>
@@ -223,32 +227,31 @@ export const ConversationSidebar = ({
               </div>
             ) : (
               <div className="space-y-1">
-                {(() => {
-                  const grouped = groupConversations(conversations);
-                  return GROUP_ORDER.map((group) => {
-                    const items = grouped.get(group);
-                    if (!items || items.length === 0) return null;
-                    return (
-                      <div key={group}>
-                        <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                {GROUP_ORDER.map((group) => {
+                  const items = grouped.get(group);
+                  if (!items || items.length === 0) return null;
+                  return (
+                    <div key={group}>
+                      <div className="px-2 py-1.5">
+                        <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
                           {getDateGroupLabel(group, t)}
-                        </div>
-                        <SidebarMenu>
-                          {items.map((conv) => (
-                            <ConversationItem
-                              key={conv.id}
-                              conversation={conv}
-                              isActive={conv.id === activeConversationId}
-                              onSelect={() => onSelectConversation(conv.id)}
-                              onDelete={() => onDeleteConversation(conv.id)}
-                              onRename={(title) => onRenameConversation(conv.id, title)}
-                            />
-                          ))}
-                        </SidebarMenu>
+                        </span>
                       </div>
-                    );
-                  });
-                })()}
+                      <SidebarMenu>
+                        {items.map((conv) => (
+                          <ConversationItem
+                            key={conv.id}
+                            conversation={conv}
+                            isActive={conv.id === activeConversationId}
+                            onSelect={() => onSelectConversation(conv.id)}
+                            onDelete={() => onDeleteConversation(conv.id)}
+                            onRename={(title) => onRenameConversation(conv.id, title)}
+                          />
+                        ))}
+                      </SidebarMenu>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </SidebarGroupContent>
@@ -297,7 +300,7 @@ const ConversationItem = ({
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(conversation.title);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -308,34 +311,13 @@ const ConversationItem = ({
   }, [isEditing]);
 
   const handleStartEdit = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
+    (e?: React.MouseEvent) => {
+      e?.stopPropagation();
       setEditTitle(conversation.title);
       setIsEditing(true);
     },
     [conversation.title]
   );
-
-  const handleStartDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setIsDeleting(true);
-    },
-    []
-  );
-
-  const handleConfirmDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onDelete();
-    },
-    [onDelete]
-  );
-
-  const handleCancelDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsDeleting(false);
-  }, []);
 
   const handleSaveEdit = useCallback(() => {
     const trimmed = editTitle.trim();
@@ -360,17 +342,13 @@ const ConversationItem = ({
     [handleSaveEdit, conversation.title]
   );
 
-  const handleDeleteKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleConfirmDelete(e as unknown as React.MouseEvent);
-      } else if (e.key === "Escape") {
-        handleCancelDelete(e as unknown as React.MouseEvent);
-      }
-    },
-    [handleConfirmDelete, handleCancelDelete]
-  );
+  // Reset confirmation state when dropdown closes
+  const handleDropdownOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      // Use setTimeout to avoid state update during unmount
+      setTimeout(() => setConfirmingDelete(false), 0);
+    }
+  }, []);
 
   return (
     <SidebarMenuItem>
@@ -389,60 +367,54 @@ const ConversationItem = ({
             ref={inputRef}
             value={editTitle}
           />
-        ) : isDeleting ? (
-          <div
-            className="flex w-full items-center justify-between"
-            onKeyDown={handleDeleteKeyDown}
-            tabIndex={0}
-          >
-            <span className="truncate text-destructive text-xs">{t('chat:conversation.deleteConfirm')}</span>
-            <div className="flex items-center gap-0.5">
-              <div
-                className="inline-flex size-5 items-center justify-center rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                onClick={handleConfirmDelete}
-                role="button"
-                tabIndex={0}
-              >
-                <CheckIcon className="size-3 text-destructive" />
-              </div>
-              <div
-                className="inline-flex size-5 items-center justify-center rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                onClick={handleCancelDelete}
-                role="button"
-                tabIndex={0}
-              >
-                <XIcon className="size-3" />
-              </div>
-            </div>
-          </div>
         ) : (
           <>
-            <MessageSquareIcon />
-            <span className="truncate">{conversation.title}</span>
+            <MessageSquareIcon className="size-4 shrink-0" />
+            <span className="truncate flex-1 min-w-0">{conversation.title}</span>
           </>
         )}
       </SidebarMenuButton>
 
-      {/* Action Buttons (rename/delete) */}
-      {!isEditing && !isDeleting && (
-        <>
-          <SidebarMenuAction
-            className="right-7"
-            onClick={handleStartEdit}
-            showOnHover
-            title={t('chat:conversation.rename')}
-          >
-            <PencilIcon />
+      {!isEditing && (
+        <DropdownMenu onOpenChange={handleDropdownOpenChange}>
+          <SidebarMenuAction showOnHover asChild>
+            <DropdownMenuTrigger>
+              <MoreHorizontalIcon className="size-4" />
+            </DropdownMenuTrigger>
           </SidebarMenuAction>
-          <SidebarMenuAction
-            className="hover:bg-destructive/10 hover:text-destructive"
-            onClick={handleStartDelete}
-            showOnHover
-            title={t('chat:conversation.delete')}
-          >
-            <TrashIcon />
-          </SidebarMenuAction>
-        </>
+          <DropdownMenuContent side="right" align="start" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+            {confirmingDelete ? (
+              <>
+                <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground border-b border-border mx-1 mb-1">
+                  {t('chat:conversation.deleteConfirm') || 'Delete this conversation?'}
+                </div>
+                <DropdownMenuItem onClick={() => setConfirmingDelete(false)}>
+                  <XIcon />
+                  Cancel
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <TrashIcon />
+                  {t('chat:conversation.delete')}
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem onClick={handleStartEdit}>
+                  <PencilIcon className="size-4" />
+                  {t('chat:conversation.rename')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setConfirmingDelete(true)}
+                  onSelect={(e: { preventDefault: () => void }) => e.preventDefault()}
+                >
+                  <TrashIcon className="size-4" />
+                  {t('chat:conversation.delete')}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </SidebarMenuItem>
   );

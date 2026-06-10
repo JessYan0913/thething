@@ -1,7 +1,7 @@
 "use client"
 
 import { motion, useAnimationControls } from "motion/react"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
 /**
  * TShapeBlink
@@ -28,11 +28,14 @@ export function TShapeBlink() {
   const leftEyeControls = useAnimationControls()
   const rightEyeControls = useAnimationControls()
 
+  // Track mount state to stop the blink loop on unmount
+  const mountedRef = useRef(true)
+
   // Start blinking after initial draw-in
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const blink = async () => {
-        while (true) {
+    const timer = setTimeout(async () => {
+      while (mountedRef.current) {
+        try {
           // Close eyes
           await leftEyeControls.start({
             scaleY: 0.05,
@@ -58,12 +61,17 @@ export function TShapeBlink() {
 
           // Random pause between blinks (2-5 seconds)
           await new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000))
+        } catch {
+          // Component unmounted during animation — stop loop
+          break
         }
       }
-      blink()
     }, 2000) // Start blinking 2s after draw-in completes
 
-    return () => clearTimeout(timer)
+    return () => {
+      mountedRef.current = false
+      clearTimeout(timer)
+    }
   }, [leftEyeControls, rightEyeControls])
 
   return (
