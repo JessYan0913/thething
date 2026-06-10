@@ -60,31 +60,21 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         {/* Settings Sidebar */}
         <Sidebar collapsible="icon">
           <SidebarContent>
-            <div className="flex items-center gap-2 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
+            <div className="flex items-center gap-1 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
               <img
                 src="/logo.svg"
                 alt="The Thing"
                 width={48}
                 height={48}
-                className="rounded-md"
+                className="rounded-md shrink-0"
                 priority
               />
-              <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-                The Thing
-              </span>
-            </div>
-            {/* 返回聊天 */}
-            <div className="px-2 pt-2">
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')}>
-                    <Link href="/chat">
-                      <ArrowLeftIcon />
-                      <span>{t('sidebar.backToChat')}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
+              <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')} className="group-data-[collapsible=icon]:hidden h-auto rounded-full transition-colors">
+                <Link href="/chat" className="flex items-center gap-1.5">
+                  <ArrowLeftIcon className="size-4" />
+                  <span className="text-xs">{t('sidebar.backToChat')}</span>
+                </Link>
+              </SidebarMenuButton>
             </div>
 
             <SidebarGroup>
