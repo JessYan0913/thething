@@ -62,11 +62,11 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
           <SidebarContent>
             <div className="flex items-center gap-2 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
               <img
-                src="/logo.png"
+                src="/logo.svg"
                 alt="The Thing"
-                width={28}
-                height={28}
-                className="rounded-md dark:invert dark:brightness-200"
+                width={48}
+                height={48}
+                className="rounded-md"
                 priority
               />
               <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">

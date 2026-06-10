@@ -6,7 +6,10 @@ export const metadata: Metadata = {
   title: 'The Thing',
   description: 'Multi-form AI Agent',
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/logo.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' },
+    ],
   },
 };
 
