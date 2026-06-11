@@ -141,55 +141,61 @@ export const ConversationSidebar = ({
     <Sidebar collapsible="icon">
       {/* Header with brand and source filter */}
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
+        {/* Brand — square SVG icon + text when expanded, icon only when collapsed */}
+        <div className="flex items-center gap-2.5 px-2 pt-3 pb-1 group-data-[collapsible=icon]:justify-center min-h-9">
           <img
             src="/logo.svg"
             alt="The Thing"
-            width={36}
-            height={36}
-            className="rounded-md shrink-0"
-            priority
+            width={28}
+            height={28}
+            className="rounded-md shrink-0 dark:brightness-0 dark:invert"
           />
-          {/* Source filter — pill-style select next to logo */}
-          {filterOptions && filterOptions.length > 1 && onFilterChange && (
-            <div className="group-data-[collapsible=icon]:hidden ml-auto">
-              <Select value={activeFilter} onValueChange={onFilterChange}>
-                <SelectTrigger size="sm" className="h-8 min-w-32.5 gap-1 rounded-md bg-sidebar-accent/50 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors px-3 border-0 shadow-none [&>svg]:size-3">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end" sideOffset={4} className="min-w-36">
-                  {(() => {
-                    const ungrouped = filterOptions.filter((o) => !o.group);
-                    const grouped = filterOptions.filter((o) => o.group);
-                    const groups = [...new Set(grouped.map((o) => o.group!))];
-                    return (
-                      <>
-                        {ungrouped.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {t(option.label)}
-                          </SelectItem>
-                        ))}
-                        {groups.map((groupKey) => (
-                          <SelectGroup key={groupKey}>
-                            <SelectSeparator />
-                            <SelectLabel>{t(groupKey)}</SelectLabel>
-                            {grouped
-                              .filter((o) => o.group === groupKey)
-                              .map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                          </SelectGroup>
-                        ))}
-                      </>
-                    );
-                  })()}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <span className="group-data-[collapsible=icon]:hidden text-sm font-semibold tracking-tight">
+            TheThing
+          </span>
         </div>
+
+        {/* Source filter — full width below brand */}
+        {filterOptions && filterOptions.length > 1 && onFilterChange && (
+          <div className="px-2 pb-1 group-data-[collapsible=icon]:hidden">
+            <Select value={activeFilter} onValueChange={onFilterChange}>
+              <SelectTrigger size="sm" className="h-8 w-full gap-1 rounded-md bg-sidebar-accent/50 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors px-3 border-0 shadow-none [&>svg]:size-3">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent sideOffset={4} className="min-w-36">
+                {(() => {
+                  const ungrouped = filterOptions.filter((o) => !o.group);
+                  const grouped = filterOptions.filter((o) => o.group);
+                  const groups = [...new Set(grouped.map((o) => o.group!))];
+                  return (
+                    <>
+                      {ungrouped.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {t(option.label)}
+                        </SelectItem>
+                      ))}
+                      {groups.map((groupKey) => (
+                        <SelectGroup key={groupKey}>
+                          <SelectSeparator />
+                          <SelectLabel>{t(groupKey)}</SelectLabel>
+                          {grouped
+                            .filter((o) => o.group === groupKey)
+                            .map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      ))}
+                    </>
+                  );
+                })()}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* New conversation — only in user mode */}
         {activeFilter === 'user' && (
           <SidebarMenu>
             <SidebarMenuItem>

@@ -80,13 +80,14 @@ export function TShapeBlink() {
       initial="hidden"
       animate="visible"
       style={{ width: "100%", height: "auto" }}
+      className="text-[rgb(15,19,36)] dark:text-white"
     >
       {/* Body outline — line drawing */}
       <motion.g>
         <motion.path
           d={BODY_PATH}
-          fill="rgb(15,19,36)"
-          stroke="rgb(15,19,36)"
+          fill="currentColor"
+          stroke="currentColor"
           strokeWidth={1}
           variants={{
             hidden: { pathLength: 0, opacity: 0 },
@@ -112,8 +113,8 @@ export function TShapeBlink() {
       {/* Left eye — line draw then blink */}
       <motion.path
         d={LEFT_EYE}
-        fill="rgb(15,19,36)"
-        stroke="rgb(15,19,36)"
+        fill="currentColor"
+        stroke="currentColor"
         strokeWidth={1}
         style={{
           transformOrigin: `${LEFT_EYE_CENTER.x}px ${LEFT_EYE_CENTER.y}px`,
@@ -143,8 +144,8 @@ export function TShapeBlink() {
       {/* Right eye — line draw then blink */}
       <motion.path
         d={RIGHT_EYE}
-        fill="rgb(15,19,36)"
-        stroke="rgb(15,19,36)"
+        fill="currentColor"
+        stroke="currentColor"
         strokeWidth={1}
         style={{
           transformOrigin: `${RIGHT_EYE_CENTER.x}px ${RIGHT_EYE_CENTER.y}px`,
