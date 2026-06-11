@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import type { ScanResult } from '../types';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
 
 // Test pure functions and type exports without filesystem mocking
 // Filesystem-dependent tests would require integration testing
@@ -41,13 +40,13 @@ describe('foundation/scanner', () => {
 
     it('should support ScanConfig structure', () => {
       const config = {
-        dirs: [`${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills`],
+        dirs: ['.thething/skills'],
         filePattern: 'SKILL.md',
         dirPattern: '*',
         recursive: false,
       };
 
-      expect(config.dirs).toContain(`${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills`);
+      expect(config.dirs).toContain('.thething/skills');
       expect(config.filePattern).toBe('SKILL.md');
       expect(config.dirPattern).toBe('*');
     });
@@ -102,14 +101,14 @@ describe('foundation/scanner', () => {
     // Test the logic that determines 'user' vs 'project' source
     it('should identify user directory', () => {
       const userConfigDir = '/user/config';
-      const dir = `/user/config/${DEFAULT_PROJECT_CONFIG_DIR_NAME}`;
+      const dir = '/user/config/.thething';
       const isUser = dir.startsWith(userConfigDir);
       expect(isUser).toBe(true);
     });
 
     it('should identify project directory', () => {
       const userConfigDir = '/user/config';
-      const dir = `/project/${DEFAULT_PROJECT_CONFIG_DIR_NAME}`;
+      const dir = '/project/.thething';
       const isUser = dir.startsWith(userConfigDir);
       expect(isUser).toBe(false);
     });

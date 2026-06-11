@@ -35,6 +35,8 @@ export interface PathValidationResult {
 export interface PathValidationOptions {
   workingDir?: string;
   extraSensitivePaths?: readonly string[];
+  /** 配置目录路径，用于保护配置文件写入 */
+  configDir?: string;
 }
 
 export interface RuleMatchResult {

@@ -1,3 +1,5 @@
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, vi } from 'vitest';
 import type { UIMessage } from 'ai';
 import {
@@ -45,6 +47,7 @@ function createMockDataStore() {
 const layout = resolveLayout({
   resourceRoot: '/tmp/test-project',
   dataDir: '/tmp/test-data',
+  configDir: path.join(os.homedir(), '.thething'),
 });
 
 describe('tool output config driven behavior', () => {

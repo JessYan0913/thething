@@ -14,7 +14,7 @@ export function createMemoryModule(loadOptions?: LoadMemoryOptions): AppModule<M
     async init(context: ModuleContext): Promise<void> {
       const options: LoadMemoryOptions = {
         cwd: context.cwd,
-        configDirName: context.configDirName,
+        configDir: context.configDir,
         dirs: context.resourceDirs.memory,
         ...loadOptions,
       };

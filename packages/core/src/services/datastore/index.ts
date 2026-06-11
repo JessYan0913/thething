@@ -6,7 +6,7 @@
 // summaries, and costs.
 //
 // Note: Memory storage is handled by the file-based memory system
-// in ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/memory/, not by DataStore.
+// in <configDirName>/memory/, not by DataStore.
 //
 // @example Recommended usage (via CoreRuntime)
 // ```typescript

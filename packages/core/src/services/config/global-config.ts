@@ -1,21 +1,31 @@
 import fs from 'fs'
 import path from 'path'
-import os from 'os'
 
 import type { ModelAliases } from '../model';
 
 export interface GlobalConfig {
   apiKey?: string
   baseURL?: string
+  /** 自定义配置目录路径（如不设置则默认 ~/.thething） */
+  configDir?: string
   /** 模型别名映射（default 用作默认模型） */
   modelAliases?: Partial<ModelAliases>
 }
 
-const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.thething')
 const CONFIG_FILENAME = 'config.json'
 
+/**
+ * 获取全局配置文件路径
+ *
+ * 解析顺序：
+ * 1. 显式传入的 configDir（最高优先级）
+ * 2. 环境变量 THETHING_GLOBAL_CONFIG_DIR（部署级覆盖）
+ * 3. 均未提供时返回空字符串（loadGlobalConfig 返回 null）
+ */
 function getConfigPath(configDir?: string): string {
-  return path.join(configDir || process.env.THETHING_GLOBAL_CONFIG_DIR || DEFAULT_CONFIG_DIR, CONFIG_FILENAME)
+  const dir = configDir || process.env.THETHING_GLOBAL_CONFIG_DIR;
+  if (!dir) return '';
+  return path.join(dir, CONFIG_FILENAME)
 }
 
 function ensureDir(dir: string): void {

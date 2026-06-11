@@ -1,3 +1,4 @@
+import os from 'os';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
@@ -25,7 +26,7 @@ describe('AppContext snapshot', () => {
   beforeEach(async () => {
     root = await createTempProject({});
     runtime = await bootstrap({
-      layout: { resourceRoot: root },
+      layout: { resourceRoot: root, configDir: path.join(os.homedir(), '.thething') },
     });
     context = await createContext({ runtime });
   });
@@ -44,6 +45,7 @@ describe('AppContext snapshot', () => {
   it('matches loadAll() result for the resolved layout', async () => {
     const loaded = await loadAll({
       cwd: root,
+      configDir: path.join(os.homedir(), '.thething'),
       resourceDirs: runtime.layout.resources,
     });
 

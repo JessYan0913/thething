@@ -1,7 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { computeUserConfigDir, resolveHomeDir } from '../../../primitives/paths';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
+import { computeUserConfigDir } from '../../../primitives/paths';
 import type { SystemPromptSection } from '../types';
 
 // ============================================================================
@@ -16,8 +15,8 @@ const BASE_CONTEXT_MARKERS = ['THING.md', 'CONTEXT.md'] as const;
 export interface ProjectContextLoadOptions {
   /** 项目上下文文件名列表（来自 ResolvedLayout.contextFileNames） */
   contextFileNames?: readonly string[];
-  /** 配置目录名（来自 ResolvedLayout.configDirName） */
-  configDirName?: string;
+  /** 配置目录路径（如 ~/.thething，用于计算标记文件名和用户目录） */
+  configDir: string;
 }
 
 /**
@@ -29,9 +28,10 @@ function getContextMarkers(options?: ProjectContextLoadOptions): string[] {
   if (options?.contextFileNames) {
     return [...options.contextFileNames];
   }
-  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const configDir = options?.configDir;
+  if (!configDir) throw new Error('getContextMarkers: configDir is required');
   // 动态生成配置目录名对应的标记文件（如 .thething.md 或 .siact.md）
-  const configMarker = `${configDirName}.md`;
+  const configMarker = `${path.basename(configDir)}.md`;
   return [...BASE_CONTEXT_MARKERS, configMarker];
 }
 
@@ -130,12 +130,11 @@ async function searchContextFilesInDir(
  * Stops at the home directory or filesystem root.
  *
  * Multi-level context merging strategy:
- * - User level: ~/${configDirName}/THING.md (personal preferences)
+ * - User level: configDir/THING.md (personal preferences)
  * - Project level: /project/THING.md (team shared)
  * - Module level: /project/src/THING.md (module specific)
  *
- * 注意：configDirName 和 contextFileNames 从 ProjectContextLoadOptions 获取，
- * 默认回退到全局单例 getResolvedConfigDirName()
+ * 注意：configDir 和 contextFileNames 从 ProjectContextLoadOptions 获取。
  *
  * @param cwd - Current working directory
  */
@@ -143,9 +142,10 @@ export async function loadProjectContext(
   cwd: string = process.cwd(),
   options?: ProjectContextLoadOptions,
 ): Promise<LoadedProjectContext> {
-  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
-  const markers = getContextMarkers({ ...options, configDirName });
-  const cacheKey = buildCacheKey(cwd, { ...options, configDirName });
+  const configDir = options?.configDir;
+  if (!configDir) throw new Error('loadProjectContext: configDir is required');
+  const markers = getContextMarkers({ ...options, configDir });
+  const cacheKey = buildCacheKey(cwd, { ...options, configDir });
 
   // Check cache first
   const cached = contextCache.get(cacheKey);
@@ -153,8 +153,7 @@ export async function loadProjectContext(
     return cached.context;
   }
 
-  const userHome = resolveHomeDir();
-  const userContextDir = computeUserConfigDir(userHome, undefined, configDirName);
+  const userContextDir = computeUserConfigDir(configDir);
 
   const userLevel: LoadedContextFile[] = [];
   const projectLevel: LoadedContextFile[] = [];
@@ -164,8 +163,8 @@ export async function loadProjectContext(
   let reachedRoot = false;
 
   while (!reachedRoot && currentDir !== '/') {
-    // Check for user-level context (in ~/${configDirName} directory)
-    if (currentDir === userHome || currentDir === userContextDir) {
+    // Check for user-level context (in configDir directory)
+    if (currentDir === userContextDir) {
       for (const marker of markers) {
         const userContextPath = path.join(userContextDir, marker);
         const loaded = await loadContextFile(userContextPath, cwd, marker);
@@ -176,7 +175,7 @@ export async function loadProjectContext(
     }
 
     // Check for project-level context files
-    const dirContexts = await searchContextFilesInDir(currentDir, cwd, { ...options, configDirName });
+    const dirContexts = await searchContextFilesInDir(currentDir, cwd, { ...options, configDir });
     for (const ctx of dirContexts) {
       // Skip if this is the user-level context we already loaded
       if (ctx.path.startsWith(userContextDir) && userLevel.some((u) => u.path === ctx.path)) {
@@ -258,9 +257,10 @@ export async function createProjectContextSection(
  * Must match the format used in loadProjectContext().
  */
 function buildCacheKey(cwd: string, options?: ProjectContextLoadOptions): string {
-  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const configDir = options?.configDir;
+  if (!configDir) throw new Error('buildCacheKey: configDir is required');
   const markers = getContextMarkers(options);
-  return `${cwd}:${configDirName}:${markers.join('|')}`;
+  return `${cwd}:${configDir}:${markers.join('|')}`;
 }
 
 /**

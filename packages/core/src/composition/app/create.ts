@@ -122,7 +122,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     })(),
     loadProjectContext(projectRoot, {
       contextFileNames: layout.contextFileNames,
-      configDirName: layout.configDirName,
+      configDir: layout.configDir,
     }),
   ])
 

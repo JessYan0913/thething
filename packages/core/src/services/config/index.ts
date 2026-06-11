@@ -46,10 +46,6 @@ export {
 // 这些值不是调用方应调节的业务配置；保留仅供底层基础设施复用。
 // ============================================================
 
-export {
-  DEFAULT_PROJECT_CONFIG_DIR_NAME,
-} from '../../primitives/constants';
-
 // GlobalConfig - 全局用户配置（~/.thething/config.json）
 export {
   loadGlobalConfig,

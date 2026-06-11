@@ -6,7 +6,6 @@ import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { TodoStore } from '../../modules/todos';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import type { AgentRegistry } from './registry';
 import type { SessionStateOptions, SessionState } from '../session'
 import type { ModelProviderConfig } from '../../services/model'
@@ -81,8 +80,8 @@ export type AgentSource = 'builtin' | 'user' | 'project' | 'plugin';
  *
  * 来源：
  * - builtin: 硬编码 TypeScript（built-in/*.ts）
- * - user: 用户全局目录（~/${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/*.md）
- * - project: 项目目录（${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/*.md）
+ * - user: 用户全局目录（~/.thething/agents/*.md）
+ * - project: 项目目录（.thething/agents/*.md）
  * - plugin: 插件系统注册
  */
 export interface AgentDefinition {
@@ -316,8 +315,8 @@ export interface AgentToolConfig {
   /** 当前对话绑定的 Agent 注册表 */
   agentRegistry?: AgentRegistry;
 
-  /** 配置目录名（用于工具描述文案） */
-  configDirName?: string;
+  /** 配置目录路径（如 ~/.thething，用于工具描述文案） */
+  configDir: string;
 }
 
 // ============================================================

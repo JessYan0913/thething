@@ -65,7 +65,7 @@ export interface TokenizerConfig {
  * const runtime = await bootstrap({
  *   layout: {
  *     resourceRoot: process.cwd(),
- *     configDirName: '.myapp'
+ *     configDir: path.join(os.homedir(), '.myapp')
  *   }
  * });
  *
@@ -74,7 +74,7 @@ export interface TokenizerConfig {
  * const runtime = await bootstrap({
  *   layout: {
  *     resourceRoot: process.cwd(),
- *     configDirName: '.myapp',
+ *     configDir: path.join(os.homedir(), '.myapp'),
  *     dataDir: '/var/lib/myapp/data'
  *   },
  *   behavior: {

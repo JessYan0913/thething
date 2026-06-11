@@ -1,11 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import path from 'path';
 import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from './loader';
 import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import { logger } from '../../primitives/logger';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
 
@@ -36,7 +36,7 @@ export function createAgentTool(config: AgentToolConfig) {
     }
   }
 
-  const configDirName = config.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const configDirName = path.basename(config.configDir);
 
   // 动态生成 input schema（使用正确的 configDirName）
   const AgentToolInputSchema = z.object({

@@ -1,14 +1,12 @@
 /**
  * 权限规则管理 - 规则匹配与 CRUD
  *
- * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
- * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+ * 注意：configDir 由调用方传入完整路径。
  */
 
 import * as fs from 'fs/promises';
 import { nanoid } from 'nanoid';
 import { computeProjectConfigDir } from '../../primitives/paths';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import type { PermissionConfig, PermissionRule, RuleMatchResult } from './types';
 import {
   loadRules,
@@ -36,10 +34,12 @@ export { loadRules } from './loader';
  *
  * @param config 配置对象
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param configDir 配置目录路径
  */
-async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void> {
+async function saveConfig(config: PermissionConfig, cwd?: string, configDir?: string): Promise<void> {
   const effectiveCwd = cwd ?? process.cwd();
-  const projectDir = computeProjectConfigDir(effectiveCwd, 'permissions', DEFAULT_PROJECT_CONFIG_DIR_NAME);
+  if (!configDir) throw new Error('saveConfig: configDir is required');
+  const projectDir = computeProjectConfigDir(effectiveCwd, 'permissions', configDir);
 
   await ensurePermissionsDir(projectDir);
   const filePath = getPermissionsFilePath(projectDir);
@@ -60,12 +60,14 @@ async function saveConfig(config: PermissionConfig, cwd?: string): Promise<void>
  *
  * @param rule 规则内容
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param configDir 配置目录路径
  */
 export async function saveRule(
   rule: Omit<PermissionRule, 'id' | 'createdAt' | 'source'>,
   cwd?: string,
+  configDir?: string,
 ): Promise<PermissionRule> {
-  const config = await loadRules(cwd);
+  const config = await loadRules(cwd, undefined, undefined, { configDir });
 
   const existing = config.rules.find(r =>
     r.toolName === rule.toolName &&
@@ -84,7 +86,7 @@ export async function saveRule(
   };
 
   config.rules.push(newRule);
-  await saveConfig(config, cwd);
+  await saveConfig(config, cwd, configDir);
 
   return newRule;
 }
@@ -103,11 +105,12 @@ function isPatternCoveredBy(
  *
  * @param id 规则 ID
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param configDir 配置目录路径
  */
-export async function removeRule(id: string, cwd?: string): Promise<void> {
-  const config = await loadRules(cwd);
+export async function removeRule(id: string, cwd?: string, configDir?: string): Promise<void> {
+  const config = await loadRules(cwd, undefined, undefined, { configDir });
   config.rules = config.rules.filter(r => r.id !== id);
-  await saveConfig(config, cwd);
+  await saveConfig(config, cwd, configDir);
 }
 
 /**
@@ -116,13 +119,15 @@ export async function removeRule(id: string, cwd?: string): Promise<void> {
  * @param id 规则 ID
  * @param updates 更新的字段
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param configDir 配置目录路径
  */
 export async function updateRule(
   id: string,
   updates: Partial<Omit<PermissionRule, 'id' | 'createdAt' | 'source'>>,
   cwd?: string,
+  configDir?: string,
 ): Promise<PermissionRule | null> {
-  const config = await loadRules(cwd);
+  const config = await loadRules(cwd, undefined, undefined, { configDir });
   const ruleIndex = config.rules.findIndex(r => r.id === id);
 
   if (ruleIndex === -1) {
@@ -136,7 +141,7 @@ export async function updateRule(
   };
 
   config.rules[ruleIndex] = updatedRule;
-  await saveConfig(config, cwd);
+  await saveConfig(config, cwd, configDir);
 
   return updatedRule;
 }
@@ -145,12 +150,13 @@ export async function updateRule(
  * 清除所有规则（仅清除项目级）
  *
  * @param cwd 当前工作目录（默认 process.cwd()）
+ * @param configDir 配置目录路径
  */
-export async function clearRules(cwd?: string): Promise<void> {
-  const config = await loadRules(cwd);
+export async function clearRules(cwd?: string, configDir?: string): Promise<void> {
+  const config = await loadRules(cwd, undefined, undefined, { configDir });
   // 只清除项目级规则，保留用户级
   config.rules = config.rules.filter(r => r.source === 'user');
-  await saveConfig(config, cwd);
+  await saveConfig(config, cwd, configDir);
 }
 
 /**

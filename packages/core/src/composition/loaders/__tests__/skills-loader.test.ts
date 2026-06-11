@@ -1,13 +1,12 @@
+import os from 'os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
-import { tmpdir } from 'os';
 import { loadSkills } from '../../../modules/skills/loader';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
 
 async function createTempSkillProject(): Promise<{ root: string; skillDir: string }> {
-  const root = path.join(tmpdir(), `thething-skills-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const skillDir = path.join(root, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'skills');
+  const root = path.join(os.tmpdir(), `thething-skills-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const skillDir = path.join(root, '.thething', 'skills');
   const aiSdkDir = path.join(skillDir, 'ai-sdk');
   const shadcnDir = path.join(skillDir, 'shadcn');
 
@@ -48,11 +47,11 @@ describe('Skills Loader Integration', () => {
     }
   });
 
-  it(`loads skills from ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/skills/ when explicit layout dirs are provided`, async () => {
+  it('loads skills from .thething/skills/ when explicit layout dirs are provided', async () => {
     const project = await createTempSkillProject();
     root = project.root;
 
-    const skills = await loadSkills({ cwd: root, dirs: [project.skillDir] });
+    const skills = await loadSkills({ cwd: root, configDir: path.join(os.homedir(), '.thething'), dirs: [project.skillDir] });
 
     // 2 个文件级 skill + 1 个内置 research skill
     expect(skills.length).toBe(3);
@@ -65,7 +64,7 @@ describe('Skills Loader Integration', () => {
     const project = await createTempSkillProject();
     root = project.root;
 
-    const skills = await loadSkills({ cwd: root, dirs: [project.skillDir] });
+    const skills = await loadSkills({ cwd: root, configDir: path.join(os.homedir(), '.thething'), dirs: [project.skillDir] });
     const aiSdkSkill = skills.find(skill => skill.name === 'ai-sdk');
 
     expect(aiSdkSkill).toBeDefined();
@@ -75,7 +74,7 @@ describe('Skills Loader Integration', () => {
   });
 
   it('uses process.cwd() when cwd is omitted', async () => {
-    const skills = await loadSkills();
+    const skills = await loadSkills({ configDir: path.join(os.homedir(), '.thething') });
     expect(Array.isArray(skills)).toBe(true);
   });
 });

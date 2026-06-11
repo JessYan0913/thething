@@ -183,7 +183,7 @@ const FIELD_CONSUMERS: Record<string, string[]> = {
   'behavior.memory.entrypointMaxLines': ['extensions/memory/memdir'],
   'behavior.memory.entrypointMaxBytes': ['extensions/memory/memdir'],
   'layout.resourceRoot': ['context', 'system-prompt/project-context'],
-  'layout.configDirName': ['layout', 'loaders', 'system-prompt/project-context'],
+  'layout.configDir': ['layout', 'loaders', 'system-prompt/project-context'],
   'layout.dataDir': ['context', 'foundation/datastore'],
   'layout.resources': ['loaders'],
   'layout.contextFileNames': ['system-prompt/project-context'],

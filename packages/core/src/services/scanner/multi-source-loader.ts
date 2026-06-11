@@ -11,7 +11,7 @@
 //   parse: (filePath) => parseJsonFile(filePath, MySchema),
 //   getMergeKey: (item) => item.name,
 // });
-// const configs = await loadMyConfig({ cwd, configDirName, homeDir });
+// const configs = await loadMyConfig({ cwd, configDir });
 // ```
 
 import { computeUserConfigDir, computeProjectConfigDir } from '../../primitives/paths/compute';
@@ -41,7 +41,7 @@ export interface MultiSourceLoaderOptions<T extends { source: string }> {
 
 export interface MultiSourceLoaderLoadOptions {
   cwd?: string;
-  configDirName?: string;
+  configDir?: string;
   homeDir?: string;
   /** 显式指定目录（跳过自动计算） */
   dirs?: readonly string[];
@@ -65,8 +65,8 @@ export function createMultiSourceLoader<T extends { source: string }>(
 
   async function load(options?: MultiSourceLoaderLoadOptions): Promise<T[]> {
     const cwd = options?.cwd ?? process.cwd();
-    const configDirName = options?.configDirName ?? '.thething';
-    const homeDir = options?.homeDir ?? (await import('os')).homedir();
+    const configDir = options?.configDir;
+    if (!configDir) throw new Error(`MultiSourceLoader<${subcategory}>: configDir is required`);
 
     // 解析目录
     let dirs: string[];
@@ -74,13 +74,13 @@ export function createMultiSourceLoader<T extends { source: string }>(
 
     if (options?.dirs && options.dirs.length > 0) {
       dirs = [...options.dirs];
-      const userBase = computeUserConfigDir(homeDir, subcategory, configDirName);
+      const userBase = computeUserConfigDir(configDir, subcategory);
       sourceByDir = new Map(
         dirs.map(d => [d, d.startsWith(userBase) ? 'user' : 'project'])
       );
     } else {
-      const userDir = computeUserConfigDir(homeDir, subcategory, configDirName);
-      const projectDir = computeProjectConfigDir(cwd, subcategory, configDirName);
+      const userDir = computeUserConfigDir(configDir, subcategory);
+      const projectDir = computeProjectConfigDir(cwd, subcategory, configDir);
       dirs = [userDir, projectDir];
       sourceByDir = new Map([
         [userDir, 'user'],

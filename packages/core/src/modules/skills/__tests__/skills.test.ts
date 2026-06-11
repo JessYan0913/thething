@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { SkillFrontmatterSchema, DEFAULT_SKILL_LOADER_CONFIG } from '../types';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
 
 // ============================================================
 // Skills Types Tests
@@ -113,7 +112,6 @@ describe('skills-types', () => {
 
   describe('constants', () => {
     it('should have correct default loader config', () => {
-      expect(DEFAULT_SKILL_LOADER_CONFIG.scanDirs).toBeDefined();
       expect(DEFAULT_SKILL_LOADER_CONFIG.maxSkills).toBe(100);
     });
   });

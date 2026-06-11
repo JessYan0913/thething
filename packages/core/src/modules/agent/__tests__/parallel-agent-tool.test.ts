@@ -1,3 +1,5 @@
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createParallelAgentTool } from '../parallel-agent-tool';
 import { AgentRegistry, registerBuiltinAgents } from '..';
@@ -51,6 +53,7 @@ const createMockToolConfig = (
   provider: createMockProvider(),
   agents: [],
   agentRegistry: new AgentRegistry(),
+  configDir: path.join(os.homedir(), '.thething'),
   ...overrides,
 });
 

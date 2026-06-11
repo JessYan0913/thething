@@ -1,15 +1,14 @@
+import os from 'os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
-import { tmpdir } from 'os';
 import { scanAgentDirs, registerBuiltinAgents } from '../index';
 import { AgentRegistry } from '../registry';
 import { resolveAgentRoute } from '../router';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../../primitives/constants';
 
 async function createTempAgentProject(): Promise<{ root: string; agentDir: string }> {
-  const root = path.join(tmpdir(), `thething-agents-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const agentDir = path.join(root, DEFAULT_PROJECT_CONFIG_DIR_NAME, 'agents');
+  const root = path.join(os.tmpdir(), `thething-agents-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const agentDir = path.join(root, '.thething', 'agents');
   await mkdir(agentDir, { recursive: true });
   await writeFile(path.join(agentDir, 'test-agent.md'), `---
 agentType: test-agent
@@ -50,11 +49,11 @@ describe('Agent Loader Integration', () => {
     expect(builtinAgents.some(agent => agent.agentType === 'research')).toBe(true);
   });
 
-  it(`loads custom agents from ${DEFAULT_PROJECT_CONFIG_DIR_NAME}/agents/`, async () => {
+  it('loads custom agents from .thething/agents/', async () => {
     const project = await createTempAgentProject();
     root = project.root;
 
-    const customAgents = await scanAgentDirs(root, { dirs: [project.agentDir] });
+    const customAgents = await scanAgentDirs(root, { dirs: [project.agentDir], configDir: path.join(os.homedir(), '.thething') });
     customAgents.forEach(agent => registry.register(agent));
 
     const testAgent = customAgents.find(agent => agent.agentType === 'test-agent');
@@ -70,7 +69,7 @@ describe('Agent Loader Integration', () => {
     const project = await createTempAgentProject();
     root = project.root;
 
-    const customAgents = await scanAgentDirs(root, { dirs: [project.agentDir] });
+    const customAgents = await scanAgentDirs(root, { dirs: [project.agentDir], configDir: path.join(os.homedir(), '.thething') });
     customAgents.forEach(agent => registry.register(agent));
 
     const route = resolveAgentRoute(

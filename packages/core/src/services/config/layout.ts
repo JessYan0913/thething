@@ -14,10 +14,6 @@
 //
 
 import path from 'path';
-import {
-  DEFAULT_PROJECT_CONFIG_DIR_NAME,
-} from '../../primitives/constants';
-import { resolveHomeDir } from '../../primitives/paths';
 import { PERMISSIONS_FILENAME } from './defaults';
 import { DEFAULT_DB_FILENAME } from '../datastore/constants';
 
@@ -44,20 +40,13 @@ export interface ResourceDirs {
  *
  * @example
  * // 最简场景
- * const layout: LayoutConfig = { resourceRoot: process.cwd() };
- *
- * @example
- * // 替换应用名
- * const layout: LayoutConfig = {
- *   resourceRoot: process.cwd(),
- *   configDirName: '.myapp',
- * };
+ * const layout: LayoutConfig = { resourceRoot: process.cwd(), configDir: path.join(os.homedir(), '.myapp') };
  *
  * @example
  * // 企业部署（数据与代码分离）
  * const layout: LayoutConfig = {
  *   resourceRoot: process.cwd(),
- *   configDirName: '.myapp',
+ *   configDir: '/var/lib/myapp',
  *   dataDir: '/var/lib/myapp/data',
  * };
  */
@@ -69,16 +58,14 @@ export interface LayoutConfig {
   resourceRoot: string;
 
   /**
-   * 配置目录名（相对于 resourceRoot 和用户 home 目录）
+   * 用户配置目录（绝对路径，如 ~/.thething）
    *
    * 这一个字段决定了整个约定体系：
-   *   资源目录：<resourceRoot>/<configDirName>/skills、mcps ...
-   *   用户目录：~/<configDirName>/skills、mcps ...
-   *   数据目录：~/<configDirName>/data（可被 dataDir 覆盖）
-   *
-   * @default '.thething'
+   *   用户级资源目录：<configDir>/skills、mcps ...
+   *   项目级资源目录：<resourceRoot>/<basename(configDir)>/skills、mcps ...
+   *   默认数据目录：<configDir>/data（可被 dataDir 覆盖）
    */
-  configDirName?: string;
+  configDir: string;
 
   /**
    * 运行时数据目录（数据库、工具结果缓存等）
@@ -91,8 +78,8 @@ export interface LayoutConfig {
   /**
    * 各类资源的目录列表（绝对路径，按优先级从低到高排列）
    *
-   * 不传时由 configDirName 自动派生：
-   *   skills: ['~/<configDirName>/skills', '<resourceRoot>/<configDirName>/skills']
+   * 不传时由 configDir 自动派生：
+   *   skills: ['<configDir>/skills', '<resourceRoot>/<basename(configDir)>/skills']
    *
    * 传入时完整替换默认列表（不合并）
    */
@@ -113,7 +100,9 @@ export interface LayoutConfig {
 export interface ResolvedLayout {
   /** 项目根目录 */
   readonly resourceRoot: string;
-  /** 配置目录名 */
+  /** 用户配置目录（绝对路径） */
+  readonly configDir: string;
+  /** 配置目录名（由 configDir 派生，如 .thething） */
   readonly configDirName: string;
   /** 数据目录 */
   readonly dataDir: string;
@@ -140,17 +129,18 @@ export interface ResolvedLayout {
  * @returns 展开后的布局（所有路径已解析为绝对路径）
  *
  * @example
- * const layout = resolveLayout({ resourceRoot: process.cwd() });
- * // layout.configDirName === '.thething'
- * // layout.dataDir === '<cwd>/.thething/data'
+ * const layout = resolveLayout({ resourceRoot: process.cwd(), configDir: path.join(os.homedir(), '.myapp') });
+ * // layout.configDir === '~/.myapp'
+ * // layout.configDirName === '.myapp'
+ * // layout.dataDir === '~/.myapp/data'
  */
 export function resolveLayout(config: LayoutConfig): ResolvedLayout {
-  const { resourceRoot } = config;
-  const configDirName = config.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const { resourceRoot, configDir } = config;
+  const configDirName = path.basename(configDir);
 
   const projectDir = path.join(resourceRoot, configDirName);
-  const userDir = path.join(resolveHomeDir(), configDirName);
-  const dataDir = config.dataDir ?? path.join(userDir, 'data');
+  const userDir = configDir;
+  const dataDir = config.dataDir ?? path.join(configDir, 'data');
 
   const defaultResources: ResourceDirs = {
     skills:      [path.join(userDir, 'skills'),      path.join(projectDir, 'skills')],
@@ -163,11 +153,11 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
 
   return Object.freeze({
     resourceRoot,
+    configDir,
     configDirName,
     dataDir,
     resources: Object.freeze({ ...defaultResources, ...config.resources }),
     contextFileNames: Object.freeze(config.contextFileNames ?? ['THING.md', 'CONTEXT.md']),
-    // 新增：文件名配置
     filenames: Object.freeze({
       permissions: PERMISSIONS_FILENAME,
       db: DEFAULT_DB_FILENAME,

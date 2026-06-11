@@ -1,3 +1,5 @@
+import path from 'path'
+import os from 'os'
 import { getServerRuntime } from '@/lib/runtime';
 import { saveRule, removeRule, loadRules, updateRule, type PermissionBehavior } from '@the-thing/core';
 import { NextResponse } from 'next/server';
@@ -9,10 +11,12 @@ async function getResourceRoot(): Promise<string> {
   return rt.layout.resourceRoot;
 }
 
+const CONFIG_DIR = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething')
+
 export async function GET() {
   try {
     const resourceRoot = await getResourceRoot();
-    const config = await loadRules(resourceRoot);
+    const config = await loadRules(resourceRoot, undefined, undefined, { configDir: CONFIG_DIR });
     return NextResponse.json({ rules: config.rules });
   } catch (error) {
     console.error('[Permissions API] GET error:', error);
@@ -28,7 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing toolName' }, { status: 400 });
     }
     const resourceRoot = await getResourceRoot();
-    const rule = await saveRule({ toolName, pattern, behavior: behavior || 'allow' }, resourceRoot);
+    const rule = await saveRule({ toolName, pattern, behavior: behavior || 'allow' }, resourceRoot, CONFIG_DIR);
     return NextResponse.json({ success: true, rule });
   } catch (error) {
     console.error('[Permissions API] POST error:', error);
@@ -44,7 +48,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     }
     const resourceRoot = await getResourceRoot();
-    await removeRule(id, resourceRoot);
+    await removeRule(id, resourceRoot, CONFIG_DIR);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Permissions API] DELETE error:', error);
@@ -62,7 +66,7 @@ export async function PUT(request: Request) {
     const body = await request.json() as { toolName?: string; pattern?: string; behavior?: PermissionBehavior };
     const { toolName, pattern, behavior } = body;
     const resourceRoot = await getResourceRoot();
-    const rule = await updateRule(id, { toolName, pattern, behavior }, resourceRoot);
+    const rule = await updateRule(id, { toolName, pattern, behavior }, resourceRoot, CONFIG_DIR);
     if (!rule) {
       return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
     }

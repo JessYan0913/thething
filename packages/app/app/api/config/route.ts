@@ -1,13 +1,18 @@
+import path from 'path'
+import os from 'os'
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGlobalConfig, saveGlobalConfig, getGlobalConfigPath } from '@the-thing/core'
 
 export const runtime = 'nodejs'
 
+const GLOBAL_CONFIG_DIR = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething')
+
 export async function GET() {
-  const config = loadGlobalConfig()
+  const config = loadGlobalConfig(GLOBAL_CONFIG_DIR)
   return NextResponse.json({
     apiKey: config?.apiKey ?? '',
     baseURL: config?.baseURL ?? '',
+    configDir: config?.configDir ?? '',
     modelAliases: {
       fast: {
         model: config?.modelAliases?.fast?.model ?? '',
@@ -22,7 +27,7 @@ export async function GET() {
         contextLimit: config?.modelAliases?.default?.contextLimit,
       },
     },
-    path: getGlobalConfigPath(),
+    path: getGlobalConfigPath(GLOBAL_CONFIG_DIR),
   })
 }
 
@@ -31,6 +36,7 @@ export async function PUT(request: NextRequest) {
   const config = {
     apiKey: body.apiKey ?? '',
     baseURL: body.baseURL ?? '',
+    ...(body.configDir ? { configDir: body.configDir } : {}),
     ...(body.modelAliases ? {
       modelAliases: {
         fast: {
@@ -48,6 +54,6 @@ export async function PUT(request: NextRequest) {
       }
     } : {}),
   }
-  saveGlobalConfig(config)
+  saveGlobalConfig(config, GLOBAL_CONFIG_DIR)
   return NextResponse.json({ ok: true })
 }

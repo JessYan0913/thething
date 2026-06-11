@@ -32,7 +32,7 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   // 从 layout.filenames 和 behavior.memory 获取配置参数
   const loadOptions: LoadAllOptions = {
     cwd,
-    configDirName: layout.configDirName,
+    configDir: layout.configDir,
     homeDir,
     env: runtime.env,
     resourceDirs: layout.resources,
@@ -95,7 +95,7 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     logger.debug('AppContext', 'Configuration loaded:');
     logger.debug('AppContext', `  cwd: ${cwd}`);
     logger.debug('AppContext', `  dataDir: ${layout.dataDir}`);
-    logger.debug('AppContext', `  configDirName: ${layout.configDirName}`);
+    logger.debug('AppContext', `  configDir: ${layout.configDir}`);
     logger.debug('AppContext', `  skills: ${loaded.skills.length}`);
     logger.debug('AppContext', `  agents: ${loaded.agents.length}`);
     logger.debug('AppContext', `  mcps: ${loaded.mcps.length}`);

@@ -1,3 +1,5 @@
+import path from 'path'
+import os from 'os'
 import { getServerContext, getServerDataStore, reloadServerContext } from '@/lib/runtime';
 import {
   createAgent,
@@ -206,7 +208,8 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
-    const globalConfig = loadGlobalConfig();
+    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
+    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,

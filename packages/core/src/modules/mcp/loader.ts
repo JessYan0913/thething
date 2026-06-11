@@ -47,14 +47,14 @@ export interface LoadMcpsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
   dirs?: readonly string[];
-  configDirName?: string;
+  configDir?: string;
   homeDir?: string;
 }
 
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
   const items = await mcpsLoader.load({
     cwd: options?.cwd,
-    configDirName: options?.configDirName,
+    configDir: options?.configDir,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
   });
@@ -98,7 +98,7 @@ export interface McpLoaderConfig {
 export async function scanMcpDirs(
   cwd?: string,
   config?: Partial<McpLoaderConfig> & {
-    configDirName?: string;
+    configDir?: string;
     homeDir?: string;
     dirs?: readonly string[];
   },
@@ -106,7 +106,7 @@ export async function scanMcpDirs(
   return loadMcpServers({
     cwd,
     sources: config?.sources as ('user' | 'project')[] | undefined,
-    configDirName: config?.configDirName,
+    configDir: config?.configDir,
     homeDir: config?.homeDir,
     dirs: config?.dirs,
   });

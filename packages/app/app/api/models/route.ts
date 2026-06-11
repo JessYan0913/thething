@@ -1,3 +1,5 @@
+import path from 'path'
+import os from 'os'
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGlobalConfig } from '@the-thing/core'
 
@@ -23,7 +25,8 @@ export async function GET(request: NextRequest) {
   }
 
   // 优先使用参数，其次使用全局配置
-  const globalConfig = loadGlobalConfig()
+  const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
+  const globalConfig = loadGlobalConfig(globalConfigDir)
   const resolvedBaseURL = baseURL || globalConfig?.baseURL
   const resolvedApiKey = apiKey || globalConfig?.apiKey
 

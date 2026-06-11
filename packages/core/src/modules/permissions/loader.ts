@@ -2,16 +2,15 @@
  * 权限配置加载器
  *
  * 配置文件路径:
- * - 用户全局: ~/${configDirName}/permissions/permissions.json
- * - 项目级: 项目/${configDirName}/permissions/permissions.json
+ * - 用户全局: ~/configDir/permissions/permissions.json
+ * - 项目级: 项目/configDir/permissions/permissions.json
  *
  * 优先级: 项目级 > 用户全局
  */
 
 import path from 'path';
 import { parseJsonFile } from '../../primitives/parser';
-import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../primitives/paths';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
+import { computeUserConfigDir, computeProjectConfigDir } from '../../primitives/paths';
 import { PERMISSIONS_FILENAME } from '../../services/config/defaults';
 import type { PermissionConfig, PermissionRule } from './types';
 import { PermissionConfigSchema } from './types';
@@ -29,7 +28,7 @@ function getPermissionDirs(
   cwd: string,
   dirs?: readonly string[],
   options?: {
-    configDirName?: string;
+    configDir?: string;
     homeDir?: string;
   },
 ): string[] {
@@ -37,11 +36,11 @@ function getPermissionDirs(
     return [...dirs];
   }
 
-  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
-  const homeDir = options?.homeDir ?? resolveHomeDir();
+  const configDir = options?.configDir;
+  if (!configDir) throw new Error('getPermissionDirs: configDir is required');
   return [
-    computeUserConfigDir(homeDir, 'permissions', configDirName),
-    computeProjectConfigDir(cwd, 'permissions', configDirName),
+    computeUserConfigDir(configDir, 'permissions'),
+    computeProjectConfigDir(cwd, 'permissions', configDir),
   ];
 }
 
@@ -98,8 +97,7 @@ export async function loadRules(
   filename?: string,
   dirs?: readonly string[],
   options?: {
-    configDirName?: string;
-    homeDir?: string;
+    configDir?: string;
   },
 ): Promise<PermissionConfig> {
   const effectiveCwd = cwd ?? process.cwd();

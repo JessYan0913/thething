@@ -9,7 +9,6 @@ import {
   MEMORY_MD_MAX_LINES,
   MEMORY_MD_MAX_SIZE_KB,
 } from '../../services/config/defaults';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -27,8 +26,8 @@ export interface LoadMemoryOptions {
   cwd?: string;
   /** 显式扫描目录（来自 ResolvedLayout.resources.memory） */
   dirs?: readonly string[];
-  /** 配置目录名（默认 '.thething'） */
-  configDirName?: string;
+  /** 配置目录路径（如 ~/.thething，用于计算默认目录） */
+  configDir?: string;
   /** MEMORY.md 最大行数（来自 BehaviorConfig.memory.mdMaxLines） */
   maxLines?: number;
   /** MEMORY.md 最大大小 KB（来自 BehaviorConfig.memory.mdMaxSizeKb） */
@@ -46,10 +45,11 @@ export interface LoadMemoryOptions {
  */
 export async function loadMemory(options?: LoadMemoryOptions): Promise<MemoryEntry[]> {
   const cwd = options?.cwd ?? process.cwd();
-  const configDirName = options?.configDirName ?? DEFAULT_PROJECT_CONFIG_DIR_NAME;
+  const configDir = options?.configDir;
+  if (!configDir) throw new Error('loadMemory: configDir is required');
   const maxLines = options?.maxLines ?? MEMORY_MD_MAX_LINES;
   const maxSizeKb = options?.maxSizeKb ?? MEMORY_MD_MAX_SIZE_KB;
-  const dirs = options?.dirs ? [...options.dirs] : [computeProjectConfigDir(cwd, 'memory', configDirName)];
+  const dirs = options?.dirs ? [...options.dirs] : [computeProjectConfigDir(cwd, 'memory', configDir)];
 
   const entries: MemoryEntry[] = [];
 

@@ -1,12 +1,12 @@
+import os from 'os';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
-import { tmpdir } from 'os';
 import { describe, expect, it } from 'vitest';
 import { loadAll } from '../index';
 
 describe('resource-aware loaders', () => {
   it('loads skills, agents, permissions, and memory from explicit resource dirs', async () => {
-    const root = path.join(tmpdir(), `thething-resources-${Date.now()}`);
+    const root = path.join(os.tmpdir(), `thething-resources-${Date.now()}`);
     const skillsDir = path.join(root, 'custom-skills');
     const agentDir = path.join(root, 'custom-agents');
     const permissionsDir = path.join(root, 'custom-permissions');
@@ -56,6 +56,7 @@ describe('resource-aware loaders', () => {
 
     const loaded = await loadAll({
       cwd: root,
+      configDir: path.join(os.homedir(), '.thething'),
       resourceDirs: {
         skills: [skillsDir],
         agents: [agentDir],

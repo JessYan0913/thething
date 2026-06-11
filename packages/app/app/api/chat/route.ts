@@ -1,3 +1,5 @@
+import path from 'path'
+import os from 'os'
 import { getServerRuntime, getServerContext } from '@/lib/runtime';
 import { convertFileToText } from '@/lib/file-convert';
 import {
@@ -74,7 +76,8 @@ export async function POST(request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
-    const globalConfig = loadGlobalConfig();
+    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
+    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,

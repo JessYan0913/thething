@@ -1,3 +1,5 @@
+import os from 'os'
+import path from 'path'
 import chalk from 'chalk'
 import * as readline from 'readline'
 import { nanoid } from 'nanoid'
@@ -151,6 +153,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const runtime = await bootstrap({
     layout: {
       resourceRoot: cwd,
+      configDir: path.join(os.homedir(), '.thething'),
       dataDir: dataDirConfig.dataDir,
     },
     env: envSnapshot,

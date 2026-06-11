@@ -54,7 +54,7 @@ export interface LoadSkillsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
   dirs?: readonly string[];
-  configDirName?: string;
+  configDir?: string;
   homeDir?: string;
   builtinDir?: string;
 }
@@ -63,7 +63,7 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
   // 1. 加载文件级 skills（user + project + builtin dir）
   const fileItems = await skillsLoader.load({
     cwd: options?.cwd,
-    configDirName: options?.configDirName,
+    configDir: options?.configDir,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
     builtinDir: options?.builtinDir,

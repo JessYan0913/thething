@@ -12,7 +12,7 @@ import type { ResourceDirs } from '../../services/config/layout';
  */
 export interface ModuleContext {
   cwd: string;
-  configDirName: string;
+  configDir: string;
   homeDir: string;
   env: Record<string, string | undefined>;
   resourceDirs: ResourceDirs;

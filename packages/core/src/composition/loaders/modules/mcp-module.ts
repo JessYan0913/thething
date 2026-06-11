@@ -15,7 +15,7 @@ export function createMcpModule(loadOptions?: LoadMcpsOptions): AppModule<McpSer
     async init(context: ModuleContext): Promise<void> {
       const options: LoadMcpsOptions = {
         cwd: context.cwd,
-        configDirName: context.configDirName,
+        configDir: context.configDir,
         homeDir: context.homeDir,
         dirs: context.resourceDirs.mcps,
         ...loadOptions,

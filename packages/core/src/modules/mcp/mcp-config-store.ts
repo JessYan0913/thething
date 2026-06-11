@@ -1,16 +1,14 @@
 /**
  * MCP 配置存储
  *
- * 注意：使用全局单例 getResolvedConfigDirName() 获取 configDirName，
- * 该值在 bootstrap() 时通过 setResolvedConfigDirName() 设置。
+ * configDir 由调用方从 ResolvedLayout 获取并传入。
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 import { scanMcpDirs } from './loader';
-import { computeUserConfigDir, computeProjectConfigDir, resolveHomeDir } from '../../primitives/paths';
+import { computeUserConfigDir, computeProjectConfigDir } from '../../primitives/paths';
 import type { McpServerConfig, McpServerConfigSource } from './types';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 
 // ============================================================
 // MCP 配置目录
@@ -18,32 +16,26 @@ import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 
 /**
  * 获取用户级 MCP 配置目录
- *
- * 注意：configDirName 从全局单例获取
  */
-export function getUserMcpConfigDir(configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME): string {
-  return computeUserConfigDir(resolveHomeDir(), 'mcps', configDirName);
+export function getUserMcpConfigDir(configDir: string): string {
+  return computeUserConfigDir(configDir, 'mcps');
 }
 
 /**
  * 获取项目级 MCP 配置目录
- *
- * @param cwd 项目目录
- *
- * 注意：configDirName 从全局单例获取
  */
 export function getProjectMcpConfigDir(
   cwd: string,
-  configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME,
+  configDir: string,
 ): string {
-  return computeProjectConfigDir(cwd, 'mcps', configDirName);
+  return computeProjectConfigDir(cwd, 'mcps', configDir);
 }
 
 /**
  * 获取默认 MCP 配置目录（项目级）
  */
-export function getDefaultMcpConfigDir(configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME): string {
-  return getProjectMcpConfigDir(process.cwd(), configDirName);
+export function getDefaultMcpConfigDir(configDir: string): string {
+  return getProjectMcpConfigDir(process.cwd(), configDir);
 }
 
 // ============================================================
@@ -88,14 +80,15 @@ function toSerializable(config: McpServerConfig): Record<string, unknown> {
  *
  * @param data 配置数据
  * @param filePath 文件路径
+ * @param configDir 配置目录路径
  */
 function fromSerializable(
   data: Record<string, unknown>,
   filePath: string,
-  configDirName: string = DEFAULT_PROJECT_CONFIG_DIR_NAME,
+  configDir: string,
 ): McpServerConfigSource {
-  // 使用全局 configDirName 判断来源
-  const userConfigDir = getUserMcpConfigDir(configDirName);
+  // 使用 configDir 判断来源
+  const userConfigDir = getUserMcpConfigDir(configDir);
   const source = filePath.startsWith(userConfigDir) ? 'user' : 'project';
 
   return {
@@ -122,13 +115,15 @@ export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig
  * 获取所有 MCP 服务器配置（带来源信息）
  *
  * @param cwd 项目目录
+ * @param configDir 配置目录路径
  */
-export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpServerConfigSource[]> {
+export async function getMcpServerConfigsWithSource(cwd?: string, configDir?: string): Promise<McpServerConfigSource[]> {
   const effectiveCwd = cwd ?? process.cwd();
+  if (!configDir) throw new Error('getMcpServerConfigsWithSource: configDir is required');
   const configs: McpServerConfigSource[] = [];
   const dirs: string[] = [
-    getUserMcpConfigDir(DEFAULT_PROJECT_CONFIG_DIR_NAME),
-    getProjectMcpConfigDir(effectiveCwd, DEFAULT_PROJECT_CONFIG_DIR_NAME),
+    getUserMcpConfigDir(configDir),
+    getProjectMcpConfigDir(effectiveCwd, configDir),
   ];
 
   for (const dir of dirs) {
@@ -140,7 +135,7 @@ export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpSe
           const filePath = path.join(dir, entry);
           const content = await fs.readFile(filePath, 'utf-8');
           const data = JSON.parse(content) as Record<string, unknown>;
-          configs.push(fromSerializable(data, filePath, DEFAULT_PROJECT_CONFIG_DIR_NAME));
+          configs.push(fromSerializable(data, filePath, configDir));
         } catch {
           // skip corrupted files
         }
@@ -158,9 +153,10 @@ export async function getMcpServerConfigsWithSource(cwd?: string): Promise<McpSe
  *
  * @param name MCP 服务器名称
  * @param cwd 项目目录
+ * @param configDir 配置目录路径
  */
-export async function getMcpServerConfig(name: string, cwd?: string): Promise<McpServerConfig | null> {
-  const configs = await getMcpServerConfigsWithSource(cwd);
+export async function getMcpServerConfig(name: string, cwd?: string, configDir?: string): Promise<McpServerConfig | null> {
+  const configs = await getMcpServerConfigsWithSource(cwd, configDir);
   return configs.find((c) => c.name === name) ?? null;
 }
 
@@ -169,9 +165,10 @@ export async function getMcpServerConfig(name: string, cwd?: string): Promise<Mc
  *
  * @param name MCP 服务器名称
  * @param cwd 项目目录
+ * @param configDir 配置目录路径
  */
-export async function getMcpServerConfigWithSource(name: string, cwd?: string): Promise<McpServerConfigSource | null> {
-  const configs = await getMcpServerConfigsWithSource(cwd);
+export async function getMcpServerConfigWithSource(name: string, cwd?: string, configDir?: string): Promise<McpServerConfigSource | null> {
+  const configs = await getMcpServerConfigsWithSource(cwd, configDir);
   return configs.find((c) => c.name === name) ?? null;
 }
 
@@ -180,16 +177,19 @@ export async function getMcpServerConfigWithSource(name: string, cwd?: string): 
  *
  * @param config MCP 服务器配置
  * @param cwd 当前工作目录
+ * @param configDir 配置目录路径
  * @param targetDir 目标目录类型（'project' 或 'user'）
  */
 export async function addMcpServerConfig(
   config: McpServerConfig,
   cwd?: string,
+  configDir?: string,
   targetDir: 'project' | 'user' = 'project',
 ): Promise<McpServerConfigSource> {
+  if (!configDir) throw new Error('addMcpServerConfig: configDir is required');
   const dir = targetDir === 'user'
-    ? getUserMcpConfigDir()
-    : getProjectMcpConfigDir(cwd ?? process.cwd());
+    ? getUserMcpConfigDir(configDir)
+    : getProjectMcpConfigDir(cwd ?? process.cwd(), configDir);
 
   await ensureDir(dir);
 
@@ -201,7 +201,7 @@ export async function addMcpServerConfig(
   const filePath = configFilePath(dir, config.name);
   await fs.writeFile(filePath, JSON.stringify(toSerializable(config), null, 2), 'utf-8');
 
-  return fromSerializable(toSerializable(config), filePath);
+  return fromSerializable(toSerializable(config), filePath, configDir);
 }
 
 /**
@@ -211,8 +211,9 @@ export async function updateMcpServerConfig(
   name: string,
   updates: Partial<McpServerConfig>,
   cwd?: string,
+  configDir?: string,
 ): Promise<McpServerConfigSource | null> {
-  const existing = await getMcpServerConfigWithSource(name, cwd);
+  const existing = await getMcpServerConfigWithSource(name, cwd, configDir);
   if (!existing) return null;
 
   const merged: McpServerConfig = {
@@ -226,19 +227,23 @@ export async function updateMcpServerConfig(
     await fs.unlink(existing.filePath);
     const newFilePath = configFilePath(path.dirname(existing.filePath), merged.name);
     await fs.writeFile(newFilePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
-    return fromSerializable(toSerializable(merged), newFilePath);
+    return fromSerializable(toSerializable(merged), newFilePath, configDir ?? '');
   }
 
   await fs.writeFile(existing.filePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
 
-  return fromSerializable(toSerializable(merged), existing.filePath);
+  return fromSerializable(toSerializable(merged), existing.filePath, configDir ?? '');
 }
 
 /**
  * 删除 MCP 服务器配置
+ *
+ * @param name MCP 服务器名称
+ * @param cwd 当前工作目录
+ * @param configDir 配置目录路径
  */
-export async function deleteMcpServerConfig(name: string, cwd?: string): Promise<boolean> {
-  const existing = await getMcpServerConfigWithSource(name, cwd);
+export async function deleteMcpServerConfig(name: string, cwd?: string, configDir?: string): Promise<boolean> {
+  const existing = await getMcpServerConfigWithSource(name, cwd, configDir);
   if (!existing) return false;
 
   try {

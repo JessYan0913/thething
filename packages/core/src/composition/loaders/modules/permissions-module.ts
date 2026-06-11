@@ -15,7 +15,7 @@ export function createPermissionsModule(loadOptions?: LoadPermissionsOptions): A
     async init(context: ModuleContext): Promise<void> {
       const options: LoadPermissionsOptions = {
         cwd: context.cwd,
-        configDirName: context.configDirName,
+        configDir: context.configDir,
         homeDir: context.homeDir,
         dirs: context.resourceDirs.permissions,
         ...loadOptions,

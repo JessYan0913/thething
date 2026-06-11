@@ -87,14 +87,14 @@ export interface LoadAgentsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
   dirs?: readonly string[];
-  configDirName?: string;
+  configDir?: string;
   homeDir?: string;
 }
 
 export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefinition[]> {
   return agentsLoader.load({
     cwd: options?.cwd,
-    configDirName: options?.configDirName,
+    configDir: options?.configDir,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
   });
@@ -174,7 +174,7 @@ export async function scanAgentDirs(
   cwd?: string,
   config?: Partial<AgentLoaderConfig> & {
     dirs?: readonly string[];
-    configDirName?: string;
+    configDir?: string;
     homeDir?: string;
   },
 ): Promise<AgentDefinition[]> {
@@ -182,7 +182,7 @@ export async function scanAgentDirs(
     cwd,
     sources: config?.sources,
     dirs: config?.dirs,
-    configDirName: config?.configDirName,
+    configDir: config?.configDir,
     homeDir: config?.homeDir,
   });
 }

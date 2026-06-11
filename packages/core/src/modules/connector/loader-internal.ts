@@ -92,7 +92,7 @@ export interface LoadConnectorsOptions {
   cwd?: string;
   sources?: ConfigSource[];
   dirs?: readonly string[];
-  configDirName?: string;
+  configDir?: string;
   homeDir?: string;
   env?: Record<string, string | undefined>;
 }
@@ -102,7 +102,7 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
 
   const items = await connectorsLoader.load({
     cwd: options?.cwd,
-    configDirName: options?.configDirName,
+    configDir: options?.configDir,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
   });

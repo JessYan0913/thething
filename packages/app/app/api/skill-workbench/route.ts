@@ -11,6 +11,7 @@ import {
   createUIMessageStreamResponse,
   type UIMessage,
 } from 'ai';
+import os from 'os';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
@@ -152,7 +153,8 @@ export async function POST(request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
-    const globalConfig = loadGlobalConfig();
+    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
+    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,

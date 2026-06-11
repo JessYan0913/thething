@@ -244,6 +244,7 @@ function createHandler(): { handler: AgentInboundHandler; store: DataStore } {
   const store = createStore()
   const layout = resolveLayout({
     resourceRoot: process.cwd(),
+    configDir: path.join(os.homedir(), '.thething'),
     dataDir: '/tmp/test-data',
   })
   const behavior = buildBehaviorConfig()

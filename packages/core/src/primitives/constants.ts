@@ -18,18 +18,6 @@
 /** Bytes per Token 估算 */
 export const BYTES_PER_TOKEN = 4;
 
-// ============================================================
-// 命名常量
-// ============================================================
-
-/**
- * 默认项目配置目录名称
- *
- * 这是纯命名常量，不涉及业务逻辑。
- * 业务层可通过 resolveLayout() 覆盖此值。
- */
-export const DEFAULT_PROJECT_CONFIG_DIR_NAME = '.thething';
-
 /** 自动压缩缓冲区（参考 Claude Code: 13,000） */
 export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
 

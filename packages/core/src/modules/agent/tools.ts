@@ -112,7 +112,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     modelAliases: config.modelAliases,
     agents: customAgents,
     agentRegistry,
-    configDirName: config.sessionState.layout.configDirName,
+    configDir: config.sessionState.layout.configDir,
     dynamicReload: config.dynamicReload ?? false,
   }
 

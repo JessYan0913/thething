@@ -8,6 +8,7 @@
 // 3. sourcePath/filePath 能反映真实加载路径
 // 4. 默认行为在未传自定义目录时保持兼容
 
+import os from 'os';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
@@ -130,7 +131,7 @@ describe('resource-dirs verification', () => {
       await mkdir(customDir, { recursive: true });
       await createSkillFile(customDir, 'test-skill', 'Test skill from custom dir');
 
-      const result = await loadSkills({ cwd: testRoot, dirs: [customDir] });
+      const result = await loadSkills({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
       expect(result.some(s => s.name === 'test-skill')).toBe(true);
       expect(result.every(s => s.sourcePath?.includes('custom-skills') || s.sourcePath?.includes('test-skill'))).toBe(true);
     });
@@ -140,7 +141,7 @@ describe('resource-dirs verification', () => {
       await mkdir(customDir, { recursive: true });
       await createAgentFile(customDir, 'test-agent', 'Test agent from custom dir');
 
-      const result = await loadAgents({ cwd: testRoot, dirs: [customDir] });
+      const result = await loadAgents({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
       expect(result.some(a => a.agentType === 'test-agent')).toBe(true);
       expect(result.some(a => a.filePath?.includes('custom-agents'))).toBe(true);
     });
@@ -150,7 +151,7 @@ describe('resource-dirs verification', () => {
       await mkdir(customDir, { recursive: true });
       await createMcpJson(customDir, 'test-mcp', 'node');
 
-      const result = await loadMcpServers({ cwd: testRoot, dirs: [customDir] });
+      const result = await loadMcpServers({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
       expect(result.some(m => m.name === 'test-mcp')).toBe(true);
       expect(result.some(m => m.sourcePath?.includes('custom-mcps'))).toBe(true);
     });
@@ -160,7 +161,7 @@ describe('resource-dirs verification', () => {
       await mkdir(customDir, { recursive: true });
       await createConnectorYaml(customDir, 'test-connector', 'Test Connector');
 
-      const result = await loadConnectors({ cwd: testRoot, dirs: [customDir] });
+      const result = await loadConnectors({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
       expect(result.some(c => c.id === 'test-connector')).toBe(true);
       expect(result.some(c => c.sourcePath?.includes('custom-connectors'))).toBe(true);
     });
@@ -170,7 +171,7 @@ describe('resource-dirs verification', () => {
       await mkdir(customDir, { recursive: true });
       await createPermissionsJson(customDir, 'allow-read', 'read_file', 'allow');
 
-      const result = await loadPermissions({ cwd: testRoot, dirs: [customDir] });
+      const result = await loadPermissions({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
       expect(result.some(p => p.id === 'allow-read')).toBe(true);
       expect(result.some(p => p.filePath?.includes('custom-permissions'))).toBe(true);
     });
@@ -179,7 +180,7 @@ describe('resource-dirs verification', () => {
       const customDir = path.join(testRoot, 'custom-memory');
       await createMemoryMd(customDir, 'custom memory content');
 
-      const result = await loadMemory({ cwd: testRoot, dirs: [customDir] });
+      const result = await loadMemory({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
       expect(result.some(m => m.content === 'custom memory content')).toBe(true);
       expect(result.some(m => m.filePath?.includes('custom-memory'))).toBe(true);
     });
@@ -193,7 +194,7 @@ describe('resource-dirs verification', () => {
       await mkdir(skillDir, { recursive: true });
       await createSkillFile(skillDir, 'skill-in-default', 'Should NOT be loaded');
 
-      const loaded = await loadAll({
+      const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'),
         cwd: testRoot,
         resourceDirs: {
           skills: [],
@@ -218,7 +219,7 @@ describe('resource-dirs verification', () => {
       await mkdir(skillDir, { recursive: true });
       await createSkillFile(skillDir, 'custom-skill', 'From custom dir');
 
-      const loaded = await loadAll({
+      const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'),
         cwd: testRoot,
         resourceDirs: {
           skills: [skillDir],
@@ -244,7 +245,7 @@ describe('resource-dirs verification', () => {
       await mkdir(skillDir, { recursive: true });
       const filePath = await createSkillFile(skillDir, 'path-skill', 'Path tracking skill');
 
-      const result = await loadSkills({ cwd: testRoot, dirs: [skillDir] });
+      const result = await loadSkills({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [skillDir] });
       const skill = result.find(s => s.name === 'path-skill');
       expect(skill).toBeDefined();
       expect(skill!.sourcePath).toBe(filePath);
@@ -255,7 +256,7 @@ describe('resource-dirs verification', () => {
       await mkdir(agentDir, { recursive: true });
       const filePath = await createAgentFile(agentDir, 'path-agent', 'Path tracking agent');
 
-      const result = await loadAgents({ cwd: testRoot, dirs: [agentDir] });
+      const result = await loadAgents({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [agentDir] });
       const agent = result.find(a => a.agentType === 'path-agent');
       expect(agent).toBeDefined();
       expect(agent!.filePath).toBe(filePath);
@@ -266,7 +267,7 @@ describe('resource-dirs verification', () => {
       await mkdir(mcpDir, { recursive: true });
       const filePath = await createMcpJson(mcpDir, 'path-mcp', 'node');
 
-      const result = await loadMcpServers({ cwd: testRoot, dirs: [mcpDir] });
+      const result = await loadMcpServers({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [mcpDir] });
       const mcp = result.find(m => m.name === 'path-mcp');
       expect(mcp).toBeDefined();
       expect(mcp!.sourcePath).toBe(filePath);
@@ -277,7 +278,7 @@ describe('resource-dirs verification', () => {
       await mkdir(connDir, { recursive: true });
       const filePath = await createConnectorYaml(connDir, 'path-conn', 'Path Connector');
 
-      const result = await loadConnectors({ cwd: testRoot, dirs: [connDir] });
+      const result = await loadConnectors({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [connDir] });
       const conn = result.find(c => c.id === 'path-conn');
       expect(conn).toBeDefined();
       expect(conn!.sourcePath).toBe(filePath);
@@ -288,7 +289,7 @@ describe('resource-dirs verification', () => {
       await mkdir(permDir, { recursive: true });
       const filePath = await createPermissionsJson(permDir, 'path-rule', 'write_file', 'deny');
 
-      const result = await loadPermissions({ cwd: testRoot, dirs: [permDir] });
+      const result = await loadPermissions({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [permDir] });
       const rule = result.find(p => p.id === 'path-rule');
       expect(rule).toBeDefined();
       expect(rule!.filePath).toBe(filePath);
@@ -298,7 +299,7 @@ describe('resource-dirs verification', () => {
       const memDir = path.join(testRoot, 'mem-dir');
       const filePath = await createMemoryMd(memDir, 'memory path tracking');
 
-      const result = await loadMemory({ cwd: testRoot, dirs: [memDir] });
+      const result = await loadMemory({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [memDir] });
       const mem = result.find(m => m.content === 'memory path tracking');
       expect(mem).toBeDefined();
       expect(mem!.filePath).toBe(filePath);
@@ -310,38 +311,38 @@ describe('resource-dirs verification', () => {
   describe('criterion 4: default behavior without custom dirs', () => {
     it('loadSkills without dirs falls back to sources', async () => {
       // When no dirs are provided, sources determines default dirs
-      const result = await loadSkills({ cwd: testRoot, sources: ['project'] });
+      const result = await loadSkills({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), sources: ['project'] });
       // Should not crash, may return empty if project skills dir doesn't exist
       expect(Array.isArray(result)).toBe(true);
     });
 
     it('loadAgents without dirs falls back to sources', async () => {
-      const result = await loadAgents({ cwd: testRoot, sources: ['project'] });
+      const result = await loadAgents({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), sources: ['project'] });
       expect(Array.isArray(result)).toBe(true);
     });
 
     it('loadMcpServers without dirs falls back to sources', async () => {
-      const result = await loadMcpServers({ cwd: testRoot, sources: ['project'] });
+      const result = await loadMcpServers({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), sources: ['project'] });
       expect(Array.isArray(result)).toBe(true);
     });
 
     it('loadConnectors without dirs falls back to sources', async () => {
-      const result = await loadConnectors({ cwd: testRoot, sources: ['project'] });
+      const result = await loadConnectors({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), sources: ['project'] });
       expect(Array.isArray(result)).toBe(true);
     });
 
     it('loadPermissions without dirs falls back to default dirs', async () => {
-      const result = await loadPermissions({ cwd: testRoot });
+      const result = await loadPermissions({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething') });
       expect(Array.isArray(result)).toBe(true);
     });
 
     it('loadMemory without dirs falls back to project dir', async () => {
-      const result = await loadMemory({ cwd: testRoot });
+      const result = await loadMemory({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething') });
       expect(Array.isArray(result)).toBe(true);
     });
 
     it('loadAll without resourceDirs uses defaults', async () => {
-      const loaded = await loadAll({ cwd: testRoot });
+      const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'), cwd: testRoot });
       expect(Array.isArray(loaded.skills)).toBe(true);
       expect(Array.isArray(loaded.agents)).toBe(true);
       expect(Array.isArray(loaded.mcps)).toBe(true);
@@ -363,7 +364,7 @@ describe('resource-dirs verification', () => {
       await createSkillFile(dir2, 'shared-skill', 'High priority description');
 
       // Load with both dirs (later dirs have higher priority in merge)
-      const result = await loadSkills({ cwd: testRoot, dirs: [dir1, dir2] });
+      const result = await loadSkills({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [dir1, dir2] });
       const skill = result.find(s => s.name === 'shared-skill');
       expect(skill).toBeDefined();
       expect(skill!.description).toBe('High priority description');
@@ -390,7 +391,7 @@ describe('resource-dirs verification', () => {
       await createConnectorYaml(connDir, 'dist-conn', 'Distributed Connector');
       await createPermissionsJson(permDir, 'dist-rule', 'bash', 'allow');
 
-      const loaded = await loadAll({
+      const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'),
         cwd: testRoot,
         resourceDirs: {
           skills: [skillDir],

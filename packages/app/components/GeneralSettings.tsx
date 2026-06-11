@@ -1,14 +1,20 @@
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import {
+  FolderIcon,
   PaletteIcon,
   LanguagesIcon,
   CheckIcon,
   ChevronDownIcon,
+  SaveIcon,
+  RefreshCwIcon,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 
 // ============================================================
 // SettingRow — 通用设置行：左侧图标+标题+描述，右侧控件
@@ -160,6 +166,122 @@ function LanguageSelect() {
 }
 
 // ============================================================
+// ConfigDirSetting — 自定义配置目录
+// ============================================================
+
+function ConfigDirSetting() {
+  const { t } = useTranslation('settings')
+  const [configDir, setConfigDir] = useState('')
+  const [origConfigDir, setOrigConfigDir] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+
+  const loadConfigDir = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/config')
+      if (res.ok) {
+        const data = await res.json()
+        setConfigDir(data.configDir || '')
+        setOrigConfigDir(data.configDir || '')
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadConfigDir()
+  }, [loadConfigDir])
+
+  const handleSave = useCallback(async () => {
+    if (!configDir.trim()) return
+    setIsSaving(true)
+    setSaveStatus('idle')
+    try {
+      const res = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configDir: configDir.trim() }),
+      })
+      if (res.ok) {
+        setOrigConfigDir(configDir.trim())
+        setSaveStatus('success')
+        setTimeout(() => setSaveStatus('idle'), 3000)
+      } else {
+        setSaveStatus('error')
+      }
+    } catch {
+      setSaveStatus('error')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [configDir])
+
+  const hasChanged = configDir !== origConfigDir
+
+  return (
+    <>
+      <Separator />
+      <div className="px-4 py-2 border-b bg-muted/30">
+        <span className="text-xs font-medium text-muted-foreground">
+          配置目录
+        </span>
+      </div>
+      <div className="flex items-center gap-4 px-4 py-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <FolderIcon className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-sm font-medium">自定义路径</span>
+            <p className="text-xs text-muted-foreground truncate">
+              修改后需重启应用生效。留空则默认 ~/.thething
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <div className="relative">
+            <Input
+              type="text"
+              value={configDir}
+              onChange={(e) => setConfigDir(e.target.value)}
+              className="font-mono text-xs w-72 pr-6"
+              disabled={isLoading}
+              placeholder="~/.thething"
+            />
+            {saveStatus === 'success' && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs">✓</span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 text-xs">✗</span>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadConfigDir}
+            disabled={isLoading}
+            className="h-8 w-8 p-0"
+          >
+            <RefreshCwIcon className={`size-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+          {hasChanged && (
+            <Button size="sm" onClick={handleSave} disabled={isSaving || !configDir.trim()}>
+              <SaveIcon className="size-3.5 mr-1" />
+              保存
+            </Button>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ============================================================
 // GeneralSettings — 通用设置页面
 // ============================================================
 
@@ -197,6 +319,8 @@ export default function GeneralSettings() {
           >
             <LanguageSelect />
           </SettingRow>
+
+          <ConfigDirSetting />
           </div>
         </div>
       </div>

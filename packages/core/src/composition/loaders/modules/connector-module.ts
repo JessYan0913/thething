@@ -15,7 +15,7 @@ export function createConnectorModule(loadOptions?: LoadConnectorsOptions): AppM
     async init(context: ModuleContext): Promise<void> {
       const options: LoadConnectorsOptions = {
         cwd: context.cwd,
-        configDirName: context.configDirName,
+        configDir: context.configDir,
         homeDir: context.homeDir,
         dirs: context.resourceDirs.connectors,
         env: context.env,

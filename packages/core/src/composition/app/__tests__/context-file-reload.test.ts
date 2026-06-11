@@ -1,3 +1,4 @@
+import os from 'os';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import path from 'path';
 import { tmpdir } from 'os';
@@ -41,7 +42,7 @@ describe('context file reload semantics', () => {
 
     const context = await loadProjectContext(root, {
       contextFileNames: ['CUSTOM.md'],
-      configDirName: '.test',
+      configDir: path.join(os.homedir(), '.test'),
     });
 
     expect(context.combinedContent).toContain('custom project context');
@@ -56,7 +57,7 @@ describe('context file reload semantics', () => {
     });
 
     const context = await loadProjectContext(root, {
-      configDirName: '.test',
+      configDir: path.join(os.homedir(), '.test'),
     });
 
     expect(context.combinedContent).toContain('thing context');
@@ -70,6 +71,7 @@ describe('context file reload semantics', () => {
       layout: {
         resourceRoot: path.join(tmpdir(), `thething-bootstrap-${Date.now()}`),
         dataDir: customDataDir,
+        configDir: path.join(os.homedir(), '.thething'),
       },
     });
 
@@ -87,6 +89,7 @@ describe('context file reload semantics', () => {
     const layout = resolveLayout({
       resourceRoot: '/project',
       contextFileNames: ['README.md', 'GUIDE.md'],
+      configDir: path.join(os.homedir(), '.thething'),
     });
 
     expect(layout.contextFileNames).toEqual(['README.md', 'GUIDE.md']);
@@ -101,17 +104,17 @@ describe('context file reload semantics', () => {
 
     await loadProjectContext(root, {
       contextFileNames: ['CUSTOM.md'],
-      configDirName: '.test',
+      configDir: path.join(os.homedir(), '.test'),
     });
 
     expect(getCachedProjectContext(root, {
       contextFileNames: ['CUSTOM.md'],
-      configDirName: '.test',
+      configDir: path.join(os.homedir(), '.test'),
     })).toContain('custom cached content');
 
     expect(getCachedProjectContext(root, {
       contextFileNames: ['THING.md'],
-      configDirName: '.test',
+      configDir: path.join(os.homedir(), '.test'),
     })).toBeNull();
   });
 });

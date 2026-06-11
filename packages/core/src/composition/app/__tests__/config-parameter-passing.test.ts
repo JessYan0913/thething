@@ -1,3 +1,5 @@
+import os from 'os';
+import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildBehaviorConfig } from '../../../services/config/behavior';
 import { resolveLayout } from '../../../services/config/layout';
@@ -20,6 +22,7 @@ function createMockLayout() {
     resourceRoot: '/tmp/test-project',
     dataDir: '/tmp/test-data',
     contextFileNames: ['THING.md'],
+    configDir: path.join(os.homedir(), '.thething'),
   });
 }
 

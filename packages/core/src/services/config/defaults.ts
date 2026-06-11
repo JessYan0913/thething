@@ -5,7 +5,7 @@
 // 本文件仅包含业务配置默认值，供 buildBehaviorConfig() 和 resolveLayout() 使用。
 //
 // 纯技术常量已迁移到：
-//   - foundation/constants.ts     （BYTES_PER_TOKEN、DEFAULT_PROJECT_CONFIG_DIR_NAME 等）
+//   - foundation/constants.ts     （BYTES_PER_TOKEN 等）
 //   - foundation/model/constants.ts （DEFAULT_CONTEXT_LIMIT、DEFAULT_OUTPUT_TOKENS）
 //   - foundation/datastore/constants.ts（DEFAULT_DATA_DIR、DEFAULT_DB_FILENAME）
 //
@@ -38,7 +38,6 @@ export const COMPACT_TOKEN_THRESHOLD = 25_000;
 /** 默认 Skills 加载配置 */
 export const DEFAULT_SKILL_LOADER_CONFIG = {
   cwd: undefined,
-  scanDirs: ['.thething/skills'],
   maxSkills: 100,
   enableUsageTracking: true,
 };

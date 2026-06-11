@@ -9,15 +9,23 @@ let initPromise: Promise<CoreRuntime> | null = null;
 
 async function initializeRuntime(): Promise<CoreRuntime> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env };
-  const globalConfig = loadGlobalConfig();
+
+  // Stage 1: 从默认位置读取自定义配置目录
+  const defaultGlobalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
+  const bootConfig = loadGlobalConfig(defaultGlobalConfigDir);
+  const configDir = bootConfig?.configDir || defaultGlobalConfigDir;
+
+  // Stage 2: 用真实的 configDir 加载全部配置
+  const globalConfig = loadGlobalConfig(configDir);
 
   runtime = await bootstrap({
     layout: {
       resourceRoot: process.cwd(),
-      dataDir: process.env.THETHING_DATA_DIR,
+      configDir,
+      dataDir: process.env.THETHING_DATA_DIR || path.join(configDir, 'data'),
     },
     connectorConfig: {
-      configDir: path.join(os.homedir(), '.thething', 'connectors'),
+      configDir: path.join(configDir, 'connectors'),
     },
     behavior: {
       modelAliases: {

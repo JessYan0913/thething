@@ -2,6 +2,7 @@
 // DB Command - Database management
 // ============================================================
 
+import os from 'os'
 import chalk from 'chalk'
 import fs from 'fs'
 import path from 'path'
@@ -59,6 +60,7 @@ export async function dbBackup(backupPath: string): Promise<void> {
   const runtime = await bootstrap({
     layout: {
       resourceRoot: cwd,
+      configDir: path.join(os.homedir(), '.thething'),
       dataDir: dataDirConfig.dataDir,
     },
     env: envSnapshot,

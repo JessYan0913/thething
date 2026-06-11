@@ -78,8 +78,8 @@ export interface LoadAllOptions {
   cwd?: string;
   /** 已解析的资源目录（可选，直接使用而不重新计算） */
   resourceDirs?: ResourceDirs;
-  /** 配置目录名（用于未显式传 dirs 的 loader） */
-  configDirName?: string;
+  /** 配置目录路径（如 ~/.thething，用于未显式传 dirs 的 loader） */
+  configDir?: string;
   /** 用户 home 目录 */
   homeDir?: string;
   /** 环境变量快照 */
@@ -115,10 +115,12 @@ export type LoadedData = LoadAllResult;
  */
 export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> {
   const cwd = options?.cwd ?? process.cwd();
+  const configDir = options?.configDir;
+  if (!configDir) throw new Error('loadAll: configDir is required');
 
   const moduleContext: ModuleContext = {
     cwd,
-    configDirName: options?.configDirName ?? '.thething',
+    configDir,
     homeDir: options?.homeDir ?? process.env.HOME ?? process.cwd(),
     env: options?.env ?? {},
     resourceDirs: options?.resourceDirs ?? {

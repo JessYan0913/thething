@@ -15,7 +15,7 @@ export function createAgentsModule(loadOptions?: LoadAgentsOptions): AppModule<A
     async init(context: ModuleContext): Promise<void> {
       const options: LoadAgentsOptions = {
         cwd: context.cwd,
-        configDirName: context.configDirName,
+        configDir: context.configDir,
         homeDir: context.homeDir,
         dirs: context.resourceDirs.agents,
         ...loadOptions,

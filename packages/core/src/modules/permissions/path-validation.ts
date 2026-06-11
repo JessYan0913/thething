@@ -5,7 +5,6 @@
  */
 
 import * as path from 'path';
-import { DEFAULT_PROJECT_CONFIG_DIR_NAME } from '../../primitives/constants';
 import type { PathValidationOptions, PathValidationResult } from './types';
 
 // 敏感路径列表 - 任何模式下都不可绕过
@@ -49,7 +48,7 @@ function isSameOrDescendant(filePath: string, parentPath: string): boolean {
   return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
-function resolveValidationOptions(input?: PathValidationInput): Required<PathValidationOptions> {
+function resolveValidationOptions(input?: PathValidationInput): { workingDir: string; extraSensitivePaths: readonly string[]; configDir?: string } {
   if (typeof input === 'string') {
     return {
       workingDir: input,
@@ -60,6 +59,7 @@ function resolveValidationOptions(input?: PathValidationInput): Required<PathVal
   return {
     workingDir: input?.workingDir ?? process.cwd(),
     extraSensitivePaths: input?.extraSensitivePaths ?? [],
+    configDir: input?.configDir,
   };
 }
 
@@ -224,12 +224,16 @@ export function validateWritePath(
 
   // 写入操作额外检查：不允许写入某些关键配置
   const basename = path.basename(filePath);
+  const opts = resolveValidationOptions(options);
+
+  // 动态生成受保护的文件列表（configDir 来自配置）
   const protectedWriteFiles = [
     'package.json',
     'tsconfig.json',
     '.gitignore',
-    `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/settings.json`,
-    `${DEFAULT_PROJECT_CONFIG_DIR_NAME}/settings.local.json`,
+    ...(opts.configDir
+      ? [`${opts.configDir}/settings.json`, `${opts.configDir}/settings.local.json`]
+      : []),
   ];
 
   for (const protectedFile of protectedWriteFiles) {

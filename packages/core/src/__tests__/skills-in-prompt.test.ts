@@ -1,3 +1,4 @@
+import os from 'os';
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
 import { loadSkills } from '../modules/skills/loader';
@@ -11,7 +12,7 @@ describe('Skills Mechanism (Skill Tool Approach)', () => {
 
   it('should load skills successfully', async () => {
     const cwd = path.resolve(process.cwd(), '../../');
-    const skills = await loadSkills({ cwd });
+    const skills = await loadSkills({ cwd, configDir: path.join(os.homedir(), '.thething') });
 
     console.log('Skills loaded:', skills.length);
     skills.forEach(s => console.log(`  - ${s.name} (${s.source})`));
@@ -29,7 +30,7 @@ describe('Skills Mechanism (Skill Tool Approach)', () => {
 
   it('should NOT include skills in system prompt (skills now via Skill tool)', async () => {
     const cwd = path.resolve(process.cwd(), '../../');
-    const skills = await loadSkills({ cwd });
+    const skills = await loadSkills({ cwd, configDir: path.join(os.homedir(), '.thething') });
 
     const result = await buildSystemPrompt({
       skills,
@@ -46,7 +47,7 @@ describe('Skills Mechanism (Skill Tool Approach)', () => {
 
   it('should format skill listing for Skill tool usage', async () => {
     const cwd = path.resolve(process.cwd(), '../../');
-    const skills = await loadSkills({ cwd });
+    const skills = await loadSkills({ cwd, configDir: path.join(os.homedir(), '.thething') });
 
     if (skills.length === 0) {
       console.log('No skills found, skipping skill listing test');
