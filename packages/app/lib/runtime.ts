@@ -40,6 +40,11 @@ async function initializeRuntime(): Promise<CoreRuntime> {
 
   context = await createContext({ runtime });
 
+  // 启动时主动连接所有 MCP 服务，保持与运行时一致的状态
+  if (context.mcpRegistry) {
+    await context.mcpRegistry.connectAll().catch(() => {});
+  }
+
   // Wire up connector inbound: bind AI agent handler to Feishu/WeChat webhooks
   configureConnectorInboundRuntime(runtime.connectorRuntime, {
     appContext: context,

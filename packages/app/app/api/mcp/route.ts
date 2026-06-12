@@ -1,4 +1,4 @@
-import { getServerRuntime } from '@/lib/runtime';
+import { getServerRuntime, getServerContext } from '@/lib/runtime';
 import {
   getMcpServerConfigs,
   getMcpServerConfig,
@@ -34,6 +34,17 @@ export async function GET(request: Request) {
       }
 
       if (connect) {
+        // 优先查共享 registry 的实时状态（已在启动时连接）
+        const context = await getServerContext();
+        if (context.mcpRegistry) {
+          const snap = context.mcpRegistry.snapshot();
+          const serverSnap = snap.servers.find(s => s.name === name);
+          if (serverSnap) {
+            return NextResponse.json({ config, snapshot: { servers: [serverSnap], totalTools: snap.totalTools } });
+          }
+        }
+
+        // 不在共享 registry 中（如新建的服务器），创建临时连接测试
         const registry = createMcpRegistry([config]);
         try {
           await registry.connectAll();
@@ -56,7 +67,17 @@ export async function GET(request: Request) {
     }
 
     const configs = await getMcpServerConfigs(resourceRoot, configDir);
-    return NextResponse.json({ servers: configs });
+
+    // 合并共享 registry 的快照，让管理页面显示真实连接状态
+    let snapshot = null;
+    try {
+      const context = await getServerContext();
+      if (context.mcpRegistry) {
+        snapshot = context.mcpRegistry.snapshot();
+      }
+    } catch {}
+
+    return NextResponse.json({ servers: configs, snapshot });
   } catch (error) {
     console.error('[MCP API] GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

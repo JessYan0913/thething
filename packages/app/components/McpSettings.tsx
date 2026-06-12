@@ -29,7 +29,7 @@ interface McpServerView {
   error: string | null
 }
 
-function configToView(config: Record<string, unknown>): McpServerView {
+function configToView(config: Record<string, unknown>, snapshotEntry?: { connected: boolean; toolCount: number; error?: string }): McpServerView {
   const transport = config.transport as Record<string, unknown>
   const type = (transport?.type ?? 'stdio') as McpServerView['transportType']
   return {
@@ -41,9 +41,9 @@ function configToView(config: Record<string, unknown>): McpServerView {
     url: (type === 'sse' || type === 'http' ? ((transport?.url ?? '') as string) : '') as string,
     headers: ((type === 'sse' || type === 'http') && transport?.headers ? JSON.stringify(transport.headers, null, 2) : '') as string,
     enabled: (config.enabled ?? true) as boolean,
-    status: 'disconnected',
-    toolCount: 0,
-    error: null,
+    status: snapshotEntry ? (snapshotEntry.connected ? 'connected' : 'error') : 'disconnected',
+    toolCount: snapshotEntry?.toolCount ?? 0,
+    error: snapshotEntry?.error ?? null,
   }
 }
 
@@ -64,7 +64,10 @@ export default function McpSettingsPage() {
       if (res.ok) {
         const data = await res.json()
         const configs = (data.servers ?? []) as Record<string, unknown>[]
-        setServers(configs.map(configToView))
+        const snapshotServers = (data.snapshot?.servers ?? []) as Array<{ name: string; connected: boolean; toolCount: number; error?: string }>
+        setServers(configs.map((c: Record<string, unknown>) =>
+          configToView(c, snapshotServers.find((s: { name: string }) => s.name === c.name)),
+        ))
       }
     } catch {
       setServers([])
