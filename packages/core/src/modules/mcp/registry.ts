@@ -127,11 +127,18 @@ export class McpRegistry {
   snapshot(): McpRegistrySnapshot {
     const servers = this._servers.map((s) => {
       const conn = this._connections.get(s.name);
+      const tools = conn
+        ? Object.entries(conn.tools).map(([name, tool]) => ({
+            name,
+            description: (tool as { description?: string }).description,
+          }))
+        : [];
       return {
         name: s.name,
         enabled: s.enabled !== false,
         connected: !!conn && !conn.error,
-        toolCount: conn ? Object.keys(conn.tools).length : 0,
+        toolCount: tools.length,
+        tools,
         error: conn?.error?.message,
       };
     });

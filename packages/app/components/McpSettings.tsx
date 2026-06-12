@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon } from 'lucide-react'
+import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -26,10 +26,11 @@ interface McpServerView {
   enabled: boolean
   status: 'connected' | 'disconnected' | 'error'
   toolCount: number
+  tools: Array<{ name: string; description?: string }>
   error: string | null
 }
 
-function configToView(config: Record<string, unknown>, snapshotEntry?: { connected: boolean; toolCount: number; error?: string }): McpServerView {
+function configToView(config: Record<string, unknown>, snapshotEntry?: { connected: boolean; toolCount: number; tools?: Array<{ name: string; description?: string }>; error?: string }): McpServerView {
   const transport = config.transport as Record<string, unknown>
   const type = (transport?.type ?? 'stdio') as McpServerView['transportType']
   return {
@@ -43,6 +44,7 @@ function configToView(config: Record<string, unknown>, snapshotEntry?: { connect
     enabled: (config.enabled ?? true) as boolean,
     status: snapshotEntry ? (snapshotEntry.connected ? 'connected' : 'error') : 'disconnected',
     toolCount: snapshotEntry?.toolCount ?? 0,
+    tools: snapshotEntry?.tools ?? [],
     error: snapshotEntry?.error ?? null,
   }
 }
@@ -64,7 +66,7 @@ export default function McpSettingsPage() {
       if (res.ok) {
         const data = await res.json()
         const configs = (data.servers ?? []) as Record<string, unknown>[]
-        const snapshotServers = (data.snapshot?.servers ?? []) as Array<{ name: string; connected: boolean; toolCount: number; error?: string }>
+        const snapshotServers = (data.snapshot?.servers ?? []) as Array<{ name: string; connected: boolean; toolCount: number; tools?: Array<{ name: string; description?: string }>; error?: string }>
         setServers(configs.map((c: Record<string, unknown>) =>
           configToView(c, snapshotServers.find((s: { name: string }) => s.name === c.name)),
         ))
@@ -147,11 +149,11 @@ export default function McpSettingsPage() {
       const res = await fetch(`/api/mcp?name=${encodeURIComponent(name)}&connect=true`)
       if (res.ok) {
         const data = await res.json()
-        const snapshot = data.snapshot as { servers: Array<{ name: string; connected: boolean; toolCount: number; error?: string }> }
+        const snapshot = data.snapshot as { servers: Array<{ name: string; connected: boolean; toolCount: number; tools?: Array<{ name: string; description?: string }>; error?: string }> }
         setServers((prev) =>
           prev.map((s) =>
             s.name === name
-              ? { ...s, status: snapshot.servers[0]?.connected ? 'connected' : 'error', toolCount: snapshot.servers[0]?.toolCount ?? 0, error: snapshot.servers[0]?.error ?? null }
+              ? { ...s, status: snapshot.servers[0]?.connected ? 'connected' : 'error', toolCount: snapshot.servers[0]?.toolCount ?? 0, tools: snapshot.servers[0]?.tools ?? [], error: snapshot.servers[0]?.error ?? null }
               : s,
           ),
         )
@@ -403,6 +405,7 @@ function ServerCard({
   isTesting: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [toolsExpanded, setToolsExpanded] = useState(false)
 
   const configJson = JSON.stringify(
     {
@@ -452,7 +455,6 @@ function ServerCard({
         <Badge variant="outline" className="text-xs">
           {server.transportType === 'stdio' ? 'Stdio' : server.transportType.toUpperCase()}
         </Badge>
-        {server.toolCount > 0 && <span>{server.toolCount} 个工具</span>}
         {server.transportType === 'stdio' && server.command && (
           <span className="truncate max-w-[300px]">{server.command} {server.args}</span>
         )}
@@ -465,6 +467,35 @@ function ServerCard({
         <div className="flex items-center gap-2 text-xs text-destructive">
           <AlertCircleIcon className="size-3" />
           <span className="truncate">{server.error}</span>
+        </div>
+      )}
+
+      {server.tools.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setToolsExpanded(!toolsExpanded)}
+          >
+            {toolsExpanded ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
+            <span>{server.toolCount} 个工具</span>
+          </button>
+
+          {toolsExpanded && (
+            <div className="mt-2 space-y-1.5">
+              {server.tools.map((tool) => (
+                <div key={tool.name} className="flex items-start gap-2 text-xs">
+                  <Badge variant="secondary" className="shrink-0 font-mono text-xs mt-px">
+                    {tool.name}
+                  </Badge>
+                  {tool.description && (
+                    <span className="text-muted-foreground line-clamp-2 min-w-0">
+                      {tool.description}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

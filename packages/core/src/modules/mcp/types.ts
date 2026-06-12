@@ -55,12 +55,18 @@ export interface McpClientConnection {
   error?: Error;
 }
 
+export interface ToolInfo {
+  name: string;
+  description?: string;
+}
+
 export interface McpRegistrySnapshot {
   servers: Array<{
     name: string;
     enabled: boolean;
     connected: boolean;
     toolCount: number;
+    tools: ToolInfo[];
     error?: string;
   }>;
   totalTools: number;
