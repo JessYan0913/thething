@@ -61,7 +61,7 @@ export interface HighWaterMark {
  */
 export const STATUS_CONFIG: Record<TodoStatus, { label: string; color: string; icon: string }> = {
   pending: { label: 'Pending', color: '#6B7280', icon: '⏳' },
-  in_progress: { label: 'In Progress', color: '#3B82F6', icon: '🔄' },
+  in_progress: { label: 'In Progress', color: '#D4862B', icon: '🔄' },
   completed: { label: 'Completed', color: '#10B981', icon: '✅' },
   failed: { label: 'Failed', color: '#EF4444', icon: '❌' },
   cancelled: { label: 'Cancelled', color: '#9CA3AF', icon: '🚫' },

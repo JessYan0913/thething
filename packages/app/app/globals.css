@@ -5,84 +5,137 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ══════════════════════════════════════════════════════════════
+   macOS-Inspired Theme Color Tokens
+   ————————————————————————————————————————————
+   DESIGN PHILOSOPHY:
+     Classic macOS native app palette — neutral elegance with
+     subtle warmth. Zero blue, zero purple.
+
+     PRIMARY  → Warm amber-gold      — buttons, links, actions
+     ACCENT   → Warm golden glow      — hovered/selected items
+                (light in light mode, subtle in dark mode —
+                 not a "complementary color" but a highlight)
+
+     LIGHT — warm off-white paper, amber buttons, gold highlights
+     DARK  — warm charcoal backdrop, glowing amber, warm glow
+   ══════════════════════════════════════════════════════════════ */
+
 :root {
-  /* Brand: #0F172A #3B82F6 #8B5CF6 #CBD5E1 #F1F5F9 */
-  --background: oklch(0.9683 0.0069 247.9);
-  --foreground: oklch(0.2077 0.0398 265.8);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2077 0.0398 265.8);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2077 0.0398 265.8);
-  --primary: oklch(0.6231 0.1880 259.8);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.945 0.012 260);
-  --secondary-foreground: oklch(0.2077 0.0398 265.8);
-  --muted: oklch(0.94 0.014 255);
-  --muted-foreground: oklch(0.50 0.025 260);
-  --accent: oklch(0.72 0.12 270);
-  --accent-foreground: oklch(0.2077 0.0398 265.8);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.60 0.17 155);
-  --success-foreground: oklch(1 0 0);
-  --warning: oklch(0.75 0.15 80);
-  --warning-foreground: oklch(0.25 0.05 80);
-  --border: oklch(0.89 0.016 255);
-  --input: oklch(0.89 0.016 255);
-  --ring: oklch(0.6231 0.1880 259.8);
-  --chart-1: oklch(0.6231 0.1880 259.8);
-  --chart-2: oklch(0.6056 0.2189 292.7);
-  --chart-3: oklch(0.55 0.15 220);
-  --chart-4: oklch(0.75 0.15 200);
-  --chart-5: oklch(0.70 0.12 290);
+  /* ── Surface & Text ────────────────────────────────────── */
+  --background:         oklch(0.981 0.003  85  ); /* warm off-white        */
+  --foreground:         oklch(0.13  0.015  75  ); /* near-black, warm tint */
+  --card:               oklch(1     0      0   ); /* pure white — elevated */
+  --card-foreground:    oklch(0.13  0.015  75  );
+  --popover:            oklch(1     0      0   );
+  --popover-foreground: oklch(0.13  0.015  75  );
+
+  /* ── Primary / Action — Warm Amber ─────────────────────── */
+  --primary:            oklch(0.60  0.12   75  ); /* golden amber, warm    */
+  --primary-foreground: oklch(1     0      0   );
+
+  /* ── Secondary ─────────────────────────────────────────── */
+  --secondary:          oklch(0.965 0.006  75  ); /* warm-tinted light     */
+  --secondary-foreground: oklch(0.32  0.02   75  ); /* dark warm gray     */
+
+  /* ── Muted / Disabled ──────────────────────────────────── */
+  --muted:              oklch(0.945 0.008  75  ); /* warm quiet bg         */
+  --muted-foreground:   oklch(0.50  0.03   75  ); /* warm medium gray      */
+
+  /* ── Accent — Warm Golden Highlight ────────────────────── */
+  /* Used for: dropdown hover, selected items, command palette.
+     NOT a bold complementary color — a subtle warm glow that
+     makes selected items feel softly illuminated.           */
+  --accent:             oklch(0.92  0.06   75  ); /* warm gold glow        */
+  --accent-foreground:  oklch(0.13  0.015  75  ); /* normal text on glow   */
+
+  /* ── Semantic States ───────────────────────────────────── */
+  --destructive:        oklch(0.52  0.22   25  );
+  --destructive-foreground: oklch(1 0      0   );
+  --success:            oklch(0.57  0.18   150 );
+  --success-foreground: oklch(1     0      0   );
+  --warning:            oklch(0.68  0.18   85  ); /* warm amber — related  */
+  --warning-foreground: oklch(0.25  0.04   85  );
+
+  /* ── Borders / Input / Ring ────────────────────────────── */
+  --border:             oklch(0.90  0.008  75  ); /* barely-there warm     */
+  --input:              oklch(0.90  0.008  75  );
+  --ring:               oklch(0.60  0.12   75  ); /* = primary focus ring  */
+
+  /* ── Data Visualization ────────────────────────────────── */
+  --chart-1:            oklch(0.60  0.12   75  ); /* amber — primary       */
+  --chart-2:            oklch(0.55  0.11   40  ); /* clay — accent         */
+  --chart-3:            oklch(0.57  0.18   150 ); /* green                 */
+  --chart-4:            oklch(0.52  0.22   25  ); /* red                   */
+  --chart-5:            oklch(0.65  0.15   95  ); /* yellow-gold           */
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.003 260);
-  --sidebar-foreground: oklch(0.2077 0.0398 265.8);
-  --sidebar-primary: oklch(0.6231 0.1880 259.8);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.955 0.008 260);
-  --sidebar-accent-foreground: oklch(0.2077 0.0398 265.8);
-  --sidebar-border: oklch(0.90 0.014 255);
-  --sidebar-ring: oklch(0.6231 0.1880 259.8);
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  --sidebar:                 oklch(0.976 0.004  60  ); /* warm tan tint     */
+  --sidebar-foreground:      oklch(0.13  0.015  75  );
+  --sidebar-primary:         oklch(0.60  0.12   75  );
+  --sidebar-primary-foreground: oklch(1 0        0   );
+  --sidebar-accent:          oklch(0.92  0.06   75  );
+  --sidebar-accent-foreground: oklch(0.13  0.015  75  );
+  --sidebar-border:          oklch(0.88  0.01   65  );
+  --sidebar-ring:            oklch(0.60  0.12   75  );
 }
 
 .dark {
-  --background: oklch(0.18 0.035 265);
-  --foreground: oklch(0.9683 0.0069 247.9);
-  --card: oklch(0.22 0.038 265);
-  --card-foreground: oklch(0.9683 0.0069 247.9);
-  --popover: oklch(0.22 0.038 265);
-  --popover-foreground: oklch(0.9683 0.0069 247.9);
-  --primary: oklch(0.70 0.17 260);
-  --primary-foreground: oklch(0.15 0.02 265);
-  --secondary: oklch(0.27 0.035 265);
-  --secondary-foreground: oklch(0.9683 0.0069 247.9);
-  --muted: oklch(0.25 0.032 265);
-  --muted-foreground: oklch(0.60 0.025 260);
-  --accent: oklch(0.72 0.12 270);
-  --accent-foreground: oklch(0.9683 0.0069 247.9);
-  --destructive: oklch(0.48 0.18 25);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.62 0.15 155);
-  --success-foreground: oklch(1 0 0);
-  --warning: oklch(0.75 0.15 80);
-  --warning-foreground: oklch(0.25 0.05 80);
-  --border: oklch(0.32 0.03 265);
-  --input: oklch(0.32 0.03 265);
-  --ring: oklch(0.70 0.17 260);
-  --chart-1: oklch(0.70 0.17 260);
-  --chart-2: oklch(0.70 0.22 292);
-  --chart-3: oklch(0.55 0.15 220);
-  --chart-4: oklch(0.75 0.15 200);
-  --chart-5: oklch(0.70 0.12 290);
-  --sidebar: oklch(0.16 0.032 265);
-  --sidebar-foreground: oklch(0.9683 0.0069 247.9);
-  --sidebar-primary: oklch(0.70 0.17 260);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.23 0.038 265);
-  --sidebar-accent-foreground: oklch(0.9683 0.0069 247.9);
-  --sidebar-border: oklch(0.30 0.03 265);
-  --sidebar-ring: oklch(0.70 0.17 260);
+  /* ── Surface & Text ────────────────────────────────────── */
+  --background:         oklch(0.18  0.012  75  ); /* warm charcoal          */
+  --foreground:         oklch(0.965 0.006  85  ); /* near-white, warm      */
+  --card:               oklch(0.235 0.015  75  ); /* lighter = elevated    */
+  --card-foreground:    oklch(0.965 0.006  85  );
+  --popover:            oklch(0.235 0.015  75  );
+  --popover-foreground: oklch(0.965 0.006  85  );
+
+  /* ── Primary / Action — Amber Glow ─────────────────────── */
+  --primary:            oklch(0.68  0.12   75  ); /* glowing amber on dark */
+  --primary-foreground: oklch(0.15  0.02   75  );
+
+  /* ── Secondary ─────────────────────────────────────────── */
+  --secondary:          oklch(0.265 0.015  75  );
+  --secondary-foreground: oklch(0.90  0.008  85  );
+
+  /* ── Muted / Disabled ──────────────────────────────────── */
+  --muted:              oklch(0.23  0.012  75  );
+  --muted-foreground:   oklch(0.53  0.025  75  );
+
+  /* ── Accent — Warm Glow ─────────────────────────────────── */
+  --accent:             oklch(0.28  0.06   75  ); /* subtle warm highlight */
+  --accent-foreground:  oklch(0.965 0.006  85  );
+
+  /* ── Semantic States ───────────────────────────────────── */
+  --destructive:        oklch(0.50  0.22   25  );
+  --destructive-foreground: oklch(1 0      0   );
+  --success:            oklch(0.60  0.17   150 );
+  --success-foreground: oklch(0.15  0.02   75  );
+  --warning:            oklch(0.70  0.17   85  );
+  --warning-foreground: oklch(0.15  0.02   85  );
+
+  /* ── Borders / Input / Ring ────────────────────────────── */
+  --border:             oklch(0.30  0.012  75  );
+  --input:              oklch(0.30  0.012  75  );
+  --ring:               oklch(0.68  0.12   75  );
+
+  /* ── Data Visualization ────────────────────────────────── */
+  --chart-1:            oklch(0.68  0.12   75  );
+  --chart-2:            oklch(0.62  0.10   40  );
+  --chart-3:            oklch(0.60  0.17   150 );
+  --chart-4:            oklch(0.50  0.22   25  );
+  --chart-5:            oklch(0.72  0.15   95  );
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  --sidebar:                 oklch(0.16  0.015  60  );
+  --sidebar-foreground:      oklch(0.965 0.006  85  );
+  --sidebar-primary:         oklch(0.68  0.12   75  );
+  --sidebar-primary-foreground: oklch(0.15 0.02  75  );
+  --sidebar-accent:          oklch(0.28  0.06   75  );
+  --sidebar-accent-foreground: oklch(0.965 0.006  85  );
+  --sidebar-border:          oklch(0.27  0.012  65  );
+  --sidebar-ring:            oklch(0.68  0.12   75  );
 }
 
 @keyframes building {
@@ -164,13 +217,13 @@
   ::selection {
     @apply bg-primary/20 text-foreground;
   }
-  /* Scrollbar styling */
+  /* Scrollbar styling — warm-tinted to match theme */
   * {
     scrollbar-width: thin;
-    scrollbar-color: oklch(0.75 0.02 260 / 0.4) transparent;
+    scrollbar-color: oklch(0.70 0.04 75 / 0.4) transparent;
   }
   .dark * {
-    scrollbar-color: oklch(0.45 0.02 265 / 0.5) transparent;
+    scrollbar-color: oklch(0.42 0.03 75 / 0.5) transparent;
   }
   *::-webkit-scrollbar {
     width: 6px;
@@ -180,14 +233,14 @@
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
-    background-color: oklch(0.75 0.02 260 / 0.4);
+    background-color: oklch(0.70 0.04 75 / 0.4);
     border-radius: 3px;
   }
   .dark *::-webkit-scrollbar-thumb {
-    background-color: oklch(0.45 0.02 265 / 0.5);
+    background-color: oklch(0.42 0.03 75 / 0.5);
   }
   *::-webkit-scrollbar-thumb:hover {
-    background-color: oklch(0.65 0.02 260 / 0.6);
+    background-color: oklch(0.60 0.05 75 / 0.6);
   }
 }
 
@@ -206,7 +259,7 @@
       transform: translateY(0);
     }
   }
-  /* Gradient text */
+  /* Gradient text — warm amber → gold glow */
   .text-gradient {
     @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
   }

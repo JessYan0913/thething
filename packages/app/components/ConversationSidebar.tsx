@@ -264,14 +264,14 @@ export const ConversationSidebar = ({
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Footer */}
-      <SidebarFooter>
+      {/* Footer — system settings */}
+      <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={t('settings:sidebar.systemSettings')}>
-              <Link href="/settings">
-                <SettingsIcon />
-                <span>{t('settings:sidebar.systemSettings')}</span>
+              <Link href="/settings" className="text-muted-foreground hover:text-foreground transition-colors">
+                <SettingsIcon className="size-4" />
+                <span className="text-xs">{t('settings:sidebar.systemSettings')}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
