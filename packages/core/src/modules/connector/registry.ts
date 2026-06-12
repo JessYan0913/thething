@@ -15,23 +15,15 @@ import type { ConnectorFrontmatter } from './loader'
 import { ConnectorToolExecutor } from './executor'
 import { logger } from '../../primitives/logger'
 
-export interface ConnectorRegistryOptions {
-  env?: Record<string, string | undefined>
-}
-
 export class ConnectorRegistry {
   private connectors = new Map<string, ConnectorDefinition>()
   private executor: ConnectorToolExecutor
 
   constructor(
     private configDir: string,
-    options?: ConnectorRegistryOptions,
   ) {
     this.executor = new ConnectorToolExecutor(this.getCredentials.bind(this))
-    this.env = options?.env ?? {}
   }
-
-  private env: Record<string, string | undefined>
 
   async initialize(): Promise<void> {
     logger.debug('ConnectorRegistry', `Initializing with configDir: ${this.configDir}`)
@@ -70,7 +62,7 @@ export class ConnectorRegistry {
   async loadConnector(yamlPath: string): Promise<void> {
     const content = fs.readFileSync(yamlPath, 'utf-8')
     const raw = yaml.load(content) as Record<string, unknown>
-    const processed = this.replaceEnvVars(raw)
+    const processed = this.resolveConnectorVars(raw)
 
     const connector: ConnectorDefinition = {
       id: processed.id as string,
@@ -78,6 +70,7 @@ export class ConnectorRegistry {
       version: processed.version as string,
       description: processed.description as string,
       enabled: processed.enabled as boolean ?? true,
+      variables: processed.variables as Record<string, string> | undefined,
       inbound: processed.inbound as ConnectorDefinition['inbound'],
       auth: processed.auth as ConnectorDefinition['auth'],
       credentials: processed.credentials as Record<string, string>,
@@ -94,52 +87,38 @@ export class ConnectorRegistry {
     logger.debug('ConnectorRegistry', `Loaded connector: ${connector.id} (${connector.name} v${connector.version})`)
   }
 
-  private replaceEnvVars(obj: Record<string, unknown>): Record<string, unknown> {
-    const result: Record<string, unknown> = {}
-
-    for (const [key, value] of Object.entries(obj)) {
-      if (typeof value === 'string') {
-        result[key] = this.replaceEnvVarInString(value)
-      } else if (Array.isArray(value)) {
-        result[key] = value.map(item => {
-          if (typeof item === 'string') {
-            return this.replaceEnvVarInString(item)
-          } else if (typeof item === 'object' && item !== null) {
-            return this.replaceEnvVars(item as Record<string, unknown>)
-          }
-          return item
-        })
-      } else if (typeof value === 'object' && value !== null) {
-        result[key] = this.replaceEnvVars(value as Record<string, unknown>)
-      } else {
-        result[key] = value
-      }
-    }
-
-    return result
+  /**
+   * 解析 Connector YAML 中的变量声明。
+   *
+   * 1. 提取 variables 区域
+   * 2. 递归替换整个 YAML 中的 ${{ var_name }} 引用
+   */
+  private resolveConnectorVars(obj: Record<string, unknown>): Record<string, unknown> {
+    const rawVars = (obj.variables ?? {}) as Record<string, string>
+    return this.walkAndReplace(obj, rawVars) as Record<string, unknown>
   }
 
-  private replaceEnvVarInString(str: string): string {
-    const missingVars: string[] = []
-
-    const result = str.replace(/\$\{(\w+)\}/g, (_, varName) => {
-      const envValue = this.env[varName]
-      if (envValue === undefined) {
-        missingVars.push(varName)
-        return ''
-      }
-      return envValue
-    })
-
-    if (missingVars.length > 0) {
-      logger.warn(
-        'ConnectorRegistry',
-        `Missing environment variables for placeholder: ${missingVars.join(', ')}\n` +
-        `Original string: "${str}" - replaced with empty string`
-      )
+  private walkAndReplace(value: unknown, vars: Record<string, string>): unknown {
+    if (typeof value === 'string') {
+      return value.replace(/\$\{\{(\s*\w+\s*)\}\}/g, (match, varName) => {
+        const trimmed = varName.trim()
+        if (vars[trimmed] !== undefined) {
+          return vars[trimmed]
+        }
+        return match
+      })
     }
-
-    return result
+    if (Array.isArray(value)) {
+      return value.map((item) => this.walkAndReplace(item, vars))
+    }
+    if (value !== null && typeof value === 'object') {
+      const result: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(value)) {
+        result[k] = this.walkAndReplace(v, vars)
+      }
+      return result
+    }
+    return value
   }
 
   private async getCredentials(connectorId: string): Promise<Record<string, string>> {

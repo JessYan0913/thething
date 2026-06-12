@@ -18,7 +18,6 @@ export function createConnectorModule(loadOptions?: LoadConnectorsOptions): AppM
         configDir: context.configDir,
         homeDir: context.homeDir,
         dirs: context.resourceDirs.connectors,
-        env: context.env,
         ...loadOptions,
       };
       loadedConnectors = await loadConnectors(options);

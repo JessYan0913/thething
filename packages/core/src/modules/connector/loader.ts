@@ -76,6 +76,11 @@ export const ConnectorFrontmatterSchema = z.object({
   version: z.string().optional().default('1.0.0'),
   description: z.string().optional().default(''),
   enabled: z.boolean().optional().default(true),
+  /**
+   * 变量声明区域。可在 YAML 中声明变量，后续使用 ${{ var_name }} 引用。
+   * 变量值支持 ${ENV_VAR} 环境变量替换。
+   */
+  variables: z.record(z.string(), z.string()).optional(),
   inbound: InboundSchema.optional(),
   auth: AuthConfigSchema.optional().default({ type: 'none' as const, config: {} }),
   credentials: z.record(z.string(), z.string()).optional(),

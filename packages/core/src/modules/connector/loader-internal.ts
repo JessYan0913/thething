@@ -6,7 +6,6 @@ import { parsePlainYamlFile } from '../../primitives/parser';
 import { createMultiSourceLoader } from '../../services/scanner/multi-source-loader';
 import type { ConnectorFrontmatter } from './loader';
 import { ConnectorFrontmatterSchema } from './loader';
-import { logger } from '../../primitives/logger';
 import type { ConfigSource } from '../../primitives/constants';
 
 // ============================================================
@@ -19,53 +18,61 @@ interface ConnectorWithSource extends ConnectorFrontmatter {
 }
 
 // ============================================================
-// 环境变量替换
+// Connector 变量解析
 // ============================================================
 
-function replaceEnvVars(
+/**
+ * 解析 Connector YAML 中的变量声明。
+ *
+ * 1. 提取 `variables` 区域
+ * 2. 递归替换整个 YAML 中的 ${{ var_name }} 引用
+ *
+ * @param obj 已解析的 YAML 对象
+ * @returns 变量替换后的对象
+ */
+function resolveConnectorVars(
   obj: Record<string, unknown>,
-  env: Record<string, string | undefined>,
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  // 1. 提取 variables
+  const rawVars = (obj.variables ?? {}) as Record<string, string>;
 
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'string') {
-      result[key] = replaceEnvVarInString(value, env);
-    } else if (Array.isArray(value)) {
-      result[key] = value.map((item) => {
-        if (typeof item === 'string') {
-          return replaceEnvVarInString(item, env);
-        } else if (typeof item === 'object' && item !== null) {
-          return replaceEnvVars(item as Record<string, unknown>, env);
-        }
-        return item;
-      });
-    } else if (typeof value === 'object' && value !== null) {
-      result[key] = replaceEnvVars(value as Record<string, unknown>, env);
-    } else {
-      result[key] = value;
-    }
-  }
-
-  return result;
+  // 2. 递归遍历整个对象，替换 ${{ var_name }}
+  return walkAndReplace(obj, rawVars) as Record<string, unknown>;
 }
 
-function replaceEnvVarInString(str: string, env: Record<string, string | undefined>): string {
-  return str.replace(/\$\{(\w+)\}/g, (match, varName) => {
-    const envValue = env[varName];
-    if (envValue === undefined) {
-      logger.warn('ConnectorsLoader', `Environment variable ${varName} not found`);
+/**
+ * 递归遍历值，将所有 `${{ var_name }}` 替换为变量值。
+ * 未找到的变量名保留原样。
+ */
+function walkAndReplace(
+  value: unknown,
+  vars: Record<string, string>,
+): unknown {
+  if (typeof value === 'string') {
+    return value.replace(/\$\{\{(\s*\w+\s*)\}\}/g, (match, varName) => {
+      const trimmed = varName.trim();
+      if (vars[trimmed] !== undefined) {
+        return vars[trimmed];
+      }
       return match;
+    });
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => walkAndReplace(item, vars));
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = walkAndReplace(v, vars);
     }
-    return envValue;
-  });
+    return result;
+  }
+  return value;
 }
 
 // ============================================================
 // MultiSource Loader
 // ============================================================
-
-let cachedEnv: Record<string, string | undefined> = {};
 
 const connectorsLoader = createMultiSourceLoader<ConnectorWithSource>({
   subcategory: 'connectors',
@@ -73,7 +80,7 @@ const connectorsLoader = createMultiSourceLoader<ConnectorWithSource>({
   filePatterns: ['*.yaml', '*.yml'],
   parse: async (filePath, source) => {
     const result = await parsePlainYamlFile(filePath, ConnectorFrontmatterSchema);
-    const processed = replaceEnvVars(result.data as Record<string, unknown>, cachedEnv);
+    const processed = resolveConnectorVars(result.data as Record<string, unknown>);
 
     return {
       ...processed as ConnectorFrontmatter,
@@ -94,12 +101,9 @@ export interface LoadConnectorsOptions {
   dirs?: readonly string[];
   configDir?: string;
   homeDir?: string;
-  env?: Record<string, string | undefined>;
 }
 
 export async function loadConnectors(options?: LoadConnectorsOptions): Promise<ConnectorFrontmatter[]> {
-  cachedEnv = options?.env ?? {};
-
   const items = await connectorsLoader.load({
     cwd: options?.cwd,
     configDir: options?.configDir,
@@ -113,6 +117,7 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
     version: c.version,
     description: c.description,
     enabled: c.enabled,
+    variables: c.variables,
     inbound: c.inbound,
     auth: c.auth,
     credentials: c.credentials,
@@ -126,10 +131,9 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
 export async function loadConnectorFile(
   filePath: string,
   source: ConfigSource,
-  env: Record<string, string | undefined> = {},
 ): Promise<ConnectorWithSource> {
   const result = await parsePlainYamlFile(filePath, ConnectorFrontmatterSchema);
-  const processed = replaceEnvVars(result.data as Record<string, unknown>, env);
+  const processed = resolveConnectorVars(result.data as Record<string, unknown>);
 
   return {
     ...processed as ConnectorFrontmatter,
@@ -137,4 +141,3 @@ export async function loadConnectorFile(
     filePath: result.filePath,
   };
 }
-

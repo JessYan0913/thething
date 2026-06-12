@@ -18,6 +18,9 @@ export interface ConnectorDefinition {
   description: string
   enabled: boolean
 
+  // 变量声明（可在后续配置中使用 ${{ var_name }} 引用）
+  variables?: Record<string, string>
+
   // 入站配置（Webhook）
   inbound?: {
     enabled: boolean
@@ -166,6 +169,7 @@ export interface ConnectorFrontmatter {
   version: string
   description: string
   enabled: boolean
+  variables?: Record<string, string>
   inbound?: ConnectorDefinition['inbound']
   auth: AuthConfig
   credentials?: Record<string, string>
@@ -220,9 +224,6 @@ export interface ConnectorRuntimeConfig {
 
   /** 模型配置（用于 inbound handler） */
   model?: ConnectorModelConfig
-
-  /** 环境变量快照，由 server/cli 显式传入；core 不自行读取 process.env */
-  env?: Record<string, string | undefined>
 
   /** 显式允许不安全 script executor；默认 false */
   allowUnsafeScriptExecutor?: boolean

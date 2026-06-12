@@ -30,10 +30,7 @@ export interface InitializeConnectorRuntimeOptions {
  */
 export function createConnectorRuntime(config: ConnectorRuntimeConfig): ConnectorRuntime {
   // 1. 创建 Registry
-  const registry = new ConnectorRegistry(config.configDir, {
-    env: config.env,
-    allowUnsafeScriptExecutor: config.allowUnsafeScriptExecutor,
-  })
+  const registry = new ConnectorRegistry(config.configDir)
 
   // 2. 创建 AuditLogger（可选持久化到 SQLite）
   const auditLogger = new AuditLogger({

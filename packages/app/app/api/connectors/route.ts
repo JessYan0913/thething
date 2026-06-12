@@ -1,6 +1,7 @@
 import { getServerContext, reloadServerContext } from '@/lib/runtime';
 import { promises as fs } from 'fs';
 import { NextResponse } from 'next/server';
+import yaml from 'js-yaml';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +14,7 @@ export async function GET() {
       version: conn.version,
       description: conn.description,
       enabled: conn.enabled,
+      variables: conn.variables ?? {},
       base_url: conn.base_url,
       auth: conn.auth,
       inbound: conn.inbound,
@@ -32,6 +34,58 @@ export async function GET() {
   } catch (error) {
     console.error('[Connectors API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load connectors' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, variables: newVars } = body;
+
+    if (!id || !newVars) {
+      return NextResponse.json({ error: 'Missing id or variables' }, { status: 400 });
+    }
+
+    const context = await getServerContext();
+    const connector = context.connectors.find((c) => c.id === id);
+    if (!connector) {
+      return NextResponse.json({ error: 'Connector not found' }, { status: 404 });
+    }
+
+    if (!connector.sourcePath) {
+      return NextResponse.json({ error: 'Connector has no source file' }, { status: 400 });
+    }
+
+    // Read and update YAML
+    const content = await fs.readFile(connector.sourcePath, 'utf-8');
+    const raw = yaml.load(content) as Record<string, unknown>;
+
+    // Update variables (only known keys from the YAML's variables section)
+    const existingVars = (raw.variables ?? {}) as Record<string, string>;
+    for (const key of Object.keys(newVars)) {
+      if (key in existingVars) {
+        existingVars[key] = newVars[key];
+      }
+    }
+    raw.variables = existingVars;
+
+    // Write back
+    const newContent = yaml.dump(raw, {
+      indent: 2,
+      lineWidth: -1,
+      noRefs: true,
+      quotingType: '"',
+      forceQuotes: true,
+    });
+    await fs.writeFile(connector.sourcePath, newContent, 'utf-8');
+
+    // Reload context
+    await reloadServerContext();
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[Connectors API] PUT error:', error);
+    return NextResponse.json({ error: 'Failed to update variables' }, { status: 500 });
   }
 }
 
