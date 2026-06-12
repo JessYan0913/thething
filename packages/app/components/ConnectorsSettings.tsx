@@ -347,12 +347,16 @@ function ConnectorDetail({
         </div>
         {connector.sourcePath && (
           <Button
-            variant={showConfig ? "secondary" : "ghost"}
+            variant={showConfig ? "default" : "ghost"}
             size="sm"
             onClick={() => setShowConfig((v) => !v)}
           >
-            <FileTextIcon className="size-3.5 mr-1" />
-            源码
+            {showConfig ? (
+              <XIcon className="size-3.5 mr-1" />
+            ) : (
+              <FileTextIcon className="size-3.5 mr-1" />
+            )}
+            {showConfig ? '关闭源码' : '源码'}
           </Button>
         )}
       </div>
