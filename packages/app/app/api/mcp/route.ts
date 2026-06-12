@@ -12,9 +12,12 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-async function getResourceRoot(): Promise<string> {
+async function getRuntimeLayout(): Promise<{ resourceRoot: string; configDir: string }> {
   const rt = await getServerRuntime();
-  return rt.layout.resourceRoot;
+  return {
+    resourceRoot: rt.layout.resourceRoot,
+    configDir: rt.layout.configDir,
+  };
 }
 
 export async function GET(request: Request) {
@@ -22,10 +25,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const name = searchParams.get('name');
     const connect = searchParams.get('connect') === 'true';
-    const resourceRoot = await getResourceRoot();
+    const { resourceRoot, configDir } = await getRuntimeLayout();
 
     if (name) {
-      const config = await getMcpServerConfig(name, resourceRoot);
+      const config = await getMcpServerConfig(name, resourceRoot, configDir);
       if (!config) {
         return NextResponse.json({ error: 'Server not found' }, { status: 404 });
       }
@@ -52,7 +55,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ config });
     }
 
-    const configs = await getMcpServerConfigs(resourceRoot);
+    const configs = await getMcpServerConfigs(resourceRoot, configDir);
     return NextResponse.json({ servers: configs });
   } catch (error) {
     console.error('[MCP API] GET error:', error);
@@ -68,13 +71,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'name and transport.type are required' }, { status: 400 });
     }
 
-    const resourceRoot = await getResourceRoot();
-    const existing = await getMcpServerConfig(body.name, resourceRoot);
+    const { resourceRoot, configDir } = await getRuntimeLayout();
+    const existing = await getMcpServerConfig(body.name, resourceRoot, configDir);
     if (existing) {
       return NextResponse.json({ error: 'Server already exists' }, { status: 409 });
     }
 
-    const config = await addMcpServerConfig(body, resourceRoot);
+    const config = await addMcpServerConfig(body, resourceRoot, configDir);
     return NextResponse.json({ config }, { status: 201 });
   } catch (error) {
     console.error('[MCP API] POST error:', error);
@@ -91,8 +94,8 @@ export async function PUT(request: Request) {
     }
 
     const body = (await request.json()) as Partial<McpServerConfig>;
-    const resourceRoot = await getResourceRoot();
-    const config = await updateMcpServerConfig(name, body, resourceRoot);
+    const { resourceRoot, configDir } = await getRuntimeLayout();
+    const config = await updateMcpServerConfig(name, body, resourceRoot, configDir);
 
     if (!config) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
@@ -113,8 +116,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'name query parameter is required' }, { status: 400 });
     }
 
-    const resourceRoot = await getResourceRoot();
-    const deleted = await deleteMcpServerConfig(name, resourceRoot);
+    const { resourceRoot, configDir } = await getRuntimeLayout();
+    const deleted = await deleteMcpServerConfig(name, resourceRoot, configDir);
     if (!deleted) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }

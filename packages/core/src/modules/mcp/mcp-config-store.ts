@@ -107,8 +107,8 @@ function fromSerializable(
  *
  * @param cwd 项目目录
  */
-export async function getMcpServerConfigs(cwd?: string): Promise<McpServerConfig[]> {
-  return scanMcpDirs(cwd);
+export async function getMcpServerConfigs(cwd?: string, configDir?: string): Promise<McpServerConfig[]> {
+  return scanMcpDirs(cwd, { configDir });
 }
 
 /**
