@@ -167,7 +167,7 @@ export class ConnectorInboundGateway {
     return {
       connectorId,
       protocol,
-      credentials: connector.credentials || {},
+      credentials: connector.variables || {},
       inbound: connector.inbound,
       connector,
     }

@@ -83,10 +83,11 @@ export const ConnectorFrontmatterSchema = z.object({
   variables: z.record(z.string(), z.string()).optional(),
   inbound: InboundSchema.optional(),
   auth: AuthConfigSchema.optional().default({ type: 'none' as const, config: {} }),
-  credentials: z.record(z.string(), z.string()).optional(),
   custom_settings: z.record(z.string(), z.unknown()).optional(),
   base_url: z.string().optional(),
   tools: z.array(ToolDefinitionSchema).optional().default([]),
+  /** 权限范围声明（如 OAuth scopes） */
+  scopes: z.array(z.string()).optional(),
   /** 加载来源文件路径（由 loader 设置，不在 YAML 文件中声明） */
   sourcePath: z.string().optional(),
 });

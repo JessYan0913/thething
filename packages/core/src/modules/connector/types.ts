@@ -40,9 +40,6 @@ export interface ConnectorDefinition {
   // 认证配置
   auth: AuthConfig
 
-  // 凭证（可选，支持环境变量替换 ${VAR_NAME}）
-  credentials?: Record<string, string>
-
   // 自定义设置
   custom_settings?: Record<string, unknown>
 
@@ -172,7 +169,6 @@ export interface ConnectorFrontmatter {
   variables?: Record<string, string>
   inbound?: ConnectorDefinition['inbound']
   auth: AuthConfig
-  credentials?: Record<string, string>
   custom_settings?: Record<string, unknown>
   base_url?: string
   tools: ToolDefinition[]

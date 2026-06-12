@@ -228,7 +228,6 @@ function testConnector(id: string, protocol: string): ConnectorDefinition {
       },
     },
     auth: { type: 'none', config: {} },
-    credentials: {},
     tools: [{
       name: protocol === 'feishu' ? 'reply_message' : 'send_message',
       description: 'reply',

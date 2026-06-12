@@ -91,7 +91,7 @@ export class ConnectorToolExecutor {
   ): Promise<unknown> {
     const toolConfig = toolDef.executor_config as HttpExecutorConfig
     const timeoutMs = toolDef.timeout_ms || 10000
-    const credentials = connector.credentials || {}
+    const credentials = connector.variables || {}
 
     const authHeaders = this.resolveAuth(connector.auth, credentials)
 

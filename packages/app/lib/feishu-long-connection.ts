@@ -37,12 +37,12 @@ export async function startFeishuLongConnection(
     return
   }
 
-  const credentials = connector.credentials || {}
+  const credentials = connector.variables || {}
   const appId = credentials.app_id || credentials.appId || ''
   const appSecret = credentials.app_secret || credentials.appSecret || ''
 
   if (!appId || !appSecret) {
-    console.log(`[FeishuWS] Connector '${effectiveConnectorId}' missing app_id/app_secret in credentials, skipping`)
+    console.log(`[FeishuWS] Connector '${effectiveConnectorId}' missing app_id/app_secret in variables, skipping`)
     return
   }
 

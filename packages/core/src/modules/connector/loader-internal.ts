@@ -7,6 +7,7 @@ import { createMultiSourceLoader } from '../../services/scanner/multi-source-loa
 import type { ConnectorFrontmatter } from './loader';
 import { ConnectorFrontmatterSchema } from './loader';
 import type { ConfigSource } from '../../primitives/constants';
+import { logger } from '../../primitives/logger';
 
 // ============================================================
 // 扩展类型
@@ -54,6 +55,7 @@ function walkAndReplace(
       if (vars[trimmed] !== undefined) {
         return vars[trimmed];
       }
+      logger.warn('ConnectorLoader', 'Variable reference \'${{ ' + trimmed + ' }}\' not found in variables — keeping as literal');
       return match;
     });
   }
@@ -120,7 +122,6 @@ export async function loadConnectors(options?: LoadConnectorsOptions): Promise<C
     variables: c.variables,
     inbound: c.inbound,
     auth: c.auth,
-    credentials: c.credentials,
     custom_settings: c.custom_settings,
     base_url: c.base_url,
     tools: c.tools,

@@ -73,7 +73,6 @@ export class ConnectorRegistry {
       variables: processed.variables as Record<string, string> | undefined,
       inbound: processed.inbound as ConnectorDefinition['inbound'],
       auth: processed.auth as ConnectorDefinition['auth'],
-      credentials: processed.credentials as Record<string, string>,
       custom_settings: processed.custom_settings as Record<string, unknown>,
       base_url: processed.base_url as string,
       tools: (processed.tools as ToolDefinition[]) || [],
@@ -105,6 +104,7 @@ export class ConnectorRegistry {
         if (vars[trimmed] !== undefined) {
           return vars[trimmed]
         }
+        logger.warn('ConnectorRegistry', 'Variable reference \'${{ ' + trimmed + ' }}\' not found in variables — keeping as literal')
         return match
       })
     }
@@ -121,9 +121,14 @@ export class ConnectorRegistry {
     return value
   }
 
+  /**
+   * 获取连接器的变量值（作为 credentials 的统一来源）。
+   * YAML 中的变量在加载时已通过 ${{ var_name }} 解析替换，
+   * 剩下的原始变量值直接作为运行时凭证使用。
+   */
   private async getCredentials(connectorId: string): Promise<Record<string, string>> {
     const connector = this.connectors.get(connectorId)
-    return connector?.credentials || {}
+    return connector?.variables || {}
   }
 
   getDefinition(connectorId: string): ConnectorDefinition | undefined {
