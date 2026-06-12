@@ -86,8 +86,12 @@ export const ConnectorFrontmatterSchema = z.object({
   custom_settings: z.record(z.string(), z.unknown()).optional(),
   base_url: z.string().optional(),
   tools: z.array(ToolDefinitionSchema).optional().default([]),
-  /** 权限范围声明（如 OAuth scopes） */
-  scopes: z.array(z.string()).optional(),
+  /**
+   * 权限范围声明（如 OAuth scopes、API 权限列表）。
+   * 格式不定 — 可以是字符串数组或嵌套对象（如飞书配置的 tenant/user 分组的 scopes）。
+   * 用 unknown 避免静默丢弃，消费方自行断言格式。
+   */
+  scopes: z.unknown().optional(),
   /** 加载来源文件路径（由 loader 设置，不在 YAML 文件中声明） */
   sourcePath: z.string().optional(),
 });

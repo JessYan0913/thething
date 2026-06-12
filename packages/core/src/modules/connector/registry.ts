@@ -14,6 +14,7 @@ import type {
 import type { ConnectorFrontmatter } from './loader'
 import { ConnectorToolExecutor } from './executor'
 import { logger } from '../../primitives/logger'
+import { resolveConnectorVars } from './var-resolver'
 
 export class ConnectorRegistry {
   private connectors = new Map<string, ConnectorDefinition>()
@@ -62,7 +63,7 @@ export class ConnectorRegistry {
   async loadConnector(yamlPath: string): Promise<void> {
     const content = fs.readFileSync(yamlPath, 'utf-8')
     const raw = yaml.load(content) as Record<string, unknown>
-    const processed = this.resolveConnectorVars(raw)
+    const processed = resolveConnectorVars(raw)
 
     const connector: ConnectorDefinition = {
       id: processed.id as string,
@@ -84,41 +85,6 @@ export class ConnectorRegistry {
 
     this.connectors.set(connector.id, connector)
     logger.debug('ConnectorRegistry', `Loaded connector: ${connector.id} (${connector.name} v${connector.version})`)
-  }
-
-  /**
-   * 解析 Connector YAML 中的变量声明。
-   *
-   * 1. 提取 variables 区域
-   * 2. 递归替换整个 YAML 中的 ${{ var_name }} 引用
-   */
-  private resolveConnectorVars(obj: Record<string, unknown>): Record<string, unknown> {
-    const rawVars = (obj.variables ?? {}) as Record<string, string>
-    return this.walkAndReplace(obj, rawVars) as Record<string, unknown>
-  }
-
-  private walkAndReplace(value: unknown, vars: Record<string, string>): unknown {
-    if (typeof value === 'string') {
-      return value.replace(/\$\{\{(\s*\w+\s*)\}\}/g, (match, varName) => {
-        const trimmed = varName.trim()
-        if (vars[trimmed] !== undefined) {
-          return vars[trimmed]
-        }
-        logger.warn('ConnectorRegistry', 'Variable reference \'${{ ' + trimmed + ' }}\' not found in variables — keeping as literal')
-        return match
-      })
-    }
-    if (Array.isArray(value)) {
-      return value.map((item) => this.walkAndReplace(item, vars))
-    }
-    if (value !== null && typeof value === 'object') {
-      const result: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(value)) {
-        result[k] = this.walkAndReplace(v, vars)
-      }
-      return result
-    }
-    return value
   }
 
   /**

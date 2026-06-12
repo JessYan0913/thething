@@ -155,7 +155,7 @@ export type { Clock } from './primitives/clock';
 export { resolveProjectDir, resolveHomeDir } from './primitives/paths';
 
 // Parser
-export { parseFrontmatterFile, parseYamlFile, parseJsonFile } from './primitives/parser';
+export { parseFrontmatterFile, parseYamlFile, parseJsonFile, updateVariablesInYaml } from './primitives/parser';
 
 // ============================================================
 // Runtime Layer（白名单导出）

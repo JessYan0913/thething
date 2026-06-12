@@ -224,6 +224,16 @@ export class ConnectorToolExecutor {
     }
   }
 
+  /**
+   * 刷新 access_token。
+   *
+   * 双重渲染说明：
+   *   token_body/token_params 中的值经过两次渲染管道：
+   *   1. YAML 加载时 — `${{ var_name }}` 被 resolveConnectorVars 解析为字面值
+   *   2. 运行时（此处）— `${path}` 被 renderObject 解析（模板上下文含 credentials/variables）
+   *   两者语法不冲突，叠加使用是安全的。如果未来调整渲染顺序或覆盖规则，
+   *   需要确认此处拿到的是 resolve 后的字面值，而非未解析的 ${{ }} 引用。
+   */
   private async doRefreshToken(connectorId: string, manifest: ConnectorDefinition): Promise<CachedToken> {
     const authConfig = manifest.auth.config
     if (!authConfig.token_url) {

@@ -98,6 +98,10 @@ export interface ToolDefinition {
   executor_config: HttpExecutorConfig | MockExecutorConfig | SqlExecutorConfig | ScriptExecutorConfig
   input_schema?: Record<string, unknown>
   output_schema?: Record<string, unknown>
+  /** 超时时间（毫秒），默认 10000ms */
+  timeout_ms?: number
+  /** 是否允许自动重试 */
+  retryable?: boolean
 }
 
 /**
@@ -108,6 +112,8 @@ export interface HttpExecutorConfig {
   method: string
   headers?: Record<string, string>
   query_params?: Record<string, string>
+  /** 请求体（JSON 对象，经过模板渲染） */
+  body?: Record<string, unknown>
   body_template?: string
   response_path?: string
   timeout_ms?: number
@@ -119,6 +125,8 @@ export interface HttpExecutorConfig {
 export interface MockExecutorConfig {
   response: unknown
   delay_ms?: number
+  /** 模拟错误（不为空时直接返回失败） */
+  error?: string
 }
 
 /**
@@ -151,6 +159,18 @@ export interface ConnectorToolCall {
  * 工具调用响应
  */
 export interface ToolCallResponse {
+  success: boolean
+  data?: unknown
+  /** execute() 返回的执行结果（与 data 等价，不同 consumer 各取所需） */
+  result?: unknown
+  error?: string
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Executor 返回结果（Mock/Script 等内部 executor 的契约）
+ */
+export interface ExecutorResult {
   success: boolean
   data?: unknown
   error?: string

@@ -12,6 +12,6 @@ export {
   type ContentParseResult,
 } from './frontmatter';
 
-export { parseYamlFile, parsePlainYamlFile } from './yaml';
+export { parseYamlFile, parsePlainYamlFile, updateVariablesInYaml } from './yaml';
 
 export { parseJsonFile } from './json';
