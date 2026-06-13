@@ -2,13 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   DatabaseIcon, RefreshCwIcon, SearchIcon,
   TrashIcon, CheckIcon, XIcon, FileTextIcon,
-  UserIcon, ChevronRightIcon,
+  UserIcon, ChevronRightIcon, PlusIcon, PencilIcon,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogFooter, DialogDescription,
+} from "@/components/ui/dialog"
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 
 interface MemoryEntryView {
   name: string
@@ -19,6 +28,7 @@ interface MemoryEntryView {
   lines: number
   sizeKb: number
   userId: string
+  mtimeMs: number
 }
 
 const typeLabels: Record<string, { label: string; color: string }> = {
@@ -36,6 +46,16 @@ const typeOptions = [
   { value: "reference", label: "参考" },
 ]
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function getFreshness(mtimeMs: number) {
+  const ageDays = Math.floor((Date.now() - mtimeMs) / DAY_MS)
+  if (ageDays < 1) return { label: "今天", color: "text-green-600 dark:text-green-400", stale: false }
+  if (ageDays < 7) return { label: `${ageDays}天前`, color: "text-green-600 dark:text-green-400", stale: false }
+  if (ageDays < 30) return { label: `${ageDays}天前`, color: "text-amber-600 dark:text-amber-400", stale: false }
+  return { label: `${ageDays}天前`, color: "text-destructive", stale: true }
+}
+
 export default function MemorySettings() {
   const [entries, setEntries] = useState<MemoryEntryView[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -44,6 +64,16 @@ export default function MemorySettings() {
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  // 创建/编辑对话框状态
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<MemoryEntryView | null>(null)
+  const [formName, setFormName] = useState("")
+  const [formDesc, setFormDesc] = useState("")
+  const [formType, setFormType] = useState<string>("user")
+  const [formContent, setFormContent] = useState("")
+  const [formSaving, setFormSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const loadMemory = useCallback(async () => {
     setIsLoading(true)
@@ -120,6 +150,98 @@ export default function MemorySettings() {
     setConfirmDelete(null)
   }, [])
 
+  const openCreateDialog = useCallback(() => {
+    setEditTarget(null)
+    setFormName("")
+    setFormDesc("")
+    setFormType(activeUser ? "user" : "user")
+    setFormContent("")
+    setFormError(null)
+    setDialogOpen(true)
+  }, [activeUser])
+
+  const openEditDialog = useCallback(() => {
+    if (!selected) return
+    setEditTarget(selected)
+    setFormName(selected.name)
+    setFormDesc(selected.description)
+    setFormType(selected.type)
+    setFormContent(getContentBody(selected.content))
+    setFormError(null)
+    setDialogOpen(true)
+  }, [selected])
+
+  const handleSave = useCallback(async () => {
+    if (!formName.trim() || !formContent.trim()) {
+      setFormError("名称和内容不能为空")
+      return
+    }
+    setFormSaving(true)
+    setFormError(null)
+    try {
+      if (editTarget) {
+        // 编辑模式：PUT
+        const res = await fetch("/api/memory", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filePath: editTarget.filePath,
+            name: formName.trim(),
+            description: formDesc.trim(),
+            type: formType,
+            content: formContent,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          setFormError(data.error ?? "保存失败")
+          return
+        }
+        // 更新本地状态
+        const updatedContent = `---\nname: ${formName.trim()}\ndescription: ${formDesc.trim()}\ntype: ${formType}\n---\n\n${formContent}`
+        const now = Date.now()
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.filePath === editTarget.filePath
+              ? { ...e, name: formName.trim(), description: formDesc.trim(), type: formType, content: updatedContent, mtimeMs: now }
+              : e
+          )
+        )
+        setSelected((prev) =>
+          prev?.filePath === editTarget.filePath
+            ? { ...prev, name: formName.trim(), description: formDesc.trim(), type: formType, content: updatedContent, mtimeMs: now }
+            : prev
+        )
+      } else {
+        // 创建模式：POST
+        const targetUserId = activeUser ?? users[0]?.id ?? "default"
+        const res = await fetch("/api/memory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: formName.trim(),
+            description: formDesc.trim(),
+            type: formType,
+            content: formContent,
+            userId: targetUserId,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          setFormError(data.error ?? "创建失败")
+          return
+        }
+        // 刷新列表
+        await loadMemory()
+      }
+      setDialogOpen(false)
+    } catch {
+      setFormError("网络错误，请重试")
+    } finally {
+      setFormSaving(false)
+    }
+  }, [editTarget, formName, formDesc, formType, formContent, activeUser, users, loadMemory])
+
   const getContentBody = (content: string) => {
     return content.replace(/^---[\s\S]*?---\s*/, "").trim() || content.trim()
   }
@@ -141,6 +263,9 @@ export default function MemorySettings() {
         </div>
         <Button variant="ghost" size="sm" onClick={loadMemory} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button variant="ghost" size="sm" onClick={openCreateDialog}>
+          <PlusIcon className="size-4 mr-1" />新建
         </Button>
       </div>
 
@@ -229,6 +354,10 @@ export default function MemorySettings() {
                           <Badge className={`text-[9px] border-0 px-1 py-0 leading-tight ${typeInfo.color}`}>
                             {typeInfo.label}
                           </Badge>
+                          {(() => {
+                            const f = getFreshness(entry.mtimeMs)
+                            return <span className={`text-[9px] ${f.color}`}>{f.label}</span>
+                          })()}
                         </div>
                         {entry.description && (
                           <p className="text-[11px] text-muted-foreground/50 truncate mt-0.5">
@@ -257,11 +386,30 @@ export default function MemorySettings() {
                     return <Badge className={`text-xs border-0 ${typeInfo.color}`}>{typeInfo.label}</Badge>
                   })()}
                   <span className="text-xs text-muted-foreground/40">@{selected.userId}</span>
+                  {(() => {
+                    const f = getFreshness(selected.mtimeMs)
+                    return (
+                      <span className={`text-xs ${f.color}`}>
+                        {f.label}
+                        {f.stale && " · 可能已过期"}
+                      </span>
+                    )
+                  })()}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-xs text-muted-foreground/30 mr-2">
                     {selected.lines} 行 · {selected.sizeKb.toFixed(1)} KB
                   </span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="sm" onClick={openEditDialog}>
+                          <PencilIcon className="size-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>编辑记忆</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   {confirmDelete === selected.filePath ? (
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(selected.filePath)}>
@@ -298,6 +446,74 @@ export default function MemorySettings() {
           )}
         </div>
       </div>
+
+      {/* 创建/编辑对话框 */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editTarget ? "编辑记忆" : "新建记忆"}</DialogTitle>
+            <DialogDescription>
+              {editTarget ? "修改记忆的内容和元信息" : "创建一条新的记忆条目"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="mem-name">名称</Label>
+              <Input
+                id="mem-name"
+                placeholder="例如: 前端开发偏好"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mem-desc">描述</Label>
+              <Input
+                id="mem-desc"
+                placeholder="一句话描述这条记忆（可选）"
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>类型</Label>
+              <Select value={formType} onValueChange={setFormType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">用户记忆</SelectItem>
+                  <SelectItem value="feedback">反馈记忆</SelectItem>
+                  <SelectItem value="project">项目记忆</SelectItem>
+                  <SelectItem value="reference">参考记忆</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mem-content">内容</Label>
+              <Textarea
+                id="mem-content"
+                placeholder="记忆的正文内容..."
+                rows={8}
+                value={formContent}
+                onChange={(e) => setFormContent(e.target.value)}
+                className="font-mono text-sm"
+              />
+            </div>
+            {formError && (
+              <p className="text-xs text-destructive">{formError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={formSaving}>
+              取消
+            </Button>
+            <Button onClick={handleSave} disabled={formSaving}>
+              {formSaving ? "保存中..." : editTarget ? "保存修改" : "创建"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

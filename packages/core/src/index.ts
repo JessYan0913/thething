@@ -271,6 +271,9 @@ export {
   scanMemoryFiles,
   loadEntrypoint,
   readMemoryContent,
+  rebuildEntrypoint,
+  getMemoryFilePath,
+  getUserMemoryDir,
 } from './modules/memory';
 
 // Title generation

@@ -2,6 +2,7 @@ import { getServerRuntime } from '@/lib/runtime';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
+import { getMemoryFilePath, getUserMemoryDir, rebuildEntrypoint } from '@the-thing/core';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +15,7 @@ interface ScannedMemo {
   lines: number;
   sizeKb: number;
   userId: string;
+  mtimeMs: number;
 }
 
 interface EntrypointMemo {
@@ -56,6 +58,7 @@ async function scanUserMemoryDir(userMemoryDir: string, userId: string): Promise
     const filePath = path.join(userMemoryDir, file);
     try {
       const content = await fs.readFile(filePath, 'utf-8');
+      const stat = await fs.stat(filePath);
       const parsed = parseFrontmatter(content);
       const lines = content.split('\n').length;
       const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
@@ -69,6 +72,7 @@ async function scanUserMemoryDir(userMemoryDir: string, userId: string): Promise
         lines,
         sizeKb,
         userId,
+        mtimeMs: stat.mtimeMs,
       });
     } catch {
       // skip unreadable files
@@ -97,6 +101,84 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error('[Memory API] DELETE error:', error);
     return NextResponse.json({ error: 'Failed to delete memory file' }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { name, description, type, content, userId } = body;
+
+    if (!name || !type || !content || !userId) {
+      return NextResponse.json({ error: 'Missing required fields: name, type, content, userId' }, { status: 400 });
+    }
+
+    const rt = await getServerRuntime();
+    const memoryDir = rt.layout.resources.memory[0];
+    if (!memoryDir) {
+      return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
+    }
+
+    const userMemoryDir = getUserMemoryDir(userId, memoryDir);
+    await fs.mkdir(userMemoryDir, { recursive: true });
+
+    const filePath = getMemoryFilePath(userMemoryDir, type, name);
+
+    // 组装文件内容：frontmatter + body
+    const frontmatter = [
+      '---',
+      `name: ${name}`,
+      `description: ${description || ''}`,
+      `type: ${type}`,
+      '---',
+    ].join('\n');
+    const fileContent = `${frontmatter}\n\n${content}`;
+
+    await fs.writeFile(filePath, fileContent, 'utf-8');
+    await rebuildEntrypoint(userMemoryDir);
+
+    return NextResponse.json({ success: true, filePath });
+  } catch (error) {
+    console.error('[Memory API] POST error:', error);
+    return NextResponse.json({ error: 'Failed to create memory' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { filePath, name, description, type, content } = body;
+
+    if (!filePath || !name || !type || content === undefined) {
+      return NextResponse.json({ error: 'Missing required fields: filePath, name, type, content' }, { status: 400 });
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch {
+      return NextResponse.json({ error: 'Memory file not found' }, { status: 404 });
+    }
+
+    // 组装文件内容：frontmatter + body
+    const frontmatter = [
+      '---',
+      `name: ${name}`,
+      `description: ${description || ''}`,
+      `type: ${type}`,
+      '---',
+    ].join('\n');
+    const fileContent = `${frontmatter}\n\n${content}`;
+
+    await fs.writeFile(filePath, fileContent, 'utf-8');
+
+    // 重建所在用户目录的 entrypoint
+    const userMemoryDir = path.dirname(filePath);
+    await rebuildEntrypoint(userMemoryDir);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[Memory API] PUT error:', error);
+    return NextResponse.json({ error: 'Failed to update memory' }, { status: 500 });
   }
 }
 
