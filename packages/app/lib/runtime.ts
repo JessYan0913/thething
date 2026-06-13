@@ -97,6 +97,10 @@ export async function getServerContext(): Promise<AppContext> {
 export async function reloadServerContext(): Promise<AppContext> {
   const ctx = await getServerContext();
   context = await ctx.reload();
+  // reload 会断开旧 MCP 连接并创建新注册表，需要重新建立连接
+  if (context.mcpRegistry) {
+    await context.mcpRegistry.connectAll().catch(() => {});
+  }
   return context;
 }
 
