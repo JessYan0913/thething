@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   TimerIcon, RefreshCwIcon, PlusIcon,
   TrashIcon, CheckIcon, XIcon,
   PlayIcon, PauseIcon, AlertCircleIcon,
-  ZapIcon, HistoryIcon, StopCircleIcon,
+  ZapIcon, HistoryIcon, StopCircleIcon, SearchIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,7 @@ const SCHEDULE_PRESETS = [
 export default function AutomationSettings() {
   const [jobs, setJobs] = useState<CronJob[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [search, setSearch] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingJob, setEditingJob] = useState<CronJob | null>(null)
@@ -157,22 +158,37 @@ export default function AutomationSettings() {
     loadJobs()
   }, [loadJobs])
 
+  const filteredJobs = useMemo(() => {
+    if (!search) return jobs
+    const q = search.toLowerCase()
+    return jobs.filter((j) => {
+      const name = j.name.toLowerCase()
+      const prompt = j.prompt.toLowerCase()
+      const agent = (j.agentType ?? "").toLowerCase()
+      return name.includes(q) || prompt.includes(q) || agent.includes(q)
+    })
+  }, [jobs, search])
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-        <Badge variant="secondary" className="text-xs">
-          {jobs.length} 个任务
-        </Badge>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={loadJobs} disabled={isLoading}>
-            <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-          <Button size="sm" onClick={openCreate}>
-            <PlusIcon className="size-4 mr-1" />
-            新建任务
-          </Button>
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索自动化任务..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
         </div>
+        <Button variant="ghost" size="sm" onClick={loadJobs} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button size="sm" onClick={openCreate}>
+          <PlusIcon className="size-4 mr-1" />
+          新建任务
+        </Button>
       </div>
 
       {/* Content */}
@@ -185,7 +201,9 @@ export default function AutomationSettings() {
           <div className="flex flex-col items-center justify-center gap-4 py-12 text-muted-foreground">
             <TimerIcon className="size-12 opacity-20" />
             <div className="text-center max-w-md space-y-1">
-              <p className="text-sm font-medium">暂无自动化任务</p>
+              <p className="text-sm font-medium">
+                {search ? "没有匹配的任务" : "暂无自动化任务"}
+              </p>
               <p className="text-xs">
                 创建定时任务让 Agent 按计划自动执行，也可以在对话中使用 cron 工具创建
               </p>
@@ -193,7 +211,7 @@ export default function AutomationSettings() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {jobs.map(job => (
+            {filteredJobs.map(job => (
               <JobCard
                 key={job.id}
                 job={job}

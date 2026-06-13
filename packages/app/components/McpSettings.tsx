@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -52,6 +52,7 @@ function configToView(config: Record<string, unknown>, snapshotEntry?: { connect
 export default function McpSettingsPage() {
   const [servers, setServers] = useState<McpServerView[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [isTesting, setIsTesting] = useState<string | null>(null)
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState('')
@@ -229,20 +230,36 @@ export default function McpSettingsPage() {
     }
   }, [editForm, editServer, loadServers])
 
+  const filteredServers = useMemo(() => {
+    if (!search) return servers
+    const q = search.toLowerCase()
+    return servers.filter((s) => {
+      const name = s.name.toLowerCase()
+      const cmd = s.command.toLowerCase()
+      const url = s.url.toLowerCase()
+      return name.includes(q) || cmd.includes(q) || url.includes(q)
+    })
+  }, [servers, search])
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-        <Badge variant="secondary" className="text-xs">
-          {servers.filter((s) => s.status === 'connected').length} 已连接 / {servers.length} 总计
-        </Badge>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={loadServers} disabled={isLoading}>
-            <RefreshCwIcon className={`size-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索 MCP 服务器..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <Button variant="ghost" size="sm" onClick={loadServers} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? 'animate-spin' : ''}`} />
+        </Button>
 
-          {/* JSON Import Dialog */}
-          <Dialog>
+        {/* JSON Import Dialog */}
+        <Dialog>
             <DialogTrigger asChild>
               <Button size="sm">
                 <CodeIcon className="size-4" />
@@ -282,7 +299,6 @@ export default function McpSettingsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
       </div>
 
       {/* Server list */}
@@ -292,7 +308,9 @@ export default function McpSettingsPage() {
         ) : servers.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
             <ServerIcon className="size-8 opacity-40" />
-            <p className="text-sm">尚未配置任何 MCP 服务器</p>
+            <p className="text-sm">
+              {search ? "没有匹配的服务器" : "尚未配置任何 MCP 服务器"}
+            </p>
             <div className="flex flex-col items-center gap-1 text-xs">
               <p>1. 前往 <a className="text-primary underline" href="https://mcp.so" target="_blank" rel="noreferrer">mcp.so</a> 浏览可用服务器</p>
               <p>2. 复制 Server Config 中的 JSON 配置</p>
@@ -301,7 +319,7 @@ export default function McpSettingsPage() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {servers.map((server) => (
+            {filteredServers.map((server) => (
               <ServerCard
                 key={server.name}
                 server={server}

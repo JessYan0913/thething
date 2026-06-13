@@ -60,21 +60,17 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         {/* Settings Sidebar */}
         <Sidebar collapsible="icon">
           <SidebarContent>
-            <div className="flex items-center gap-1 px-2 pt-2 pb-1 group-data-[collapsible=icon]:justify-center">
-              <img
-                src="/logo.svg"
-                alt="The Thing"
-                width={48}
-                height={48}
-                className="rounded-md shrink-0"
-                priority
-              />
-              <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')} className="group-data-[collapsible=icon]:hidden h-auto rounded-full transition-colors">
-                <Link href="/chat" className="flex items-center gap-1.5">
-                  <ArrowLeftIcon className="size-4" />
-                  <span className="text-xs">{t('sidebar.backToChat')}</span>
-                </Link>
-              </SidebarMenuButton>
+            <div className="px-2 pt-3 pb-1">
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip={t('sidebar.backToChat')} className="group-data-[collapsible=icon]:justify-center [&_span]:no-underline">
+                    <Link href="/chat" className="no-underline">
+                      <ArrowLeftIcon />
+                      <span className="group-data-[collapsible=icon]:hidden">{t('sidebar.backToChat')}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
             </div>
 
             <SidebarGroup>

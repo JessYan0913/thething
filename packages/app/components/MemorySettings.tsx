@@ -4,6 +4,7 @@ import {
   TrashIcon, CheckIcon, XIcon, FileTextIcon,
   UserIcon, ChevronRightIcon,
 } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -129,12 +130,14 @@ export default function MemorySettings() {
     <div className="flex flex-col h-full min-h-0">
       {/* 顶栏 */}
       <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
-        <DatabaseIcon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">记忆管理</span>
-        <div className="flex items-center gap-2 ml-auto text-xs text-muted-foreground">
-          <span>{entries.length} 条</span>
-          <span>·</span>
-          <span>{users.length} 个用户</span>
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索记忆..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
         </div>
         <Button variant="ghost" size="sm" onClick={loadMemory} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -176,37 +179,25 @@ export default function MemorySettings() {
 
         {/* 中栏：记忆列表 */}
         <div className="w-72 border-r overflow-auto shrink-0 flex flex-col">
-          {/* 搜索 + 类型筛选 */}
-          <div className="shrink-0 space-y-2 px-3 py-2.5 border-b">
-            <div className="relative">
-              <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50" />
-              <input
-                type="text"
-                placeholder="搜索..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-7 pl-7 pr-2 text-xs bg-background border rounded-md outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/40"
-              />
-            </div>
-            <div className="flex items-center gap-1 flex-wrap">
-              {typeOptions.map((opt) => (
-                <button
-                  key={opt.value ?? "all"}
-                  onClick={() => setTypeFilter(opt.value)}
-                  className={cn(
-                    "px-2 h-5 text-[10px] rounded transition-colors",
-                    typeFilter === opt.value
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <span className="ml-auto text-[10px] text-muted-foreground/40">
-                {filtered.length} 条
-              </span>
-            </div>
+          {/* 类型筛选 */}
+          <div className="shrink-0 flex items-center gap-1 px-3 py-2 border-b flex-wrap">
+            {typeOptions.map((opt) => (
+              <button
+                key={opt.value ?? "all"}
+                onClick={() => setTypeFilter(opt.value)}
+                className={cn(
+                  "px-2 h-5 text-[10px] rounded transition-colors",
+                  typeFilter === opt.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <span className="ml-auto text-[10px] text-muted-foreground/40">
+              {filtered.length} 条
+            </span>
           </div>
           {/* 列表 */}
           <div className="flex-1 overflow-auto">

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
-import { ShieldIcon, RefreshCwIcon, PlusIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, PencilIcon } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { ShieldIcon, RefreshCwIcon, PlusIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, PencilIcon, SearchIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,6 +58,7 @@ const toolLabels: Record<string, string> = Object.fromEntries(
 export default function PermissionsSettings() {
   const [rules, setRules] = useState<RuleView[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [search, setSearch] = useState("")
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [newToolName, setNewToolName] = useState("")
   const [newPattern, setNewPattern] = useState("")
@@ -168,22 +169,37 @@ export default function PermissionsSettings() {
     }
   }, [editingRule, editToolName, editPattern, editBehavior])
 
+  const filteredRules = useMemo(() => {
+    if (!search) return rules
+    const q = search.toLowerCase()
+    return rules.filter((r) => {
+      const tool = (toolLabels[r.toolName] || r.toolName).toLowerCase()
+      const pattern = (r.pattern ?? "").toLowerCase()
+      const source = (r.source ?? "").toLowerCase()
+      return tool.includes(q) || pattern.includes(q) || source.includes(q)
+    })
+  }, [rules, search])
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-        <Badge variant="secondary" className="text-xs">
-          {rules.length} 条规则
-        </Badge>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={loadRules} disabled={isLoading}>
-            <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-          <Button size="sm" onClick={() => setShowAddDialog(true)}>
-            <PlusIcon className="size-4" />
-            添加规则
-          </Button>
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索权限规则..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
         </div>
+        <Button variant="ghost" size="sm" onClick={loadRules} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button size="sm" onClick={() => setShowAddDialog(true)}>
+          <PlusIcon className="size-4" />
+          添加规则
+        </Button>
       </div>
 
       {/* Add Rule Dialog */}
@@ -349,7 +365,9 @@ export default function PermissionsSettings() {
           <div className="flex flex-col items-center justify-center gap-4 py-12 text-muted-foreground">
             <ShieldIcon className="size-12 opacity-20" />
             <div className="text-center max-w-md space-y-1">
-              <p className="text-sm font-medium">暂无权限规则</p>
+              <p className="text-sm font-medium">
+                {search ? "没有匹配的规则" : "暂无权限规则"}
+              </p>
               <p className="text-xs">
                 添加规则来控制 AI 代理对工具和资源的访问权限
               </p>
@@ -357,7 +375,7 @@ export default function PermissionsSettings() {
           </div>
         ) : (
           <div className="space-y-2">
-            {rules.map((rule) => (
+            {filteredRules.map((rule) => (
               <RuleRow
                 key={rule.id}
                 rule={rule}

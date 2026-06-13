@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   CableIcon, RefreshCwIcon, WrenchIcon,
   FileTextIcon, ArrowLeftIcon, GlobeIcon,
   ShieldIcon, WebhookIcon, ChevronDownIcon,
   TrashIcon, CheckIcon, XIcon,
-  SaveIcon, EyeIcon, EyeOffIcon,
+  SaveIcon, EyeIcon, EyeOffIcon, SearchIcon,
+  SparklesIcon, PlusIcon,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { FilePreview } from "@/components/FilePreview"
+import { ConnectorUploadDialog } from "@/components/ConnectorUploadDialog"
+import { ConnectorGeneratorDialog } from "@/components/ConnectorGeneratorDialog"
 
 interface ToolView {
   name: string
@@ -56,8 +60,11 @@ const executorLabels: Record<string, string> = {
 export default function ConnectorsSettings() {
   const [connectors, setConnectors] = useState<ConnectorView[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [search, setSearch] = useState("")
   const [selectedConnector, setSelectedConnector] = useState<ConnectorView | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
+  const [isGeneratorOpen, setIsGeneratorOpen] = useState(false)
 
   const loadConnectors = useCallback(async () => {
     setIsLoading(true)
@@ -84,6 +91,17 @@ export default function ConnectorsSettings() {
     setConfirmDelete(null)
   }, [])
 
+  const filteredConnectors = useMemo(() => {
+    if (!search) return connectors
+    const q = search.toLowerCase()
+    return connectors.filter((c) => {
+      const name = c.name.toLowerCase()
+      const id = c.id.toLowerCase()
+      const desc = (c.description ?? "").toLowerCase()
+      return name.includes(q) || id.includes(q) || desc.includes(q)
+    })
+  }, [connectors, search])
+
   // Detail view
   if (selectedConnector) {
     return (
@@ -100,12 +118,26 @@ export default function ConnectorsSettings() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-        <Badge variant="secondary" className="text-xs">
-          {connectors.length} 个连接器
-        </Badge>
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索连接器..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
         <Button variant="ghost" size="sm" onClick={loadConnectors} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button size="sm" onClick={() => setIsGeneratorOpen(true)}>
+          <SparklesIcon className="mr-1 size-4" />
+          AI 生成
+        </Button>
+        <Button size="sm" onClick={() => setIsUploadOpen(true)}>
+          <PlusIcon className="mr-1 size-4" />
+          上传连接器
         </Button>
       </div>
 
@@ -119,15 +151,17 @@ export default function ConnectorsSettings() {
           <div className="flex flex-col items-center justify-center gap-4 py-12 text-muted-foreground">
             <CableIcon className="size-12 opacity-20" />
             <div className="text-center max-w-md space-y-1">
-              <p className="text-sm font-medium">暂无连接器</p>
+              <p className="text-sm font-medium">
+                {search ? "没有匹配的连接器" : "暂无连接器"}
+              </p>
               <p className="text-xs">
-                在 .thething/connectors/ 目录下创建 YAML 文件来定义新连接器
+                点击「AI 生成」通过对话创建连接器，或「上传连接器」上传 YAML 文件
               </p>
             </div>
           </div>
         ) : (
           <div className="grid gap-4">
-            {connectors.map((connector) => (
+            {filteredConnectors.map((connector) => (
               <ConnectorCard
                 key={connector.id}
                 connector={connector}
@@ -141,6 +175,20 @@ export default function ConnectorsSettings() {
           </div>
         )}
       </div>
+
+      {/* Upload dialog */}
+      <ConnectorUploadDialog
+        open={isUploadOpen}
+        onOpenChange={setIsUploadOpen}
+        onSuccess={loadConnectors}
+      />
+
+      {/* Generator dialog */}
+      <ConnectorGeneratorDialog
+        open={isGeneratorOpen}
+        onOpenChange={setIsGeneratorOpen}
+        onSuccess={loadConnectors}
+      />
     </div>
   )
 }
