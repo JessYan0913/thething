@@ -13,6 +13,30 @@ export interface MemoryEntry {
 
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
 
+// ============================================================
+// Layer 2: 信任层 — 来源与置信度
+// ============================================================
+
+export type MemorySource = 'explicit' | 'inferred' | 'promoted';
+
+export const MEMORY_SOURCE_CONFIG: Record<MemorySource, { label: string; initialConfidence: number; color: string }> = {
+  explicit: {
+    label: '显式',
+    initialConfidence: 0.9,
+    color: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/25',
+  },
+  inferred: {
+    label: '归纳',
+    initialConfidence: 0.3,
+    color: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25',
+  },
+  promoted: {
+    label: '已晋升',
+    initialConfidence: 0.6,
+    color: 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25',
+  },
+};
+
 export const MEMORY_TYPES: Record<MemoryType, { label: string; whenToSave: string; examples: string[] }> = {
   user: {
     label: '用户记忆',
@@ -95,7 +119,10 @@ export const TRUSTING_RECALL_SECTION = `## 记忆召回防御
 - 如果记忆提到某个函数，确认函数存在（用 grep 搜索）
 - 如果记忆包含代码示例，验证代码是否仍然正确
 
-记忆可能过期。请在推荐前先验证。`;
+记忆可能过期。请在推荐前先验证。
+
+### 什么时候不需要验证
+当用户直接询问与记忆内容完全匹配的问题时（例如用户问"你该怎么叫我"→记忆中有称呼偏好），直接使用记忆内容回答，不要反复质疑记忆的可靠性。置信度仅表示信息来源方式（用户明确说出 vs 推断），不代表信息的准确性。`;
 
 export const WHEN_TO_ACCESS_SECTION = `## 何时访问记忆
 
@@ -111,14 +138,33 @@ export interface MemoryFileData {
   description: string;
   type: MemoryType;
   content: string;
+  // Layer 2: 信任层
+  source?: MemorySource;
+  confidence?: number;
+  validUntil?: number | null;
+  supersededBy?: string | null;
+  // 语义检索增强
+  subject?: string;       // 记忆主体（如"用户"、"Aura"）
+  aliases?: string[];     // 主体别名（如["我", "主人", "自己"]）
+  context?: string[];     // 关联场景（如["称呼", "身份", "角色"]）
 }
 
 export function formatMemoryFrontmatter(data: MemoryFileData): string {
-  return `---
-name: ${data.name}
-description: ${data.description}
-type: ${data.type}
----`;
+  const lines = [
+    '---',
+    `name: ${data.name}`,
+    `description: ${data.description}`,
+    `type: ${data.type}`,
+  ];
+  if (data.source) lines.push(`source: ${data.source}`);
+  if (data.confidence != null) lines.push(`confidence: ${data.confidence}`);
+  if (data.validUntil != null) lines.push(`validUntil: ${data.validUntil}`);
+  if (data.supersededBy) lines.push(`supersededBy: ${data.supersededBy}`);
+  if (data.subject) lines.push(`subject: ${data.subject}`);
+  if (data.aliases && data.aliases.length > 0) lines.push(`aliases: [${data.aliases.join(', ')}]`);
+  if (data.context && data.context.length > 0) lines.push(`context: [${data.context.join(', ')}]`);
+  lines.push('---');
+  return lines.join('\n');
 }
 
 export function parseMemoryFrontmatter(content: string): MemoryFileData | null {
@@ -131,20 +177,43 @@ export function parseMemoryFrontmatter(content: string): MemoryFileData | null {
   const nameMatch = frontmatterStr.match(/^name:\s*(.+)$/m);
   const descMatch = frontmatterStr.match(/^description:\s*(.+)$/m);
   const typeMatch = frontmatterStr.match(/^type:\s*(.+)$/m);
+  const sourceMatch = frontmatterStr.match(/^source:\s*(.+)$/m);
+  const confidenceMatch = frontmatterStr.match(/^confidence:\s*(.+)$/m);
+  const validUntilMatch = frontmatterStr.match(/^validUntil:\s*(.+)$/m);
+  const supersededByMatch = frontmatterStr.match(/^supersededBy:\s*(.+)$/m);
+  const subjectMatch = frontmatterStr.match(/^subject:\s*(.+)$/m);
+  const aliasesMatch = frontmatterStr.match(/^aliases:\s*\[(.+)\]$/m);
+  const contextMatch = frontmatterStr.match(/^context:\s*\[(.+)\]$/m);
 
   if (!nameMatch || !typeMatch) return null;
 
   const type = nameMatch[1].trim();
   if (!isMemoryType(type)) return null;
 
+  const source = sourceMatch?.[1].trim() as MemorySource | undefined;
+  const confidence = confidenceMatch ? parseFloat(confidenceMatch[1].trim()) : undefined;
+  const validUntil = validUntilMatch?.[1].trim();
+  const supersededBy = supersededByMatch?.[1].trim();
+
   return {
     name: nameMatch[1].trim(),
     description: descMatch?.[1].trim() || '',
     type,
     content: bodyContent,
+    source: source && isMemorySource(source) ? source : undefined,
+    confidence: confidence != null && !isNaN(confidence) ? confidence : undefined,
+    validUntil: validUntil ? Number(validUntil) : undefined,
+    supersededBy: supersededBy && supersededBy !== 'null' ? supersededBy : undefined,
+    subject: subjectMatch?.[1]?.trim() || undefined,
+    aliases: aliasesMatch?.[1]?.split(',').map(s => s.trim()).filter(Boolean) || undefined,
+    context: contextMatch?.[1]?.split(',').map(s => s.trim()).filter(Boolean) || undefined,
   };
 }
 
 function isMemoryType(type: string): type is MemoryType {
   return ['user', 'feedback', 'project', 'reference'].includes(type);
+}
+
+function isMemorySource(source: string): source is MemorySource {
+  return ['explicit', 'inferred', 'promoted'].includes(source);
 }

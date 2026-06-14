@@ -41,6 +41,26 @@ const memoryExtractionSchema = z.object({
         shouldSave: z
           .boolean()
           .describe("是否应该保存（如果信息可从代码推导则为 false）"),
+        subject: z
+          .string()
+          .optional()
+          .describe("记忆主体（如'用户'、'Aura'、'项目组'），用于召回时匹配代词"),
+        aliases: z
+          .array(z.string())
+          .optional()
+          .describe("主体的别名或代词（如['我', '主人', '自己']），用于召回时匹配用户原话"),
+        context: z
+          .array(z.string())
+          .optional()
+          .describe("关联场景关键词（如['称呼', '身份', '角色']），用于召回时匹配用户提问场景"),
+        source: z
+          .enum(["explicit", "inferred"])
+          .describe("来源: explicit=用户明确说出的信息, inferred=从对话推断的信息"),
+        confidence: z
+          .number()
+          .min(0.1)
+          .max(1.0)
+          .describe("置信度: explicit=0.9, inferred=0.3~0.5"),
       }),
     )
     .describe("提取的记忆列表"),
@@ -86,9 +106,23 @@ const MEMORY_EXTRACTION_SYSTEM_PROMPT = `你是一个记忆提取助手。请从
 - action: 操作类型 (create/update/delete/invalidate)
 - targetFilename: 目标文件名（update/delete/invalidate 时必填）
 - shouldSave: 是否应该保存
+- subject: 记忆主体（如"用户"、"Aura"、"项目组"）
+- aliases: 主体的别名或代词（如["我", "主人", "自己"]）
+- context: 关联场景关键词（如["称呼", "身份", "角色"]）
+
+## 语义字段说明
+- subject: 这条记忆是关于谁的？通常是"用户"
+- aliases: 用户在对话中可能用哪些词指代这个主体？比如用户说"我是大荔县人"，这里"我"就是"用户"的别名
+- context: 什么场景下用户会需要这条记忆？比如关于身份的记忆，场景可能是"称呼"、"角色"、"身份"
+
+## 来源与置信度
+- **explicit**（显式，confidence=0.9）：用户在对话中**直接说出**的信息。例如用户说"我希望你叫我主人"，这是 explicit。
+- **inferred**（推断，confidence=0.3~0.5）：从对话内容**推断**出的信息，用户没有直接说出。例如用户讨论代码风格偏好，可以推断出技术背景。
+
+判断标准：用户是否**亲口说出了**这条信息？如果是，就是 explicit。
 
 示例输出格式：
-{"memories": [{"name": "偏好", "description": "用户偏好", "type": "user", "content": "内容", "action": "create", "shouldSave": true}]}
+{"memories": [{"name": "用户角色", "description": "用户声明自己是AI的主人", "type": "user", "content": "用户声明自己是AI的主人，并要求AI记住此身份。", "action": "create", "shouldSave": true, "source": "explicit", "confidence": 0.9, "subject": "用户", "aliases": ["我", "主人", "自己"], "context": ["称呼", "身份", "角色"]}]}
 
 只提取真正有价值的记忆。如果没有值得保存的记忆，返回空数组：{"memories": []}`;
 
@@ -99,6 +133,11 @@ export interface MemoryExtractionResult {
     type: MemoryType;
     content: string;
     action: string;
+    source: 'explicit' | 'inferred';
+    confidence: number;
+    subject?: string;
+    aliases?: string[];
+    context?: string[];
   }>;
   count: number;
 }
@@ -205,6 +244,11 @@ ${conversationText}`;
       type: MemoryType;
       content: string;
       action: string;
+      source: 'explicit' | 'inferred';
+      confidence: number;
+      subject?: string;
+      aliases?: string[];
+      context?: string[];
     }> = [];
 
     for (const memory of savableMemories.slice(0, 5)) {
@@ -212,7 +256,8 @@ ${conversationText}`;
 
       try {
         if (memory.action === "create") {
-          // 创建新记忆文件
+          // 创建新记忆文件（source/confidence 由提取 LLM 判断）
+          // 注意：冲突检测由提取 LLM 在 action 字段中完成，不再做额外的文本去重
           const filePath = path.join(userDir, fileName);
           const fileContent =
             formatMemoryFrontmatter({
@@ -220,6 +265,11 @@ ${conversationText}`;
               description: memory.description,
               type: memory.type,
               content: memory.content,
+              source: memory.source,
+              confidence: memory.confidence,
+              subject: memory.subject,
+              aliases: memory.aliases,
+              context: memory.context,
             }) +
             "\n\n" +
             memory.content;
@@ -244,6 +294,11 @@ ${conversationText}`;
               description: memory.description,
               type: memory.type,
               content: memory.content,
+              source: memory.source,
+              confidence: memory.confidence,
+              subject: memory.subject,
+              aliases: memory.aliases,
+              context: memory.context,
             }) +
             "\n\n" +
             memory.content;
@@ -276,6 +331,11 @@ ${conversationText}`;
           type: memory.type,
           content: memory.content,
           action: memory.action,
+          source: memory.source,
+          confidence: memory.confidence,
+          subject: memory.subject,
+          aliases: memory.aliases,
+          context: memory.context,
         });
       } catch (err) {
         logger.error(

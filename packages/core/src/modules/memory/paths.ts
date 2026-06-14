@@ -5,7 +5,9 @@ import type { ResolvedLayout } from '../../services/config/layout';
 export function getPrimaryMemoryDir(
   layout: Pick<ResolvedLayout, 'resources' | 'resourceRoot' | 'configDirName'>,
 ): string {
-  return layout.resources.memory[layout.resources.memory.length - 1]
+  // 始终使用用户级目录（~/.thething/memory），不使用项目级目录
+  // 用户记忆应该跟随用户，不跟随项目
+  return layout.resources.memory[0]
     ?? path.join(layout.resourceRoot, layout.configDirName, 'memory');
 }
 

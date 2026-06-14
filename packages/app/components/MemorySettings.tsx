@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  DatabaseIcon, RefreshCwIcon, SearchIcon,
-  TrashIcon, CheckIcon, XIcon, FileTextIcon,
-  UserIcon, ChevronRightIcon, PlusIcon, PencilIcon,
+  SearchIcon, TrashIcon, CheckIcon, XIcon,
+  PlusIcon, PencilIcon, ChevronDownIcon, ChevronUpIcon,
+  RefreshCwIcon, BrainIcon, UserIcon, MessageSquareIcon,
+  FolderIcon, BookOpenIcon, Loader2Icon,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -29,45 +28,65 @@ interface MemoryEntryView {
   sizeKb: number
   userId: string
   mtimeMs: number
+  source: string
+  confidence: number
+  validUntil: number | null
+  supersededBy: string | null
 }
 
-const typeLabels: Record<string, { label: string; color: string }> = {
-  user: { label: "用户记忆", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/25" },
-  feedback: { label: "反馈记忆", color: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/25" },
-  project: { label: "项目记忆", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25" },
-  reference: { label: "参考记忆", color: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25" },
+const typeConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  user: { label: "关于我", icon: <UserIcon className="size-4" />, color: "text-blue-500" },
+  feedback: { label: "反馈", icon: <MessageSquareIcon className="size-4" />, color: "text-purple-500" },
+  project: { label: "项目", icon: <FolderIcon className="size-4" />, color: "text-amber-500" },
+  reference: { label: "参考", icon: <BookOpenIcon className="size-4" />, color: "text-green-500" },
 }
 
-const typeOptions = [
-  { value: null, label: "全部" },
-  { value: "user", label: "用户" },
-  { value: "feedback", label: "反馈" },
-  { value: "project", label: "项目" },
-  { value: "reference", label: "参考" },
+const typeFilters = [
+  { value: null, label: "全部", icon: <BrainIcon className="size-3.5" /> },
+  { value: "user", label: "关于我", icon: <UserIcon className="size-3.5" /> },
+  { value: "feedback", label: "反馈", icon: <MessageSquareIcon className="size-3.5" /> },
+  { value: "project", label: "项目", icon: <FolderIcon className="size-3.5" /> },
+  { value: "reference", label: "参考", icon: <BookOpenIcon className="size-3.5" /> },
 ]
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-function getFreshness(mtimeMs: number) {
+function getRelativeTime(mtimeMs: number) {
   const ageDays = Math.floor((Date.now() - mtimeMs) / DAY_MS)
-  if (ageDays < 1) return { label: "今天", color: "text-green-600 dark:text-green-400", stale: false }
-  if (ageDays < 7) return { label: `${ageDays}天前`, color: "text-green-600 dark:text-green-400", stale: false }
-  if (ageDays < 30) return { label: `${ageDays}天前`, color: "text-amber-600 dark:text-amber-400", stale: false }
-  return { label: `${ageDays}天前`, color: "text-destructive", stale: true }
+  if (ageDays < 1) return "今天"
+  if (ageDays < 7) return `${ageDays}天前`
+  if (ageDays < 30) return `${ageDays}天前`
+  if (ageDays < 365) return `${Math.floor(ageDays / 30)}个月前`
+  return `${Math.floor(ageDays / 365)}年前`
+}
+
+function getContentPreview(content: string) {
+  const body = content.replace(/^---[\s\S]*?---\s*/, "").trim()
+  const firstLine = body.split("\n").find((l) => l.trim()) ?? ""
+  return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine
+}
+
+function getContentBody(content: string) {
+  return content.replace(/^---[\s\S]*?---\s*/, "").trim() || content.trim()
 }
 
 export default function MemorySettings() {
   const [entries, setEntries] = useState<MemoryEntryView[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [activeUser, setActiveUser] = useState<string | null>(null)
-  const [selected, setSelected] = useState<MemoryEntryView | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
   const [search, setSearch] = useState("")
+  const [searchOpen, setSearchOpen] = useState(false)
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [promotableCount, setPromotableCount] = useState(0)
+  const [isPromoting, setIsPromoting] = useState(false)
+  const [activeUser, setActiveUser] = useState<string | null>(null)
 
-  // 创建/编辑对话框状态
+  // 创建对话框状态
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<MemoryEntryView | null>(null)
   const [formName, setFormName] = useState("")
   const [formDesc, setFormDesc] = useState("")
   const [formType, setFormType] = useState<string>("user")
@@ -90,27 +109,51 @@ export default function MemorySettings() {
     }
   }, [])
 
+  const loadUsage = useCallback(async (userId: string) => {
+    try {
+      const res = await fetch(`/api/memory/usage?userId=${encodeURIComponent(userId)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setPromotableCount(data.promotableCount ?? 0)
+      }
+    } catch {
+      setPromotableCount(0)
+    }
+  }, [])
+
+  const handleBatchPromote = useCallback(async () => {
+    if (!activeUser || isPromoting) return
+    setIsPromoting(true)
+    try {
+      const res = await fetch("/api/memory/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: activeUser }),
+      })
+      if (res.ok) {
+        await loadMemory()
+        await loadUsage(activeUser)
+      }
+    } finally {
+      setIsPromoting(false)
+    }
+  }, [activeUser, isPromoting, loadMemory, loadUsage])
+
   useEffect(() => { loadMemory() }, [loadMemory])
 
-  // 用户目录列表（按条目数排序）
-  const users = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of entries) {
-      map.set(e.userId, (map.get(e.userId) ?? 0) + 1)
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([id, count]) => ({ id, count }))
-  }, [entries])
-
-  // 自动选中第一个用户目录
   useEffect(() => {
-    if (!isLoading && users.length > 0 && !activeUser) {
-      setActiveUser(users[0].id)
-    }
-  }, [isLoading, users, activeUser])
+    if (activeUser) loadUsage(activeUser)
+  }, [activeUser, loadUsage])
 
-  // 当前用户目录下的记忆 + 筛选
+  // 自动设置 activeUser
+  useEffect(() => {
+    if (!isLoading && entries.length > 0 && !activeUser) {
+      const firstUser = entries[0]?.userId
+      if (firstUser) setActiveUser(firstUser)
+    }
+  }, [isLoading, entries, activeUser])
+
+  // 筛选逻辑
   const filtered = useMemo(() => {
     let result = entries
     if (activeUser) {
@@ -124,54 +167,81 @@ export default function MemorySettings() {
       result = result.filter(
         (e) =>
           e.name.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q)
+          e.description.toLowerCase().includes(q) ||
+          getContentBody(e.content).toLowerCase().includes(q)
       )
     }
     return result
   }, [entries, activeUser, typeFilter, search])
 
-  // 自动选中第一条
-  useEffect(() => {
-    if (isLoading || filtered.length === 0) {
-      if (filtered.length === 0) setSelected(null)
-      return
+  const handleToggleExpand = useCallback((filePath: string) => {
+    setExpandedId((prev) => (prev === filePath ? null : filePath))
+    setEditingId(null)
+    setConfirmDelete(null)
+  }, [])
+
+  const handleStartEdit = useCallback((entry: MemoryEntryView) => {
+    setEditingId(entry.filePath)
+    setEditContent(getContentBody(entry.content))
+  }, [])
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null)
+    setEditContent("")
+  }, [])
+
+  const handleSaveEdit = useCallback(async (entry: MemoryEntryView) => {
+    if (!editContent.trim()) return
+    setEditSaving(true)
+    try {
+      const res = await fetch("/api/memory", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath: entry.filePath,
+          name: entry.name,
+          description: entry.description,
+          type: entry.type,
+          content: editContent.trim(),
+        }),
+      })
+      if (res.ok) {
+        const updatedContent = `---\nname: ${entry.name}\ndescription: ${entry.description}\ntype: ${entry.type}\n---\n\n${editContent.trim()}`
+        const now = Date.now()
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.filePath === entry.filePath
+              ? { ...e, content: updatedContent, mtimeMs: now, confidence: 0.9 }
+              : e
+          )
+        )
+        setEditingId(null)
+        setEditContent("")
+      }
+    } finally {
+      setEditSaving(false)
     }
-    if (!selected || !filtered.some((e) => e.filePath === selected.filePath)) {
-      setSelected(filtered[0])
-    }
-  }, [isLoading, filtered, selected])
+  }, [editContent])
 
   const handleDelete = useCallback(async (filePath: string) => {
     const res = await fetch(`/api/memory?filePath=${encodeURIComponent(filePath)}`, { method: "DELETE" })
     if (res.ok) {
       setEntries((prev) => prev.filter((e) => e.filePath !== filePath))
-      setSelected((prev) => (prev?.filePath === filePath ? null : prev))
+      if (expandedId === filePath) setExpandedId(null)
     }
     setConfirmDelete(null)
-  }, [])
+  }, [expandedId])
 
   const openCreateDialog = useCallback(() => {
-    setEditTarget(null)
     setFormName("")
     setFormDesc("")
-    setFormType(activeUser ? "user" : "user")
+    setFormType("user")
     setFormContent("")
     setFormError(null)
     setDialogOpen(true)
-  }, [activeUser])
+  }, [])
 
-  const openEditDialog = useCallback(() => {
-    if (!selected) return
-    setEditTarget(selected)
-    setFormName(selected.name)
-    setFormDesc(selected.description)
-    setFormType(selected.type)
-    setFormContent(getContentBody(selected.content))
-    setFormError(null)
-    setDialogOpen(true)
-  }, [selected])
-
-  const handleSave = useCallback(async () => {
+  const handleCreate = useCallback(async () => {
     if (!formName.trim() || !formContent.trim()) {
       setFormError("名称和内容不能为空")
       return
@@ -179,282 +249,252 @@ export default function MemorySettings() {
     setFormSaving(true)
     setFormError(null)
     try {
-      if (editTarget) {
-        // 编辑模式：PUT
-        const res = await fetch("/api/memory", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filePath: editTarget.filePath,
-            name: formName.trim(),
-            description: formDesc.trim(),
-            type: formType,
-            content: formContent,
-          }),
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          setFormError(data.error ?? "保存失败")
-          return
-        }
-        // 更新本地状态
-        const updatedContent = `---\nname: ${formName.trim()}\ndescription: ${formDesc.trim()}\ntype: ${formType}\n---\n\n${formContent}`
-        const now = Date.now()
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.filePath === editTarget.filePath
-              ? { ...e, name: formName.trim(), description: formDesc.trim(), type: formType, content: updatedContent, mtimeMs: now }
-              : e
-          )
-        )
-        setSelected((prev) =>
-          prev?.filePath === editTarget.filePath
-            ? { ...prev, name: formName.trim(), description: formDesc.trim(), type: formType, content: updatedContent, mtimeMs: now }
-            : prev
-        )
-      } else {
-        // 创建模式：POST
-        const targetUserId = activeUser ?? users[0]?.id ?? "default"
-        const res = await fetch("/api/memory", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formName.trim(),
-            description: formDesc.trim(),
-            type: formType,
-            content: formContent,
-            userId: targetUserId,
-          }),
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          setFormError(data.error ?? "创建失败")
-          return
-        }
-        // 刷新列表
-        await loadMemory()
+      const targetUserId = activeUser ?? entries[0]?.userId ?? "default"
+      const res = await fetch("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formName.trim(),
+          description: formDesc.trim(),
+          type: formType,
+          content: formContent,
+          userId: targetUserId,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setFormError(data.error ?? "创建失败")
+        return
       }
+      await loadMemory()
       setDialogOpen(false)
     } catch {
       setFormError("网络错误，请重试")
     } finally {
       setFormSaving(false)
     }
-  }, [editTarget, formName, formDesc, formType, formContent, activeUser, users, loadMemory])
-
-  const getContentBody = (content: string) => {
-    return content.replace(/^---[\s\S]*?---\s*/, "").trim() || content.trim()
-  }
-
-  const activeUserCount = activeUser ? entries.filter((e) => e.userId === activeUser).length : entries.length
+  }, [formName, formDesc, formType, formContent, activeUser, entries, loadMemory])
 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* 顶栏 */}
       <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
-        <div className="relative flex-1">
-          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索记忆..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
-        </div>
+        <h1 className="text-sm font-semibold shrink-0">我的记忆</h1>
+
+        <div className="flex-1" />
+
+        {searchOpen && (
+          <div className="relative w-64">
+            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="搜索记忆..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+              autoFocus
+            />
+            {search && (
+              <button
+                onClick={() => { setSearch(""); setSearchOpen(false) }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {!searchOpen && (
+          <Button variant="ghost" size="sm" onClick={() => setSearchOpen(true)}>
+            <SearchIcon className="size-4" />
+          </Button>
+        )}
+
         <Button variant="ghost" size="sm" onClick={loadMemory} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
+
+        {promotableCount > 0 && (
+          <Button variant="ghost" size="sm" onClick={handleBatchPromote} disabled={isPromoting}>
+            <CheckIcon className="size-4 mr-1" />
+            晋升 ({promotableCount})
+          </Button>
+        )}
+
         <Button variant="ghost" size="sm" onClick={openCreateDialog}>
           <PlusIcon className="size-4 mr-1" />新建
         </Button>
       </div>
 
-      {/* 三栏主体 */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* 左栏：用户目录 */}
-        <div className="w-48 border-r overflow-auto shrink-0">
-          <div className="px-3 py-2 border-b">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">用户目录</span>
-          </div>
-          {isLoading ? (
-            <div className="px-3 py-4 text-xs text-muted-foreground">加载中...</div>
-          ) : users.length === 0 ? (
-            <div className="px-3 py-4 text-xs text-muted-foreground">暂无记忆</div>
-          ) : (
-            <div className="py-1">
-              {users.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => { setActiveUser(u.id); setSelected(null); setSearch(""); setTypeFilter(null) }}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
-                    activeUser === u.id
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                  )}
-                >
-                  <UserIcon className="size-3.5 shrink-0" />
-                  <span className="text-sm truncate flex-1">{u.id}</span>
-                  <span className="text-[10px] text-muted-foreground/50">{u.count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 中栏：记忆列表 */}
-        <div className="w-72 border-r overflow-auto shrink-0 flex flex-col">
-          {/* 类型筛选 */}
-          <div className="shrink-0 flex items-center gap-1 px-3 py-2 border-b flex-wrap">
-            {typeOptions.map((opt) => (
-              <button
-                key={opt.value ?? "all"}
-                onClick={() => setTypeFilter(opt.value)}
-                className={cn(
-                  "px-2 h-5 text-[10px] rounded transition-colors",
-                  typeFilter === opt.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-            <span className="ml-auto text-[10px] text-muted-foreground/40">
-              {filtered.length} 条
-            </span>
-          </div>
-          {/* 列表 */}
-          <div className="flex-1 overflow-auto">
-            {filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
-                <FileTextIcon className="size-6 opacity-20" />
-                <p className="text-xs">暂无记忆</p>
-              </div>
-            ) : (
-              <div className="py-0.5">
-                {filtered.map((entry, i) => {
-                  const typeInfo = typeLabels[entry.type] ?? { label: entry.type, color: "" }
-                  const isSelected = selected?.filePath === entry.filePath
-
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => setSelected(entry)}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
-                        isSelected
-                          ? "bg-accent"
-                          : "hover:bg-accent/50"
-                      )}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm truncate">{entry.name}</span>
-                          <Badge className={`text-[9px] border-0 px-1 py-0 leading-tight ${typeInfo.color}`}>
-                            {typeInfo.label}
-                          </Badge>
-                          {(() => {
-                            const f = getFreshness(entry.mtimeMs)
-                            return <span className={`text-[9px] ${f.color}`}>{f.label}</span>
-                          })()}
-                        </div>
-                        {entry.description && (
-                          <p className="text-[11px] text-muted-foreground/50 truncate mt-0.5">
-                            {entry.description}
-                          </p>
-                        )}
-                      </div>
-                      <ChevronRightIcon className="size-3 text-muted-foreground/30 shrink-0" />
-                    </button>
-                  )
-                })}
-              </div>
+      {/* 分类筛选 */}
+      <div className="shrink-0 flex items-center gap-1 px-6 py-2 border-b">
+        {typeFilters.map((opt) => (
+          <button
+            key={opt.value ?? "all"}
+            onClick={() => setTypeFilter(opt.value)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors",
+              typeFilter === opt.value
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             )}
-          </div>
-        </div>
-
-        {/* 右栏：内容预览 */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {selected ? (
-            <>
-              <div className="flex items-center justify-between px-6 py-3 border-b shrink-0">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <h2 className="text-sm font-semibold truncate">{selected.name}</h2>
-                  {(() => {
-                    const typeInfo = typeLabels[selected.type] ?? { label: selected.type, color: "" }
-                    return <Badge className={`text-xs border-0 ${typeInfo.color}`}>{typeInfo.label}</Badge>
-                  })()}
-                  <span className="text-xs text-muted-foreground/40">@{selected.userId}</span>
-                  {(() => {
-                    const f = getFreshness(selected.mtimeMs)
-                    return (
-                      <span className={`text-xs ${f.color}`}>
-                        {f.label}
-                        {f.stale && " · 可能已过期"}
-                      </span>
-                    )
-                  })()}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-xs text-muted-foreground/30 mr-2">
-                    {selected.lines} 行 · {selected.sizeKb.toFixed(1)} KB
-                  </span>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="sm" onClick={openEditDialog}>
-                          <PencilIcon className="size-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>编辑记忆</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  {confirmDelete === selected.filePath ? (
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(selected.filePath)}>
-                        <CheckIcon className="size-3 mr-1" />确认
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
-                        <XIcon className="size-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={() => setConfirmDelete(selected.filePath)}>
-                            <TrashIcon className="size-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>删除后无法恢复</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto p-6">
-                <pre className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap wrap-break-word font-sans">
-                  {getContentBody(selected.content)}
-                </pre>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground/30 text-sm">
-              选择一条记忆以查看内容
-            </div>
-          )}
-        </div>
+          >
+            {opt.icon}
+            {opt.label}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-muted-foreground/50">
+          {filtered.length} 条记忆
+        </span>
       </div>
 
-      {/* 创建/编辑对话框 */}
+      {/* 卡片列表 */}
+      <div className="flex-1 overflow-auto p-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2Icon className="size-5 animate-spin mr-2" />
+            <span className="text-sm">加载中...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+            <BrainIcon className="size-10 opacity-20" />
+            <p className="text-sm">{search ? "没有找到匹配的记忆" : "暂无记忆"}</p>
+            {!search && (
+              <Button variant="outline" size="sm" onClick={openCreateDialog}>
+                <PlusIcon className="size-3.5 mr-1" />创建第一条记忆
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="grid gap-3 max-w-2xl mx-auto">
+            {filtered.map((entry) => {
+              const config = typeConfig[entry.type] ?? { label: entry.type, icon: <BrainIcon className="size-4" />, color: "text-muted-foreground" }
+              const isExpanded = expandedId === entry.filePath
+              const isEditing = editingId === entry.filePath
+
+              return (
+                <div
+                  key={entry.filePath}
+                  className={cn(
+                    "rounded-lg border transition-all",
+                    isExpanded ? "bg-card shadow-sm" : "hover:border-accent/50 hover:bg-accent/20"
+                  )}
+                >
+                  {/* 卡片头部 — 始终可见 */}
+                  <button
+                    onClick={() => handleToggleExpand(entry.filePath)}
+                    className="w-full flex items-start gap-3 p-4 text-left"
+                  >
+                    <span className={cn("mt-0.5 shrink-0", config.color)}>
+                      {config.icon}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">{entry.name}</span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          {getRelativeTime(entry.mtimeMs)}
+                        </span>
+                      </div>
+                      {entry.description && (
+                        <p className="text-xs text-muted-foreground/60 mt-1 line-clamp-1">
+                          {entry.description}
+                        </p>
+                      )}
+                      {!isExpanded && (
+                        <p className="text-xs text-muted-foreground/40 mt-1 line-clamp-1 font-mono">
+                          {getContentPreview(entry.content)}
+                        </p>
+                      )}
+                    </div>
+                    <span className="shrink-0 mt-1 text-muted-foreground/30">
+                      {isExpanded ? <ChevronUpIcon className="size-4" /> : <ChevronDownIcon className="size-4" />}
+                    </span>
+                  </button>
+
+                  {/* 展开内容 */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t">
+                      <div className="pt-3">
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <Textarea
+                              value={editContent}
+                              onChange={(e) => setEditContent(e.target.value)}
+                              className="min-h-50 text-sm font-mono resize-y"
+                              autoFocus
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" onClick={() => handleSaveEdit(entry)} disabled={editSaving}>
+                                {editSaving ? (
+                                  <Loader2Icon className="size-3.5 animate-spin mr-1" />
+                                ) : (
+                                  <CheckIcon className="size-3.5 mr-1" />
+                                )}
+                                保存
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
+                                取消
+                              </Button>
+                              <span className="text-[11px] text-muted-foreground/40 ml-2">
+                                Ctrl+S 保存
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <pre className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap wrap-break-word font-sans">
+                              {getContentBody(entry.content)}
+                            </pre>
+                            <div className="flex items-center gap-2 mt-4 pt-3 border-t">
+                              <Button size="sm" variant="ghost" onClick={() => handleStartEdit(entry)}>
+                                <PencilIcon className="size-3.5 mr-1" />编辑
+                              </Button>
+                              {confirmDelete === entry.filePath ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => handleDelete(entry.filePath)}
+                                  >
+                                    <CheckIcon className="size-3.5 mr-1" />确认删除
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(null)}>
+                                    取消
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() => setConfirmDelete(entry.filePath)}
+                                >
+                                  <TrashIcon className="size-3.5 mr-1" />删除
+                                </Button>
+                              )}
+                              <span className="ml-auto text-[11px] text-muted-foreground/30">
+                                {config.label} · {entry.userId}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 创建对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editTarget ? "编辑记忆" : "新建记忆"}</DialogTitle>
-            <DialogDescription>
-              {editTarget ? "修改记忆的内容和元信息" : "创建一条新的记忆条目"}
-            </DialogDescription>
+            <DialogTitle>新建记忆</DialogTitle>
+            <DialogDescription>创建一条新的记忆条目</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
@@ -470,7 +510,7 @@ export default function MemorySettings() {
               <Label htmlFor="mem-desc">描述</Label>
               <Input
                 id="mem-desc"
-                placeholder="一句话描述这条记忆（可选）"
+                placeholder="一句话描述（可选）"
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
               />
@@ -482,10 +522,10 @@ export default function MemorySettings() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">用户记忆</SelectItem>
-                  <SelectItem value="feedback">反馈记忆</SelectItem>
-                  <SelectItem value="project">项目记忆</SelectItem>
-                  <SelectItem value="reference">参考记忆</SelectItem>
+                  <SelectItem value="user">关于我</SelectItem>
+                  <SelectItem value="feedback">反馈</SelectItem>
+                  <SelectItem value="project">项目</SelectItem>
+                  <SelectItem value="reference">参考</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -508,8 +548,8 @@ export default function MemorySettings() {
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={formSaving}>
               取消
             </Button>
-            <Button onClick={handleSave} disabled={formSaving}>
-              {formSaving ? "保存中..." : editTarget ? "保存修改" : "创建"}
+            <Button onClick={handleCreate} disabled={formSaving}>
+              {formSaving ? "创建中..." : "创建"}
             </Button>
           </DialogFooter>
         </DialogContent>

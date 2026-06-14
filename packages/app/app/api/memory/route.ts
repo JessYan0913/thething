@@ -4,6 +4,13 @@ import path from 'path';
 import { NextResponse } from 'next/server';
 import { getMemoryFilePath, getUserMemoryDir, rebuildEntrypoint } from '@the-thing/core';
 
+// 各来源的初始置信度（与 @the-thing/core 中 MEMORY_SOURCE_CONFIG 保持一致）
+const SOURCE_INITIAL_CONFIDENCE: Record<string, number> = {
+  explicit: 0.9,
+  inferred: 0.3,
+  promoted: 0.6,
+};
+
 export const runtime = 'nodejs';
 
 interface ScannedMemo {
@@ -16,6 +23,15 @@ interface ScannedMemo {
   sizeKb: number;
   userId: string;
   mtimeMs: number;
+  // Layer 2: 信任层
+  source: string;
+  confidence: number;
+  validUntil: number | null;
+  supersededBy: string | null;
+  // 语义检索增强
+  subject: string;
+  aliases: string[];
+  context: string[];
 }
 
 interface EntrypointMemo {
@@ -63,6 +79,20 @@ async function scanUserMemoryDir(userMemoryDir: string, userId: string): Promise
       const lines = content.split('\n').length;
       const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
 
+      // Layer 2: 解析新字段，旧文件自动 fallback
+      const source = parsed?.data?.source || 'explicit';
+      const confidence = parsed?.data?.confidence ? parseFloat(parsed.data.confidence) : 0.8;
+      const validUntil = parsed?.data?.validUntil ? Number(parsed.data.validUntil) : null;
+      const supersededBy = parsed?.data?.supersededBy && parsed.data.supersededBy !== 'null'
+        ? parsed.data.supersededBy : null;
+
+      // 语义检索增强字段
+      const subject = parsed?.data?.subject || '';
+      const aliasesRaw = parsed?.data?.aliases || '';
+      const contextRaw = parsed?.data?.context || '';
+      const aliases = aliasesRaw ? aliasesRaw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean) : [];
+      const context = contextRaw ? contextRaw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean) : [];
+
       results.push({
         name: parsed?.data?.name ?? path.basename(file, '.md'),
         description: parsed?.data?.description ?? '',
@@ -73,6 +103,13 @@ async function scanUserMemoryDir(userMemoryDir: string, userId: string): Promise
         sizeKb,
         userId,
         mtimeMs: stat.mtimeMs,
+        source,
+        confidence: isNaN(confidence) ? 0.8 : confidence,
+        validUntil,
+        supersededBy,
+        subject,
+        aliases,
+        context,
       });
     } catch {
       // skip unreadable files
@@ -107,7 +144,7 @@ export async function DELETE(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, description, type, content, userId } = body;
+    const { name, description, type, content, userId, source = 'explicit', subject, aliases, context } = body;
 
     if (!name || !type || !content || !userId) {
       return NextResponse.json({ error: 'Missing required fields: name, type, content, userId' }, { status: 400 });
@@ -123,15 +160,22 @@ export async function POST(request: Request) {
     await fs.mkdir(userMemoryDir, { recursive: true });
 
     const filePath = getMemoryFilePath(userMemoryDir, type, name);
+    const initialConfidence = SOURCE_INITIAL_CONFIDENCE[source] ?? 0.9;
 
     // 组装文件内容：frontmatter + body
-    const frontmatter = [
+    const frontmatterLines = [
       '---',
       `name: ${name}`,
       `description: ${description || ''}`,
       `type: ${type}`,
-      '---',
-    ].join('\n');
+      `source: ${source}`,
+      `confidence: ${initialConfidence}`,
+    ];
+    if (subject) frontmatterLines.push(`subject: ${subject}`);
+    if (aliases && aliases.length > 0) frontmatterLines.push(`aliases: [${aliases.join(', ')}]`);
+    if (context && context.length > 0) frontmatterLines.push(`context: [${context.join(', ')}]`);
+    frontmatterLines.push('---');
+    const frontmatter = frontmatterLines.join('\n');
     const fileContent = `${frontmatter}\n\n${content}`;
 
     await fs.writeFile(filePath, fileContent, 'utf-8');
@@ -147,7 +191,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { filePath, name, description, type, content } = body;
+    const { filePath, name, description, type, content, source, confidence, subject, aliases, context } = body;
 
     if (!filePath || !name || !type || content === undefined) {
       return NextResponse.json({ error: 'Missing required fields: filePath, name, type, content' }, { status: 400 });
@@ -159,14 +203,24 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Memory file not found' }, { status: 404 });
     }
 
+    // 用户编辑时：保留原 source，confidence 重置为 0.9（用户确认过，可靠性最高）
+    const finalSource = source || 'explicit';
+    const finalConfidence = confidence ?? 0.9;
+
     // 组装文件内容：frontmatter + body
-    const frontmatter = [
+    const frontmatterLines = [
       '---',
       `name: ${name}`,
       `description: ${description || ''}`,
       `type: ${type}`,
-      '---',
-    ].join('\n');
+      `source: ${finalSource}`,
+      `confidence: ${finalConfidence}`,
+    ];
+    if (subject) frontmatterLines.push(`subject: ${subject}`);
+    if (aliases && aliases.length > 0) frontmatterLines.push(`aliases: [${aliases.join(', ')}]`);
+    if (context && context.length > 0) frontmatterLines.push(`context: [${context.join(', ')}]`);
+    frontmatterLines.push('---');
+    const frontmatter = frontmatterLines.join('\n');
     const fileContent = `${frontmatter}\n\n${content}`;
 
     await fs.writeFile(filePath, fileContent, 'utf-8');

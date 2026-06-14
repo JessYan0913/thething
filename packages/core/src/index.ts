@@ -274,6 +274,10 @@ export {
   rebuildEntrypoint,
   getMemoryFilePath,
   getUserMemoryDir,
+  checkPromotionEligibility,
+  findPromotableMemories,
+  computeDormancy,
+  getAllMemoryUsage,
 } from './modules/memory';
 
 // Title generation
