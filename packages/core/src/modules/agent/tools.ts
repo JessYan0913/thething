@@ -17,6 +17,7 @@ import {
   askUserQuestionTool,
   createSkillTool,
   createCronTool,
+  createSaveMemoryTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
@@ -82,6 +83,14 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   if (config.cronStore) {
     tools.cron = createCronTool({ cronStore: config.cronStore })
+  }
+
+  // 注册 save_memory 工具（需要 userId 和 memoryBaseDir）
+  if (config.userId && config.memoryBaseDir) {
+    tools.save_memory = createSaveMemoryTool({
+      userId: config.userId,
+      memoryBaseDir: config.memoryBaseDir,
+    })
   }
 
   // 1. 注册内置 Agent

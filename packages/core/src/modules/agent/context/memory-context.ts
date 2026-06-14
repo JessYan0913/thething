@@ -11,6 +11,7 @@ import {
   checkPromotionEligibility,
   loadUsageData,
   scanMemoryFiles,
+  recordMemoryRecalls,
 } from '../../../modules/memory'
 import { truncateEntrypointContent } from '../../../modules/memory/memdir'
 import { promises as fs } from 'fs'
@@ -86,6 +87,9 @@ export async function loadMemoryContext(
         content = truncateEntrypointContent(content, options?.entrypointMaxLines, options?.entrypointMaxBytes)
       }
       recalledMemoriesContent = content
+
+      // 记录召回事件（非阻塞）
+      recordMemoryRecalls(userMemDir, relevantMemories.map(m => m.filename))
 
       // 非阻塞：检查晋升资格并自动晋升
       tryAutoPromote(relevantMemories, userMemDir)

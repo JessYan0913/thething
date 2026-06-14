@@ -97,8 +97,11 @@ export async function buildMemorySection(
   const parts: string[] = [];
 
   for (const memory of memories) {
-    const content = await readMemoryContent(memory.path);
-    if (content === null) continue;
+    const rawContent = await readMemoryContent(memory.path);
+    if (rawContent === null) continue;
+
+    // 去掉 frontmatter，只保留正文内容（Agent 不需要看到 source/confidence 等内部元数据）
+    const content = rawContent.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
 
     const ageNote = memoryFreshnessNote(memory.mtimeMs);
 

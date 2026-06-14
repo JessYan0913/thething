@@ -13,6 +13,9 @@ import {
   DialogFooter, DialogDescription,
 } from "@/components/ui/dialog"
 import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from "@/components/ui/tooltip"
+import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -32,6 +35,7 @@ interface MemoryEntryView {
   confidence: number
   validUntil: number | null
   supersededBy: string | null
+  tier?: string
 }
 
 const typeConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -39,6 +43,18 @@ const typeConfig: Record<string, { label: string; icon: React.ReactNode; color: 
   feedback: { label: "反馈", icon: <MessageSquareIcon className="size-4" />, color: "text-purple-500" },
   project: { label: "项目", icon: <FolderIcon className="size-4" />, color: "text-amber-500" },
   reference: { label: "参考", icon: <BookOpenIcon className="size-4" />, color: "text-green-500" },
+}
+
+const tierConfig: Record<string, { label: string; color: string; description: string }> = {
+  identity: { label: "身份", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400", description: "极少变化" },
+  pattern: { label: "规律", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400", description: "跨场景" },
+  state: { label: "状态", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400", description: "经常变化" },
+}
+
+const sourceConfig: Record<string, { label: string; color: string }> = {
+  explicit: { label: "显式", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  inferred: { label: "推断", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+  promoted: { label: "已验证", color: "bg-green-500/10 text-green-600 dark:text-green-400" },
 }
 
 const typeFilters = [
@@ -91,6 +107,7 @@ export default function MemorySettings() {
   const [formDesc, setFormDesc] = useState("")
   const [formType, setFormType] = useState<string>("user")
   const [formContent, setFormContent] = useState("")
+  const [formStability, setFormStability] = useState<string>("state")
   const [formSaving, setFormSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -237,6 +254,7 @@ export default function MemorySettings() {
     setFormDesc("")
     setFormType("user")
     setFormContent("")
+    setFormStability("state")
     setFormError(null)
     setDialogOpen(true)
   }, [])
@@ -259,6 +277,9 @@ export default function MemorySettings() {
           type: formType,
           content: formContent,
           userId: targetUserId,
+          stability: formStability,
+          source: "explicit",
+          confidence: 0.9,
         }),
       })
       if (!res.ok) {
@@ -273,7 +294,7 @@ export default function MemorySettings() {
     } finally {
       setFormSaving(false)
     }
-  }, [formName, formDesc, formType, formContent, activeUser, entries, loadMemory])
+  }, [formName, formDesc, formType, formContent, formStability, activeUser, entries, loadMemory])
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -394,6 +415,37 @@ export default function MemorySettings() {
                         <span className="text-[11px] text-muted-foreground shrink-0">
                           {getRelativeTime(entry.mtimeMs)}
                         </span>
+                        {entry.source && sourceConfig[entry.source] && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", sourceConfig[entry.source].color)}>
+                                  {sourceConfig[entry.source].label}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {entry.source === "explicit" && "用户明确说出的信息"}
+                                {entry.source === "inferred" && "从对话推断的信息"}
+                                {entry.source === "promoted" && "经多次验证的推断信息"}
+                                {entry.confidence != null && ` · 置信度 ${entry.confidence}`}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        {entry.tier && tierConfig[entry.tier] && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", tierConfig[entry.tier].color)}>
+                                  {tierConfig[entry.tier].label}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {tierConfig[entry.tier].description}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </div>
                       {entry.description && (
                         <p className="text-xs text-muted-foreground/60 mt-1 line-clamp-1">
@@ -475,6 +527,7 @@ export default function MemorySettings() {
                               )}
                               <span className="ml-auto text-[11px] text-muted-foreground/30">
                                 {config.label} · {entry.userId}
+                                {entry.confidence != null && ` · ${(entry.confidence * 100).toFixed(0)}%`}
                               </span>
                             </div>
                           </div>
@@ -526,6 +579,19 @@ export default function MemorySettings() {
                   <SelectItem value="feedback">反馈</SelectItem>
                   <SelectItem value="project">项目</SelectItem>
                   <SelectItem value="reference">参考</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>稳定性</Label>
+              <Select value={formStability} onValueChange={setFormStability}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="identity">身份（极少变化）</SelectItem>
+                  <SelectItem value="pattern">规律（跨场景）</SelectItem>
+                  <SelectItem value="state">状态（经常变化）</SelectItem>
                 </SelectContent>
               </Select>
             </div>

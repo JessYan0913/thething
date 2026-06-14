@@ -83,14 +83,27 @@ export const WHAT_NOT_TO_SAVE = `### 什么 NOT 要保存
 - 已经在 THING.md 中描述的内容
 - 临时性任务信息`;
 
-export const MEMORY_TYPES_PROMPT = `## 系统记忆管理指南
+export const MEMORY_TYPES_PROMPT = `## 记忆管理
 
-系统会自动管理记忆，你无需主动写入记忆文件。
+### 主动记忆保存（重要）
 
-你只需要关注以下两点：
+**当用户说出关于自己的信息时，你必须立即调用 save_memory 工具保存。**
+
+不要等到对话结束，发现即保存。这是你的核心能力之一。
+
+**必须保存的情况：**
+- 用户说"我喜欢..."、"我讨厌..."、"我习惯..." → 保存为 user 类型
+- 用户说"我小时候..."、"我是...人"、"我的工作是..." → 保存为 user 类型
+- 用户纠正你的行为 → 保存为 feedback 类型
+- 用户提到项目约束 → 保存为 project 类型
+- 用户提到外部工具/服务 → 保存为 reference 类型
+
+**示例：**
+- 用户说"火影忍者是我小时候喜欢看的" → 立即调用 save_memory 保存
+- 用户说"我喜欢简洁的代码" → 立即调用 save_memory 保存
+- 用户说"不要 mock 数据库" → 立即调用 save_memory 保存
 
 ### 记忆类型说明
-你可以参考以下类型理解已存储的记忆内容：
 
 #### user（用户记忆）
 用户表达了个人偏好、技术背景、角色信息。
@@ -112,17 +125,31 @@ export const MEMORY_TYPES_PROMPT = `## 系统记忆管理指南
 - 已经在 THING.md 中描述的内容
 - 临时性任务信息`;
 
-export const TRUSTING_RECALL_SECTION = `## 记忆召回防御
+export const TRUSTING_RECALL_SECTION = `## 记忆使用规则
 
-召回记忆时，请先验证记忆内容是否仍然有效：
-- 如果记忆提到某个文件，确认文件存在
-- 如果记忆提到某个函数，确认函数存在（用 grep 搜索）
-- 如果记忆包含代码示例，验证代码是否仍然正确
+你是一个有记忆的 AI。当召回的记忆与当前对话相关时，遵循以下规则：
 
-记忆可能过期。请在推荐前先验证。
+### 核心原则
+1. **直接使用**：记忆是关于用户的事实，像你本来就记得一样自然地使用它。不要说"根据我的记忆"、"我记得你之前说过"等前缀。
+2. **不要犹豫**：当用户询问的内容与记忆匹配时，直接回答。不要说"我猜的"、"可能不对"、"不确定是否仍然有效"。
+3. **不确定就问**：如果你不确定记忆是否仍然有效，直接问用户。例如："你之前说过喜欢 X，现在还是这样吗？"——而不是"我猜你喜欢 X，可能不对"。
 
-### 什么时候不需要验证
-当用户直接询问与记忆内容完全匹配的问题时（例如用户问"你该怎么叫我"→记忆中有称呼偏好），直接使用记忆内容回答，不要反复质疑记忆的可靠性。置信度仅表示信息来源方式（用户明确说出 vs 推断），不代表信息的准确性。`;
+### 验证场景
+仅在以下情况需要验证记忆是否过时：
+- 记忆提到某个文件，确认文件存在
+- 记忆提到某个函数，确认函数存在
+- 记忆包含代码示例，验证代码是否仍然正确
+
+### 什么不需要验证
+- 用户的个人偏好、身份信息、兴趣爱好——直接使用
+- 用户明确说过的信息——直接使用
+- 称呼、姓名等——直接使用
+
+### 禁止行为
+- ❌ "根据记忆，你可能喜欢 X"
+- ❌ "我之前记录过你说了 X，但我不确定是否准确"
+- ❌ "置信度较低，所以我只是推测"
+- ✅ "你喜欢 X"（直接陈述记忆中的事实）`;
 
 export const WHEN_TO_ACCESS_SECTION = `## 何时访问记忆
 
@@ -147,73 +174,9 @@ export interface MemoryFileData {
   subject?: string;       // 记忆主体（如"用户"、"Aura"）
   aliases?: string[];     // 主体别名（如["我", "主人", "自己"]）
   context?: string[];     // 关联场景（如["称呼", "身份", "角色"]）
+  // 稳定性分类
+  stability?: 'identity' | 'state' | 'pattern';
 }
 
-export function formatMemoryFrontmatter(data: MemoryFileData): string {
-  const lines = [
-    '---',
-    `name: ${data.name}`,
-    `description: ${data.description}`,
-    `type: ${data.type}`,
-  ];
-  if (data.source) lines.push(`source: ${data.source}`);
-  if (data.confidence != null) lines.push(`confidence: ${data.confidence}`);
-  if (data.validUntil != null) lines.push(`validUntil: ${data.validUntil}`);
-  if (data.supersededBy) lines.push(`supersededBy: ${data.supersededBy}`);
-  if (data.subject) lines.push(`subject: ${data.subject}`);
-  if (data.aliases && data.aliases.length > 0) lines.push(`aliases: [${data.aliases.join(', ')}]`);
-  if (data.context && data.context.length > 0) lines.push(`context: [${data.context.join(', ')}]`);
-  lines.push('---');
-  return lines.join('\n');
-}
-
-export function parseMemoryFrontmatter(content: string): MemoryFileData | null {
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!frontmatterMatch) return null;
-
-  const frontmatterStr = frontmatterMatch[1];
-  const bodyContent = frontmatterMatch[2].trim();
-
-  const nameMatch = frontmatterStr.match(/^name:\s*(.+)$/m);
-  const descMatch = frontmatterStr.match(/^description:\s*(.+)$/m);
-  const typeMatch = frontmatterStr.match(/^type:\s*(.+)$/m);
-  const sourceMatch = frontmatterStr.match(/^source:\s*(.+)$/m);
-  const confidenceMatch = frontmatterStr.match(/^confidence:\s*(.+)$/m);
-  const validUntilMatch = frontmatterStr.match(/^validUntil:\s*(.+)$/m);
-  const supersededByMatch = frontmatterStr.match(/^supersededBy:\s*(.+)$/m);
-  const subjectMatch = frontmatterStr.match(/^subject:\s*(.+)$/m);
-  const aliasesMatch = frontmatterStr.match(/^aliases:\s*\[(.+)\]$/m);
-  const contextMatch = frontmatterStr.match(/^context:\s*\[(.+)\]$/m);
-
-  if (!nameMatch || !typeMatch) return null;
-
-  const type = nameMatch[1].trim();
-  if (!isMemoryType(type)) return null;
-
-  const source = sourceMatch?.[1].trim() as MemorySource | undefined;
-  const confidence = confidenceMatch ? parseFloat(confidenceMatch[1].trim()) : undefined;
-  const validUntil = validUntilMatch?.[1].trim();
-  const supersededBy = supersededByMatch?.[1].trim();
-
-  return {
-    name: nameMatch[1].trim(),
-    description: descMatch?.[1].trim() || '',
-    type,
-    content: bodyContent,
-    source: source && isMemorySource(source) ? source : undefined,
-    confidence: confidence != null && !isNaN(confidence) ? confidence : undefined,
-    validUntil: validUntil ? Number(validUntil) : undefined,
-    supersededBy: supersededBy && supersededBy !== 'null' ? supersededBy : undefined,
-    subject: subjectMatch?.[1]?.trim() || undefined,
-    aliases: aliasesMatch?.[1]?.split(',').map(s => s.trim()).filter(Boolean) || undefined,
-    context: contextMatch?.[1]?.split(',').map(s => s.trim()).filter(Boolean) || undefined,
-  };
-}
-
-function isMemoryType(type: string): type is MemoryType {
-  return ['user', 'feedback', 'project', 'reference'].includes(type);
-}
-
-function isMemorySource(source: string): source is MemorySource {
-  return ['explicit', 'inferred', 'promoted'].includes(source);
-}
+// re-export frontmatter functions for backward compatibility
+export { formatMemoryFrontmatter, parseMemoryFrontmatter, isMemoryType, isMemorySource } from './frontmatter';

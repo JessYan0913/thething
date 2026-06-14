@@ -198,6 +198,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     modelAliases: behavior.modelAliases,
     dynamicReload: resolved.dynamicReload,
     cronStore: context.runtime.cronStore ?? undefined,
+    userId,
+    memoryBaseDir,
   })
 
   // 如果 Agent 定义了工具限制，过滤工具集

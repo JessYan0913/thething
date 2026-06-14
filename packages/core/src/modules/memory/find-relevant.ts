@@ -147,7 +147,8 @@ export async function findRelevantMemories(
     // 长期未召回的记忆降低权重
     const usage = usageData[memory.filename];
     const lastRecalledAt = usage?.lastRecalledAt ?? null;
-    const dormancy = computeDormancy(memory.confidence, lastRecalledAt, memory.mtimeMs);
+    const tier = (memory as any).tier || 'state';
+    const dormancy = computeDormancy(memory.confidence, lastRecalledAt, memory.mtimeMs, tier);
     const dormancyWeight = dormancy.weightMultiplier;
 
     // 最终分数 = 匹配度 × 时效性 × 休眠权重

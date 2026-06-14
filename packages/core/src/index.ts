@@ -278,6 +278,18 @@ export {
   findPromotableMemories,
   computeDormancy,
   getAllMemoryUsage,
+  // Phase 1: frontmatter
+  formatMemoryFrontmatter,
+  parseMemoryFrontmatter,
+  // Phase 1: memory store
+  writeMemoryFile,
+  updateMemoryFile,
+  deleteMemoryWithCleanup,
+  // Phase 3: tiered storage
+  migrateToTiered,
+  isTieredStorage,
+  assembleMemoryContext,
+  formatAssembledContext,
 } from './modules/memory';
 
 // Title generation

@@ -2,7 +2,18 @@ import { getServerRuntime } from '@/lib/runtime';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import { getMemoryFilePath, getUserMemoryDir, rebuildEntrypoint } from '@the-thing/core';
+import {
+  getMemoryFilePath,
+  getUserMemoryDir,
+  rebuildEntrypoint,
+  formatMemoryFrontmatter,
+  scanMemoryFiles,
+  writeMemoryFile,
+  deleteMemoryWithCleanup,
+  isTieredStorage,
+} from '@the-thing/core';
+
+export const runtime = 'nodejs';
 
 // 各来源的初始置信度（与 @the-thing/core 中 MEMORY_SOURCE_CONFIG 保持一致）
 const SOURCE_INITIAL_CONFIDENCE: Record<string, number> = {
@@ -10,114 +21,6 @@ const SOURCE_INITIAL_CONFIDENCE: Record<string, number> = {
   inferred: 0.3,
   promoted: 0.6,
 };
-
-export const runtime = 'nodejs';
-
-interface ScannedMemo {
-  name: string;
-  description: string;
-  type: string;
-  content: string;
-  filePath: string;
-  lines: number;
-  sizeKb: number;
-  userId: string;
-  mtimeMs: number;
-  // Layer 2: 信任层
-  source: string;
-  confidence: number;
-  validUntil: number | null;
-  supersededBy: string | null;
-  // 语义检索增强
-  subject: string;
-  aliases: string[];
-  context: string[];
-}
-
-interface EntrypointMemo {
-  userId: string;
-  content: string;
-  filePath: string;
-}
-
-function parseFrontmatter(content: string): { data: Record<string, string>; body: string } | null {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) return null;
-
-  const raw = match[1];
-  const body = match[2].trim();
-  const data: Record<string, string> = {};
-
-  for (const line of raw.split('\n')) {
-    const sep = line.indexOf(':');
-    if (sep > 0) {
-      data[line.slice(0, sep).trim()] = line.slice(sep + 1).trim();
-    }
-  }
-
-  return { data, body };
-}
-
-async function scanUserMemoryDir(userMemoryDir: string, userId: string): Promise<ScannedMemo[]> {
-  const results: ScannedMemo[] = [];
-
-  let files: string[];
-  try {
-    files = await fs.readdir(userMemoryDir);
-  } catch {
-    return results;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith('.md') || file === 'MEMORY.md') continue;
-
-    const filePath = path.join(userMemoryDir, file);
-    try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      const stat = await fs.stat(filePath);
-      const parsed = parseFrontmatter(content);
-      const lines = content.split('\n').length;
-      const sizeKb = Buffer.byteLength(content, 'utf-8') / 1024;
-
-      // Layer 2: 解析新字段，旧文件自动 fallback
-      const source = parsed?.data?.source || 'explicit';
-      const confidence = parsed?.data?.confidence ? parseFloat(parsed.data.confidence) : 0.8;
-      const validUntil = parsed?.data?.validUntil ? Number(parsed.data.validUntil) : null;
-      const supersededBy = parsed?.data?.supersededBy && parsed.data.supersededBy !== 'null'
-        ? parsed.data.supersededBy : null;
-
-      // 语义检索增强字段
-      const subject = parsed?.data?.subject || '';
-      const aliasesRaw = parsed?.data?.aliases || '';
-      const contextRaw = parsed?.data?.context || '';
-      const aliases = aliasesRaw ? aliasesRaw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean) : [];
-      const context = contextRaw ? contextRaw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean) : [];
-
-      results.push({
-        name: parsed?.data?.name ?? path.basename(file, '.md'),
-        description: parsed?.data?.description ?? '',
-        type: parsed?.data?.type ?? 'user',
-        content,
-        filePath,
-        lines,
-        sizeKb,
-        userId,
-        mtimeMs: stat.mtimeMs,
-        source,
-        confidence: isNaN(confidence) ? 0.8 : confidence,
-        validUntil,
-        supersededBy,
-        subject,
-        aliases,
-        context,
-      });
-    } catch {
-      // skip unreadable files
-    }
-  }
-
-  return results;
-}
 
 export async function DELETE(request: Request) {
   try {
@@ -133,7 +36,13 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Memory file not found' }, { status: 404 });
     }
 
-    await fs.unlink(filePath);
+    // 获取用户记忆目录并重建 entrypoint
+    const userMemoryDir = path.dirname(filePath);
+    const filename = path.basename(filePath);
+
+    // 使用核心模块删除（支持分层存储）
+    await deleteMemoryWithCleanup(userMemoryDir, filename);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Memory API] DELETE error:', error);
@@ -144,7 +53,7 @@ export async function DELETE(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, description, type, content, userId, source = 'explicit', subject, aliases, context } = body;
+    const { name, description, type, content, userId, source = 'explicit', subject, aliases, context, stability } = body;
 
     if (!name || !type || !content || !userId) {
       return NextResponse.json({ error: 'Missing required fields: name, type, content, userId' }, { status: 400 });
@@ -159,29 +68,33 @@ export async function POST(request: Request) {
     const userMemoryDir = getUserMemoryDir(userId, memoryDir);
     await fs.mkdir(userMemoryDir, { recursive: true });
 
-    const filePath = getMemoryFilePath(userMemoryDir, type, name);
     const initialConfidence = SOURCE_INITIAL_CONFIDENCE[source] ?? 0.9;
 
-    // 组装文件内容：frontmatter + body
-    const frontmatterLines = [
-      '---',
-      `name: ${name}`,
-      `description: ${description || ''}`,
-      `type: ${type}`,
-      `source: ${source}`,
-      `confidence: ${initialConfidence}`,
-    ];
-    if (subject) frontmatterLines.push(`subject: ${subject}`);
-    if (aliases && aliases.length > 0) frontmatterLines.push(`aliases: [${aliases.join(', ')}]`);
-    if (context && context.length > 0) frontmatterLines.push(`context: [${context.join(', ')}]`);
-    frontmatterLines.push('---');
-    const frontmatter = frontmatterLines.join('\n');
-    const fileContent = `${frontmatter}\n\n${content}`;
+    // 使用核心模块写入（自动检测分层存储）
+    const fileName = await writeMemoryFile(
+      userMemoryDir,
+      {
+        name,
+        description: description || '',
+        type,
+        content,
+        source: source as 'explicit' | 'inferred' | 'promoted',
+        confidence: initialConfidence,
+        subject,
+        aliases,
+        context,
+        stability: stability as 'identity' | 'state' | 'pattern' | undefined,
+      },
+      content,
+    );
 
-    await fs.writeFile(filePath, fileContent, 'utf-8');
-    await rebuildEntrypoint(userMemoryDir);
+    // 扁平目录需要重建 entrypoint（分层目录在 writeMemoryFile 中已处理）
+    const tiered = await isTieredStorage(userMemoryDir);
+    if (!tiered) {
+      await rebuildEntrypoint(userMemoryDir);
+    }
 
-    return NextResponse.json({ success: true, filePath });
+    return NextResponse.json({ success: true, fileName });
   } catch (error) {
     console.error('[Memory API] POST error:', error);
     return NextResponse.json({ error: 'Failed to create memory' }, { status: 500 });
@@ -191,7 +104,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { filePath, name, description, type, content, source, confidence, subject, aliases, context } = body;
+    const { filePath, name, description, type, content, source, confidence, subject, aliases, context, stability } = body;
 
     if (!filePath || !name || !type || content === undefined) {
       return NextResponse.json({ error: 'Missing required fields: filePath, name, type, content' }, { status: 400 });
@@ -207,29 +120,38 @@ export async function PUT(request: Request) {
     const finalSource = source || 'explicit';
     const finalConfidence = confidence ?? 0.9;
 
-    // 组装文件内容：frontmatter + body
-    const frontmatterLines = [
-      '---',
-      `name: ${name}`,
-      `description: ${description || ''}`,
-      `type: ${type}`,
-      `source: ${finalSource}`,
-      `confidence: ${finalConfidence}`,
-    ];
-    if (subject) frontmatterLines.push(`subject: ${subject}`);
-    if (aliases && aliases.length > 0) frontmatterLines.push(`aliases: [${aliases.join(', ')}]`);
-    if (context && context.length > 0) frontmatterLines.push(`context: [${context.join(', ')}]`);
-    frontmatterLines.push('---');
-    const frontmatter = frontmatterLines.join('\n');
-    const fileContent = `${frontmatter}\n\n${content}`;
-
-    await fs.writeFile(filePath, fileContent, 'utf-8');
-
-    // 重建所在用户目录的 entrypoint
+    // 获取用户记忆目录
     const userMemoryDir = path.dirname(filePath);
-    await rebuildEntrypoint(userMemoryDir);
+    const oldFilename = path.basename(filePath);
 
-    return NextResponse.json({ success: true });
+    // 使用核心模块删除旧文件
+    await deleteMemoryWithCleanup(userMemoryDir, oldFilename);
+
+    // 使用核心模块写入新文件（自动检测分层存储）
+    const newFileName = await writeMemoryFile(
+      userMemoryDir,
+      {
+        name,
+        description: description || '',
+        type,
+        content,
+        source: finalSource as 'explicit' | 'inferred' | 'promoted',
+        confidence: finalConfidence,
+        subject,
+        aliases,
+        context,
+        stability: stability as 'identity' | 'state' | 'pattern' | undefined,
+      },
+      content,
+    );
+
+    // 扁平目录需要重建 entrypoint（分层目录在 writeMemoryFile 中已处理）
+    const tiered = await isTieredStorage(userMemoryDir);
+    if (!tiered) {
+      await rebuildEntrypoint(userMemoryDir);
+    }
+
+    return NextResponse.json({ success: true, fileName: newFileName });
   } catch (error) {
     console.error('[Memory API] PUT error:', error);
     return NextResponse.json({ error: 'Failed to update memory' }, { status: 500 });
@@ -254,12 +176,27 @@ export async function GET() {
       // users dir not exists
     }
 
-    const allMemories: ScannedMemo[] = [];
-    const entrypoints: EntrypointMemo[] = [];
+    const allMemories: Array<{
+      name: string;
+      description: string;
+      type: string;
+      content: string;
+      filePath: string;
+      userId: string;
+      mtimeMs: number;
+      source: string;
+      confidence: number;
+      subject: string;
+      aliases: string[];
+      context: string[];
+      tier?: string;
+    }> = [];
+    const entrypoints: Array<{ userId: string; content: string; filePath: string }> = [];
 
     for (const userId of userIds) {
       const userMemoryDir = path.join(usersDir, userId, 'memory');
 
+      // 读取 MEMORY.md entrypoint
       const entrypointPath = path.join(userMemoryDir, 'MEMORY.md');
       try {
         const content = await fs.readFile(entrypointPath, 'utf-8');
@@ -268,8 +205,25 @@ export async function GET() {
         // no MEMORY.md for this user
       }
 
-      const memos = await scanUserMemoryDir(userMemoryDir, userId);
-      allMemories.push(...memos);
+      // 使用核心模块扫描（支持分层存储）
+      const memories = await scanMemoryFiles(userMemoryDir);
+      for (const mem of memories) {
+        allMemories.push({
+          name: mem.name,
+          description: mem.description,
+          type: mem.type,
+          content: mem.content,
+          filePath: mem.filePath,
+          userId,
+          mtimeMs: mem.mtimeMs,
+          source: mem.source,
+          confidence: mem.confidence,
+          subject: mem.subject,
+          aliases: mem.aliases,
+          context: mem.context,
+          tier: mem.tier,
+        });
+      }
     }
 
     return NextResponse.json({

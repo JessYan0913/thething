@@ -412,6 +412,10 @@ export interface LoadToolsConfig {
   dynamicReload?: boolean
   /** Cron 任务存储（来自 CoreRuntime，用于 cron 工具） */
   cronStore?: CronJobStore
+  /** 用户 ID（用于记忆系统） */
+  userId?: string
+  /** 记忆基础目录（用于记忆系统） */
+  memoryBaseDir?: string
 }
 
 export interface MemoryContext {

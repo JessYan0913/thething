@@ -1,9 +1,14 @@
 export * from './paths';
 export * from './types';
+export * from './frontmatter';
 export * from './memory-scan';
 export * from './memory-age';
 export * from './find-relevant';
 export * from './memdir';
 export * from './usage-tracker';
 export * from './promotion';
-export { extractMemoriesFromConversation, extractMemoriesInBackground } from './extractor';
+export * from './memory-store';
+export * from './memory-recall';
+export * from './tiered-storage';
+export * from './tiered-recall';
+export { extractMemoriesFromConversation, extractMemoriesInBackground } from './memory-capture';
