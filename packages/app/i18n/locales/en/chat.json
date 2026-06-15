@@ -11,7 +11,8 @@
     "noConversations": "No conversations yet",
     "rename": "Rename",
     "delete": "Delete",
-    "deleteConfirm": "Delete?",
+    "deleteConfirm": "Delete conversation \"{{title}}\"?",
+    "deleteDescription": "This conversation will be permanently deleted.",
     "filter": {
       "conversations": "Local Sessions",
       "connectors": "Connectors",

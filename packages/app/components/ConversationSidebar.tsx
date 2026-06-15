@@ -28,13 +28,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
   MessageSquareIcon,
   PencilIcon,
   PlusIcon,
   TrashIcon,
   SettingsIcon,
   MoreHorizontalIcon,
-  XIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { nanoid } from "nanoid";
@@ -134,8 +142,15 @@ export const ConversationSidebar = ({
   onFilterChange,
 }: ConversationSidebarProps) => {
   const { t } = useTranslation();
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const grouped = useMemo(() => groupConversations(conversations), [conversations]);
+
+  // Find the conversation being deleted for the dialog title
+  const deletingConversation = useMemo(
+    () => conversations.find((c) => c.id === deleteConfirmId),
+    [conversations, deleteConfirmId]
+  );
 
   return (
     <Sidebar collapsible="icon">
@@ -250,7 +265,7 @@ export const ConversationSidebar = ({
                             conversation={conv}
                             isActive={conv.id === activeConversationId}
                             onSelect={() => onSelectConversation(conv.id)}
-                            onDelete={() => onDeleteConversation(conv.id)}
+                            onDelete={() => setDeleteConfirmId(conv.id)}
                             onRename={(title) => onRenameConversation(conv.id, title)}
                           />
                         ))}
@@ -280,6 +295,32 @@ export const ConversationSidebar = ({
 
       {/* Rail for hover-to-toggle */}
       <SidebarRail />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{t('chat:conversation.deleteConfirm', { title: deletingConversation?.title })}</DialogTitle>
+            <DialogDescription>{t('chat:conversation.deleteDescription')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
+              {t('common:buttons.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteConfirmId) {
+                  onDeleteConversation(deleteConfirmId);
+                  setDeleteConfirmId(null);
+                }
+              }}
+            >
+              {t('chat:conversation.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sidebar>
   );
 };
@@ -306,7 +347,6 @@ const ConversationItem = ({
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(conversation.title);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -348,14 +388,6 @@ const ConversationItem = ({
     [handleSaveEdit, conversation.title]
   );
 
-  // Reset confirmation state when dropdown closes
-  const handleDropdownOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      // Use setTimeout to avoid state update during unmount
-      setTimeout(() => setConfirmingDelete(false), 0);
-    }
-  }, []);
-
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -382,43 +414,25 @@ const ConversationItem = ({
       </SidebarMenuButton>
 
       {!isEditing && (
-        <DropdownMenu onOpenChange={handleDropdownOpenChange}>
+        <DropdownMenu>
           <SidebarMenuAction showOnHover asChild>
             <DropdownMenuTrigger>
               <MoreHorizontalIcon className="size-4" />
             </DropdownMenuTrigger>
           </SidebarMenuAction>
           <DropdownMenuContent side="right" align="start" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-            {confirmingDelete ? (
-              <>
-                <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground border-b border-border mx-1 mb-1">
-                  {t('chat:conversation.deleteConfirm') || 'Delete this conversation?'}
-                </div>
-                <DropdownMenuItem onClick={() => setConfirmingDelete(false)}>
-                  <XIcon />
-                  Cancel
-                </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <TrashIcon />
-                  {t('chat:conversation.delete')}
-                </DropdownMenuItem>
-              </>
-            ) : (
-              <>
-                <DropdownMenuItem onClick={handleStartEdit}>
-                  <PencilIcon className="size-4" />
-                  {t('chat:conversation.rename')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setConfirmingDelete(true)}
-                  onSelect={(e: { preventDefault: () => void }) => e.preventDefault()}
-                >
-                  <TrashIcon className="size-4" />
-                  {t('chat:conversation.delete')}
-                </DropdownMenuItem>
-              </>
-            )}
+            <DropdownMenuItem onClick={handleStartEdit}>
+              <PencilIcon className="size-4" />
+              {t('chat:conversation.rename')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={onDelete}
+              onSelect={(e: { preventDefault: () => void }) => e.preventDefault()}
+            >
+              <TrashIcon className="size-4" />
+              {t('chat:conversation.delete')}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
