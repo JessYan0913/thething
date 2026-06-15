@@ -11,6 +11,19 @@ const NEXT_APP_DIR = join(ROOT_DIR, 'packages', 'app');
 const STANDALONE_DIR = join(NEXT_APP_DIR, '.next', 'standalone');
 const OUTPUT_DIR = join(__dirname, '..', 'resources', 'standalone');
 
+// rsync on macOS can return exit code 23 (extended attribute warnings) even on success.
+// Wrap in try-catch and verify the transfer actually completed.
+function rsyncCopy(src: string, dest: string) {
+  try {
+    execSync(`rsync -a --copy-links "${src}/" "${dest}/"`, { stdio: 'inherit' });
+  } catch (err: any) {
+    // Exit code 23 = "Some files could not be transferred" — usually extended attribute
+    // warnings on macOS. The transfer itself completed successfully.
+    if (err.status !== 23) throw err;
+    console.warn('[Prepare Standalone] rsync exited with code 23 (extended attribute warning, transfer OK)');
+  }
+}
+
 async function main() {
   console.log('[Prepare Standalone] Starting...');
 
@@ -25,7 +38,7 @@ async function main() {
     rmSync(OUTPUT_DIR, { recursive: true, force: true });
   }
   mkdirSync(OUTPUT_DIR, { recursive: true });
-  execSync(`rsync -a --copy-links "${STANDALONE_DIR}/" "${OUTPUT_DIR}/"`, { stdio: 'inherit' });
+  rsyncCopy(STANDALONE_DIR, OUTPUT_DIR);
 
   // 3. Copy static assets (standalone doesn't include public/ and .next/static/)
   console.log('[Prepare Standalone] Copying static assets...');
@@ -34,29 +47,50 @@ async function main() {
   const appInResources = join(OUTPUT_DIR, 'packages', 'app');
 
   if (existsSync(publicDir)) {
-    execSync(`rsync -a --copy-links "${publicDir}/" "${join(appInResources, 'public')}/"`, { stdio: 'inherit' });
+    rsyncCopy(publicDir, join(appInResources, 'public'));
   }
 
   if (existsSync(staticDir)) {
     mkdirSync(join(appInResources, '.next', 'static'), { recursive: true });
-    execSync(`rsync -a --copy-links "${staticDir}/" "${join(appInResources, '.next', 'static')}/"`, { stdio: 'inherit' });
+    rsyncCopy(staticDir, join(appInResources, '.next', 'static'));
   }
 
-  // 4. Copy better-sqlite3 native binding
-  console.log('[Prepare Standalone] Copying better-sqlite3 native binding...');
-  const sqliteBindingSrc = join(NEXT_APP_DIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
-  const sqliteBindingDest = join(appInResources, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+  // 4. Remove stale better-sqlite3 binding from .next/node_modules inside the resources
+  //    (Next.js bundles an old binding that shadows the correct standalone copy)
+  console.log('[Prepare Standalone] Cleaning stale native bindings...');
+  const staleBindingsDir = join(OUTPUT_DIR, 'packages', 'app', '.next', 'node_modules');
+  if (existsSync(staleBindingsDir)) {
+    const staleModules = readdirSync(staleBindingsDir).filter((d: string) => d.startsWith('better-sqlite3'));
+    for (const mod of staleModules) {
+      rmSync(join(staleBindingsDir, mod), { recursive: true, force: true });
+      console.log(`[Prepare Standalone] Removed stale ${mod}`);
+    }
+  }
 
-  if (existsSync(sqliteBindingSrc)) {
-    mkdirSync(join(sqliteBindingDest, '..'), { recursive: true });
-    copyFileSync(sqliteBindingSrc, sqliteBindingDest);
-  } else {
-    console.warn('[Prepare Standalone] Warning: better-sqlite3 native binding not found');
+  // 5. Create native/better-sqlite3 for SEA fallback loading
+  //    The bundled code looks for native/better-sqlite3/lib/index.js relative to cwd.
+  //    pnpm store bindings may be corrupted by electron-rebuild, so install fresh
+  //    better-sqlite3 in a temp dir to get the correct system Node binding.
+  console.log('[Prepare Standalone] Setting up native better-sqlite3...');
+  const nativeDest = join(OUTPUT_DIR, 'packages', 'app', 'native', 'better-sqlite3');
+  if (!existsSync(nativeDest)) {
+    mkdirSync(join(nativeDest, '..'), { recursive: true });
+    const tmpDir = join(OUTPUT_DIR, '_tmp_sqlite');
+    try {
+      execSync(`mkdir -p "${tmpDir}" && cd "${tmpDir}" && npm init -y --silent && npm install better-sqlite3@12.8.0 --silent`, { stdio: 'inherit' });
+      execSync(`cp -R "${tmpDir}/node_modules/better-sqlite3" "${nativeDest}"`, { stdio: 'inherit' });
+      console.log(`[Prepare Standalone] Created native/better-sqlite3 from fresh install`);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   }
 
   // 5. Copy missing dependencies that Next.js standalone doesn't include with pnpm
   console.log('[Prepare Standalone] Copying missing dependencies...');
   const missingDeps = [
+    'react',
+    'react-dom',
+    'react-is',
     'styled-jsx',
     '@swc/helpers',
     '@next/env',
@@ -77,7 +111,7 @@ async function main() {
       const destDir = join(appInResources, 'node_modules', dep);
       if (existsSync(srcDir)) {
         console.log(`[Prepare Standalone] Copying ${dep}...`);
-        execSync(`rsync -a --copy-links "${srcDir}/" "${destDir}/"`, { stdio: 'inherit' });
+        rsyncCopy(srcDir, destDir);
       }
     } else {
       console.warn(`[Prepare Standalone] Warning: ${dep} not found in pnpm store`);
