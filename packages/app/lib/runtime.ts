@@ -1,11 +1,52 @@
 import path from 'path';
 import os from 'os';
+import { promises as fs } from 'fs';
 import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
 import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
 let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
 let initPromise: Promise<CoreRuntime> | null = null;
+
+// ============================================================
+// Skills 磁盘变更检测（mtime 指纹）
+// ============================================================
+
+/** 上次加载时记录的 skills 目录及其子目录 mtime */
+let skillDirMtimes: Map<string, number> = new Map();
+
+/** 采集 skills 目录及子目录的 mtime */
+async function collectSkillDirMtimes(rt: CoreRuntime): Promise<Map<string, number>> {
+  const mtimes = new Map<string, number>();
+  const dirs = rt.layout.resources.skills;
+  for (const dir of dirs) {
+    try {
+      const stat = await fs.stat(dir);
+      mtimes.set(dir, stat.mtimeMs);
+      // 扫描子目录（每个技能文件夹），检测已有技能的内容修改
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const subStat = await fs.stat(path.join(dir, entry.name));
+          mtimes.set(path.join(dir, entry.name), subStat.mtimeMs);
+        }
+      }
+    } catch {
+      // 目录不存在，跳过
+    }
+  }
+  return mtimes;
+}
+
+/** 检查 skills 目录自上次加载后是否有磁盘变更 */
+async function isSkillDirStale(rt: CoreRuntime): Promise<boolean> {
+  const current = await collectSkillDirMtimes(rt);
+  if (current.size !== skillDirMtimes.size) return true;
+  for (const [dir, mtime] of current) {
+    if (skillDirMtimes.get(dir) !== mtime) return true;
+  }
+  return false;
+}
 
 async function initializeRuntime(): Promise<CoreRuntime> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env };
@@ -87,10 +128,22 @@ export async function getServerRuntime(): Promise<CoreRuntime> {
 }
 
 export async function getServerContext(): Promise<AppContext> {
-  if (!context) {
-    const rt = await getServerRuntime();
-    context = await createContext({ runtime: rt });
+  if (context) {
+    // 轻量级检查：skills 目录是否有磁盘变更（新增/修改/删除技能）
+    const stale = await isSkillDirStale(context.runtime).catch(() => false);
+    if (stale) {
+      console.log('[Runtime] Skills 目录已变更，自动重新加载');
+      context = await context.reload();
+      if (context.mcpRegistry) {
+        await context.mcpRegistry.connectAll().catch(() => {});
+      }
+    }
+    return context;
   }
+  const rt = await getServerRuntime();
+  context = await createContext({ runtime: rt });
+  // 记录初始 mtime 指纹
+  skillDirMtimes = await collectSkillDirMtimes(rt);
   return context;
 }
 
@@ -101,6 +154,8 @@ export async function reloadServerContext(): Promise<AppContext> {
   if (context.mcpRegistry) {
     await context.mcpRegistry.connectAll().catch(() => {});
   }
+  // 重置 mtime 缓存，让下次 getServerContext() 记录新的 mtime
+  skillDirMtimes = await collectSkillDirMtimes(context.runtime);
   return context;
 }
 

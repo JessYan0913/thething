@@ -169,6 +169,9 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
     const filePath = agent.filePath;
+    if (!filePath) {
+      return NextResponse.json({ error: 'Agent has no file path' }, { status: 400 });
+    }
 
     try {
       await fs.access(filePath);
@@ -232,6 +235,9 @@ export async function PATCH(request: Request) {
 
     // User/project agents: update the .md file
     const filePath = agent.filePath;
+    if (!filePath) {
+      return NextResponse.json({ error: 'Agent has no file path' }, { status: 400 });
+    }
 
     try {
       await fs.access(filePath);
@@ -269,6 +275,9 @@ export async function DELETE(request: Request) {
     }
 
     const filePath = agent.filePath;
+    if (!filePath) {
+      return NextResponse.json({ error: 'Agent has no file path' }, { status: 400 });
+    }
 
     try {
       await fs.access(filePath);

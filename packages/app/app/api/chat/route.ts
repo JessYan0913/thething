@@ -99,9 +99,6 @@ export async function POST(request: Request) {
         modelName: modelName || process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
         includeUsage: true,
       },
-      session: globalConfig?.contextLimit
-        ? { maxContextTokens: globalConfig.contextLimit }
-        : undefined,
     });
 
     const messagesWithAttachments = adjustedMessages ?? messages;
