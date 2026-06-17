@@ -44,6 +44,7 @@
     "@streamdown/math": "^1.0.2",
     "@streamdown/mermaid": "^1.0.2",
     "@the-thing/core": "workspace:*",
+    "@the-thing/resumable-stream": "workspace:*",
     "ai": "^6.0.149",
     "ai-elements": "^1.9.0",
     "better-sqlite3": "^12.8.0",

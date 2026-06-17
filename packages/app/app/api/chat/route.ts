@@ -2,6 +2,7 @@ import path from 'path'
 import os from 'os'
 import { getServerRuntime, getServerContext } from '@/lib/runtime';
 import { convertFileToText } from '@/lib/file-convert';
+import { getStreamManager } from '@/lib/stream-manager';
 import {
   createAgent,
   generateConversationTitle,
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
 
     const context = await getServerContext();
     const store = context.runtime.dataStore;
+    const streamManager = getStreamManager();
 
     let existingMessages = store.messageStore.getMessagesByConversation(conversationId);
     const isFirstMessage = existingMessages.length === 0;
@@ -147,54 +149,95 @@ export async function POST(request: Request) {
 
     const abortController = new AbortController();
 
-    const stream = createUIMessageStream({
-      execute: async ({ writer }) => {
-        writerRef.current = writer as unknown as SubAgentStreamWriter;
-
-        const agentStream = await createAgentUIStream({
-          agent,
-          uiMessages: llmMessages,
-          abortSignal: abortController.signal,
-          sendReasoning: true,
-          onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+    // 创建可恢复流
+    const resumableStream = await streamManager.createNewResumableStream(
+      conversationId,
+      () => {
+        // 创建原始流：将 UIMessageChunk 对象序列化为 JSON 字符串，
+        // 因为可恢复流按字符串缓冲/恢复，逐个 chunk 独立传输。
+        const stream = new ReadableStream<string>({
+          start: async (controller) => {
             try {
-              const newAssistantMessages = completedMessages.slice(llmMessages.length);
-              const messagesToSave = [...messages, ...newAssistantMessages];
+              const agentStream = await createAgentUIStream({
+                agent,
+                uiMessages: llmMessages,
+                abortSignal: abortController.signal,
+                sendReasoning: true,
+                onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+                  try {
+                    const newAssistantMessages = completedMessages.slice(llmMessages.length);
+                    const messagesToSave = [...messages, ...newAssistantMessages];
 
-              console.log(
-                `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
-              );
+                    console.log(
+                      `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+                    );
 
-              const costSummary = sessionState.costTracker.getSummary();
-              console.log(
-                `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
-              );
+                    const costSummary = sessionState.costTracker.getSummary();
+                    console.log(
+                      `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
+                    );
 
-              await finalizeAgentRun({
-                dataStore: store,
-                messages: messagesToSave,
-                conversationId,
-                costTracker: sessionState.costTracker,
-                mcpRegistry,
-                model,
-                isNewConversation: isFirstMessage,
-                userId,
-                memoryBaseDir,
+                    await finalizeAgentRun({
+                      dataStore: store,
+                      messages: messagesToSave,
+                      conversationId,
+                      costTracker: sessionState.costTracker,
+                      mcpRegistry,
+                      model,
+                      isNewConversation: isFirstMessage,
+                      userId,
+                      memoryBaseDir,
+                    });
+                  } catch (err) {
+                    console.error('[Chat API] onFinish error:', err);
+                  }
+                },
               });
-            } catch (err) {
-              console.error('[Chat API] onFinish error:', err);
+
+              // 读取代理流并序列化为 JSON 字符串后发送到控制器
+              const reader = agentStream.getReader();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                controller.enqueue(JSON.stringify(value));
+              }
+              controller.close();
+            } catch (error) {
+              controller.error(error);
             }
           },
         });
 
-        writer.merge(agentStream);
+        return stream;
+      }
+    );
+
+    if (!resumableStream) {
+      return NextResponse.json({ error: 'Failed to create stream' }, { status: 500 });
+    }
+
+    // 包装成 UI 消息流
+    const stream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        writerRef.current = writer as unknown as SubAgentStreamWriter;
+
+        // 读取可恢复流（JSON 字符串）并解析为 UIMessageChunk 后写入 UI 流
+        const reader = resumableStream.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          writer.write(JSON.parse(value));
+        }
       },
       onError: (err) => String(err),
     });
 
     return createUIMessageStreamResponse({
       stream,
-      headers: { 'X-Conversation-Id': conversationId },
+      headers: {
+        'X-Conversation-Id': conversationId,
+        'X-Stream-Id': conversationId, // 使用 conversationId 作为 streamId
+      },
     });
   } catch (error) {
     console.error('[Chat API] POST error:', error);

@@ -201,7 +201,7 @@ export function getStoredConversationId(): string | null {
   return localStorage.getItem(CONVERSATION_ID_KEY);
 }
 
-function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat', extraBodyRef?: React.RefObject<Record<string, unknown> | undefined>) {
+function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat', extraBodyRef?: React.RefObject<Record<string, unknown> | undefined>, messagesRef?: React.RefObject<UIMessage[]>) {
   return new DefaultChatTransport({
     api: apiEndpoint,
     body: { conversationId },
@@ -213,6 +213,29 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
           ...extraBodyRef?.current,
           ...body,
         },
+      };
+    },
+    // 支持流恢复
+    prepareReconnectToStreamRequest: ({ id }) => {
+      // 计算已接收的 chunk 数，用于跳过已接收的内容
+      let skipChunks = 0;
+      if (messagesRef?.current) {
+        const messages = messagesRef.current;
+        // 查找最后一个 assistant 消息
+        const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
+        if (lastAssistantMessage) {
+          // 计算该消息中所有 parts 的数量（每个 part 对应一个 chunk）
+          skipChunks = lastAssistantMessage.parts.length;
+        }
+      }
+
+      const api = skipChunks > 0
+        ? `/api/chat/${id}/stream?skipChunks=${skipChunks}`
+        : `/api/chat/${id}/stream`;
+
+      return {
+        api,
+        credentials: 'include',
       };
     },
   });
@@ -296,11 +319,12 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     agentType: selectedAgent === 'auto' ? undefined : selectedAgent,
   };
 
-  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef), [conversationId, apiEndpoint]);
+  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef, messagesRef), [conversationId, apiEndpoint]);
 
   const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId,
     transport,
+    resume: true, // 启用流恢复支持
     sendAutomaticallyWhen: ({ messages }) => {
       const lastMsg = messages.at(-1);
       if (lastMsg?.role === 'assistant') {
