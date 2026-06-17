@@ -42,7 +42,7 @@ import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/ap
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type ToolUIPart, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
+import { DefaultChatTransport, type ToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector } from '@/components/chat-selectors';
@@ -201,11 +201,31 @@ export function getStoredConversationId(): string | null {
   return localStorage.getItem(CONVERSATION_ID_KEY);
 }
 
-function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat', extraBodyRef?: React.RefObject<Record<string, unknown> | undefined>, messagesRef?: React.RefObject<UIMessage[]>) {
-  return new DefaultChatTransport({
+// 跟踪原始 chunk 数量的传输层
+// parts（逻辑单元）和 chunks（原始 SSE 事件）之间不是 1:1 关系，
+// 例如一个 reasoning part 对应 reasoning-start + N * reasoning-delta + reasoning-end。
+// 用原始 chunk 数量跳过才能避免跳到序列中间导致错误。
+class ResumableChatTransport extends DefaultChatTransport<UIMessage> {
+  rawChunkCount = 0;
+
+  protected processResponseStream(stream: ReadableStream<Uint8Array<ArrayBufferLike>>): ReadableStream<UIMessageChunk> {
+    this.rawChunkCount = 0;
+    return super.processResponseStream(stream).pipeThrough(
+      new TransformStream({
+        transform: (chunk: UIMessageChunk, controller) => {
+          this.rawChunkCount++;
+          controller.enqueue(chunk);
+        },
+      })
+    );
+  }
+}
+
+function createChatTransport(conversationId: string, apiEndpoint: string = '/api/chat', extraBodyRef?: React.RefObject<Record<string, unknown> | undefined>, _messagesGetter?: () => UIMessage[]) {
+  const transport: ResumableChatTransport = new ResumableChatTransport({
     api: apiEndpoint,
     body: { conversationId },
-    prepareSendMessagesRequest({ messages, body }) {
+    prepareSendMessagesRequest({ messages, body }: { id: string; messages: UIMessage[]; body: Record<string, any> | undefined; credentials: RequestCredentials | undefined; headers: HeadersInit | undefined; api: string; requestMetadata: unknown; trigger: string; messageId: string | undefined }) {
       return {
         body: {
           message: messages.at(-1),
@@ -215,30 +235,21 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
         },
       };
     },
-    // 支持流恢复
-    prepareReconnectToStreamRequest: ({ id }) => {
-      // 计算已接收的 chunk 数，用于跳过已接收的内容
-      let skipChunks = 0;
-      if (messagesRef?.current) {
-        const messages = messagesRef.current;
-        // 查找最后一个 assistant 消息
-        const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
-        if (lastAssistantMessage) {
-          // 计算该消息中所有 parts 的数量（每个 part 对应一个 chunk）
-          skipChunks = lastAssistantMessage.parts.length;
-        }
-      }
-
+    // 支持流恢复：使用 transport 实例的 rawChunkCount（通过闭包引用已创建的实例）
+    prepareReconnectToStreamRequest: ({ id }: { id: string; requestMetadata: unknown; body: Record<string, any> | undefined; credentials: RequestCredentials | undefined; headers: HeadersInit | undefined; api: string }) => {
+      const skipChunks = transport.rawChunkCount;
       const api = skipChunks > 0
         ? `/api/chat/${id}/stream?skipChunks=${skipChunks}`
         : `/api/chat/${id}/stream`;
 
       return {
         api,
-        credentials: 'include',
+        credentials: 'include' as const,
       };
     },
   });
+
+  return transport;
 }
 
 export interface ChatProps {
@@ -256,6 +267,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   const messagesRef = useRef<UIMessage[]>([]);
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const initialMessageSentRef = useRef(false);
+  const [isResumeEnabled, setIsResumeEnabled] = useState(false);
 
   // 审批对话框状态（用于工具审批）- 支持批量审批
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
@@ -319,12 +331,12 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     agentType: selectedAgent === 'auto' ? undefined : selectedAgent,
   };
 
-  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef, messagesRef), [conversationId, apiEndpoint]);
+  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef, () => messagesRef.current), [conversationId, apiEndpoint]);
 
   const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId,
     transport,
-    resume: true, // 启用流恢复支持
+    resume: isResumeEnabled, // 只有在初始加载完成后才启用流恢复
     sendAutomaticallyWhen: ({ messages }) => {
       const lastMsg = messages.at(-1);
       if (lastMsg?.role === 'assistant') {
@@ -626,6 +638,8 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
       } finally {
         if (!cancelled) {
           setIsInitialLoadDone(true);
+          // 在初始加载完成后启用流恢复
+          setIsResumeEnabled(true);
         }
       }
     }

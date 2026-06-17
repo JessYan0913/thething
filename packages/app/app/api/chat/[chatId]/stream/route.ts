@@ -15,15 +15,14 @@ export async function GET(
   try {
     const { chatId } = await params;
     const url = new URL(request.url);
-    const skipCharacters = url.searchParams.get('skip');
     const skipChunks = url.searchParams.get('skipChunks');
 
     const streamManager = getStreamManager();
 
-    // 尝试恢复流（优先使用 skipChunks）
+    // 尝试恢复流
     const resumedStream = await streamManager.resumeExistingStream(
       chatId,
-      skipCharacters ? Number(skipCharacters) : undefined,
+      undefined,
       skipChunks ? Number(skipChunks) : undefined
     );
 
