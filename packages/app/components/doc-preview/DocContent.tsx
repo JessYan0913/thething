@@ -168,7 +168,7 @@ export function DocContent({ doc, onUpdateDoc }: DocContentProps) {
           </div>
         ) : (
           <div className="p-4">
-            <CodeBlock code={displayContent} language={doc.type === "json" ? "json" : "text"} />
+            <CodeBlock code={displayContent} language={(doc.type === "json" ? "json" : "text") as any} />
           </div>
         )}
       </div>

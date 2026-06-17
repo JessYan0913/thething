@@ -82,6 +82,7 @@ interface AgentDef {
   displayName?: string;
   description: string;
   source: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface AgentSelectorProps {
@@ -105,7 +106,7 @@ export function AgentSelector({ value, onChange }: AgentSelectorProps) {
           );
           setAgents(userAgents);
           // 如果当前选中的 Agent 已被禁用或不存在，重置为 auto
-          if (value !== 'auto' && !userAgents.some((a) => a.agentType === value)) {
+          if (value !== 'auto' && !userAgents.some((a: AgentDef) => a.agentType === value)) {
             onChange('auto');
           }
         }

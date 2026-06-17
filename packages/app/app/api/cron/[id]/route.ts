@@ -8,7 +8,11 @@ export const runtime = 'nodejs';
 function extractText(parts: unknown[]): string {
   if (!Array.isArray(parts)) return '';
   return parts
-    .filter((p): p is { type: string; text: string } => typeof p === 'object' && p !== null && 'text' in p && (p as { type: string }).type === 'text')
+    .filter((p): p is { type: string; text: string } => {
+      if (typeof p !== 'object' || p === null) return false;
+      const obj = p as Record<string, unknown>;
+      return obj.type === 'text' && typeof obj.text === 'string';
+    })
     .map(p => p.text)
     .join('');
 }

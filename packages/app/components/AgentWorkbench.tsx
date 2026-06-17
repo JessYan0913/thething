@@ -217,7 +217,7 @@ export default function AgentWorkbench() {
         })
         if (res.ok) {
           setSaveMsg("创建成功")
-          router.push(`/workbench/agent/${agentType}`, { replace: true })
+          router.replace(`/workbench/agent/${agentType}`)
         } else {
           const data = await res.json().catch(() => ({}))
           setSaveMsg(data.error ?? "创建失败")
