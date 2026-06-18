@@ -80,6 +80,7 @@ export async function GET(request: Request) {
 
     if (action === 'read') {
       const fileParam = searchParams.get('path');
+      const encoding = searchParams.get('encoding');
       if (!fileParam) {
         return NextResponse.json({ error: 'Missing path query parameter' }, { status: 400 });
       }
@@ -101,8 +102,22 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Path is not a file' }, { status: 400 });
       }
 
-      const content = await fs.readFile(resolvedFile, 'utf-8');
       const ext = path.extname(resolvedFile).toLowerCase();
+
+      // 如果请求 base64 编码（用于二进制文件）
+      if (encoding === 'base64') {
+        const buffer = await fs.readFile(resolvedFile);
+        const base64 = buffer.toString('base64');
+        return NextResponse.json({
+          content: base64,
+          ext,
+          size: stat.size,
+          encoding: 'base64',
+        });
+      }
+
+      // 默认以 UTF-8 文本读取
+      const content = await fs.readFile(resolvedFile, 'utf-8');
 
       return NextResponse.json({
         content,

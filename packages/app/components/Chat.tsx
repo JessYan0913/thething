@@ -298,6 +298,8 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     path: string;
     content: string;
     language?: string;
+    fileUrl?: string;
+    mediaType?: string;
   } | null>(null);
 
   // 模型和 Agent 选择状态（持久化到 localStorage）
@@ -859,18 +861,31 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
 
                           if (part.type === 'file') {
                             const filePart = part as { type: 'file'; mediaType?: string; url: string; filename?: string };
+                            const handleFilePreview = () => {
+                              setPreviewFile({
+                                path: filePart.filename ?? 'file',
+                                content: '',
+                                fileUrl: filePart.url,
+                                mediaType: filePart.mediaType,
+                              });
+                            };
                             if (filePart.mediaType?.startsWith('image/')) {
                               return (
                                 <img
                                   key={`${message.id}-${index}`}
                                   src={filePart.url}
                                   alt={filePart.filename ?? 'image'}
-                                  className="max-h-64 rounded-md border"
+                                  className="max-h-64 rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                                  onClick={handleFilePreview}
                                 />
                               );
                             }
                             return (
-                              <div key={`${message.id}-${index}`} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                              <div
+                                key={`${message.id}-${index}`}
+                                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-accent/50 transition-colors"
+                                onClick={handleFilePreview}
+                              >
                                 <FileTextIcon className="size-4 text-muted-foreground" />
                                 <span>{filePart.filename ?? 'file'}</span>
                               </div>
@@ -1104,6 +1119,8 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
           filePath={previewFile.path}
           content={previewFile.content}
           language={previewFile.language}
+          fileUrl={previewFile.fileUrl}
+          mediaType={previewFile.mediaType}
         />
       )}
     </div>

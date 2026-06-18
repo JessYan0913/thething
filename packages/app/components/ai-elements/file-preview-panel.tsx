@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import {
   EyeIcon,
@@ -13,6 +14,23 @@ import { useState, useEffect } from "react";
 import { CodeEditor } from "./code-editor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ImagePreview } from "./file-preview/image-preview";
+import { OfficePreview } from "./file-preview/office-preview";
+import { HTMLPreview } from "./file-preview/html-preview";
+import { detectFileType, type FileType } from "@/lib/file-type";
+
+// 动态导入 PDF 预览组件以避免 SSR 问题
+const PDFPreview = dynamic(
+  () => import("./file-preview/pdf-preview").then((mod) => mod.PDFPreview),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full">
+        <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  }
+);
 
 interface FilePreviewPanelProps {
   open: boolean;
@@ -20,6 +38,10 @@ interface FilePreviewPanelProps {
   filePath: string;
   content: string;
   language?: string;
+  /** 文件 URL（用于需要下载文件的预览类型，如图片、PDF、Office） */
+  fileUrl?: string;
+  /** MIME 类型 */
+  mediaType?: string;
 }
 
 const LANGUAGE_LABELS: Record<string, string> = {
@@ -61,6 +83,8 @@ export function FilePreviewPanel({
   filePath,
   content: initialContent,
   language,
+  fileUrl,
+  mediaType,
 }: FilePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<"preview" | "code">(
     language === "markdown" ? "preview" : "code"
@@ -70,6 +94,10 @@ export function FilePreviewPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detectedLang, setDetectedLang] = useState<string | undefined>(language);
+
+  // 检测文件类型
+  const fileType: FileType = detectFileType(filePath, mediaType);
+  const isMediaFile = fileType === "image" || fileType === "pdf" || fileType === "office" || fileType === "html";
 
   // 打开时加载完整文件内容
   useEffect(() => {
@@ -110,6 +138,9 @@ export function FilePreviewPanel({
   const langLabel = language ? LANGUAGE_LABELS[language] ?? language : detectedLang ? LANGUAGE_LABELS[detectedLang] ?? detectedLang : null;
   const displayLang = language ?? detectedLang;
 
+  // 获取预览 URL：优先使用 fileUrl，否则使用 filePath
+  const previewUrl = fileUrl || filePath;
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(content);
     setCopied(true);
@@ -121,13 +152,16 @@ export function FilePreviewPanel({
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          {displayLang === "markdown" ? (
+          {/* 根据文件类型显示不同图标 */}
+          {isMediaFile ? (
+            <EyeIcon className="size-4 shrink-0 text-muted-foreground" />
+          ) : displayLang === "markdown" ? (
             <EyeIcon className="size-4 shrink-0 text-muted-foreground" />
           ) : (
             <CodeIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
           <span className="text-sm truncate">{fileName}</span>
-          {langLabel && (
+          {langLabel && !isMediaFile && (
             <span className="text-xs text-muted-foreground">· {langLabel}</span>
           )}
           {isLoading && (
@@ -191,6 +225,14 @@ export function FilePreviewPanel({
           <div className="flex items-center justify-center h-full text-destructive">
             <p className="text-sm">{error}</p>
           </div>
+        ) : fileType === "image" ? (
+          <ImagePreview src={previewUrl} filename={fileName} />
+        ) : fileType === "pdf" ? (
+          <PDFPreview src={previewUrl} filename={fileName} />
+        ) : fileType === "office" ? (
+          <OfficePreview src={previewUrl} filename={fileName} mediaType={mediaType} />
+        ) : fileType === "html" ? (
+          <HTMLPreview src={previewUrl} filename={fileName} />
         ) : viewMode === "preview" && displayLang === "markdown" ? (
           <div className="h-full overflow-auto">
             <MarkdownRenderer content={content} />
