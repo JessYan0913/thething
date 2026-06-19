@@ -1,15 +1,14 @@
-import { getServerContext, getServerRuntime, reloadServerContext } from '@/lib/runtime';
+import { getServerContext, reloadServerContext } from '@/lib/runtime';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import type { SkillFileNode } from '@/components/SkillFileTree';
 
 export const runtime = 'nodejs';
 
 async function getPrimarySkillsDir(): Promise<string> {
+  const { getServerRuntime } = await import('@/lib/runtime');
   const rt = await getServerRuntime();
-  const dirs = rt.layout.resources.skills;
-  return dirs[dirs.length - 1];
+  return rt.layout.resources.skills[0];
 }
 
 async function ensureSkillsDir(): Promise<string> {
@@ -22,114 +21,11 @@ async function ensureSkillsDir(): Promise<string> {
   return dir;
 }
 
-function parseSkillMd(content: string): { name: string; description: string } {
-  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---/;
-  const match = content.match(frontmatterRegex);
-
-  if (!match) {
-    const nameMatch = content.match(/^#\s+(.+)/m);
-    return { name: nameMatch?.[1]?.trim() || '', description: '' };
-  }
-
-  const frontmatter = match[1];
-  const metadata: Record<string, string> = {};
-  for (const line of frontmatter.split('\n')) {
-    const colonIndex = line.indexOf(':');
-    if (colonIndex > 0) {
-      metadata[line.slice(0, colonIndex).trim()] = line.slice(colonIndex + 1).trim();
-    }
-  }
-
-  return { name: metadata.name || '', description: metadata.description || '' };
-}
-
-async function findSkillMd(dir: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isFile() && entry.name.toLowerCase() === 'skill.md') {
-        return fullPath;
-      }
-      if (entry.isDirectory()) {
-        const result = await findSkillMd(fullPath);
-        if (result) return result;
-      }
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-async function buildTree(dir: string, basePath: string): Promise<SkillFileNode[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const nodes: SkillFileNode[] = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
-
-    if (entry.isDirectory()) {
-      nodes.push({
-        name: entry.name,
-        path: relativePath,
-        type: 'directory',
-        children: await buildTree(fullPath, basePath),
-      });
-    } else {
-      nodes.push({
-        name: entry.name,
-        path: relativePath,
-        type: 'file',
-      });
-    }
-  }
-
-  return nodes.sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-}
-
-// GET / — list all skills
+// GET / — list all skills, or get single skill by folderName
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const name = searchParams.get('name');
-
-    if (name === 'detail') {
-      // GET /skills/detail?name=xxx
-      const skillName = searchParams.get('name');
-      if (!skillName) {
-        return NextResponse.json({ error: 'Missing name parameter' }, { status: 400 });
-      }
-    }
-
-    if (name === 'file') {
-      // GET /skills/file?name=xxx&path=xxx
-      const skillName = searchParams.get('name');
-      const filePath = searchParams.get('path');
-      if (!skillName || !filePath) {
-        return NextResponse.json({ error: 'Missing name or path parameter' }, { status: 400 });
-      }
-
-      const skillsDir = await getPrimarySkillsDir();
-      const resolvedPath = path.join(skillsDir, skillName, filePath);
-
-      if (!resolvedPath.startsWith(skillsDir)) {
-        return NextResponse.json({ error: 'Path not allowed' }, { status: 403 });
-      }
-
-      const stat = await fs.stat(resolvedPath);
-      if (!stat.isFile()) {
-        return NextResponse.json({ error: 'Not a file' }, { status: 400 });
-      }
-
-      const content = await fs.readFile(resolvedPath, 'utf-8');
-      const ext = path.extname(resolvedPath).toLowerCase();
-      return NextResponse.json({ content, ext });
-    }
+    const folderName = searchParams.get('folderName');
 
     const context = await getServerContext();
     const skills = context.skills.map((skill) => {
@@ -148,6 +44,15 @@ export async function GET(request: Request) {
         source: skill.source ?? 'project',
       };
     });
+
+    // Single skill lookup
+    if (folderName) {
+      const skill = skills.find((s) => s.folderName === folderName);
+      if (!skill) {
+        return NextResponse.json({ error: 'Skill not found' }, { status: 404 });
+      }
+      return NextResponse.json({ skill });
+    }
 
     return NextResponse.json({ skills });
   } catch (error) {

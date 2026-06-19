@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import dynamic from "next/dynamic"
 import {
   WrenchIcon, RefreshCwIcon, FolderIcon, LayersIcon,
   PlusIcon, MoreVerticalIcon,
   Trash2Icon, SearchIcon, SparklesIcon,
+  ExternalLinkIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { UploadSkillDialog } from "@/components/SkillUploadDialog"
-import { cn } from "@/lib/utils"
 import type { SkillView } from "@/components/SkillDetail"
-
-const SkillDetail = dynamic(() => import("@/components/SkillDetail"), { ssr: false })
 
 // ============================================================
 // ============================================================
@@ -38,7 +35,6 @@ export default function SkillsSettings() {
   const router = useRouter()
   const [skills, setSkills] = useState<SkillView[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedSkill, setSelectedSkill] = useState<SkillView | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SkillView | null>(null)
@@ -100,17 +96,34 @@ export default function SkillsSettings() {
     setTimeout(() => setMessage(null), 3000)
   }, [loadSkills])
 
-  if (selectedSkill) {
-    return (
-      <SkillDetail
-        skill={selectedSkill}
-        onBack={() => setSelectedSkill(null)}
-      />
-    )
-  }
-
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* Message toast */}
+      {message && (
+        <div className={`mx-6 mt-3 px-3 py-2 rounded-md text-sm ${
+          message.type === "success"
+            ? "bg-green-500/10 text-green-700 dark:text-green-400"
+            : "bg-red-500/10 text-red-700 dark:text-red-400"
+        }`}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Skills.sh banner */}
+      <div className="shrink-0 mx-6 mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs">
+        <span>从</span>
+        <a
+          href="https://skills.sh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-0.5 font-medium hover:underline"
+        >
+          skills.sh
+          <ExternalLinkIcon className="size-3" />
+        </a>
+        <span>浏览技能，复制名称后在对话中发送「安装 xxx 技能」即可安装</span>
+      </div>
+
       {/* Toolbar */}
       <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
         <div className="relative flex-1">
@@ -135,17 +148,6 @@ export default function SkillsSettings() {
         </Button>
       </div>
 
-      {/* Message toast */}
-      {message && (
-        <div className={`mx-6 mt-3 px-3 py-2 rounded-md text-sm ${
-          message.type === "success"
-            ? "bg-green-500/10 text-green-700 dark:text-green-400"
-            : "bg-red-500/10 text-red-700 dark:text-red-400"
-        }`}>
-          {message.text}
-        </div>
-      )}
-
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
@@ -162,7 +164,7 @@ export default function SkillsSettings() {
               <p className="text-xs">
                 {searchQuery
                   ? "尝试更换关键词搜索"
-                  : "上传包含 SKILL.md 文件的文件夹来创建新技能"}
+                  : "上传包含 SKILL.md 文件的文件夹，或在对话中安装新技能"}
               </p>
             </div>
           </div>
@@ -172,7 +174,7 @@ export default function SkillsSettings() {
               <SkillCard
                 key={skill.folderName}
                 skill={skill}
-                onClick={() => setSelectedSkill(skill)}
+                onClick={() => router.push(`/settings/skills/${encodeURIComponent(skill.folderName)}`)}
                 onDelete={() => setDeleteTarget(skill)}
               />
             ))}
