@@ -23,7 +23,7 @@ import { logger } from '../../primitives/logger';
  */
 export async function createContext(options: CreateContextOptions): Promise<AppContext> {
   const { runtime, verbose, onLoad } = options;
-  const layout = runtime.layout;
+  const layout = options.layout ?? runtime.layout;
   const behavior = runtime.behavior;
   const cwd = layout.resourceRoot;
   const homeDir = resolveHomeDir();

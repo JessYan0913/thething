@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -151,6 +151,25 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v5: added source/source_id/channel_id columns');
   }
 
+  if (currentVersion < 6) {
+    // v6: add projects table and project_id to conversations
+    db.exec(`
+      -- Projects table
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      -- Add project_id to conversations
+      ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id);
+    `);
+
+    logger.debug('Schema', 'Migrated to v6: added projects table and project_id column');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -168,6 +187,16 @@ export function initializeSchema(db: SqliteDatabase): void {
       source TEXT DEFAULT 'user',
       source_id TEXT DEFAULT NULL,
       channel_id TEXT DEFAULT NULL,
+      project_id TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Projects table
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      path TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

@@ -77,6 +77,18 @@ export interface Conversation {
   source: string;
   sourceId: string | null;
   channelId: string | null;
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Project entity
+ */
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,7 +143,7 @@ export interface ConversationStore {
   /**
    * Create a new conversation
    */
-  createConversation(id: string, title?: string, metadata?: { source?: string; sourceId?: string; channelId?: string }): Conversation;
+  createConversation(id: string, title?: string, metadata?: { source?: string; sourceId?: string; channelId?: string; projectId?: string }): Conversation;
 
   /**
    * Get a conversation by ID
@@ -152,6 +164,16 @@ export interface ConversationStore {
    * Delete a conversation and all associated data
    */
   deleteConversation(id: string): void;
+
+  /**
+   * List conversations filtered by project
+   */
+  listConversationsByProject(projectId: string): Conversation[];
+
+  /**
+   * List conversations with no project
+   */
+  listConversationsWithoutProject(): Conversation[];
 }
 
 /**
@@ -251,6 +273,17 @@ export interface CostStore {
 // ============================================================================
 
 /**
+ * Project storage interface
+ */
+export interface ProjectStore {
+  createProject(id: string, name: string, path: string): Project;
+  getProject(id: string): Project | null;
+  listProjects(): Project[];
+  updateProject(id: string, updates: { name?: string; path?: string }): void;
+  deleteProject(id: string): void;
+}
+
+/**
  * Unified data store interface - aggregates all sub-stores.
  *
  * Note: Memory storage is handled by the file-based memory system
@@ -290,6 +323,9 @@ export interface DataStore {
 
   /** Todo storage (for todo management system) */
   todoStore: TodoStore;
+
+  /** Project storage */
+  projectStore: ProjectStore;
 
   /**
    * Execute a function within a database transaction.
@@ -511,6 +547,18 @@ export interface ConversationRow {
   source: string;
   source_id: string | null;
   channel_id: string | null;
+  project_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Project row for SQLite mapping
+ */
+export interface ProjectRow {
+  id: string;
+  name: string;
+  path: string;
   created_at: string;
   updated_at: string;
 }

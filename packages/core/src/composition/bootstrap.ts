@@ -240,3 +240,29 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 function initTokenizer(_config?: TokenizerConfig): void {
   // 已替换为字符估算，无需初始化
 }
+
+// ============================================================
+// Project Layout 辅助函数
+// ============================================================
+
+/**
+ * 根据项目路径创建一个新的 ResolvedLayout。
+ *
+ * 当对话关联了项目时，用项目的 path 作为 resourceRoot 重新解析 layout，
+ * 加载该目录下的 .thething/ 资源（skills、agents、mcps 等）。
+ *
+ * @param baseLayout - 基础 layout（提供 configDir 等配置）
+ * @param projectPath - 项目的本地目录绝对路径
+ * @returns 新的 ResolvedLayout，resourceRoot 指向项目目录
+ */
+export function resolveProjectLayout(
+  baseLayout: ResolvedLayout,
+  projectPath: string,
+): ResolvedLayout {
+  return resolveLayout({
+    resourceRoot: projectPath,
+    configDir: baseLayout.configDir,
+    dataDir: baseLayout.dataDir,
+    contextFileNames: baseLayout.contextFileNames,
+  });
+}

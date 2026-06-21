@@ -19,6 +19,21 @@ function isPathAllowed(resolved: string, allowedRoots: string[]): boolean {
   );
 }
 
+/**
+ * 校验目录浏览路径是否安全。
+ * 允许浏览 home 目录及其子目录，以及 / 用于访问其他磁盘。
+ */
+function isBrowsePathAllowed(resolved: string): boolean {
+  const homeDir = os.homedir();
+  // 允许 home 目录及其所有子目录
+  if (resolved.startsWith(homeDir + path.sep) || resolved === homeDir) return true;
+  // 允许 /（根目录，用于访问其他挂载点）
+  if (resolved === '/') return true;
+  // macOS: 允许 /Volumes/（外部磁盘）
+  if (process.platform === 'darwin' && resolved.startsWith('/Volumes/')) return true;
+  return false;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -124,6 +139,41 @@ export async function GET(request: Request) {
         ext,
         size: stat.size,
         lines: content.split('\n').length,
+      });
+    }
+
+    if (action === 'browse') {
+      const dirParam = searchParams.get('dir') || os.homedir();
+      const resolvedDir = path.resolve(dirParam);
+
+      if (!isBrowsePathAllowed(resolvedDir)) {
+        return NextResponse.json({ error: 'Path not allowed' }, { status: 403 });
+      }
+
+      try {
+        await fs.access(resolvedDir);
+      } catch {
+        return NextResponse.json({ error: 'Directory not found', items: [], parent: null }, { status: 200 });
+      }
+
+      const stat = await fs.stat(resolvedDir);
+      if (!stat.isDirectory()) {
+        return NextResponse.json({ items: [], parent: path.dirname(resolvedDir) });
+      }
+
+      const entries = await fs.readdir(resolvedDir, { withFileTypes: true });
+      const items = entries
+        .filter((e) => !e.name.startsWith('.') && e.isDirectory())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((e) => ({
+          name: e.name,
+          path: path.join(resolvedDir, e.name),
+        }));
+
+      return NextResponse.json({
+        current: resolvedDir,
+        parent: resolvedDir === '/' ? null : path.dirname(resolvedDir),
+        items,
       });
     }
 

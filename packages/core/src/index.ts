@@ -60,7 +60,7 @@
 // ============================================================
 // 高层 API（推荐入口）
 // ============================================================
-export { bootstrap, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './composition/bootstrap';
+export { bootstrap, resolveProjectLayout, type CoreRuntime, type BootstrapOptions, type TokenizerConfig } from './composition/bootstrap';
 export { createAgent, createContext, resolveAgentConfig } from './composition/app';
 export { finalizeAgentRun, type FinalizeAgentRunOptions } from './composition/finalize';
 export type {
@@ -123,6 +123,8 @@ export type {
   StoredSummary,
   CostRecord,
   SQLiteDataStoreConfig,
+  Project,
+  ProjectStore,
 } from './primitives/datastore/types';
 
 // Model

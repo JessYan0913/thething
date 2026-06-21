@@ -11,16 +11,17 @@ import type { ConversationStore, Conversation, ConversationRow } from '../../../
 export class SQLiteConversationStore implements ConversationStore {
   constructor(private db: SqliteDatabase) {}
 
-  createConversation(id: string, title?: string, metadata?: { source?: string; sourceId?: string; channelId?: string }): Conversation {
+  createConversation(id: string, title?: string, metadata?: { source?: string; sourceId?: string; channelId?: string; projectId?: string }): Conversation {
     const stmt = this.db.prepare(
-      'INSERT INTO conversations (id, title, source, source_id, channel_id) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO conversations (id, title, source, source_id, channel_id, project_id) VALUES (?, ?, ?, ?, ?, ?)'
     );
     stmt.run(
       id,
       title || 'New Conversation',
       metadata?.source || 'user',
       metadata?.sourceId || null,
-      metadata?.channelId || null
+      metadata?.channelId || null,
+      metadata?.projectId || null
     );
     return this.getConversation(id)!;
   }
@@ -59,8 +60,25 @@ export class SQLiteConversationStore implements ConversationStore {
       source: row.source,
       sourceId: row.source_id,
       channelId: row.channel_id,
+      projectId: row.project_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+  }
+
+  listConversationsByProject(projectId: string): Conversation[] {
+    const stmt = this.db.prepare(
+      'SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC'
+    );
+    const rows = stmt.all(projectId) as unknown as ConversationRow[];
+    return rows.map((row) => this.mapRow(row));
+  }
+
+  listConversationsWithoutProject(): Conversation[] {
+    const stmt = this.db.prepare(
+      'SELECT * FROM conversations WHERE project_id IS NULL ORDER BY updated_at DESC'
+    );
+    const rows = stmt.all() as unknown as ConversationRow[];
+    return rows.map((row) => this.mapRow(row));
   }
 }

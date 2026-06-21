@@ -8,9 +8,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const source = searchParams.get('source');
     const sourceId = searchParams.get('sourceId');
+    const projectId = searchParams.get('projectId');
 
     const rt = await getServerRuntime();
-    let conversations = rt.dataStore.conversationStore.listConversations();
+    let conversations: import('@the-thing/core').Conversation[];
+
+    if (projectId) {
+      conversations = rt.dataStore.conversationStore.listConversationsByProject(projectId);
+    } else {
+      conversations = rt.dataStore.conversationStore.listConversations();
+    }
 
     // Server-side filtering by source
     if (source) {
@@ -29,12 +36,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { id?: string; title?: string };
+    const body = await request.json() as { id?: string; title?: string; projectId?: string };
     if (!body.id) {
       return NextResponse.json({ error: 'Missing conversation id' }, { status: 400 });
     }
     const rt = await getServerRuntime();
-    const conversation = rt.dataStore.conversationStore.createConversation(body.id, body.title, { source: 'user' });
+    const conversation = rt.dataStore.conversationStore.createConversation(body.id, body.title, {
+      source: 'user',
+      projectId: body.projectId,
+    });
     return NextResponse.json({ conversation });
   } catch (error) {
     console.error('[Conversations API] POST error:', error);

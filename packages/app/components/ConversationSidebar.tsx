@@ -4,6 +4,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
@@ -43,9 +44,10 @@ import {
   TrashIcon,
   SettingsIcon,
   MoreHorizontalIcon,
+  FolderIcon,
+  FolderOpenIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { nanoid } from "nanoid";
 import {
   useCallback,
   useEffect,
@@ -56,6 +58,137 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { FilterOption } from "@/components/ChatLayout";
+
+// ============================================================================
+// Directory Picker Component
+// ============================================================================
+
+interface DirEntry {
+  name: string;
+  path: string;
+}
+
+interface DirectoryPickerProps {
+  onSelect: (path: string) => void;
+}
+
+function DirectoryPicker({ onSelect }: DirectoryPickerProps) {
+  const [currentDir, setCurrentDir] = useState<string>("");
+  const [parentDir, setParentDir] = useState<string | null>(null);
+  const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+
+  // Load directory contents
+  const loadDir = useCallback(async (dir: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/fs?action=browse&dir=${encodeURIComponent(dir)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentDir(data.current || dir);
+        setParentDir(data.parent);
+        setEntries(data.items || []);
+        setInputValue(data.current || dir);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load home on mount
+  useEffect(() => {
+    loadDir("");
+  }, [loadDir]);
+
+  const handleNavigate = useCallback((dir: string) => {
+    loadDir(dir);
+  }, [loadDir]);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      loadDir(inputValue);
+    }
+  }, [inputValue, loadDir]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Path input */}
+      <input
+        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="/Users/..."
+      />
+
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
+        {currentDir.split('/').filter(Boolean).map((segment, i, arr) => {
+          const fullPath = '/' + arr.slice(0, i + 1).join('/');
+          return (
+            <span key={fullPath} className="flex items-center gap-1">
+              {i > 0 && <span>/</span>}
+              <button
+                onClick={() => handleNavigate(fullPath)}
+                className="hover:text-foreground hover:underline transition-colors"
+              >
+                {segment}
+              </button>
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Directory list */}
+      <div className="max-h-48 overflow-y-auto rounded-md border bg-background">
+        {isLoading ? (
+          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+            Loading...
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+            No subdirectories
+          </div>
+        ) : (
+          <div className="py-0.5">
+            {parentDir && (
+              <button
+                onClick={() => handleNavigate(parentDir)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-sidebar-accent transition-colors text-left"
+              >
+                <span className="text-muted-foreground">..</span>
+              </button>
+            )}
+            {entries.map((entry) => (
+              <button
+                key={entry.path}
+                onClick={() => handleNavigate(entry.path)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-sidebar-accent transition-colors text-left"
+              >
+                <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{entry.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Select button */}
+      <Button
+        onClick={() => onSelect(currentDir)}
+        disabled={!currentDir}
+        className="w-full"
+      >
+        <FolderOpenIcon className="size-4 mr-1.5" />
+        Select &quot;{currentDir.split('/').filter(Boolean).pop() || currentDir}&quot;
+      </Button>
+    </div>
+  );
+}
 
 // ============================================================================
 // Date & Time Helpers
@@ -108,6 +241,15 @@ export interface ConversationItem {
   source: string;
   sourceId: string | null;
   channelId: string | null;
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectItem {
+  id: string;
+  name: string;
+  path: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -127,6 +269,11 @@ export type ConversationSidebarProps = {
   filterOptions?: FilterOption[];
   activeFilter?: string;
   onFilterChange?: (value: string) => void;
+  projects?: ProjectItem[];
+  activeProjectId?: string | null;
+  onSelectProject?: (projectId: string | null) => void;
+  onCreateProject?: (name: string, path: string) => Promise<ProjectItem | null>;
+  onDeleteProject?: (projectId: string) => Promise<void>;
 };
 
 export const ConversationSidebar = ({
@@ -140,9 +287,16 @@ export const ConversationSidebar = ({
   filterOptions,
   activeFilter = "user",
   onFilterChange,
+  projects = [],
+  activeProjectId = null,
+  onSelectProject,
+  onCreateProject,
+  onDeleteProject,
 }: ConversationSidebarProps) => {
   const { t } = useTranslation();
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+  const [deleteProjectConfirmId, setDeleteProjectConfirmId] = useState<string | null>(null);
 
   const grouped = useMemo(() => groupConversations(conversations), [conversations]);
 
@@ -228,6 +382,89 @@ export const ConversationSidebar = ({
 
       {/* Conversation List - hidden when collapsed */}
       <SidebarContent>
+        {/* Project Area */}
+        {activeFilter === 'user' && (
+          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+            <SidebarGroupLabel className="flex items-center justify-between pr-1">
+              <span className="flex items-center gap-1.5">
+                <FolderIcon className="size-3" />
+                {t('chat:conversation.projects', 'Projects')}
+              </span>
+              {onSelectProject && (
+                <button
+                  onClick={() => setShowNewProjectDialog(true)}
+                  className="rounded-md p-0.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+                  title={t('chat:conversation.newProject', 'New Project')}
+                >
+                  <PlusIcon className="size-3" />
+                </button>
+              )}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              {projects.length === 0 ? (
+                <div className="px-2 py-1.5">
+                  <button
+                    onClick={() => setShowNewProjectDialog(true)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+                  >
+                    <FolderOpenIcon className="size-3.5 shrink-0" />
+                    <span>{t('chat:conversation.createFirstProject', 'Create a project')}</span>
+                  </button>
+                </div>
+              ) : (
+                <SidebarMenu>
+                  {/* "All" option */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      isActive={activeProjectId === null}
+                      onClick={() => onSelectProject?.(null)}
+                      tooltip={t('chat:conversation.allProjects', 'All Projects')}
+                    >
+                      <MessageSquareIcon className="size-4 shrink-0" />
+                      <span className="truncate">{t('chat:conversation.allProjects', 'All Projects')}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {/* Project items */}
+                  {projects.map((project) => (
+                    <SidebarMenuItem key={project.id}>
+                      <SidebarMenuButton
+                        isActive={activeProjectId === project.id}
+                        onClick={() => onSelectProject?.(project.id)}
+                        tooltip={`${project.name}\n${project.path}`}
+                      >
+                        {activeProjectId === project.id ? (
+                          <FolderOpenIcon className="size-4 shrink-0" />
+                        ) : (
+                          <FolderIcon className="size-4 shrink-0" />
+                        )}
+                        <span className="truncate">{project.name}</span>
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <SidebarMenuAction showOnHover asChild>
+                          <DropdownMenuTrigger>
+                            <MoreHorizontalIcon className="size-4" />
+                          </DropdownMenuTrigger>
+                        </SidebarMenuAction>
+                        <DropdownMenuContent side="right" align="start" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleteProjectConfirmId(project.id)}
+                            onSelect={(e) => e.preventDefault()}
+                          >
+                            <TrashIcon className="size-4" />
+                            {t('chat:conversation.delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              )}
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Conversations */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent>
             {isLoading ? (
@@ -313,6 +550,53 @@ export const ConversationSidebar = ({
                 if (deleteConfirmId) {
                   onDeleteConversation(deleteConfirmId);
                   setDeleteConfirmId(null);
+                }
+              }}
+            >
+              {t('chat:conversation.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New project dialog */}
+      <Dialog open={showNewProjectDialog} onOpenChange={(open) => {
+        if (!open) setShowNewProjectDialog(false);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('chat:conversation.createProject', 'New Project')}</DialogTitle>
+            <DialogDescription>{t('chat:conversation.createProjectDescription', 'Select a working directory. The folder name will be used as the project name.')}</DialogDescription>
+          </DialogHeader>
+          <DirectoryPicker
+            onSelect={async (dirPath) => {
+              if (onCreateProject) {
+                const name = dirPath.split('/').filter(Boolean).pop() || dirPath;
+                await onCreateProject(name, dirPath);
+                setShowNewProjectDialog(false);
+              }
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete project confirmation dialog */}
+      <Dialog open={deleteProjectConfirmId !== null} onOpenChange={(open) => { if (!open) setDeleteProjectConfirmId(null); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{t('chat:conversation.deleteProjectConfirm', 'Delete Project?')}</DialogTitle>
+            <DialogDescription>{t('chat:conversation.deleteProjectDescription', 'This will only remove the project from the list. Files on disk will not be affected.')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteProjectConfirmId(null)}>
+              {t('common:buttons.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteProjectConfirmId && onDeleteProject) {
+                  onDeleteProject(deleteProjectConfirmId);
+                  setDeleteProjectConfirmId(null);
                 }
               }}
             >

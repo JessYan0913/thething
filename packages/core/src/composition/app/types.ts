@@ -90,6 +90,8 @@ export interface AppContext {
 export interface CreateContextOptions {
   /** 运行时实例（必填） */
   runtime: CoreRuntime;
+  /** 布局覆盖（可选）。项目场景下传入项目特定的 layout，覆盖 runtime.layout */
+  layout?: ResolvedLayout;
   /** 详细日志 */
   verbose?: boolean;
   /** 加载事件回调 */

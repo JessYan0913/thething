@@ -1,12 +1,17 @@
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
-import { bootstrap, createContext, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
+import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
 import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
 let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
 let initPromise: Promise<CoreRuntime> | null = null;
+
+// ============================================================
+// Project Context 缓存（按 projectId 缓存 AppContext）
+// ============================================================
+const projectContextCache: Map<string, { context: AppContext; skillDirMtimes: Map<string, number> }> = new Map();
 
 // ============================================================
 // Skills 磁盘变更检测（mtime 指纹）
@@ -145,6 +150,62 @@ export async function getServerContext(): Promise<AppContext> {
   // 记录初始 mtime 指纹
   skillDirMtimes = await collectSkillDirMtimes(rt);
   return context;
+}
+
+/**
+ * 获取项目特定的 AppContext（带缓存）。
+ * 为项目目录创建独立的 layout，加载该目录下的 .thething/ 资源。
+ */
+export async function getProjectContext(projectId: string, projectPath: string): Promise<AppContext> {
+  const defaultCtx = await getServerContext();
+
+  // 检查缓存
+  const cached = projectContextCache.get(projectId);
+  if (cached) {
+    // 检查项目的 skills 目录是否有变更
+    const projectLayout = resolveProjectLayout(defaultCtx.layout, projectPath);
+    const currentMtimes = await collectProjectSkillDirMtimes(projectLayout).catch(() => new Map());
+    const stale = currentMtimes.size !== cached.skillDirMtimes.size ||
+      [...currentMtimes].some(([dir, mtime]) => cached.skillDirMtimes.get(dir) !== mtime);
+    if (!stale) {
+      return cached.context;
+    }
+    // 缓存过期，清理旧连接
+    if (cached.context.mcpRegistry) {
+      await cached.context.mcpRegistry.disconnectAll().catch(() => {});
+    }
+  }
+
+  // 创建项目特定的 layout 和 context
+  const projectLayout = resolveProjectLayout(defaultCtx.layout, projectPath);
+  const projectCtx = await createContext({ runtime: defaultCtx.runtime, layout: projectLayout });
+
+  // 记录 mtime 并缓存
+  const skillMtimes = await collectProjectSkillDirMtimes(projectLayout).catch(() => new Map());
+  projectContextCache.set(projectId, { context: projectCtx, skillDirMtimes: skillMtimes });
+
+  return projectCtx;
+}
+
+/** 采集项目 layout 下 skills 目录的 mtime */
+async function collectProjectSkillDirMtimes(projectLayout: { resources: { skills: readonly string[] } }): Promise<Map<string, number>> {
+  const mtimes = new Map<string, number>();
+  for (const dir of projectLayout.resources.skills) {
+    try {
+      const stat = await fs.stat(dir);
+      mtimes.set(dir, stat.mtimeMs);
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const subStat = await fs.stat(path.join(dir, entry.name));
+          mtimes.set(path.join(dir, entry.name), subStat.mtimeMs);
+        }
+      }
+    } catch {
+      // 目录不存在，跳过
+    }
+  }
+  return mtimes;
 }
 
 export async function reloadServerContext(): Promise<AppContext> {

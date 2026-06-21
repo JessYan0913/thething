@@ -1,6 +1,6 @@
 import path from 'path'
 import os from 'os'
-import { getServerRuntime, getServerContext } from '@/lib/runtime';
+import { getServerRuntime, getServerContext, getProjectContext } from '@/lib/runtime';
 import { convertFileToText } from '@/lib/file-convert';
 import { getStreamManager } from '@/lib/stream-manager';
 import {
@@ -56,9 +56,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
     }
 
-    const context = await getServerContext();
-    const store = context.runtime.dataStore;
+    const defaultContext = await getServerContext();
+    const store = defaultContext.runtime.dataStore;
     const streamManager = getStreamManager();
+
+    // Resolve project context: if conversation has a project_id, use cached project context
+    let context = defaultContext;
+    const conversation = store.conversationStore.getConversation(conversationId);
+    if (conversation?.projectId) {
+      const project = store.projectStore.getProject(conversation.projectId);
+      if (project) {
+        context = await getProjectContext(conversation.projectId, project.path);
+      }
+    }
 
     let existingMessages = store.messageStore.getMessagesByConversation(conversationId);
     const isFirstMessage = existingMessages.length === 0;

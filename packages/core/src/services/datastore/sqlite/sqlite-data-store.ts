@@ -25,12 +25,14 @@ import type {
   SummaryStore,
   CostStore,
   TodoStore,
+  ProjectStore,
 } from '../../../primitives/datastore/types';
 import { SQLiteConversationStore } from './conversation-store';
 import { SQLiteMessageStore } from './message-store';
 import { SQLiteSummaryStore } from './summary-store';
 import { SQLiteCostStore } from './cost-store';
 import { SQLiteTodoStore } from './todo-store';
+import { SQLiteProjectStore } from './project-store';
 
 // 从统一配置模块导入常量（作为 fallback）
 import {
@@ -61,6 +63,7 @@ export class SQLiteDataStore implements DataStore {
   readonly summaryStore: SummaryStore;
   readonly costStore: CostStore;
   readonly todoStore: TodoStore;
+  readonly projectStore: ProjectStore;
 
   constructor(config: SQLiteDataStoreConfig = {}) {
     const dataDir = config.dataDir || getDefaultDataDir();
@@ -86,6 +89,7 @@ export class SQLiteDataStore implements DataStore {
     this.summaryStore = new SQLiteSummaryStore(this.db);
     this.costStore = new SQLiteCostStore(this.db);
     this.todoStore = new SQLiteTodoStore(this.db);
+    this.projectStore = new SQLiteProjectStore(this.db);
     // MessageStore needs conversationStore for auto-creating conversations
     this.messageStore = new SQLiteMessageStore(this.db, this.conversationStore);
   }

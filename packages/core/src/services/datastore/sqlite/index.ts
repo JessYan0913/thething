@@ -13,6 +13,7 @@ export { SQLiteMessageStore } from './message-store';
 export { SQLiteSummaryStore } from './summary-store';
 export { SQLiteCostStore } from './cost-store';
 export { SQLiteTodoStore } from './todo-store';
+export { SQLiteProjectStore } from './project-store';
 
 // Schema utilities (for advanced users)
 export { initializeSchema } from './schema';

@@ -18,6 +18,14 @@ export interface FilterOption {
   group?: string;
 }
 
+export interface ProjectItem {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface ChatContextValue {
   activeConversationId: string | null;
   conversations: ConversationItem[];
@@ -56,6 +64,10 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
+  // Project state
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
   // Source filter from URL: /chat/[source]?sid=subId
   // /chat → 'user'
   // /chat/connector → 'connector'
@@ -83,14 +95,15 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   // Ref to prevent double-initialization
   const initializedRef = useRef(false);
 
-  // Load conversations, connectors, and cron jobs on mount
+  // Load conversations, connectors, cron jobs, and projects on mount
   useEffect(() => {
     async function loadData() {
       try {
-        const [convRes, connRes, cronRes] = await Promise.all([
+        const [convRes, connRes, cronRes, projRes] = await Promise.all([
           fetch("/api/conversations"),
           fetch("/api/connectors"),
           fetch("/api/cron"),
+          fetch("/api/projects"),
         ]);
         if (convRes.ok) {
           const data = await convRes.json();
@@ -113,6 +126,10 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
               name: j.name,
             }))
           );
+        }
+        if (projRes.ok) {
+          const data = await projRes.json();
+          setProjects(data.projects || []);
         }
       } catch {
         // Failed to load data
@@ -165,7 +182,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
       const res = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: newId }),
+        body: JSON.stringify({ id: newId, projectId: activeProjectId || undefined }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -179,7 +196,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     } catch {
       // Failed to create
     }
-  }, [router]);
+  }, [router, activeProjectId]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
@@ -231,7 +248,10 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   /** Refresh conversation list from server (used after AI title generation) */
   const handleRefreshConversations = useCallback(async () => {
     try {
-      const res = await fetch("/api/conversations");
+      const url = activeProjectId
+        ? `/api/conversations?projectId=${encodeURIComponent(activeProjectId)}`
+        : "/api/conversations";
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setConversations(data.conversations || []);
@@ -239,7 +259,75 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     } catch {
       // Failed to refresh
     }
+  }, [activeProjectId]);
+
+  // ============================================================================
+  // Project management
+  // ============================================================================
+
+  const handleSelectProject = useCallback(async (projectId: string | null) => {
+    setActiveProjectId(projectId);
+    // Reload conversations for the selected project
+    try {
+      const url = projectId
+        ? `/api/conversations?projectId=${encodeURIComponent(projectId)}`
+        : "/api/conversations";
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data.conversations || []);
+      }
+    } catch {
+      // Failed to load conversations
+    }
   }, []);
+
+  const handleCreateProject = useCallback(async (name: string, path: string) => {
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, path }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProjects((prev) => [data.project, ...prev]);
+        // Auto-select the new project and load its conversations
+        setActiveProjectId(data.project.id);
+        const convRes = await fetch(`/api/conversations?projectId=${encodeURIComponent(data.project.id)}`);
+        if (convRes.ok) {
+          const convData = await convRes.json();
+          setConversations(convData.conversations || []);
+        }
+        return data.project;
+      }
+    } catch {
+      // Failed to create
+    }
+    return null;
+  }, []);
+
+  const handleDeleteProject = useCallback(async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/projects?id=${encodeURIComponent(projectId)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setProjects((prev) => prev.filter((p) => p.id !== projectId));
+        if (activeProjectId === projectId) {
+          setActiveProjectId(null);
+          // Reload all conversations
+          const convRes = await fetch("/api/conversations");
+          if (convRes.ok) {
+            const data = await convRes.json();
+            setConversations(data.conversations || []);
+          }
+        }
+      }
+    } catch {
+      // Failed to delete
+    }
+  }, [activeProjectId]);
 
   // ============================================================================
   // Source filter
@@ -323,6 +411,11 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             filterOptions={showFilter ? filterOptions : undefined}
             activeFilter={sourceFilter}
             onFilterChange={handleFilterChange}
+            projects={projects}
+            activeProjectId={activeProjectId}
+            onSelectProject={handleSelectProject}
+            onCreateProject={handleCreateProject}
+            onDeleteProject={handleDeleteProject}
           />
 
           {/* Main Content - changes per route */}
