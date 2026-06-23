@@ -13,6 +13,9 @@ function isDev(): boolean {
 }
 
 function getStandaloneDir(): string {
+  if (isDev()) {
+    return path.join(__dirname, '..', '..', 'resources', 'standalone');
+  }
   return path.join(process.resourcesPath, 'standalone');
 }
 
@@ -92,7 +95,6 @@ function startNextServer(): Promise<number> {
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       NODE_ENV: 'production',
-      THETHING_DATA_DIR: getDataDir(),
       THETHING_RESOURCE_ROOT: getResourceRoot(),
       THETHING_HOME_DIR: homeDir,
       HOME: homeDir,

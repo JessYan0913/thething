@@ -120,11 +120,14 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
 
   if (currentVersion < 5) {
     // v5: add source tracking columns to conversations
-    db.exec(`
-      ALTER TABLE conversations ADD COLUMN source TEXT DEFAULT 'user';
-      ALTER TABLE conversations ADD COLUMN source_id TEXT DEFAULT NULL;
-      ALTER TABLE conversations ADD COLUMN channel_id TEXT DEFAULT NULL;
-    `);
+    // Use try-catch per ALTER TABLE to handle case where columns already exist from a partial prior run
+    for (const col of ['source TEXT DEFAULT \'user\'', 'source_id TEXT DEFAULT NULL', 'channel_id TEXT DEFAULT NULL']) {
+      try {
+        db.exec(`ALTER TABLE conversations ADD COLUMN ${col}`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
 
     // Populate source fields from existing compound IDs
     db.exec(`
@@ -180,23 +183,10 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
  */
 export function initializeSchema(db: SqliteDatabase): void {
   db.exec(`
-    -- Conversations table
+    -- Conversations table (base v1 schema; v5 adds source/source_id/channel_id, v6 adds project_id)
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       title TEXT DEFAULT 'New Conversation',
-      source TEXT DEFAULT 'user',
-      source_id TEXT DEFAULT NULL,
-      channel_id TEXT DEFAULT NULL,
-      project_id TEXT DEFAULT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    -- Projects table
-    CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      path TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

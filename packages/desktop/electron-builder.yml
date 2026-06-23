@@ -13,6 +13,12 @@ extraResources:
     to: standalone
     filter:
       - "**/*"
+      - "!**/*.map"
+
+asarUnpack:
+  - "**/*.node"
+
+afterPack: scripts/after-pack.js
 
 mac:
   target:

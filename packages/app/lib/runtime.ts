@@ -59,7 +59,9 @@ async function initializeRuntime(): Promise<CoreRuntime> {
   // Stage 1: 从默认位置读取自定义配置目录
   const defaultGlobalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
   const bootConfig = loadGlobalConfig(defaultGlobalConfigDir);
-  const configDir = bootConfig?.configDir || defaultGlobalConfigDir;
+  const rawConfigDir = bootConfig?.configDir || defaultGlobalConfigDir;
+  // 展开 ~ 为实际 home 目录，否则 path.join("~/.thething", "skills") 会变成相对路径
+  const configDir = rawConfigDir.replace(/^~/, os.homedir());
 
   // Stage 2: 用真实的 configDir 加载全部配置
   const globalConfig = loadGlobalConfig(configDir);

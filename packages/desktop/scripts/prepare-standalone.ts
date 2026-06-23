@@ -2,7 +2,7 @@
 // Prepare Next.js Standalone for Electron Packaging
 // ============================================================
 
-import { mkdirSync, existsSync, copyFileSync, writeFileSync, rmSync, readdirSync } from 'fs';
+import { mkdirSync, existsSync, copyFileSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
 
@@ -55,37 +55,121 @@ async function main() {
     rsyncCopy(staticDir, join(appInResources, '.next', 'static'));
   }
 
-  // 4. Remove stale better-sqlite3 binding from .next/node_modules inside the resources
-  //    (Next.js bundles an old binding that shadows the correct standalone copy)
-  console.log('[Prepare Standalone] Cleaning stale native bindings...');
-  const staleBindingsDir = join(OUTPUT_DIR, 'packages', 'app', '.next', 'node_modules');
-  if (existsSync(staleBindingsDir)) {
-    const staleModules = readdirSync(staleBindingsDir).filter((d: string) => d.startsWith('better-sqlite3'));
-    for (const mod of staleModules) {
-      rmSync(join(staleBindingsDir, mod), { recursive: true, force: true });
-      console.log(`[Prepare Standalone] Removed stale ${mod}`);
+  // 4. Remove stale better-sqlite3 copies from .next/node_modules
+  //    Next.js standalone includes old copies that lack dependencies (e.g. bindings).
+  //    These shadow the correct standalone copy and cause MODULE_NOT_FOUND at runtime.
+  console.log('[Prepare Standalone] Cleaning stale .next/node_modules...');
+  const staleDir = join(OUTPUT_DIR, 'packages', 'app', '.next', 'node_modules');
+  if (existsSync(staleDir)) {
+    for (const name of readdirSync(staleDir)) {
+      if (name.startsWith('better-sqlite3')) {
+        rmSync(join(staleDir, name), { recursive: true, force: true });
+        console.log(`[Prepare Standalone] Removed stale ${name}`);
+      }
+    }
+  }
+
+  // 4b. Copy directories for Turbopack-hashed external module names
+  //     Turbopack renames external modules like "better-sqlite3" to "better-sqlite3-<hash>"
+  //     at build time. The require-hook.js doesn't map these back, so we need to copy
+  //     the real package under each hashed name so Node.js can resolve them.
+  //     NOTE: We use rsyncCopy instead of symlinks because electron-builder's asar
+  //     does not preserve symlinks.
+  console.log('[Prepare Standalone] Copying Turbopack hashed module directories...');
+  const chunksDir = join(appInResources, '.next', 'server', 'chunks');
+  if (existsSync(chunksDir)) {
+    // Collect all hashed module names from chunk files
+    const allHashedNames = new Set<string>();
+    const hashPattern = /require\("([a-z@][a-z0-9/._-]+)-([0-9a-f]{16})"\)/g;
+    for (const file of readdirSync(chunksDir)) {
+      if (!file.endsWith('.js')) continue;
+      const content = readFileSync(join(chunksDir, file), 'utf8');
+      for (const m of content.matchAll(hashPattern)) {
+        allHashedNames.add(m[0]);
+      }
+    }
+
+    // For each hashed name, copy the real package directory
+    const seenPkgs = new Set<string>();
+    for (const req of allHashedNames) {
+      const pkgMatch = req.match(/"([a-z@][a-z0-9/._-]+)-[0-9a-f]{16}"/);
+      if (!pkgMatch) continue;
+      const pkg = pkgMatch[1];
+      if (seenPkgs.has(pkg)) continue;
+      seenPkgs.add(pkg);
+
+      const target = join(OUTPUT_DIR, 'node_modules', pkg);
+      if (!existsSync(target)) continue;
+
+      // Find all hash variants for this package
+      const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const hashRegex = new RegExp('require\\("' + escapedPkg + '-([0-9a-f]{16})"\\)', 'g');
+      const hashNames = new Set<string>();
+      for (const file of readdirSync(chunksDir)) {
+        if (!file.endsWith('.js')) continue;
+        const content = readFileSync(join(chunksDir, file), 'utf8');
+        for (const m of content.matchAll(hashRegex)) {
+          hashNames.add(pkg + '-' + m[1]);
+        }
+      }
+
+      for (const hashName of hashNames) {
+        const dest = join(OUTPUT_DIR, 'node_modules', hashName);
+        if (!existsSync(dest)) {
+          rsyncCopy(target, dest);
+          console.log('[Prepare Standalone] Copied ' + hashName + ' -> ' + pkg);
+        }
+      }
     }
   }
 
   // 5. Create native/better-sqlite3 for SEA fallback loading
   //    The bundled code looks for native/better-sqlite3/lib/index.js relative to cwd.
-  //    pnpm store bindings may be corrupted by electron-rebuild, so install fresh
-  //    better-sqlite3 in a temp dir to get the correct system Node binding.
+  //    Copy from pnpm store (system Node binding) — afterPack will replace with Electron binding later.
   console.log('[Prepare Standalone] Setting up native better-sqlite3...');
+  const pnpmStore = join(ROOT_DIR, 'node_modules', '.pnpm');
   const nativeDest = join(OUTPUT_DIR, 'packages', 'app', 'native', 'better-sqlite3');
   if (!existsSync(nativeDest)) {
     mkdirSync(join(nativeDest, '..'), { recursive: true });
-    const tmpDir = join(OUTPUT_DIR, '_tmp_sqlite');
-    try {
-      execSync(`mkdir -p "${tmpDir}" && cd "${tmpDir}" && npm init -y --silent && npm install better-sqlite3@12.8.0 --silent`, { stdio: 'inherit' });
-      execSync(`cp -R "${tmpDir}/node_modules/better-sqlite3" "${nativeDest}"`, { stdio: 'inherit' });
-      console.log(`[Prepare Standalone] Created native/better-sqlite3 from fresh install`);
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+    const pnpmSqlitePrefix = 'better-sqlite3@';
+    const pnpmSqliteDirs = readdirSync(pnpmStore).filter((d: string) => d.startsWith(pnpmSqlitePrefix));
+    const sqliteFound = pnpmSqliteDirs[0];
+    if (sqliteFound) {
+      const sqliteSrc = join(pnpmStore, sqliteFound, 'node_modules', 'better-sqlite3');
+      rsyncCopy(sqliteSrc, nativeDest);
+      console.log(`[Prepare Standalone] Created native/better-sqlite3 from pnpm store`);
+    } else {
+      console.warn(`[Prepare Standalone] Warning: better-sqlite3 not found in pnpm store`);
     }
   }
 
-  // 5. Copy missing dependencies that Next.js standalone doesn't include with pnpm
+  // 5b. Copy 'bindings' and 'file-uri-to-path' into native/better-sqlite3/node_modules/
+  //     better-sqlite3's database.js calls require('bindings') internally.
+  //     In the packaged app, the standard require() looks up the directory tree
+  //     for node_modules/bindings. pnpm symlinks break in the packaged app,
+  //     and after-pack.js replaces better-sqlite3 with a flat npm install
+  //     that doesn't nest bindings inside better-sqlite3/node_modules/.
+  //     So we explicitly copy them here to ensure the require() resolves.
+  const nativeModulesDir = join(nativeDest, 'node_modules');
+  const nativeDepsToCopy = ['bindings', 'file-uri-to-path'];
+  for (const dep of nativeDepsToCopy) {
+    const depPrefix = `${dep}@`;
+    const depDirs = readdirSync(pnpmStore).filter((d: string) => d.startsWith(depPrefix));
+    const depFound = depDirs[0];
+    if (depFound) {
+      const depSrc = join(pnpmStore, depFound, 'node_modules', dep);
+      const depDest = join(nativeModulesDir, dep);
+      if (!existsSync(depDest)) {
+        mkdirSync(nativeModulesDir, { recursive: true });
+        rsyncCopy(depSrc, depDest);
+        console.log(`[Prepare Standalone] Copied ${dep} to native/better-sqlite3/node_modules/`);
+      }
+    } else {
+      console.warn(`[Prepare Standalone] Warning: ${dep} not found in pnpm store`);
+    }
+  }
+
+  // 6. Copy missing dependencies that Next.js standalone doesn't include with pnpm
   console.log('[Prepare Standalone] Copying missing dependencies...');
   const missingDeps = [
     'react',
@@ -97,7 +181,6 @@ async function main() {
     'postcss',
     'caniuse-lite',
   ];
-  const pnpmStore = join(ROOT_DIR, 'node_modules', '.pnpm');
 
   for (const dep of missingDeps) {
     // Handle scoped packages: @swc/helpers -> @swc+helpers
@@ -118,10 +201,22 @@ async function main() {
     }
   }
 
-  // 6. Create start-standalone.js wrapper
+  // 7. Create start-standalone.js wrapper
   console.log('[Prepare Standalone] Creating start-standalone.js wrapper...');
   const wrapperScript = `
 const http = require('http');
+const mod = require('module');
+
+// Turbopack hashes external module names (e.g. "better-sqlite3-0167c515dc271f66").
+// Register a require hook to map hashed names back to the real package.
+const originalResolve = mod._resolveFilename;
+mod._resolveFilename = function (request, parent, isMain, options) {
+  const match = request.match(/^(.+)-([0-9a-f]{16})$/);
+  if (match) {
+    request = match[1];
+  }
+  return originalResolve.call(this, request, parent, isMain, options);
+};
 
 // Set PORT before requiring server.js
 // server.js uses: parseInt(process.env.PORT, 10) || 3000

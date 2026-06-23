@@ -7,7 +7,7 @@
     "dev:cli": "pnpm --filter @the-thing/cli dev",
     "build:next": "pnpm --filter @the-thing/app build",
     "build:cli": "pnpm --filter @the-thing/cli build",
-    "build:desktop": "pnpm build:next && pnpm --filter @the-thing/desktop prepare:standalone && pnpm --filter @the-thing/desktop rebuild:sqlite && pnpm --filter @the-thing/desktop build",
+    "build:desktop": "pnpm build:next && pnpm --filter @the-thing/desktop prepare:standalone && pnpm --filter @the-thing/desktop build",
     "dev:desktop": "pnpm --filter @the-thing/desktop dev",
     "start:next": "pnpm --filter @the-thing/app start",
     "cli": "pnpm --filter @the-thing/cli start",
