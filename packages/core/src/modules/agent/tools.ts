@@ -86,15 +86,15 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     tools.cron = createCronTool({ cronStore: config.cronStore })
   }
 
-  // 注册 save_wiki 工具（需要 userId 和 memoryBaseDir）
-  if (config.userId && config.memoryBaseDir) {
+  // 注册 save_wiki 工具（需要 userId 和 wikiBaseDir）
+  if (config.userId && config.wikiBaseDir) {
     tools.save_wiki = createSaveWikiTool({
       userId: config.userId,
-      wikiBaseDir: config.memoryBaseDir,
+      wikiBaseDir: config.wikiBaseDir,
     })
     tools.read_wiki_page = createReadWikiPageTool({
       userId: config.userId,
-      wikiBaseDir: config.memoryBaseDir,
+      wikiBaseDir: config.wikiBaseDir,
     })
   }
 

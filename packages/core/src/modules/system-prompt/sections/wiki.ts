@@ -1,5 +1,4 @@
 import type { SystemPromptSection } from '../types'
-import { getUserWikiDir, directoryExists } from '../../wiki/wiki-paths'
 import { WIKI_GUIDELINES_PROMPT } from '../../wiki/wiki-prompt'
 import { logger } from '../../../primitives/logger'
 
@@ -9,18 +8,15 @@ import { logger } from '../../../primitives/logger'
  */
 export async function createWikiGuidelinesSection(
   userId?: string,
-  memoryBaseDir?: string,
+  wikiBaseDir?: string,
 ): Promise<SystemPromptSection | null> {
   try {
-    if (!userId || !memoryBaseDir) {
+    if (!userId || !wikiBaseDir) {
       return null
     }
 
-    const wikiDir = getUserWikiDir(userId, memoryBaseDir)
-
-    if (!(await directoryExists(wikiDir))) {
-      return null
-    }
+    // wiki 目录不存在时仍然注入 prompt——AI 需要知道可以第一次保存
+    // save_wiki 工具会自动创建目录
 
     return {
       name: 'wiki-guidelines',

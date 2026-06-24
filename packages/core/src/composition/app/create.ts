@@ -25,7 +25,7 @@ import {
   injectMessageAttachments,
   clearMessageAttachmentState,
 } from '../../modules/attachments'
-import { getPrimaryMemoryDir } from '../../modules/wiki'
+import { getPrimaryWikiDir } from '../../modules/wiki'
 import { loadWikiContextForAgent } from '../../modules/agent/context/wiki-context'
 
 /**
@@ -50,7 +50,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const isTurnZero = options.conversationMeta?.isNewConversation ?? false
 
   const projectRoot = sessionOptions.projectRoot ?? context.layout.resourceRoot
-  const memoryBaseDir = getPrimaryMemoryDir(context.layout)
+  const wikiBaseDir = getPrimaryWikiDir(context.layout)
 
   // ============================================================
   // Agent 定义查找（如果指定了 agentType）
@@ -115,7 +115,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const [wikiContext, projectContext] = await Promise.all([
     (async () => {
       if (messagesWithAttachments.length === 0) return null
-      return loadWikiContextForAgent(messagesWithAttachments, userId, memoryBaseDir)
+      return loadWikiContextForAgent(messagesWithAttachments, userId, wikiBaseDir)
     })(),
     loadProjectContext(projectRoot, {
       contextFileNames: layout.contextFileNames,
@@ -128,14 +128,15 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   const { buildAgentInstructions } = await import('../../modules/agent/context/instructions')
 
-  // wiki 上下文
-  const wikiMemoryContext = wikiContext?.recalledContent
-    ? { userId, recalledMemoriesContent: wikiContext.recalledContent }
+  // wiki 上下文：只要有 userId 就注入 wiki guidelines prompt，
+  // recalledContent 为空只表示没有已召回的页面，不影响 guidelines 注入
+  const wikiPromptContext = userId
+    ? { userId, recalledContent: wikiContext?.recalledContent || '' }
     : null
 
-  const instructions = await buildAgentInstructions(wikiMemoryContext, {
+  const instructions = await buildAgentInstructions(wikiPromptContext, {
     cwd: projectRoot,
-    memoryBaseDir,
+    wikiBaseDir,
     skills: [...context.skills],
     permissions: modules.permissions ? [...context.permissions] : [],
     projectContext,
@@ -200,7 +201,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     dynamicReload: resolved.dynamicReload,
     cronStore: context.runtime.cronStore ?? undefined,
     userId,
-    memoryBaseDir,
+    wikiBaseDir,
   })
 
   // 如果 Agent 定义了工具限制，过滤工具集
@@ -354,7 +355,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     adjustedMessages: finalMessages,
     budgetActions: budgetCheck.actions,
     model: modelInstance,
-    memoryBaseDir,
+    wikiBaseDir,
     dispose,
   }
 }

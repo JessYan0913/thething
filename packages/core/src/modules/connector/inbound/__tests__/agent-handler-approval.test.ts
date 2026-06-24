@@ -26,7 +26,7 @@ vi.mock('../../../permissions/rules', () => ({
 
 vi.mock('../../../memory', () => ({
   extractMemoriesInBackground: mocks.extractMemoriesInBackground,
-  getPrimaryMemoryDir: vi.fn(() => '/tmp/test-memory'),
+  getPrimaryWikiDir: vi.fn(() => '/tmp/test-memory'),
 }))
 
 vi.mock('../../../../runtime/compaction', () => ({

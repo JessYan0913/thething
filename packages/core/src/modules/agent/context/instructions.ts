@@ -6,17 +6,17 @@ import type { Skill } from '../../../modules/skills/types'
 import type { PermissionRule } from '../../../modules/permissions/types'
 import type { LoadedProjectContext } from '../../../modules/system-prompt/sections/project-context'
 import { buildSystemPrompt } from '../../../modules/system-prompt'
-import type { MemoryContext } from '../types'
+import type { WikiContext } from '../types'
 
 /**
  * 构建 Agent 指令
  *
- * @param memoryContext 记忆上下文（wiki）
+ * @param wikiContext 知识库上下文
  * @param options 构建选项（包含已加载的数据）
  */
 export interface BuildInstructionsOptions {
   cwd?: string
-  memoryBaseDir?: string
+  wikiBaseDir?: string
   skills?: Skill[]
   permissions?: PermissionRule[]
   projectContext?: LoadedProjectContext
@@ -32,7 +32,7 @@ export interface BuildInstructionsOptions {
 }
 
 export async function buildAgentInstructions(
-  memoryContext: MemoryContext | null,
+  wikiContext: WikiContext | null,
   options?: BuildInstructionsOptions,
 ): Promise<string> {
   const { prompt } = await buildSystemPrompt({
@@ -42,8 +42,8 @@ export async function buildAgentInstructions(
     projectContext: options?.projectContext,
     includeProjectContext: true,
     conversationMeta: options?.conversationMeta ?? undefined,
-    memoryContext: memoryContext ?? undefined,
-    memoryBaseDir: options?.memoryBaseDir,
+    wikiContext: wikiContext ?? undefined,
+    wikiBaseDir: options?.wikiBaseDir,
     customInstructions: options?.customInstructions ?? null,
     excludeSections: options?.excludeSections,
   })

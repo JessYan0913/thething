@@ -216,7 +216,7 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
       mcpRegistry,
       model,
       adjustedMessages,
-      memoryBaseDir,
+      wikiBaseDir,
     } = await createAgent({
       context,
       conversationId,
@@ -266,7 +266,7 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
                 model,
                 isNewConversation: isFirstMessage,
                 userId,
-                memoryBaseDir,
+                wikiBaseDir,
               });
 
               await reloadServerContext();

@@ -19,7 +19,7 @@ import type { InboundEvent } from '../../modules/connector/inbound/types'
 import type { InboundEventResult, InboundEventHandler } from '../../modules/connector/inbound/inbound-processor'
 import type { AppContext, CreateAgentOptions, CreateAgentResult } from '../app/types'
 import { finalizeAgentRun } from '../finalize'
-import { getPrimaryMemoryDir } from '../../modules/wiki'
+import { getPrimaryWikiDir } from '../../modules/wiki'
 import { ConnectorRegistry } from '../../modules/connector/registry'
 import type { ConnectorModelConfig } from '../../modules/connector/types'
 import type { DataStore } from '../../primitives/datastore/types'
@@ -865,7 +865,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     const finalMessages = [...messagesToSave, assistantMessage]
 
     // ── 后台：记忆提取 / 标题生成 / 成本持久化 / 资源清理 ──
-    const memoryBaseDir = getPrimaryMemoryDir(this.config.context.layout)
+    const wikiBaseDir = getPrimaryWikiDir(this.config.context.layout)
     const memoryLimits = this.config.context.behavior?.memory
     await finalizeAgentRun({
       dataStore: store,
@@ -875,7 +875,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       mcpRegistry,
       model,
       isNewConversation: isFirstMessage,
-      memoryBaseDir,
+      wikiBaseDir,
       userId: this.config.userId || event.sender.id,
     })
 

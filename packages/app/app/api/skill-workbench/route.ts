@@ -161,7 +161,7 @@ export async function POST(request: Request) {
       mcpRegistry,
       model,
       adjustedMessages,
-      memoryBaseDir,
+      wikiBaseDir,
     } = await createAgent({
       context,
       conversationId,
@@ -211,7 +211,7 @@ export async function POST(request: Request) {
                 model,
                 isNewConversation: isFirstMessage,
                 userId,
-                memoryBaseDir,
+                wikiBaseDir,
               });
 
               await reloadServerContext();

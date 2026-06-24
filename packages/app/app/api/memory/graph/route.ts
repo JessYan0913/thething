@@ -25,7 +25,7 @@ interface GraphEdge {
 export async function GET() {
   try {
     const rt = await getServerRuntime();
-    const memoryDir = rt.layout.resources.memory[0];
+    const memoryDir = rt.layout.resources.wiki[0];
 
     if (!memoryDir) {
       return NextResponse.json({ nodes: [], edges: [] });

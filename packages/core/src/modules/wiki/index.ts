@@ -3,7 +3,7 @@
 // ============================================================
 
 // 路径工具
-export { getPrimaryMemoryDir, getUserWikiDir, ensureWikiDirExists, pageNameToFilename, filenameToPageName } from './wiki-paths'
+export { getPrimaryWikiDir, getUserWikiDir, ensureWikiDirExists, pageNameToFilename, filenameToPageName } from './wiki-paths'
 
 // 配置
 export { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
@@ -33,26 +33,15 @@ export {
 
 // LLM Prompt + Schema
 export {
-  WIKI_MAINTAINER_PROMPT,
   LINT_PROMPT,
   WIKI_GUIDELINES_PROMPT,
   wikiActionSchema,
-  wikiIngestSchema,
   lintIssueSchema,
   lintOutputSchema,
   type WikiAction,
-  type WikiIngestOutput,
   type LintIssue,
   type LintOutput,
 } from './wiki-prompt'
-
-// Ingest
-export {
-  ingestWikiFromConversation,
-  ingestWikiInBackground,
-  executeWikiAction,
-  type WikiIngestResult,
-} from './wiki-ingest'
 
 // Query
 export {

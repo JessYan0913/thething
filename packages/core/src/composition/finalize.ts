@@ -6,7 +6,6 @@ import type { UIMessage } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { DataStore } from '../primitives/datastore/types'
 import type { McpRegistry } from '../modules/mcp/registry'
-import { ingestWikiInBackground } from '../modules/wiki'
 import { generateConversationTitle } from '../modules/compaction'
 import { logger } from '../primitives/logger'
 
@@ -25,8 +24,8 @@ export interface FinalizeAgentRunOptions {
   model?: LanguageModelV3
   /** 是否为首次对话（触发标题生成） */
   isNewConversation: boolean
-  /** 记忆基础目录（getPrimaryMemoryDir 的结果） */
-  memoryBaseDir?: string
+  /** 知识库基础目录 */
+  wikiBaseDir?: string
   /** 用户 ID */
   userId?: string
 }
@@ -36,10 +35,9 @@ export interface FinalizeAgentRunOptions {
  *
  * 职责（按顺序）：
  * 1. 保存消息到 DataStore
- * 2. 后台提取记忆（延迟 3 秒避免限速）
- * 3. 首次对话生成标题
- * 4. 持久化成本数据
- * 5. 断开 MCP 连接
+ * 2. 首次对话生成标题
+ * 3. 持久化成本数据
+ * 4. 断开 MCP 连接
  *
  * 注意：成本持久化和 MCP 清理只调一次，避免 double-persist。
  */
@@ -52,14 +50,6 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
   // 2-5. 后台任务
   setImmediate(async () => {
     try {
-      // Wiki 知识编译（对话结束后后台编译）
-      ingestWikiInBackground(
-        messages,
-        opts.userId ?? 'default',
-        opts.model,
-        opts.memoryBaseDir,
-      ).catch(e => logger.warn('FinalizeAgentRun', `Wiki ingest failed: ${e}`))
-
       // 首次对话生成标题
       if (opts.isNewConversation) {
         generateConversationTitle(messages, opts.model)

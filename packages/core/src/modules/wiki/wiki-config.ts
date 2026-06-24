@@ -17,8 +17,6 @@ export interface WikiConfig {
   maxPages: number
   /** 每次 ingest 最大操作数 */
   maxActionsPerIngest: number
-  /** Query 最大召回数 */
-  maxRecallResults: number
 }
 
 export const DEFAULT_WIKI_CONFIG: WikiConfig = {
@@ -29,5 +27,4 @@ export const DEFAULT_WIKI_CONFIG: WikiConfig = {
   staleThresholdDays: 90,
   maxPages: 200,
   maxActionsPerIngest: 5,
-  maxRecallResults: 5,
 }

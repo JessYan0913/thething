@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       mcpRegistry,
       model,
       adjustedMessages,
-      memoryBaseDir,
+      wikiBaseDir,
     } = await createAgent({
       context,
       conversationId,
@@ -193,7 +193,7 @@ export async function POST(request: Request) {
                       model,
                       isNewConversation: isFirstMessage,
                       userId,
-                      memoryBaseDir,
+                      wikiBaseDir,
                     });
                   } catch (err) {
                     console.error('[Chat API] onFinish error:', err);

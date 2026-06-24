@@ -413,12 +413,11 @@ export interface LoadToolsConfig {
   cronStore?: CronJobStore
   /** 用户 ID（用于记忆系统） */
   userId?: string
-  /** 记忆基础目录（用于记忆系统） */
-  memoryBaseDir?: string
+  /** 知识库基础目录 */
+  wikiBaseDir?: string
 }
 
-export interface MemoryContext {
+export interface WikiContext {
   userId: string
-  teamId?: string
-  recalledMemoriesContent?: string
+  recalledContent?: string
 }

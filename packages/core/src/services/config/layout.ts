@@ -31,8 +31,8 @@ export interface ResourceDirs {
   connectors: readonly string[];
   /** Permissions 目录列表 */
   permissions: readonly string[];
-  /** Memory 目录列表 */
-  memory: readonly string[];
+  /** Wiki 目录列表 */
+  wiki: readonly string[];
 }
 
 /**
@@ -148,7 +148,7 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
     mcps:        [path.join(userDir, 'mcps'),        path.join(projectDir, 'mcps')],
     connectors:  [path.join(userDir, 'connectors'),  path.join(projectDir, 'connectors')],
     permissions: [path.join(userDir, 'permissions'), path.join(projectDir, 'permissions')],
-    memory:      [path.join(userDir, 'memory'),      path.join(projectDir, 'memory')],
+    wiki:        [path.join(userDir, 'wiki'),        path.join(projectDir, 'wiki')],
   };
 
   return Object.freeze({

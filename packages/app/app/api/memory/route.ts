@@ -17,7 +17,7 @@ export const runtime = 'nodejs';
 export async function GET() {
   try {
     const rt = await getServerRuntime();
-    const memoryDir = rt.layout.resources.memory[0];
+    const memoryDir = rt.layout.resources.wiki[0];
 
     if (!memoryDir) {
       return NextResponse.json({ pages: [] });
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     const rt = await getServerRuntime();
-    const memoryDir = rt.layout.resources.memory[0];
+    const memoryDir = rt.layout.resources.wiki[0];
     if (!memoryDir) {
       return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
     }
@@ -94,7 +94,7 @@ export async function PUT(request: Request) {
     }
 
     const rt = await getServerRuntime();
-    const memoryDir = rt.layout.resources.memory[0];
+    const memoryDir = rt.layout.resources.wiki[0];
     if (!memoryDir) {
       return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
     }
@@ -138,7 +138,7 @@ export async function DELETE(request: Request) {
     }
 
     const rt = await getServerRuntime();
-    const memoryDir = rt.layout.resources.memory[0];
+    const memoryDir = rt.layout.resources.wiki[0];
     if (!memoryDir) {
       return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
     }

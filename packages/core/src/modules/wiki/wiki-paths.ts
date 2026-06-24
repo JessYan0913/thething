@@ -8,21 +8,21 @@ import type { ResolvedLayout } from '../../services/config/layout'
 
 /**
  * 获取主存储目录（从 layout 配置）
- * 路径: ~/.thething/memory
+ * 路径: ~/.thething/wiki
  */
-export function getPrimaryMemoryDir(
+export function getPrimaryWikiDir(
   layout: Pick<ResolvedLayout, 'resources' | 'resourceRoot' | 'configDirName'>,
 ): string {
-  return layout.resources.memory[0]
-    ?? path.join(layout.resourceRoot, layout.configDirName, 'memory')
+  return layout.resources.wiki[0]
+    ?? path.join(layout.resourceRoot, layout.configDirName, 'wiki')
 }
 
 /**
  * 获取用户 wiki 目录
- * 路径: {memoryBaseDir}/users/{userId}/wiki
+ * 路径: {wikiBaseDir}/users/{userId}
  */
-export function getUserWikiDir(userId: string, memoryBaseDir: string): string {
-  return path.join(memoryBaseDir, 'users', userId, 'wiki')
+export function getUserWikiDir(userId: string, wikiBaseDir: string): string {
+  return path.join(wikiBaseDir, 'users', userId)
 }
 
 /**

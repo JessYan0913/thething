@@ -49,8 +49,8 @@ export interface BuildSystemPromptOptions {
 
   // 【新增】项目上下文（THING.md 等）
   projectContext?: LoadedProjectContext;
-  /** 记忆系统根目录（从 ResolvedLayout.resources.memory 派生） */
-  memoryBaseDir?: string;
+  /** 知识库根目录 */
+  wikiBaseDir?: string;
 
   // 保留原有选项
   override?: string | null;
@@ -58,10 +58,9 @@ export interface BuildSystemPromptOptions {
   userPreferences?: UserPreferences | null;
   includeProjectContext?: boolean;
   conversationMeta?: ConversationMeta | null;
-  memoryContext?: {
+  wikiContext?: {
     userId: string;
-    teamId?: string;
-    recalledMemoriesContent?: string;
+    recalledContent?: string;
   };
 
   /** Sections to exclude from the system prompt (e.g., ['identity'] for custom agents) */

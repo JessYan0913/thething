@@ -74,7 +74,7 @@ export type {
 
 export type {
   LoadToolsConfig,
-  MemoryContext,
+  WikiContext,
   AgentContextConfig,
   AgentModules,
   ResolvedAgentConfig,

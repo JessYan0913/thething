@@ -266,15 +266,12 @@ export { removeRule, saveRule, loadRules, updateRule } from './modules/permissio
 
 // Wiki module (knowledge system)
 export {
-  getPrimaryMemoryDir,
+  getPrimaryWikiDir,
   getUserWikiDir,
   ensureWikiDirExists,
-  ingestWikiFromConversation,
-  ingestWikiInBackground,
   loadWikiContext,
   formatWikiContextForPrompt,
   lintWiki,
-  WIKI_MAINTAINER_PROMPT,
   WIKI_GUIDELINES_PROMPT,
   DEFAULT_WIKI_CONFIG,
   // Wiki IO

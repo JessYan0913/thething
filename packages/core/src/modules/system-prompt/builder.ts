@@ -142,10 +142,10 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   {
     name: "wiki-guidelines",
     create: async (options) => {
-      if (options.memoryContext?.userId) {
+      if (options.wikiContext?.userId) {
         const section = await createWikiGuidelinesSection(
-          options.memoryContext.userId,
-          options.memoryBaseDir,
+          options.wikiContext.userId,
+          options.wikiBaseDir,
         );
         return section ?? { name: "wiki-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
       }
@@ -156,8 +156,8 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   {
     name: "recalled-wiki",
     create: async (options) => {
-      if (options.memoryContext?.recalledMemoriesContent) {
-        const section = await createRecalledWikiSection(options.memoryContext.recalledMemoriesContent);
+      if (options.wikiContext?.recalledContent) {
+        const section = await createRecalledWikiSection(options.wikiContext.recalledContent);
         return section ?? { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
       }
       return { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
