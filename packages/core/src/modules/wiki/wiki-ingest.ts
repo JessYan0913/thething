@@ -4,15 +4,13 @@
 // 对话结束后，从对话中编译知识并写入 wiki。
 // LLM 做编译判断，代码只做 IO。
 
-import { generateText, Output } from 'ai'
+import { generateText } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { UIMessage } from 'ai'
 import fs from 'fs/promises'
 import path from 'path'
-import { z } from 'zod'
-import { tool } from 'ai'
-import { getUserWikiDir, ensureWikiDirExists, pageNameToFilename } from './wiki-paths'
-import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, readPage, type WikiPageData } from './wiki-io'
+import { getUserWikiDir, ensureWikiDirExists } from './wiki-paths'
+import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, type WikiPageData } from './wiki-io'
 import { WIKI_MAINTAINER_PROMPT, wikiIngestSchema, type WikiAction } from './wiki-prompt'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
 import { logger } from '../../primitives/logger'
@@ -119,40 +117,30 @@ export async function ingestWikiFromConversation(
       // 索引文件不存在
     }
 
-    // 3. 调用 LLM（只传入索引，让 LLM 独立判断主题，可通过工具读取相关页面）
+    // 3. 调用 LLM（只传入索引，让 LLM 独立判断主题）
     const fullPrompt = formatWikiContext(indexRaw) + '\n\n## 当前对话\n\n' + conversationText
-
-    // 提供 read_wiki_page 工具，让 LLM 在需要交叉引用时读取现有页面
-    const readPageTool = tool({
-      description: '读取知识库中指定页面的完整内容，用于建立交叉引用',
-      inputSchema: z.object({
-        pageName: z.string().describe('页面名称（与索引中 [[...]] 内的名称一致）'),
-      }),
-      execute: async ({ pageName }) => {
-        const filename = pageNameToFilename(pageName)
-        const page = await readPage(wikiDir, filename)
-        if (!page) return { found: false, content: '' }
-        return { found: true, name: page.data.name, content: page.content }
-      },
-    })
 
     const result = await generateText({
       model: requireModel(model),
       system: WIKI_MAINTAINER_PROMPT,
       prompt: fullPrompt,
-      tools: { read_wiki_page: readPageTool },
     })
 
-    // 解析 LLM 输出为 wiki actions
+    // 从文本中提取 JSON 并校验
     let extraction: { actions: WikiAction[] } | null = null
     try {
-      const parsed = JSON.parse(result.text)
-      const validated = wikiIngestSchema.safeParse(parsed)
-      if (validated.success) {
-        extraction = validated.data
+      const text = result.text
+      // 提取 JSON 块（兼容 ```json ... ``` 和裸 JSON）
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0])
+        const validated = wikiIngestSchema.safeParse(parsed)
+        if (validated.success) {
+          extraction = validated.data
+        }
       }
     } catch {
-      // JSON 解析失败
+      // JSON 解析失败，静默处理
     }
 
     if (!extraction || extraction.actions.length === 0) {
