@@ -20,7 +20,7 @@ import {
   createSystemContextSection,
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
-import { createMemorySection, createRecalledMemorySection } from "./sections/memory";
+import { createWikiGuidelinesSection, createRecalledWikiSection } from "./sections/wiki";
 import { createPermissionsSection } from "./sections/permissions";
 
 // ============================================================================
@@ -36,7 +36,6 @@ const DEFAULT_OPTIONS: BuildSystemPromptOptions = {
   skills: undefined,
   agents: undefined,
   permissions: undefined,
-  memoryEntries: undefined,
   projectContext: undefined,
 };
 
@@ -141,28 +140,27 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     cacheStrategy: "session",
   },
   {
-    name: "memory-guidelines",
+    name: "wiki-guidelines",
     create: async (options) => {
       if (options.memoryContext?.userId) {
-        const section = await createMemorySection(
+        const section = await createWikiGuidelinesSection(
           options.memoryContext.userId,
-          options.memoryContext.teamId,
           options.memoryBaseDir,
         );
-        return section ?? { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
+        return section ?? { name: "wiki-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
       }
-      return { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
+      return { name: "wiki-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };
     },
     cacheStrategy: "session",
   },
   {
-    name: "recalled-memories",
+    name: "recalled-wiki",
     create: async (options) => {
       if (options.memoryContext?.recalledMemoriesContent) {
-        const section = await createRecalledMemorySection(options.memoryContext.recalledMemoriesContent);
-        return section ?? { name: "recalled-memories", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
+        const section = await createRecalledWikiSection(options.memoryContext.recalledMemoriesContent);
+        return section ?? { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
       }
-      return { name: "recalled-memories", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
+      return { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
     },
     cacheStrategy: "dynamic",
   },

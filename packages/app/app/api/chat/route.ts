@@ -203,11 +203,18 @@ export async function POST(request: Request) {
 
               // 读取代理流并序列化为 JSON 字符串后发送到控制器
               const reader = agentStream.getReader();
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                controller.enqueue(JSON.stringify(value));
+              let agentChunkCount = 0;
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  controller.enqueue(JSON.stringify(value));
+                  agentChunkCount++;
+                }
+              } catch (agentErr) {
+                console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
               }
+              console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
               controller.close();
             } catch (error) {
               controller.error(error);
@@ -230,13 +237,27 @@ export async function POST(request: Request) {
 
         // 读取可恢复流（JSON 字符串）并解析为 UIMessageChunk 后写入 UI 流
         const reader = resumableStream.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          writer.write(JSON.parse(value));
+        let chunkCount = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            try {
+              writer.write(JSON.parse(value));
+              chunkCount++;
+            } catch (parseErr) {
+              console.error('[Chat API] Failed to parse stream chunk:', parseErr, 'raw:', value?.slice(0, 100));
+            }
+          }
+        } catch (readErr) {
+          console.error('[Chat API] Stream read error after', chunkCount, 'chunks:', readErr);
         }
+        console.log('[Chat API] Stream complete, total chunks:', chunkCount);
       },
-      onError: (err) => String(err),
+      onError: (err) => {
+        console.error('[Chat API] UI stream error:', err);
+        return String(err);
+      },
     });
 
     return createUIMessageStreamResponse({

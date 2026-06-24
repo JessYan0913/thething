@@ -7,4 +7,3 @@ export { createAgentsModule } from './agents-module';
 export { createMcpModule } from './mcp-module';
 export { createConnectorModule } from './connector-module';
 export { createPermissionsModule } from './permissions-module';
-export { createMemoryModule } from './memory-module';

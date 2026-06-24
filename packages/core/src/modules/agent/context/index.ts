@@ -2,5 +2,5 @@
 // Agent Context - barrel re-export
 // ============================================================
 
-export { loadMemoryContext, type MemoryLoadOptions } from './memory-context'
+export { loadWikiContextForAgent, type WikiContextResult } from './wiki-context'
 export { buildAgentInstructions, type BuildInstructionsOptions } from './instructions'

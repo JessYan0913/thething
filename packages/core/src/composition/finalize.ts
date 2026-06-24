@@ -6,8 +6,7 @@ import type { UIMessage } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { DataStore } from '../primitives/datastore/types'
 import type { McpRegistry } from '../modules/mcp/registry'
-import type { EntrypointLimits } from '../modules/memory/memdir'
-import { extractMemoriesInBackground } from '../modules/memory'
+import { ingestWikiInBackground } from '../modules/wiki'
 import { generateConversationTitle } from '../modules/compaction'
 import { logger } from '../primitives/logger'
 
@@ -30,8 +29,6 @@ export interface FinalizeAgentRunOptions {
   memoryBaseDir?: string
   /** 用户 ID */
   userId?: string
-  /** 记忆入口文件限制 */
-  entrypointLimits?: EntrypointLimits
 }
 
 /**
@@ -55,15 +52,13 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
   // 2-5. 后台任务
   setImmediate(async () => {
     try {
-      // 记忆提取（内部已有 3 秒延迟）
-      extractMemoriesInBackground(
+      // Wiki 知识编译（对话结束后后台编译）
+      ingestWikiInBackground(
         messages,
         opts.userId ?? 'default',
-        conversationId,
         opts.model,
         opts.memoryBaseDir,
-        opts.entrypointLimits,
-      ).catch(e => logger.warn('FinalizeAgentRun', `Memory extraction failed: ${e}`))
+      ).catch(e => logger.warn('FinalizeAgentRun', `Wiki ingest failed: ${e}`))
 
       // 首次对话生成标题
       if (opts.isNewConversation) {

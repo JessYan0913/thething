@@ -9,7 +9,6 @@ import type { AgentDefinition } from '../../modules/agent/types';
 import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';
-import type { MemoryEntry } from '../../modules/memory/types';
 import type { CoreRuntime } from '../../composition/bootstrap';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { BehaviorConfig } from '../../services/config/behavior';
@@ -29,7 +28,6 @@ export interface LoadSourceInfo {
     userPath: string; userCount: number;
     projectPath: string; projectCount: number;
   };
-  memory: { path: string; count: number };
 }
 
 export interface LoadError {
@@ -58,7 +56,6 @@ export interface AppContext {
   readonly mcps: readonly McpServerConfig[];
   readonly connectors: readonly ConnectorFrontmatter[];
   readonly permissions: readonly PermissionRule[];
-  readonly memory: readonly MemoryEntry[];
 
   // 加载来源信息（用于调试/日志）
   readonly loadedFrom: LoadSourceInfo;
@@ -99,7 +96,7 @@ export interface CreateContextOptions {
 }
 
 export interface LoadEvent {
-  module: 'skills' | 'agents' | 'mcps' | 'connectors' | 'permissions' | 'memory';
+  module: 'skills' | 'agents' | 'mcps' | 'connectors' | 'permissions';
   path: string;
   source?: 'user' | 'project';
   count: number;
@@ -167,7 +164,6 @@ export interface CreateAgentOptions {
   modules?: {
     skills?: boolean;
     mcps?: boolean;
-    memory?: boolean;
     connectors?: boolean;
     permissions?: boolean;
     compaction?: boolean;

@@ -363,10 +363,16 @@ async function createNewResumableStream(
         cleanup();
       }, { once: true });
 
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY_MS = 100;
+
       function read() {
         if (cleanedUp) return;
 
         reader.read().then(async ({ done, value }) => {
+          retryCount = 0; // 成功读取，重置重试计数
+
           if (done || cleanedUp) {
             await cleanup();
             return;
@@ -392,8 +398,24 @@ async function createNewResumableStream(
           await Promise.all(promises);
 
           read();
-        }).catch(async () => {
-          // reader 被 cancel 或其他错误
+        }).catch(async (err) => {
+          // 如果是 abort 导致的错误，直接清理
+          if (abortController.signal.aborted) {
+            await cleanup();
+            return;
+          }
+
+          // 瞬态错误：重试
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            console.warn(`[ResumableStream] Read error (retry ${retryCount}/${MAX_RETRIES}):`, err?.message);
+            await new Promise(r => setTimeout(r, RETRY_DELAY_MS * retryCount));
+            read();
+            return;
+          }
+
+          // 超过重试次数，关闭流
+          console.error(`[ResumableStream] Read error (max retries exceeded):`, err?.message);
           await cleanup();
         });
       }

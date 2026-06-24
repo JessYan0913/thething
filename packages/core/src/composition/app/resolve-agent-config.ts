@@ -36,7 +36,6 @@ export function resolveAgentModules(modules?: CreateAgentOptions['modules']): Ag
   return {
     skills: modules?.skills ?? true,
     mcps: modules?.mcps ?? true,
-    memory: modules?.memory ?? true,
     connectors: modules?.connectors ?? true,
     permissions: modules?.permissions ?? true,
     compaction: modules?.compaction ?? true,

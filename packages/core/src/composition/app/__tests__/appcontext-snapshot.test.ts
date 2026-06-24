@@ -54,7 +54,6 @@ describe('AppContext snapshot', () => {
     expect(context.mcps.length).toBe(loaded.mcps.length);
     expect(context.connectors.length).toBe(loaded.connectors.length);
     expect(context.permissions.length).toBe(loaded.permissions.length);
-    expect(context.memory.length).toBe(loaded.memory.length);
   });
 
   it('keeps connector registry synchronized with the snapshot', () => {

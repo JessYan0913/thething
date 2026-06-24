@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import {
   SearchIcon, TrashIcon, CheckIcon, XIcon,
-  PlusIcon, PencilIcon, ChevronDownIcon, ChevronUpIcon,
-  RefreshCwIcon, BrainIcon, UserIcon, MessageSquareIcon,
-  FolderIcon, BookOpenIcon, Loader2Icon,
+  PlusIcon, PencilIcon, RefreshCwIcon, BrainIcon,
+  UserIcon, BotIcon, FolderIcon, GlobeIcon, BoxIcon,
+  Loader2Icon, NetworkIcon, ListIcon,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import WikiGraph from "@/components/WikiGraph"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -13,248 +16,164 @@ import {
   DialogFooter, DialogDescription,
 } from "@/components/ui/dialog"
 import {
-  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
-} from "@/components/ui/tooltip"
-import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 
-interface MemoryEntryView {
+interface WikiPageView {
   name: string
   description: string
-  type: string
+  category: string
   content: string
-  filePath: string
+  filename: string
+  created: string
+  updated: string
   lines: number
   sizeKb: number
-  userId: string
-  mtimeMs: number
-  source: string
-  confidence: number
-  validUntil: number | null
-  supersededBy: string | null
-  tier?: string
 }
 
-const typeConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  user: { label: "关于我", icon: <UserIcon className="size-4" />, color: "text-blue-500" },
-  feedback: { label: "反馈", icon: <MessageSquareIcon className="size-4" />, color: "text-purple-500" },
-  project: { label: "项目", icon: <FolderIcon className="size-4" />, color: "text-amber-500" },
-  reference: { label: "参考", icon: <BookOpenIcon className="size-4" />, color: "text-green-500" },
+const categoryConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  user: { label: "用户", icon: <UserIcon className="size-3.5" />, color: "text-blue-500" },
+  agent: { label: "Agent", icon: <BotIcon className="size-3.5" />, color: "text-purple-500" },
+  project: { label: "项目", icon: <FolderIcon className="size-3.5" />, color: "text-amber-500" },
+  domain: { label: "领域", icon: <GlobeIcon className="size-3.5" />, color: "text-green-500" },
+  entity: { label: "实体", icon: <BoxIcon className="size-3.5" />, color: "text-cyan-500" },
 }
 
-const tierConfig: Record<string, { label: string; color: string; description: string }> = {
-  identity: { label: "身份", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400", description: "极少变化" },
-  pattern: { label: "规律", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400", description: "跨场景" },
-  state: { label: "状态", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400", description: "经常变化" },
-}
-
-const sourceConfig: Record<string, { label: string; color: string }> = {
-  explicit: { label: "显式", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
-  inferred: { label: "推断", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
-  promoted: { label: "已验证", color: "bg-green-500/10 text-green-600 dark:text-green-400" },
-}
-
-const typeFilters = [
-  { value: null, label: "全部", icon: <BrainIcon className="size-3.5" /> },
-  { value: "user", label: "关于我", icon: <UserIcon className="size-3.5" /> },
-  { value: "feedback", label: "反馈", icon: <MessageSquareIcon className="size-3.5" /> },
-  { value: "project", label: "项目", icon: <FolderIcon className="size-3.5" /> },
-  { value: "reference", label: "参考", icon: <BookOpenIcon className="size-3.5" /> },
+const categoryFilters = [
+  { value: null, label: "全部" },
+  { value: "user", label: "用户" },
+  { value: "agent", label: "Agent" },
+  { value: "project", label: "项目" },
+  { value: "domain", label: "领域" },
+  { value: "entity", label: "实体" },
 ]
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-function getRelativeTime(mtimeMs: number) {
-  const ageDays = Math.floor((Date.now() - mtimeMs) / DAY_MS)
+function getRelativeTime(dateStr: string) {
+  const ageMs = Date.now() - new Date(dateStr).getTime()
+  const ageDays = Math.floor(ageMs / 86400000)
   if (ageDays < 1) return "今天"
-  if (ageDays < 7) return `${ageDays}天前`
   if (ageDays < 30) return `${ageDays}天前`
   if (ageDays < 365) return `${Math.floor(ageDays / 30)}个月前`
   return `${Math.floor(ageDays / 365)}年前`
 }
 
-function getContentPreview(content: string) {
-  const body = content.replace(/^---[\s\S]*?---\s*/, "").trim()
-  const firstLine = body.split("\n").find((l) => l.trim()) ?? ""
-  return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine
-}
-
-function getContentBody(content: string) {
-  return content.replace(/^---[\s\S]*?---\s*/, "").trim() || content.trim()
-}
-
 export default function MemorySettings() {
-  const [entries, setEntries] = useState<MemoryEntryView[]>([])
+  const [pages, setPages] = useState<WikiPageView[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [selectedFilename, setSelectedFilename] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState("")
   const [editSaving, setEditSaving] = useState(false)
   const [search, setSearch] = useState("")
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [typeFilter, setTypeFilter] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
-  const [promotableCount, setPromotableCount] = useState(0)
-  const [isPromoting, setIsPromoting] = useState(false)
-  const [activeUser, setActiveUser] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list")
 
-  // 创建对话框状态
+  // 创建对话框
   const [dialogOpen, setDialogOpen] = useState(false)
   const [formName, setFormName] = useState("")
   const [formDesc, setFormDesc] = useState("")
-  const [formType, setFormType] = useState<string>("user")
+  const [formCategory, setFormCategory] = useState<string>("domain")
   const [formContent, setFormContent] = useState("")
-  const [formStability, setFormStability] = useState<string>("state")
   const [formSaving, setFormSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const loadMemory = useCallback(async () => {
+  const loadPages = useCallback(async () => {
     setIsLoading(true)
     try {
       const res = await fetch("/api/memory")
       if (res.ok) {
         const data = await res.json()
-        setEntries(data.memory ?? [])
+        setPages(data.pages ?? [])
       }
     } catch {
-      setEntries([])
+      setPages([])
     } finally {
       setIsLoading(false)
     }
   }, [])
 
-  const loadUsage = useCallback(async (userId: string) => {
-    try {
-      const res = await fetch(`/api/memory/usage?userId=${encodeURIComponent(userId)}`)
-      if (res.ok) {
-        const data = await res.json()
-        setPromotableCount(data.promotableCount ?? 0)
-      }
-    } catch {
-      setPromotableCount(0)
-    }
-  }, [])
+  useEffect(() => { loadPages() }, [loadPages])
 
-  const handleBatchPromote = useCallback(async () => {
-    if (!activeUser || isPromoting) return
-    setIsPromoting(true)
-    try {
-      const res = await fetch("/api/memory/promote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: activeUser }),
-      })
-      if (res.ok) {
-        await loadMemory()
-        await loadUsage(activeUser)
-      }
-    } finally {
-      setIsPromoting(false)
-    }
-  }, [activeUser, isPromoting, loadMemory, loadUsage])
-
-  useEffect(() => { loadMemory() }, [loadMemory])
-
-  useEffect(() => {
-    if (activeUser) loadUsage(activeUser)
-  }, [activeUser, loadUsage])
-
-  // 自动设置 activeUser
-  useEffect(() => {
-    if (!isLoading && entries.length > 0 && !activeUser) {
-      const firstUser = entries[0]?.userId
-      if (firstUser) setActiveUser(firstUser)
-    }
-  }, [isLoading, entries, activeUser])
-
-  // 筛选逻辑
   const filtered = useMemo(() => {
-    let result = entries
-    if (activeUser) {
-      result = result.filter((e) => e.userId === activeUser)
-    }
-    if (typeFilter) {
-      result = result.filter((e) => e.type === typeFilter)
-    }
+    let result = pages
+    if (categoryFilter) result = result.filter((e) => e.category === categoryFilter)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
-      result = result.filter(
-        (e) =>
-          e.name.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q) ||
-          getContentBody(e.content).toLowerCase().includes(q)
+      result = result.filter((e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.content.toLowerCase().includes(q)
       )
     }
     return result
-  }, [entries, activeUser, typeFilter, search])
+  }, [pages, categoryFilter, search])
 
-  const handleToggleExpand = useCallback((filePath: string) => {
-    setExpandedId((prev) => (prev === filePath ? null : filePath))
+  const selectedPage = useMemo(
+    () => pages.find((p) => p.filename === selectedFilename) ?? null,
+    [pages, selectedFilename]
+  )
+
+  const handleSelectPage = useCallback((filename: string) => {
+    setSelectedFilename(filename)
     setEditingId(null)
-    setConfirmDelete(null)
+    setEditContent("")
+    setConfirmDelete(false)
   }, [])
 
-  const handleStartEdit = useCallback((entry: MemoryEntryView) => {
-    setEditingId(entry.filePath)
-    setEditContent(getContentBody(entry.content))
-  }, [])
+  const handleStartEdit = useCallback(() => {
+    if (!selectedPage) return
+    setEditingId(selectedPage.filename)
+    setEditContent(selectedPage.content)
+  }, [selectedPage])
 
   const handleCancelEdit = useCallback(() => {
     setEditingId(null)
     setEditContent("")
   }, [])
 
-  const handleSaveEdit = useCallback(async (entry: MemoryEntryView) => {
-    if (!editContent.trim()) return
+  const handleSaveEdit = useCallback(async () => {
+    if (!selectedPage || !editContent.trim()) return
     setEditSaving(true)
     try {
       const res = await fetch("/api/memory", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          filePath: entry.filePath,
-          name: entry.name,
-          description: entry.description,
-          type: entry.type,
+          filename: selectedPage.filename,
+          name: selectedPage.name,
+          description: selectedPage.description,
+          category: selectedPage.category,
           content: editContent.trim(),
         }),
       })
       if (res.ok) {
-        const updatedContent = `---\nname: ${entry.name}\ndescription: ${entry.description}\ntype: ${entry.type}\n---\n\n${editContent.trim()}`
-        const now = Date.now()
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.filePath === entry.filePath
-              ? { ...e, content: updatedContent, mtimeMs: now, confidence: 0.9 }
-              : e
-          )
-        )
+        await loadPages()
         setEditingId(null)
         setEditContent("")
       }
     } finally {
       setEditSaving(false)
     }
-  }, [editContent])
+  }, [selectedPage, editContent, loadPages])
 
-  const handleDelete = useCallback(async (filePath: string) => {
-    const res = await fetch(`/api/memory?filePath=${encodeURIComponent(filePath)}`, { method: "DELETE" })
+  const handleDelete = useCallback(async () => {
+    if (!selectedPage) return
+    const res = await fetch(`/api/memory?filename=${encodeURIComponent(selectedPage.filename)}`, { method: "DELETE" })
     if (res.ok) {
-      setEntries((prev) => prev.filter((e) => e.filePath !== filePath))
-      if (expandedId === filePath) setExpandedId(null)
+      setPages((prev) => prev.filter((e) => e.filename !== selectedPage.filename))
+      setSelectedFilename(null)
     }
-    setConfirmDelete(null)
-  }, [expandedId])
+    setConfirmDelete(false)
+  }, [selectedPage])
 
   const openCreateDialog = useCallback(() => {
     setFormName("")
     setFormDesc("")
-    setFormType("user")
+    setFormCategory("domain")
     setFormContent("")
-    setFormStability("state")
     setFormError(null)
     setDialogOpen(true)
   }, [])
@@ -267,19 +186,14 @@ export default function MemorySettings() {
     setFormSaving(true)
     setFormError(null)
     try {
-      const targetUserId = activeUser ?? entries[0]?.userId ?? "default"
       const res = await fetch("/api/memory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formName.trim(),
           description: formDesc.trim(),
-          type: formType,
+          category: formCategory,
           content: formContent,
-          userId: targetUserId,
-          stability: formStability,
-          source: "explicit",
-          confidence: 0.9,
         }),
       })
       if (!res.ok) {
@@ -287,336 +201,363 @@ export default function MemorySettings() {
         setFormError(data.error ?? "创建失败")
         return
       }
-      await loadMemory()
+      await loadPages()
       setDialogOpen(false)
     } catch {
       setFormError("网络错误，请重试")
     } finally {
       setFormSaving(false)
     }
-  }, [formName, formDesc, formType, formContent, formStability, activeUser, entries, loadMemory])
+  }, [formName, formDesc, formCategory, formContent, loadPages])
 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* 顶栏 */}
-      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
-        <h1 className="text-sm font-semibold shrink-0">我的记忆</h1>
-
+      <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b bg-muted/30">
+        <h1 className="text-sm font-semibold shrink-0">知识库</h1>
         <div className="flex-1" />
-
-        {searchOpen && (
-          <div className="relative w-64">
-            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              placeholder="搜索记忆..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 text-sm"
-              autoFocus
-            />
-            {search && (
-              <button
-                onClick={() => { setSearch(""); setSearchOpen(false) }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <XIcon className="size-3.5" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {!searchOpen && (
-          <Button variant="ghost" size="sm" onClick={() => setSearchOpen(true)}>
-            <SearchIcon className="size-4" />
-          </Button>
-        )}
-
-        <Button variant="ghost" size="sm" onClick={loadMemory} disabled={isLoading}>
-          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        <div className="relative w-52">
+          <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            placeholder="搜索..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-7 h-7 text-xs"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <XIcon className="size-3" />
+            </button>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" onClick={loadPages} disabled={isLoading} className="h-7 px-2">
+          <RefreshCwIcon className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
-
-        {promotableCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={handleBatchPromote} disabled={isPromoting}>
-            <CheckIcon className="size-4 mr-1" />
-            晋升 ({promotableCount})
-          </Button>
-        )}
-
-        <Button variant="ghost" size="sm" onClick={openCreateDialog}>
-          <PlusIcon className="size-4 mr-1" />新建
-        </Button>
-      </div>
-
-      {/* 分类筛选 */}
-      <div className="shrink-0 flex items-center gap-1 px-6 py-2 border-b">
-        {typeFilters.map((opt) => (
-          <button
-            key={opt.value ?? "all"}
-            onClick={() => setTypeFilter(opt.value)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors",
-              typeFilter === opt.value
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
+        <div className="flex items-center border rounded-md">
+          <Button
+            variant={viewMode === "list" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("list")}
+            className="h-7 px-2 rounded-r-none"
           >
-            {opt.icon}
-            {opt.label}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-muted-foreground/50">
-          {filtered.length} 条记忆
-        </span>
+            <ListIcon className="size-3.5" />
+          </Button>
+          <Button
+            variant={viewMode === "graph" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("graph")}
+            className="h-7 px-2 rounded-l-none"
+          >
+            <NetworkIcon className="size-3.5" />
+          </Button>
+        </div>
+        <Button variant="ghost" size="sm" onClick={openCreateDialog} className="h-7 px-2">
+          <PlusIcon className="size-3.5 mr-1" />新建
+        </Button>
       </div>
 
-      {/* 卡片列表 */}
-      <div className="flex-1 overflow-auto p-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-muted-foreground">
-            <Loader2Icon className="size-5 animate-spin mr-2" />
-            <span className="text-sm">加载中...</span>
+      {/* 主体: 列表视图 或 图谱视图 */}
+      {viewMode === "graph" ? (
+        <div className="flex-1 min-h-0">
+          <WikiGraph onSelectPage={(filename) => {
+            setViewMode("list")
+            setSelectedFilename(filename)
+          }} />
+        </div>
+      ) : (
+      <div className="flex flex-1 min-h-0">
+        {/* 左侧目录 */}
+        <div className="w-60 shrink-0 border-r flex flex-col min-h-0">
+          {/* 分类筛选 */}
+          <div className="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b">
+            {categoryFilters.map((opt) => (
+              <button
+                key={opt.value ?? "all"}
+                onClick={() => setCategoryFilter(opt.value)}
+                className={cn(
+                  "px-2 py-1 text-[11px] rounded transition-colors",
+                  categoryFilter === opt.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
-            <BrainIcon className="size-10 opacity-20" />
-            <p className="text-sm">{search ? "没有找到匹配的记忆" : "暂无记忆"}</p>
-            {!search && (
-              <Button variant="outline" size="sm" onClick={openCreateDialog}>
-                <PlusIcon className="size-3.5 mr-1" />创建第一条记忆
-              </Button>
+
+          {/* 页面列表 */}
+          <div className="flex-1 overflow-auto min-h-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground">
+                <Loader2Icon className="size-4 animate-spin" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                <BrainIcon className="size-6 opacity-20" />
+                <p className="text-xs">{search ? "无匹配" : "暂无知识"}</p>
+                {!search && (
+                  <Button variant="outline" size="sm" onClick={openCreateDialog} className="h-6 text-xs">
+                    <PlusIcon className="size-3 mr-1" />创建
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="py-1">
+                {filtered.map((page) => {
+                  const config = categoryConfig[page.category]
+                  const isSelected = selectedFilename === page.filename
+                  return (
+                    <button
+                      key={page.filename}
+                      onClick={() => handleSelectPage(page.filename)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+                        isSelected
+                          ? "bg-accent text-accent-foreground"
+                          : "hover:bg-accent/50 text-foreground"
+                      )}
+                    >
+                      {config && (
+                        <span className={cn("shrink-0", config.color)}>{config.icon}</span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate">{page.name}</div>
+                        {page.description && (
+                          <div className="text-[11px] text-muted-foreground truncate">{page.description}</div>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             )}
           </div>
-        ) : (
-          <div className="grid gap-3 max-w-2xl mx-auto">
-            {filtered.map((entry) => {
-              const config = typeConfig[entry.type] ?? { label: entry.type, icon: <BrainIcon className="size-4" />, color: "text-muted-foreground" }
-              const isExpanded = expandedId === entry.filePath
-              const isEditing = editingId === entry.filePath
 
-              return (
-                <div
-                  key={entry.filePath}
-                  className={cn(
-                    "rounded-lg border transition-all",
-                    isExpanded ? "bg-card shadow-sm" : "hover:border-accent/50 hover:bg-accent/20"
-                  )}
-                >
-                  {/* 卡片头部 — 始终可见 */}
-                  <button
-                    onClick={() => handleToggleExpand(entry.filePath)}
-                    className="w-full flex items-start gap-3 p-4 text-left"
-                  >
-                    <span className={cn("mt-0.5 shrink-0", config.color)}>
-                      {config.icon}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">{entry.name}</span>
-                        <span className="text-[11px] text-muted-foreground shrink-0">
-                          {getRelativeTime(entry.mtimeMs)}
-                        </span>
-                        {entry.source && sourceConfig[entry.source] && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", sourceConfig[entry.source].color)}>
-                                  {sourceConfig[entry.source].label}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {entry.source === "explicit" && "用户明确说出的信息"}
-                                {entry.source === "inferred" && "从对话推断的信息"}
-                                {entry.source === "promoted" && "经多次验证的推断信息"}
-                                {entry.confidence != null && ` · 置信度 ${entry.confidence}`}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        {entry.tier && tierConfig[entry.tier] && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", tierConfig[entry.tier].color)}>
-                                  {tierConfig[entry.tier].label}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {tierConfig[entry.tier].description}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      {entry.description && (
-                        <p className="text-xs text-muted-foreground/60 mt-1 line-clamp-1">
-                          {entry.description}
-                        </p>
-                      )}
-                      {!isExpanded && (
-                        <p className="text-xs text-muted-foreground/40 mt-1 line-clamp-1 font-mono">
-                          {getContentPreview(entry.content)}
-                        </p>
-                      )}
-                    </div>
-                    <span className="shrink-0 mt-1 text-muted-foreground/30">
-                      {isExpanded ? <ChevronUpIcon className="size-4" /> : <ChevronDownIcon className="size-4" />}
-                    </span>
-                  </button>
+          {/* 底部计数 */}
+          <div className="shrink-0 px-3 py-1.5 border-t text-[11px] text-muted-foreground/50">
+            {filtered.length} 条知识
+          </div>
+        </div>
 
-                  {/* 展开内容 */}
-                  {isExpanded && (
-                    <div className="px-4 pb-4 border-t">
-                      <div className="pt-3">
-                        {isEditing ? (
-                          <div className="space-y-3">
-                            <Textarea
-                              value={editContent}
-                              onChange={(e) => setEditContent(e.target.value)}
-                              className="min-h-50 text-sm font-mono resize-y"
-                              autoFocus
-                            />
-                            <div className="flex items-center gap-2">
-                              <Button size="sm" onClick={() => handleSaveEdit(entry)} disabled={editSaving}>
-                                {editSaving ? (
-                                  <Loader2Icon className="size-3.5 animate-spin mr-1" />
-                                ) : (
-                                  <CheckIcon className="size-3.5 mr-1" />
-                                )}
-                                保存
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
-                                取消
-                              </Button>
-                              <span className="text-[11px] text-muted-foreground/40 ml-2">
-                                Ctrl+S 保存
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <pre className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap wrap-break-word font-sans">
-                              {getContentBody(entry.content)}
-                            </pre>
-                            <div className="flex items-center gap-2 mt-4 pt-3 border-t">
-                              <Button size="sm" variant="ghost" onClick={() => handleStartEdit(entry)}>
-                                <PencilIcon className="size-3.5 mr-1" />编辑
-                              </Button>
-                              {confirmDelete === entry.filePath ? (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-destructive hover:text-destructive"
-                                    onClick={() => handleDelete(entry.filePath)}
-                                  >
-                                    <CheckIcon className="size-3.5 mr-1" />确认删除
-                                  </Button>
-                                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(null)}>
-                                    取消
-                                  </Button>
-                                </>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-muted-foreground hover:text-destructive"
-                                  onClick={() => setConfirmDelete(entry.filePath)}
-                                >
-                                  <TrashIcon className="size-3.5 mr-1" />删除
-                                </Button>
-                              )}
-                              <span className="ml-auto text-[11px] text-muted-foreground/30">
-                                {config.label} · {entry.userId}
-                                {entry.confidence != null && ` · ${(entry.confidence * 100).toFixed(0)}%`}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+        {/* 右侧预览 */}
+        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+          {!selectedPage ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <BrainIcon className="size-10 mx-auto opacity-20 mb-2" />
+                <p className="text-sm">选择一个知识条目查看详情</p>
+              </div>
+            </div>
+          ) : editingId === selectedPage.filename ? (
+            /* 编辑模式 */
+            <div className="flex flex-col h-full min-h-0 p-4 gap-3">
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-sm font-medium">编辑: {selectedPage.name}</span>
+                <span className="text-[11px] text-muted-foreground">{getRelativeTime(selectedPage.updated)}</span>
+              </div>
+              <Textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="flex-1 min-h-0 text-sm font-mono resize-none"
+                autoFocus
+              />
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>
+                  {editSaving ? <Loader2Icon className="size-3.5 animate-spin mr-1" /> : <CheckIcon className="size-3.5 mr-1" />}
+                  保存
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCancelEdit}>取消</Button>
+                <span className="text-[11px] text-muted-foreground/40 ml-2">Ctrl+S 保存</span>
+              </div>
+            </div>
+          ) : (
+            /* 预览模式 */
+            <div className="flex flex-col h-full min-h-0">
+              {/* 页头 */}
+              <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{selectedPage.name}</span>
+                    {categoryConfig[selectedPage.category] && (
+                      <span className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full",
+                        selectedPage.category === "user" && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                        selectedPage.category === "agent" && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+                        selectedPage.category === "project" && "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                        selectedPage.category === "domain" && "bg-green-500/10 text-green-600 dark:text-green-400",
+                        selectedPage.category === "entity" && "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+                      )}>
+                        {categoryConfig[selectedPage.category].label}
+                      </span>
+                    )}
+                  </div>
+                  {selectedPage.description && (
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">{selectedPage.description}</p>
                   )}
                 </div>
-              )
-            })}
-          </div>
-        )}
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" onClick={handleStartEdit} className="h-7 px-2">
+                    <PencilIcon className="size-3.5 mr-1" />编辑
+                  </Button>
+                  {confirmDelete ? (
+                    <>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive hover:text-destructive" onClick={handleDelete}>
+                        <CheckIcon className="size-3.5 mr-1" />确认
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setConfirmDelete(false)}>
+                        取消
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+                      <TrashIcon className="size-3.5 mr-1" />删除
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* 内容 */}
+              <div className="flex-1 overflow-auto min-h-0">
+                <div className="prose prose-sm dark:prose-invert max-w-none p-4">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({ children }) => (
+                        <div className="overflow-x-auto my-4">
+                          <table className="border-collapse border w-full text-sm">{children}</table>
+                        </div>
+                      ),
+                      thead: ({ children }) => (
+                        <thead className="border-b bg-muted/50">{children}</thead>
+                      ),
+                      tbody: ({ children }) => (
+                        <tbody>{children}</tbody>
+                      ),
+                      tr: ({ children }) => (
+                        <tr className="border-b hover:bg-muted/30">{children}</tr>
+                      ),
+                      th: ({ children }) => (
+                        <th className="border px-3 py-2 text-left font-medium">{children}</th>
+                      ),
+                      td: ({ children }) => (
+                        <td className="border px-3 py-2">{children}</td>
+                      ),
+                      h1: ({ children }) => (
+                        <h1 className="text-2xl font-bold mt-6 mb-3">{children}</h1>
+                      ),
+                      h2: ({ children }) => (
+                        <h2 className="text-xl font-bold mt-5 mb-2">{children}</h2>
+                      ),
+                      h3: ({ children }) => (
+                        <h3 className="text-lg font-bold mt-4 mb-2">{children}</h3>
+                      ),
+                      p: ({ children }) => (
+                        <p className="my-2 leading-relaxed">{children}</p>
+                      ),
+                      ul: ({ children }) => (
+                        <ul className="list-disc ml-6 my-2">{children}</ul>
+                      ),
+                      ol: ({ children }) => (
+                        <ol className="list-decimal ml-6 my-2">{children}</ol>
+                      ),
+                      li: ({ children }) => (
+                        <li className="my-1">{children}</li>
+                      ),
+                      code: ({ className, children }) => {
+                        const isInline = !className;
+                        if (isInline) {
+                          return (
+                            <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">
+                              {children}
+                            </code>
+                          );
+                        }
+                        return (
+                          <code className={className}>{children}</code>
+                        );
+                      },
+                      pre: ({ children }) => (
+                        <pre className="rounded-md bg-muted p-4 overflow-x-auto my-4">
+                          {children}
+                        </pre>
+                      ),
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-4 border-muted-foreground/30 pl-4 my-4 italic text-muted-foreground">
+                          {children}
+                        </blockquote>
+                      ),
+                      hr: () => (
+                        <hr className="my-6 border-t" />
+                      ),
+                      a: ({ href, children }) => (
+                        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="font-bold">{children}</strong>
+                      ),
+                    }}
+                  >
+                    {selectedPage.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
+
+              {/* 底部状态栏 */}
+              <div className="shrink-0 px-4 py-1.5 border-t text-[11px] text-muted-foreground/40 flex items-center gap-3">
+                <span>{selectedPage.lines} 行</span>
+                <span>{selectedPage.sizeKb.toFixed(1)} KB</span>
+                <span className="ml-auto">更新于 {getRelativeTime(selectedPage.updated)}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+      )}
 
       {/* 创建对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>新建记忆</DialogTitle>
-            <DialogDescription>创建一条新的记忆条目</DialogDescription>
+            <DialogTitle>新建知识</DialogTitle>
+            <DialogDescription>创建一条新的知识条目到知识库</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="mem-name">名称</Label>
-              <Input
-                id="mem-name"
-                placeholder="例如: 前端开发偏好"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-              />
+              <Label htmlFor="wiki-name">名称</Label>
+              <Input id="wiki-name" placeholder="例如: 用户姓名" value={formName} onChange={(e) => setFormName(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="mem-desc">描述</Label>
-              <Input
-                id="mem-desc"
-                placeholder="一句话描述（可选）"
-                value={formDesc}
-                onChange={(e) => setFormDesc(e.target.value)}
-              />
+              <Label htmlFor="wiki-desc">描述</Label>
+              <Input id="wiki-desc" placeholder="一句话摘要（用于索引）" value={formDesc} onChange={(e) => setFormDesc(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label>类型</Label>
-              <Select value={formType} onValueChange={setFormType}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+              <Label>分类</Label>
+              <Select value={formCategory} onValueChange={setFormCategory}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">关于我</SelectItem>
-                  <SelectItem value="feedback">反馈</SelectItem>
-                  <SelectItem value="project">项目</SelectItem>
-                  <SelectItem value="reference">参考</SelectItem>
+                  <SelectItem value="user">用户（偏好、身份、习惯）</SelectItem>
+                  <SelectItem value="agent">Agent（行为规则）</SelectItem>
+                  <SelectItem value="project">项目（架构、选型、进度）</SelectItem>
+                  <SelectItem value="domain">领域（技术对比、最佳实践）</SelectItem>
+                  <SelectItem value="entity">实体（人物、工具、服务）</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>稳定性</Label>
-              <Select value={formStability} onValueChange={setFormStability}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="identity">身份（极少变化）</SelectItem>
-                  <SelectItem value="pattern">规律（跨场景）</SelectItem>
-                  <SelectItem value="state">状态（经常变化）</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="wiki-content">内容</Label>
+              <Textarea id="wiki-content" placeholder="知识的正文内容..." rows={8} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="font-mono text-sm" />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="mem-content">内容</Label>
-              <Textarea
-                id="mem-content"
-                placeholder="记忆的正文内容..."
-                rows={8}
-                value={formContent}
-                onChange={(e) => setFormContent(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
-            {formError && (
-              <p className="text-xs text-destructive">{formError}</p>
-            )}
+            {formError && <p className="text-xs text-destructive">{formError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={formSaving}>
-              取消
-            </Button>
-            <Button onClick={handleCreate} disabled={formSaving}>
-              {formSaving ? "创建中..." : "创建"}
-            </Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={formSaving}>取消</Button>
+            <Button onClick={handleCreate} disabled={formSaving}>{formSaving ? "创建中..." : "创建"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

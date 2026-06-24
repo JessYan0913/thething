@@ -19,7 +19,7 @@ import type { InboundEvent } from '../../modules/connector/inbound/types'
 import type { InboundEventResult, InboundEventHandler } from '../../modules/connector/inbound/inbound-processor'
 import type { AppContext, CreateAgentOptions, CreateAgentResult } from '../app/types'
 import { finalizeAgentRun } from '../finalize'
-import { getPrimaryMemoryDir } from '../../modules/memory'
+import { getPrimaryMemoryDir } from '../../modules/wiki'
 import { ConnectorRegistry } from '../../modules/connector/registry'
 import type { ConnectorModelConfig } from '../../modules/connector/types'
 import type { DataStore } from '../../primitives/datastore/types'
@@ -877,10 +877,6 @@ export class AgentInboundHandler implements InboundEventHandler {
       isNewConversation: isFirstMessage,
       memoryBaseDir,
       userId: this.config.userId || event.sender.id,
-      entrypointLimits: memoryLimits ? {
-        maxLines: memoryLimits.entrypointMaxLines,
-        maxBytes: memoryLimits.entrypointMaxBytes,
-      } : undefined,
     })
 
     logger.debug('AgentInboundHandler', `COMPLETE: responseLen=${finalResponse.length} conversation=${conversationId} durationMs=${Date.now() - startTime}`)
@@ -918,7 +914,6 @@ export class AgentInboundHandler implements InboundEventHandler {
       modules: {
         mcps: this.config.modules?.mcps ?? true,
         skills: this.config.modules?.skills ?? true,
-        memory: this.config.modules?.memory ?? true,
         connectors: this.config.modules?.connectors ?? false,
         permissions: this.config.modules?.permissions ?? true,
         compaction: this.config.modules?.compaction ?? true,

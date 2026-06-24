@@ -17,7 +17,8 @@ import {
   askUserQuestionTool,
   createSkillTool,
   createCronTool,
-  createSaveMemoryTool,
+  createSaveWikiTool,
+  createReadWikiPageTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
@@ -85,11 +86,15 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     tools.cron = createCronTool({ cronStore: config.cronStore })
   }
 
-  // 注册 save_memory 工具（需要 userId 和 memoryBaseDir）
+  // 注册 save_wiki 工具（需要 userId 和 memoryBaseDir）
   if (config.userId && config.memoryBaseDir) {
-    tools.save_memory = createSaveMemoryTool({
+    tools.save_wiki = createSaveWikiTool({
       userId: config.userId,
-      memoryBaseDir: config.memoryBaseDir,
+      wikiBaseDir: config.memoryBaseDir,
+    })
+    tools.read_wiki_page = createReadWikiPageTool({
+      userId: config.userId,
+      wikiBaseDir: config.memoryBaseDir,
     })
   }
 

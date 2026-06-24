@@ -33,12 +33,6 @@ export {
   type LoadPermissionsOptions,
 } from './permissions';
 
-export {
-  loadMemory,
-  type LoadMemoryOptions,
-  type MemoryEntry,
-} from './memory';
-
 // ============================================================
 // AppModule 类型和适配器
 // ============================================================
@@ -50,7 +44,6 @@ export {
   createMcpModule,
   createConnectorModule,
   createPermissionsModule,
-  createMemoryModule,
 } from './modules';
 
 // ============================================================
@@ -63,7 +56,7 @@ import type { AgentDefinition } from '../../modules/agent/types';
 import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';
-import type { MemoryEntry, LoadSkillsOptions, LoadAgentsOptions, LoadMcpsOptions, LoadConnectorsOptions, LoadPermissionsOptions, LoadMemoryOptions } from './index';
+import type { LoadSkillsOptions, LoadAgentsOptions, LoadMcpsOptions, LoadConnectorsOptions, LoadPermissionsOptions } from './index';
 import type { AppModule, ModuleContext } from './module-types';
 import {
   createSkillsModule,
@@ -71,7 +64,6 @@ import {
   createMcpModule,
   createConnectorModule,
   createPermissionsModule,
-  createMemoryModule,
 } from './modules';
 
 export interface LoadAllOptions {
@@ -89,7 +81,6 @@ export interface LoadAllOptions {
   mcps?: LoadMcpsOptions;
   connectors?: LoadConnectorsOptions;
   permissions?: LoadPermissionsOptions;
-  memory?: LoadMemoryOptions;
 }
 
 export interface LoadAllResult {
@@ -99,7 +90,6 @@ export interface LoadAllResult {
   mcps: McpServerConfig[];
   connectors: ConnectorFrontmatter[];
   permissions: PermissionRule[];
-  memory: MemoryEntry[];
   /** 已初始化的模块实例（用于后续 dispose） */
   moduleInstances: AppModule[];
 }
@@ -139,7 +129,6 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
     createMcpModule(options?.mcps),
     createConnectorModule(options?.connectors),
     createPermissionsModule(options?.permissions),
-    createMemoryModule(options?.memory),
   ];
 
   await Promise.all(
@@ -157,7 +146,6 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
     mcps: (snapshots[2] ?? []) as McpServerConfig[],
     connectors: (snapshots[3] ?? []) as ConnectorFrontmatter[],
     permissions: (snapshots[4] ?? []) as PermissionRule[],
-    memory: (snapshots[5] ?? []) as MemoryEntry[],
     moduleInstances: modules,
   };
 }

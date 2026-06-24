@@ -4,8 +4,8 @@
 
 // 工具函数
 export { loadAllTools } from './tools'
-export { loadMemoryContext, buildAgentInstructions } from './context'
-export type { MemoryLoadOptions } from './context'
+export { loadWikiContextForAgent, buildAgentInstructions } from './context'
+export type { WikiContextResult } from './context'
 
 // 加载
 export {

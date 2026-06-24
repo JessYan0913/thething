@@ -6,7 +6,29 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import { ProxyAgent } from 'undici';
 import { logger } from '../../primitives/logger';
+
+/**
+ * 从环境变量获取代理 dispatcher
+ * Node.js 原生 fetch (undici) 不自动读取 http_proxy 环境变量，需要手动设置
+ */
+function getProxyDispatcher() {
+  const proxyUrl = process.env.https_proxy || process.env.http_proxy || process.env.all_proxy;
+  if (!proxyUrl) return undefined;
+
+  try {
+    // undici ProxyAgent 支持 http/https 代理，不支持 socks5
+    if (proxyUrl.startsWith('socks5://')) {
+      logger.warn('WebFetch', `SOCKS5 代理 (${proxyUrl}) 不受 undici 支持，将直连`);
+      return undefined;
+    }
+    return new ProxyAgent(proxyUrl);
+  } catch (error) {
+    logger.warn('WebFetch', `创建代理失败: ${error}`);
+    return undefined;
+  }
+}
 
 /**
  * 从 HTML 中提取纯文本
@@ -57,9 +79,11 @@ export function createWebFetchTool() {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
+        const dispatcher = getProxyDispatcher();
 
         const response = await fetch(url, {
           signal: controller.signal,
+          ...(dispatcher ? { dispatcher } : {}),
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; TheThing/1.0; +https://github.com/thething)',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

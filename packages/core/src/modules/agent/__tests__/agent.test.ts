@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  loadMemoryContext,
+  loadWikiContextForAgent,
   buildAgentInstructions,
 } from '../context';
 
-// Mock memory module since it has filesystem operations
-vi.mock('../../../modules/memory', () => ({
-  findRelevantMemories: vi.fn(() => Promise.resolve([])),
-  buildMemorySection: vi.fn(() => Promise.resolve('')),
-  getUserMemoryDir: vi.fn((userId: string) => `/memory/${userId}`),
-  ensureMemoryDirExists: vi.fn(() => Promise.resolve()),
+// Mock wiki module since it has filesystem operations
+vi.mock('../../../modules/wiki', () => ({
+  loadWikiContext: vi.fn(() => Promise.resolve({ indexContent: '', pages: [] })),
+  formatWikiContextForPrompt: vi.fn(() => ''),
+  getUserWikiDir: vi.fn((userId: string) => `/wiki/${userId}`),
+  ensureWikiDirExists: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock project context loading since it involves filesystem
@@ -36,22 +36,22 @@ vi.mock('../../../modules/system-prompt', () => ({
 }));
 
 describe('runtime/agent/context', () => {
-  describe('loadMemoryContext', () => {
-    it('should return empty content when no memories found', async () => {
+  describe('loadWikiContextForAgent', () => {
+    it('should return empty content when no wiki pages found', async () => {
       const messages: any[] = [
         { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
       ];
 
-      const result = await loadMemoryContext(messages, 'user1', '/memory');
+      const result = await loadWikiContextForAgent(messages, 'user1', '/wiki');
 
       expect(result.userId).toBe('user1');
-      expect(result.recalledMemoriesContent).toBe('');
+      expect(result.recalledContent).toBe('');
     });
 
     it('should return user ID correctly', async () => {
       const messages: any[] = [];
 
-      const result = await loadMemoryContext(messages, 'test-user', '/memory');
+      const result = await loadWikiContextForAgent(messages, 'test-user', '/wiki');
 
       expect(result.userId).toBe('test-user');
     });
@@ -71,13 +71,13 @@ describe('runtime/agent/context', () => {
       expect(result).toContain('System prompt');
     });
 
-    it('should build instructions with memory context', async () => {
-      const memoryContext = {
+    it('should build instructions with wiki context', async () => {
+      const wikiContext = {
         userId: 'user1',
-        recalledMemoriesContent: 'Some memory content',
+        recalledContent: 'Some wiki content',
       };
 
-      const result = await buildAgentInstructions(memoryContext, {});
+      const result = await buildAgentInstructions(wikiContext, {});
 
       expect(result).toContain('System prompt');
     });

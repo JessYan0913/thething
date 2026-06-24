@@ -25,7 +25,8 @@ import {
   injectMessageAttachments,
   clearMessageAttachmentState,
 } from '../../modules/attachments'
-import { getPrimaryMemoryDir } from '../../modules/memory'
+import { getPrimaryMemoryDir } from '../../modules/wiki'
+import { loadWikiContextForAgent } from '../../modules/agent/context/wiki-context'
 
 /**
  * 创建 Agent。消费 AppContext，不再内部重新加载资源。
@@ -107,18 +108,14 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   })
 
   // ============================================================
-  // 并行加载 memory + project context
+  // 并行加载 wiki + project context
   // ============================================================
   const { loadProjectContext } = await import('../../modules/system-prompt/sections/project-context')
 
-  const [memoryContext, projectContext] = await Promise.all([
+  const [wikiContext, projectContext] = await Promise.all([
     (async () => {
-      if (!modules.memory || messagesWithAttachments.length === 0) return null
-      const { loadMemoryContext } = await import('../../modules/agent/context/memory-context')
-      return loadMemoryContext(messagesWithAttachments, userId, memoryBaseDir, {
-        entrypointMaxLines: behavior.memory.entrypointMaxLines,
-        entrypointMaxBytes: behavior.memory.entrypointMaxBytes,
-      })
+      if (messagesWithAttachments.length === 0) return null
+      return loadWikiContextForAgent(messagesWithAttachments, userId, memoryBaseDir)
     })(),
     loadProjectContext(projectRoot, {
       contextFileNames: layout.contextFileNames,
@@ -131,12 +128,16 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   const { buildAgentInstructions } = await import('../../modules/agent/context/instructions')
 
-  const instructions = await buildAgentInstructions(memoryContext, {
+  // wiki 上下文
+  const wikiMemoryContext = wikiContext?.recalledContent
+    ? { userId, recalledMemoriesContent: wikiContext.recalledContent }
+    : null
+
+  const instructions = await buildAgentInstructions(wikiMemoryContext, {
     cwd: projectRoot,
     memoryBaseDir,
     skills: [...context.skills],
     permissions: modules.permissions ? [...context.permissions] : [],
-    memoryEntries: [...context.memory],
     projectContext,
     conversationMeta: options.conversationMeta ? {
       messageCount: messages.length,

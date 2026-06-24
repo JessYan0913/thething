@@ -5,7 +5,6 @@
 import type { Skill, SkillMetadata } from '../skills/types';
 import type { AgentDefinition } from '../agent/types';
 import type { PermissionRule } from '../permissions/types';
-import type { MemoryEntry } from '../memory/types';
 import type { LoadedContextFile, LoadedProjectContext } from './sections/project-context';
 
 /**
@@ -47,7 +46,6 @@ export interface BuildSystemPromptOptions {
   skills?: Skill[];
   agents?: AgentDefinition[];
   permissions?: PermissionRule[];
-  memoryEntries?: MemoryEntry[];
 
   // 【新增】项目上下文（THING.md 等）
   projectContext?: LoadedProjectContext;

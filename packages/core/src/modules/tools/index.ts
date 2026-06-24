@@ -8,4 +8,5 @@ export { createWriteFileTool } from './write';
 export { askUserQuestionTool } from './ask-user-question';
 export { createSkillTool } from './skill';
 export { createCronTool } from './cron';
-export { createSaveMemoryTool } from './save-memory';
+export { createSaveWikiTool } from './save-wiki';
+export { createReadWikiPageTool } from './read-wiki-page';

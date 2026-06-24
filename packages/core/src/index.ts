@@ -199,12 +199,10 @@ export {
   loadMcpServers,
   loadConnectors,
   loadPermissions,
-  loadMemory,
 } from './composition/loaders';
 export type {
   LoadAllOptions,
   LoadAllResult,
-  MemoryEntry,
 } from './composition/loaders';
 
 // Skill types
@@ -266,33 +264,34 @@ export type {
 export type { PermissionRule, PermissionBehavior } from './modules/permissions/types';
 export { removeRule, saveRule, loadRules, updateRule } from './modules/permissions';
 
-// Memory extraction
+// Wiki module (knowledge system)
 export {
-  extractMemoriesInBackground,
-  extractMemoriesFromConversation,
-  scanMemoryFiles,
-  loadEntrypoint,
-  readMemoryContent,
-  rebuildEntrypoint,
-  getMemoryFilePath,
-  getUserMemoryDir,
-  checkPromotionEligibility,
-  findPromotableMemories,
-  computeDormancy,
-  getAllMemoryUsage,
-  // Phase 1: frontmatter
-  formatMemoryFrontmatter,
-  parseMemoryFrontmatter,
-  // Phase 1: memory store
-  writeMemoryFile,
-  updateMemoryFile,
-  deleteMemoryWithCleanup,
-  // Phase 3: tiered storage
-  migrateToTiered,
-  isTieredStorage,
-  assembleMemoryContext,
-  formatAssembledContext,
-} from './modules/memory';
+  getPrimaryMemoryDir,
+  getUserWikiDir,
+  ensureWikiDirExists,
+  ingestWikiFromConversation,
+  ingestWikiInBackground,
+  loadWikiContext,
+  formatWikiContextForPrompt,
+  lintWiki,
+  WIKI_MAINTAINER_PROMPT,
+  WIKI_GUIDELINES_PROMPT,
+  DEFAULT_WIKI_CONFIG,
+  // Wiki IO
+  readAllPages,
+  readPage,
+  writePage,
+  updatePage,
+  deletePage,
+  replacePage,
+  rebuildIndex,
+  readIndex,
+  pageNameToFilename,
+  filenameToPageName,
+  type WikiPageData,
+  type WikiPage,
+  type IndexEntry,
+} from './modules/wiki';
 
 // Title generation
 export { generateConversationTitle } from './modules/compaction';

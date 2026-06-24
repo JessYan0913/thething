@@ -40,15 +40,10 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
       filename: layout.filenames.permissions,
       dirs: layout.resources.permissions,
     },
-    memory: {
-      cwd,
-      maxLines: behavior.memory.mdMaxLines,
-      maxSizeKb: behavior.memory.mdMaxSizeKb,
-    },
   };
   const loaded = await loadAll(loadOptions);
 
-  logger.debug('AppContext', `Loaded: skills=${loaded.skills.length} agents=${loaded.agents.length} mcps=${loaded.mcps.length} connectors=${loaded.connectors.length} permissions=${loaded.permissions.length} memory=${loaded.memory.length}`);
+  logger.debug('AppContext', `Loaded: skills=${loaded.skills.length} agents=${loaded.agents.length} mcps=${loaded.mcps.length} connectors=${loaded.connectors.length} permissions=${loaded.permissions.length}`);
   if (loaded.mcps.length > 0) {
     logger.debug('AppContext', `MCP servers: ${loaded.mcps.map(m => m.name).join(', ')}`);
   }
@@ -84,10 +79,6 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
       projectPath: layout.resources.permissions[1] ?? `${cwd}/${layout.configDirName}/permissions`,
       projectCount: loaded.permissions.filter(p => p.source === 'project').length,
     },
-    memory: {
-      path: layout.resources.memory[0] ?? `${cwd}/${layout.configDirName}/memory`,
-      count: loaded.memory.length,
-    },
   };
 
   // 打印日志（如果 verbose）
@@ -101,20 +92,18 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     logger.debug('AppContext', `  mcps: ${loaded.mcps.length}`);
     logger.debug('AppContext', `  connectors: ${loaded.connectors.length}`);
     logger.debug('AppContext', `  permissions: ${loaded.permissions.length}`);
-    logger.debug('AppContext', `  memory: ${loaded.memory.length}`);
     logger.debug('AppContext', `  behavior.maxStepsPerSession: ${behavior.maxStepsPerSession}`);
     logger.debug('AppContext', `  behavior.maxBudgetUsdPerSession: ${behavior.maxBudgetUsdPerSession}`);
   }
 
   // 调用 onLoad 回调
   if (onLoad) {
-    const modules: Array<{ name: 'skills' | 'agents' | 'mcps' | 'connectors' | 'permissions' | 'memory'; path: string }> = [
+    const modules: Array<{ name: 'skills' | 'agents' | 'mcps' | 'connectors' | 'permissions'; path: string }> = [
       { name: 'skills', path: loadedFrom.skills.path },
       { name: 'agents', path: loadedFrom.agents.path },
       { name: 'mcps', path: loadedFrom.mcps.path },
       { name: 'connectors', path: loadedFrom.connectors.path },
       { name: 'permissions', path: loadedFrom.permissions.projectPath },
-      { name: 'memory', path: loadedFrom.memory.path },
     ];
     for (const { name, path } of modules) {
       onLoad({
@@ -141,7 +130,6 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     mcps: Object.freeze([...loaded.mcps]),
     connectors: Object.freeze([...loaded.connectors]),
     permissions: Object.freeze([...loaded.permissions]),
-    memory: Object.freeze([...loaded.memory]),
     mcpRegistry,
     loadedFrom,
     reload: async (reloadOptions?: { verbose?: boolean; onLoad?: (event: import('./types').LoadEvent) => void }) => {

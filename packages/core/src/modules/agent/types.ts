@@ -352,7 +352,6 @@ export type { LanguageModel, ToolSet, UIMessage, StopCondition };
 export interface AgentModules {
   skills: boolean
   mcps: boolean
-  memory: boolean
   connectors: boolean
   permissions: boolean
   compaction: boolean
