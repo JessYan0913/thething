@@ -272,10 +272,10 @@ export default function SkillWorkbench() {
         </div>
 
         {/* Right: Chat */}
-        <div className="w-105 border-l flex flex-col shrink-0">
+        <div className="w-[26.25rem] border-l flex flex-col shrink-0 min-h-0">
           <Chat
             conversationId={conversationId}
-            apiEndpoint="/api/skill-workbench/chat"
+            apiEndpoint="/api/skill-workbench"
             onTurnFinish={handleTurnFinish}
             extraBody={editSkillName ? { editSkillName } : undefined}
           />

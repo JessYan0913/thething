@@ -1,5 +1,5 @@
-import { getServerContext, getServerRuntime, reloadServerContext } from '@/lib/runtime';
-import { serializeAgentMarkdown, type AgentDefinition } from '@the-thing/core';
+import { getServerRuntime, reloadServerContext } from '@/lib/runtime';
+import { loadAgents, serializeAgentMarkdown, type AgentDefinition } from '@the-thing/core';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
@@ -55,10 +55,17 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const agentType = searchParams.get('agentType');
-    const context = await getServerContext();
+
+    // 直接从磁盘读取，不依赖 context 缓存
+    const rt = await getServerRuntime();
+    const diskAgents = await loadAgents({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.agents,
+    });
 
     if (agentType) {
-      const agent = context.agents.find((a) => a.agentType === agentType);
+      const agent = diskAgents.find((a) => a.agentType === agentType);
       if (!agent) {
         return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
       }
@@ -97,7 +104,7 @@ export async function GET(request: Request) {
       // No persisted metadata file
     }
 
-    const agents = context.agents.map((agent) => ({
+    const agents = diskAgents.map((agent) => ({
       agentType: agent.agentType,
       description: agent.description,
       displayName: agent.displayName,
@@ -161,16 +168,14 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Missing agentType query parameter' }, { status: 400 });
     }
 
-    const context = await getServerContext();
-    const agent = context.agents.find((a) => a.agentType === agentType);
-    if (!agent) {
-      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    }
-
     const body = await request.json();
-    const filePath = agent.filePath;
-    if (!filePath) {
-      return NextResponse.json({ error: 'Agent has no file path' }, { status: 400 });
+    const agentsDir = await ensureAgentsDir();
+    const filePath = path.join(agentsDir, `${agentType}.md`);
+
+    try {
+      await fs.access(filePath);
+    } catch {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
     try {
@@ -205,8 +210,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Missing agentType query parameter' }, { status: 400 });
     }
 
-    const context = await getServerContext();
-    const agent = context.agents.find((a) => a.agentType === agentType);
+    // 从磁盘加载 agent 以获取 source 信息
+    const rt = await getServerRuntime();
+    const diskAgents = await loadAgents({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.agents,
+    });
+    const agent = diskAgents.find((a) => a.agentType === agentType);
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
@@ -216,8 +227,6 @@ export async function PATCH(request: Request) {
 
     // Built-in agents can only update metadata, not rewrite the file
     if (agent.source === 'builtin') {
-      // Update in-memory only via context reload won't persist,
-      // so we store enabled state separately
       const agentsDir = await ensureAgentsDir();
       const metaPath = path.join(agentsDir, '.agent-metadata.json');
       let allMeta: Record<string, Record<string, unknown>> = {};
@@ -268,21 +277,13 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing agentType query parameter' }, { status: 400 });
     }
 
-    const context = await getServerContext();
-    const agent = context.agents.find((a) => a.agentType === agentType);
-    if (!agent) {
-      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    }
-
-    const filePath = agent.filePath;
-    if (!filePath) {
-      return NextResponse.json({ error: 'Agent has no file path' }, { status: 400 });
-    }
+    const agentsDir = await ensureAgentsDir();
+    const filePath = path.join(agentsDir, `${agentType}.md`);
 
     try {
       await fs.access(filePath);
     } catch {
-      return NextResponse.json({ error: 'Agent file not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
     await fs.unlink(filePath);

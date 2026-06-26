@@ -1,16 +1,22 @@
-import { getServerContext, getServerRuntime, reloadServerContext } from '@/lib/runtime';
+import { getServerRuntime, reloadServerContext } from '@/lib/runtime';
+import { loadConnectors, updateVariablesInYaml } from '@the-thing/core';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
 import yaml from 'js-yaml';
-import { updateVariablesInYaml } from '@the-thing/core';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const context = await getServerContext();
-    const connectors = context.connectors.map((conn) => ({
+    // 直接从磁盘读取，不依赖 context 缓存
+    const rt = await getServerRuntime();
+    const diskConnectors = await loadConnectors({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.connectors,
+    });
+    const connectors = diskConnectors.map((conn) => ({
       id: conn.id,
       name: conn.name,
       version: conn.version,
@@ -106,8 +112,14 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Missing id or variables' }, { status: 400 });
     }
 
-    const context = await getServerContext();
-    const connector = context.connectors.find((c) => c.id === id);
+    // 从磁盘查找 connector
+    const rt = await getServerRuntime();
+    const diskConnectors = await loadConnectors({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.connectors,
+    });
+    const connector = diskConnectors.find((c) => c.id === id);
     if (!connector) {
       return NextResponse.json({ error: 'Connector not found' }, { status: 404 });
     }
@@ -150,8 +162,14 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing id query parameter' }, { status: 400 });
     }
 
-    const context = await getServerContext();
-    const connector = context.connectors.find((c) => c.id === id);
+    // 从磁盘查找 connector
+    const rt = await getServerRuntime();
+    const diskConnectors = await loadConnectors({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.connectors,
+    });
+    const connector = diskConnectors.find((c) => c.id === id);
     if (!connector) {
       return NextResponse.json({ error: 'Connector not found' }, { status: 404 });
     }

@@ -101,7 +101,7 @@ export function createMultiSourceLoader<T extends { source: string }>(
         dirs,
         filePattern,
         dirPattern,
-        recursive: false,
+        recursive: true,
       }, sourceByDir);
     } else if (filePatterns && filePatterns.length > 0) {
       scanResults = [];

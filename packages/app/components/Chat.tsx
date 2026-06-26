@@ -238,12 +238,13 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
     // 支持流恢复：使用 transport 实例的 rawChunkCount（通过闭包引用已创建的实例）
     prepareReconnectToStreamRequest: ({ id }: { id: string; requestMetadata: unknown; body: Record<string, any> | undefined; credentials: RequestCredentials | undefined; headers: HeadersInit | undefined; api: string }) => {
       const skipChunks = transport.rawChunkCount;
-      const api = skipChunks > 0
-        ? `/api/chat/${id}/stream?skipChunks=${skipChunks}`
-        : `/api/chat/${id}/stream`;
+      const baseEndpoint = apiEndpoint || '/api/chat';
+      const streamApi = skipChunks > 0
+        ? `${baseEndpoint}/${id}/stream?skipChunks=${skipChunks}`
+        : `${baseEndpoint}/${id}/stream`;
 
       return {
-        api,
+        api: streamApi,
         credentials: 'include' as const,
       };
     },
@@ -259,9 +260,10 @@ export interface ChatProps {
   onTurnFinish?: () => void;
   extraBody?: Record<string, unknown>;
   initialMessage?: string;
+  showAgentSelector?: boolean;
 }
 
-export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage }: ChatProps) {
+export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true }: ChatProps) {
   const initialMessageCountRef = useRef<number | null>(null);
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
@@ -1053,6 +1055,16 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                   </Message>
                 );
               })}
+              {/* Thinking indicator for gap between submission and assistant starting */}
+              {status === 'submitted' && messages.length > 0 && messages.at(-1)?.role === 'user' && (
+                <div className="flex items-center gap-2.5 px-1 py-2 text-sm text-muted-foreground">
+                  <div className="relative">
+                    <BrainIcon className="size-4 shrink-0 animate-building" />
+                    <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+                  </div>
+                  <span className="animate-pulse">Thinking...</span>
+                </div>
+              )}
             </ConversationContent>
             <AutoScrollToBottom trigger={isInitialLoadDone && messages.length > 0} />
             <ConversationScrollButton />
@@ -1100,7 +1112,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                       <PromptInputActionAddScreenshot />
                     </PromptInputActionMenuContent>
                   </PromptInputActionMenu>
-                  <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
+                  {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
                   <ModelSelector value={selectedModel} onChange={handleModelChange} />
                 </PromptInputTools>
                 <PromptInputSubmit status={status} onStop={stop} />

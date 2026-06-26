@@ -48,9 +48,10 @@ export async function POST(request: Request) {
       userId?: string;
       modelName?: string;
       agentType?: string;
+      enableConnectors?: boolean;
     };
 
-    const { message, conversationId, userId: messageUserId, modelName, agentType } = body;
+    const { message, conversationId, userId: messageUserId, modelName, agentType, enableConnectors } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
@@ -109,6 +110,7 @@ export async function POST(request: Request) {
         modelName: modelName || process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
         includeUsage: true,
       },
+      modules: enableConnectors === false ? { connectors: false } : undefined,
     });
 
     const messagesWithAttachments = adjustedMessages ?? messages;

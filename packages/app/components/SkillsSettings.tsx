@@ -138,7 +138,7 @@ export default function SkillsSettings() {
         <Button variant="ghost" size="sm" onClick={loadSkills} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
-        <Button size="sm" onClick={() => router.push('/skill-workbench')}>
+        <Button size="sm" onClick={() => router.push('/settings/workbench/skill')}>
           <SparklesIcon className="mr-1 size-4" />
           AI 生成
         </Button>

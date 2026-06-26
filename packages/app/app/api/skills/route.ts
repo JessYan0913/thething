@@ -1,4 +1,5 @@
-import { getServerContext, reloadServerContext } from '@/lib/runtime';
+import { getServerRuntime, reloadServerContext } from '@/lib/runtime';
+import { loadSkills } from '@the-thing/core';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
@@ -27,8 +28,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const folderName = searchParams.get('folderName');
 
-    const context = await getServerContext();
-    const skills = context.skills.map((skill) => {
+    // 直接从磁盘读取，不依赖 context 缓存，确保新安装的技能立即可见
+    const rt = await getServerRuntime();
+    const diskSkills = await loadSkills({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.skills,
+    });
+    const skills = diskSkills.map((skill) => {
       const sourceDir = path.dirname(skill.sourcePath);
       return {
         name: skill.name,

@@ -159,6 +159,7 @@ async function scanDirForConfigFiles(dir: string, config: ScanConfig): Promise<s
 
   if (config.dirPattern) {
     // 目录格式：查找 dirPattern/SKILL.md 类型的文件
+    // 支持递归：递归进入匹配的子目录继续扫描
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -180,6 +181,11 @@ async function scanDirForConfigFiles(dir: string, config: ScanConfig): Promise<s
         }
       } catch {
         // 文件不存在，跳过
+      }
+
+      // 递归：进入子目录继续扫描匹配的目录
+      if (config.recursive) {
+        files.push(...await scanDirForConfigFiles(subDir, config));
       }
     }
   } else if (config.recursive) {
