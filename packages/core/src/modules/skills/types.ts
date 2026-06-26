@@ -32,6 +32,8 @@ export interface SkillMetadata {
   paths: string[];
   sourcePath: string;
   source?: string;  // 来源：bundled, mcp, project, user
+  /** 技能目录结构（文件列表） */
+  dirTree?: string;
 }
 
 export interface Skill extends SkillMetadata {

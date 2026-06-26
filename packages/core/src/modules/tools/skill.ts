@@ -9,6 +9,7 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import * as path from 'path';
 import type { Skill } from '../../modules/skills/types';
 import { logger } from '../../primitives/logger';
 
@@ -71,6 +72,24 @@ function formatSkillOutput(skill: Skill, args?: string): string {
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
   ];
 
+  // 添加技能目录树结构
+  if (skill.dirTree) {
+    // 从 sourcePath 推导技能目录的绝对路径
+    const skillDir = skill.sourcePath ? path.dirname(skill.sourcePath) : null;
+
+    lines.push('');
+    lines.push('📂 Skill Directory:');
+    lines.push('─────────────────────────────────────────────────────────────');
+    if (skillDir) {
+      lines.push(`📍 Absolute path: ${skillDir}`);
+      lines.push('');
+    }
+    lines.push(skill.dirTree);
+    lines.push('─────────────────────────────────────────────────────────────');
+    lines.push('');
+    lines.push('💡 You can read any file in the directory using the read_file tool.');
+  }
+
   // 如果有 paths 配置，添加输出目录提示（重要：告诉 Agent 输出位置）
   if (skill.paths && skill.paths.length > 0) {
     lines.push(`📁 Output directories: ${skill.paths.join(', ')}`);
@@ -119,7 +138,13 @@ IMPORTANT:
 - When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
 - NEVER mention a skill without actually calling this tool
 - Do not invoke a skill that is already running
-- If you see a <skill> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again`,
+- If you see a <skill> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+
+Matching Guide:
+- Read each skill's description carefully, not just the name
+- Match based on semantic similarity: user intent should align with what the skill describes
+- Skills provide pre-built workflows that are more efficient than ad-hoc approaches
+- When uncertain, invoke the skill tool to check - it will return the full skill instructions`,
 
     inputSchema: SkillToolInputSchema,
 

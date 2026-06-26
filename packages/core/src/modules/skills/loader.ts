@@ -2,12 +2,15 @@
 // Skills Loader - 基于 MultiSourceConfigLoader
 // ============================================================
 
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { parseFrontmatterFile } from '../../primitives/parser';
 import { createMultiSourceLoader } from '../../services/scanner/multi-source-loader';
 import type { Skill, SkillLoaderConfig } from './types';
 import { SkillFrontmatterSchema } from './types';
 import type { ConfigSource } from '../../primitives/constants';
 import { BUNDLED_SKILLS } from './bundled';
+import { logger } from '../../primitives/logger';
 
 // ============================================================
 // 扩展类型（带 source 字段）
@@ -15,6 +18,57 @@ import { BUNDLED_SKILLS } from './bundled';
 
 interface SkillWithSource extends Skill {
   source: ConfigSource;
+}
+
+// ============================================================
+// 辅助函数：生成目录树结构
+// ============================================================
+
+/**
+ * 生成目录树结构（字符串格式）
+ *
+ * @param dirPath - 目录路径
+ * @param prefix - 前缀（用于递归缩进）
+ * @returns 目录树字符串
+ */
+async function generateDirTree(dirPath: string, prefix: string = ''): Promise<string> {
+  const lines: string[] = [];
+
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+    // 排序：目录在前，文件在后，按名称排序
+    const sortedEntries = entries
+      .filter(e => !e.name.startsWith('.')) // 跳过隐藏文件
+      .sort((a, b) => {
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+    for (let i = 0; i < sortedEntries.length; i++) {
+      const entry = sortedEntries[i];
+      const isLast = i === sortedEntries.length - 1;
+      const connector = isLast ? '└── ' : '├── ';
+      const childPrefix = isLast ? '    ' : '│   ';
+
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isDirectory()) {
+        lines.push(`${prefix}${connector}${entry.name}/`);
+        const subTree = await generateDirTree(fullPath, prefix + childPrefix);
+        if (subTree) {
+          lines.push(subTree);
+        }
+      } else {
+        lines.push(`${prefix}${connector}${entry.name}`);
+      }
+    }
+  } catch (error) {
+    logger.warn('SkillLoader', `Failed to read directory ${dirPath}: ${(error as Error).message}`);
+  }
+
+  return lines.join('\n');
 }
 
 // ============================================================
@@ -29,6 +83,11 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
   priorityOrder: ['project', 'user', 'builtin'],
   parse: async (filePath, source) => {
     const result = await parseFrontmatterFile(filePath, SkillFrontmatterSchema);
+
+    // 生成技能目录树结构
+    const skillDir = path.dirname(filePath);
+    const dirTree = await generateDirTree(skillDir);
+
     return {
       name: result.data.name,
       description: result.data.description,
@@ -41,6 +100,7 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
       sourcePath: result.filePath,
       body: result.body,
       source,
+      dirTree: dirTree || undefined,
     };
   },
   getMergeKey: (item) => item.name,
@@ -81,6 +141,7 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     sourcePath: s.sourcePath,
     body: s.body,
     source: s.source,
+    dirTree: s.dirTree,
   }));
 
   // 2. 合并内置 skills（编程式定义，最低优先级）
@@ -100,6 +161,10 @@ export async function loadSkillFile(
 ): Promise<SkillWithSource> {
   const result = await parseFrontmatterFile(filePath, SkillFrontmatterSchema);
 
+  // 生成技能目录树结构
+  const skillDir = path.dirname(filePath);
+  const dirTree = await generateDirTree(skillDir);
+
   return {
     name: result.data.name,
     description: result.data.description,
@@ -112,6 +177,7 @@ export async function loadSkillFile(
     sourcePath: result.filePath,
     body: result.body,
     source,
+    dirTree: dirTree || undefined,
   };
 }
 
@@ -132,6 +198,7 @@ export async function loadSkill(skillPath: string): Promise<Skill> {
     paths: result.paths,
     body: result.body,
     sourcePath: result.sourcePath,
+    dirTree: result.dirTree,
   };
 }
 

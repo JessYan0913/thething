@@ -140,6 +140,33 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     cacheStrategy: "session",
   },
   {
+    name: "skill-matching",
+    create: (options) => {
+      if (!options.skills || options.skills.length === 0) {
+        return {
+          name: "skill-matching",
+          content: null,
+          cacheStrategy: "session" as const,
+          priority: 30,
+        };
+      }
+      return {
+        name: "skill-matching",
+        content: `## Skill Usage
+
+Before implementing any workflow, check if a matching skill exists.
+Skills provide pre-built, tested workflows that are more efficient than ad-hoc approaches.
+
+**Matching principle:** Read each skill's description. If the user's intent aligns with what the skill describes, invoke it.
+
+**How to invoke:** Use the skill tool with the exact skill name from the listing.`,
+        cacheStrategy: "session" as const,
+        priority: 30,
+      };
+    },
+    cacheStrategy: "session",
+  },
+  {
     name: "wiki-guidelines",
     create: async (options) => {
       if (options.wikiContext?.userId) {
