@@ -72,6 +72,23 @@ export default function SkillDetail({
   // ── AI 编辑聊天 ───────────────────────────────────────────
   const [showChat, setShowChat] = useState(false)
   const conversationId = useMemo(() => nanoid(), [])
+  const systemPrompt = useMemo(() => `你是一个技能编辑助手，专门用于编辑和修改技能（Skill）文件。
+
+核心职责：
+1. 查看技能文件：帮助用户查看技能的各个文件内容
+2. 修改技能文件：根据用户需求修改 SKILL.md 或其他相关文件
+3. 解释技能结构：帮助用户理解技能的组成部分
+
+编辑原则：
+1. 保持结构：修改时保持技能文件的整体结构
+2. 最小改动：只修改用户要求的部分，不要做额外的修改
+3. 解释变更：每次修改后，向用户解释你做了什么改动
+
+工具使用：
+- 使用 read_file 查看文件内容
+- 使用 edit_file 进行精确的文本替换
+- 使用 write_file 创建新文件或完全重写文件
+- 使用 grep 和 glob 搜索文件内容或查找文件`, [])
 
   // ── 加载技能元数据 ────────────────────────────────────────
   useEffect(() => {
@@ -217,7 +234,7 @@ export default function SkillDetail({
           <div className="w-[26.25rem] border-l flex flex-col shrink-0 min-h-0">
             <Chat
               conversationId={conversationId}
-              extraBody={{ enableConnectors: false }}
+              extraBody={{ enableConnectors: false, systemPrompt }}
               showAgentSelector={false}
             />
           </div>

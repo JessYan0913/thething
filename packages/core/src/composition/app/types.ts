@@ -149,6 +149,14 @@ export interface CreateAgentOptions {
    */
   agentType?: string;
 
+  /**
+   * 自定义指令（可选）。
+   *
+   * 追加到系统提示词末尾，用于在不创建新 Agent 的情况下注入额外指令。
+   * 例如：技能编辑场景下的编辑指令。
+   */
+  customInstructions?: string;
+
   /** Session 配置 */
   session?: {
     maxContextTokens?: number;

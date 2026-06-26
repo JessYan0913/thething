@@ -145,7 +145,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       isNewConversation: options.conversationMeta.isNewConversation,
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
     } : undefined,
-    customInstructions: selectedAgentDef?.instructions,
+    // 合并 agent 定义的 instructions 和传入的 customInstructions
+    customInstructions: [selectedAgentDef?.instructions, options.customInstructions].filter(Boolean).join('\n\n'),
     // 当选择自定义 Agent 时，跳过默认 identity section
     excludeSections: selectedAgentDef ? ['identity'] : undefined,
   })
@@ -211,10 +212,15 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     const disallowedTools = selectedAgentDef.disallowedTools
 
     if (allowedTools && allowedTools.length > 0) {
-      filteredTools = Object.fromEntries(
-        Object.entries(tools).filter(([name]) => allowedTools.includes(name)),
-      )
-      logger.debug('AgentCreate', `Tools filtered by allowlist: ${Object.keys(filteredTools).join(', ')}`)
+      // 支持 '*' 通配符，表示允许所有工具
+      if (allowedTools.includes('*')) {
+        logger.debug('AgentCreate', `Tools: wildcard '*' allows all tools`)
+      } else {
+        filteredTools = Object.fromEntries(
+          Object.entries(tools).filter(([name]) => allowedTools.includes(name)),
+        )
+        logger.debug('AgentCreate', `Tools filtered by allowlist: ${Object.keys(filteredTools).join(', ')}`)
+      }
     }
 
     if (disallowedTools && disallowedTools.length > 0) {
