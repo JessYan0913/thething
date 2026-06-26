@@ -3,7 +3,6 @@
  *
  * 用于注入技能摘要列表到消息附件。
  * - 预算控制在 context window 的 1%
- * - 只显示 bundled 和 mcp 来源的技能
  * - 追踪已发送技能，避免重复注入
  */
 
@@ -109,9 +108,6 @@ export async function getSkillListingAttachment(
 /**
  * 格式化 skill_listing 附件为消息内容
  *
- * 参考 Claude Code 的格式：
- * "The following skills are available for use with the Skill tool:"
- *
  * @param attachment - skill_listing 附件
  * @returns 格式化后的消息内容
  */
@@ -119,8 +115,8 @@ export function formatSkillListingMessage(
   attachment: SkillListingAttachment
 ): string {
   const header = attachment.isInitial
-    ? 'The following skills are available for use with the Skill tool:'
-    : 'New skills are now available for use with the Skill tool:';
+    ? 'The following skills are available. IMPORTANT: When invoking a skill, you MUST use the full skill name exactly as shown below (e.g. "chengfeng-videocut-skills:剪口播", not just "剪口播"):'
+    : 'New skills are now available:';
 
   return `${header}\n\n${attachment.content}`;
 }

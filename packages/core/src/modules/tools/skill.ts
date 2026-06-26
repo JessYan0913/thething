@@ -112,9 +112,9 @@ When users reference a "slash command" or "/<something>", they are referring to 
 How to invoke:
 - { skill: "docx" } - invoke the docx skill
 - { skill: "commit", args: "-m 'Fix bug'" } - invoke with arguments
-- { skill: "review-pr", args: "123" } - invoke with arguments
 
 IMPORTANT:
+- Use the FULL skill name exactly as shown in the listing (including any namespace prefix before the colon)
 - Available skills are listed in system-reminder messages in the conversation
 - When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
 - NEVER mention a skill without actually calling this tool
@@ -141,7 +141,7 @@ IMPORTANT:
 
       const output = formatSkillOutput(skillData, args);
 
-      logger.debug('SkillTool', `Skill loaded from AppContext snapshot: ${skillData.name} (${skillData.body?.length || 0} chars)`);
+      logger.debug('SkillTool', `Skill loaded: ${skillData.name} (${skillData.body?.length || 0} chars)`);
       logger.debug('SkillTool', `Allowed tools: ${skillData.allowedTools?.join(', ') || 'none'}`);
 
       return {
