@@ -100,6 +100,7 @@ export function createMultiSourceLoader<T extends { source: string }>(
       scanResults = await scanConfigDirs(cwd, {
         dirs,
         filePattern,
+        filePatterns: filePatterns?.length ? filePatterns : undefined,
         dirPattern,
         recursive: true,
       }, sourceByDir);

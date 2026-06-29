@@ -58,12 +58,14 @@ export interface LayoutConfig {
   resourceRoot: string;
 
   /**
-   * 用户配置目录（绝对路径，如 ~/.thething）
+   * 配置目录（绝对路径，如 ~/.agents，遵循 Dot Agents 协议）
    *
-   * 这一个字段决定了整个约定体系：
-   *   用户级资源目录：<configDir>/skills、mcps ...
-   *   项目级资源目录：<resourceRoot>/<basename(configDir)>/skills、mcps ...
-   *   默认数据目录：<configDir>/data（可被 dataDir 覆盖）
+   * TheThing 遵循 https://dotagentsprotocol.com/ 的 .agents 协议：
+   *   配置来源（skills/agents/mcps）：<configDir>/<subcategory>  →  ~/.agents/skills、.agents/agents ...
+   *   同时自动扫描同层级的 .agents 目录作为兼容来源
+   *   运行时数据（connectors/permissions/data/wiki）需通过 resources 显式指定
+   *
+   * 默认数据目录：<configDir>/data（可被 dataDir 覆盖）
    */
   configDir: string;
 
@@ -102,7 +104,7 @@ export interface ResolvedLayout {
   readonly resourceRoot: string;
   /** 用户配置目录（绝对路径） */
   readonly configDir: string;
-  /** 配置目录名（由 configDir 派生，如 .thething） */
+  /** 配置目录名（由 configDir 派生，如 .agents） */
   readonly configDirName: string;
   /** 数据目录 */
   readonly dataDir: string;
@@ -123,16 +125,20 @@ export interface ResolvedLayout {
 /**
  * 将 LayoutConfig 展开为 ResolvedLayout
  *
+ * Dot Agents 协议（https://dotagentsprotocol.com/）：
+ *   配置来源（skills/agents/mcps）从 <configDir>/<subcategory> 读取，
+ *   并额外扫描同层级的 .agents/ 目录作为标准协议来源。
+ *
  * 这是一个纯函数：给定相同输入，始终返回相同输出
  *
  * @param config - 布局配置
  * @returns 展开后的布局（所有路径已解析为绝对路径）
  *
  * @example
- * const layout = resolveLayout({ resourceRoot: process.cwd(), configDir: path.join(os.homedir(), '.myapp') });
- * // layout.configDir === '~/.myapp'
- * // layout.configDirName === '.myapp'
- * // layout.dataDir === '~/.myapp/data'
+ * const layout = resolveLayout({ resourceRoot: process.cwd(), configDir: path.join(os.homedir(), '.agents') });
+ * // layout.configDir === '~/.agents'
+ * // layout.configDirName === '.agents'
+ * // layout.dataDir === '~/.agents/data'
  */
 export function resolveLayout(config: LayoutConfig): ResolvedLayout {
   const { resourceRoot, configDir } = config;
@@ -142,10 +148,16 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
   const userDir = configDir;
   const dataDir = config.dataDir ?? path.join(configDir, 'data');
 
+  // .agents 协议目录（与 configDir 同层级的 ~/.agents）
+  const agentsUserDir = path.join(path.dirname(configDir), '.agents');
+  const agentsProjectDir = path.join(resourceRoot, '.agents');
+
+  // .thething 降级为仅保留运行时数据：connectors/permissions/wiki/data
+  // 配置类（skills/agents/mcps）全部从 .agents/ 读取
   const defaultResources: ResourceDirs = {
-    skills:      [path.join(userDir, 'skills'),      path.join(projectDir, 'skills')],
-    agents:      [path.join(userDir, 'agents'),      path.join(projectDir, 'agents')],
-    mcps:        [path.join(userDir, 'mcps'),        path.join(projectDir, 'mcps')],
+    skills:      [path.join(agentsUserDir, 'skills'),      path.join(agentsProjectDir, 'skills')],
+    agents:      [path.join(agentsUserDir, 'agents'),      path.join(agentsProjectDir, 'agents')],
+    mcps:        [],  // MCP 仅从 .agents/mcp.json 读取（协议标准），不扫描子目录
     connectors:  [path.join(userDir, 'connectors'),  path.join(projectDir, 'connectors')],
     permissions: [path.join(userDir, 'permissions'), path.join(projectDir, 'permissions')],
     wiki:        [path.join(userDir, 'wiki'),        path.join(projectDir, 'wiki')],

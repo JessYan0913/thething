@@ -12,20 +12,15 @@ export interface GlobalConfig {
   modelAliases?: Partial<ModelAliases>
 }
 
-const CONFIG_FILENAME = 'config.json'
+const DOT_AGENTS_MODELS_FILENAME = 'models.json'
 
 /**
- * 获取全局配置文件路径
- *
- * 解析顺序：
- * 1. 显式传入的 configDir（最高优先级）
- * 2. 环境变量 THETHING_GLOBAL_CONFIG_DIR（部署级覆盖）
- * 3. 均未提供时返回空字符串（loadGlobalConfig 返回 null）
+ * 获取 ~/.agents/models.json 路径（Dot Agents 协议标准）
  */
-function getConfigPath(configDir?: string): string {
-  const dir = configDir || process.env.THETHING_GLOBAL_CONFIG_DIR;
-  if (!dir) return '';
-  return path.join(dir, CONFIG_FILENAME)
+function getDotAgentsModelsPath(configDir?: string): string {
+  if (!configDir) return '';
+  const homeDir = path.dirname(configDir);
+  return path.join(homeDir, '.agents', DOT_AGENTS_MODELS_FILENAME);
 }
 
 function ensureDir(dir: string): void {
@@ -34,24 +29,48 @@ function ensureDir(dir: string): void {
   }
 }
 
-export function loadGlobalConfig(configDir?: string): GlobalConfig | null {
-  const configPath = getConfigPath(configDir)
-  if (!fs.existsSync(configPath)) return null
+/**
+ * 加载模型配置（Dot Agents 协议：.agents/models.json）
+ *
+ * 优先级：项目级 ././.agents/models.json > 用户级 ~/.agents/models.json
+ */
+export function loadGlobalConfig(configDir?: string, cwd?: string): GlobalConfig | null {
+  const resolvedCwd = cwd ?? process.cwd();
 
-  try {
-    const content = fs.readFileSync(configPath, 'utf-8')
-    return JSON.parse(content) as GlobalConfig
-  } catch {
-    return null
+  // 项目级优先，用户级次之
+  const candidates: string[] = [
+    path.join(resolvedCwd, '.agents', DOT_AGENTS_MODELS_FILENAME),
+  ];
+
+  const userModelsPath = getDotAgentsModelsPath(configDir);
+  if (userModelsPath) candidates.push(userModelsPath);
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    try {
+      const content = fs.readFileSync(candidate, 'utf-8');
+      return JSON.parse(content) as GlobalConfig;
+    } catch {
+      // 解析失败，尝试下一个候选项
+    }
   }
+
+  return null;
 }
 
+/**
+ * 保存模型配置到用户级 .agents/models.json
+ */
 export function saveGlobalConfig(config: GlobalConfig, configDir?: string): void {
-  const configPath = getConfigPath(configDir)
-  ensureDir(path.dirname(configPath))
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+  const modelsPath = getDotAgentsModelsPath(configDir);
+  if (!modelsPath) return;
+  ensureDir(path.dirname(modelsPath));
+  fs.writeFileSync(modelsPath, JSON.stringify(config, null, 2))
 }
 
+/**
+ * 获取用户级 .agents/models.json 路径
+ */
 export function getGlobalConfigPath(configDir?: string): string {
-  return getConfigPath(configDir)
+  return getDotAgentsModelsPath(configDir)
 }

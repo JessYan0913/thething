@@ -9,6 +9,7 @@ import {
 export { DEFAULT_SKILL_LOADER_CONFIG };
 
 export const SkillFrontmatterSchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(1).max(50),
   description: z.string().min(1),
   whenToUse: z.string().optional(),

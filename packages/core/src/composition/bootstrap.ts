@@ -249,7 +249,7 @@ function initTokenizer(_config?: TokenizerConfig): void {
  * 根据项目路径创建一个新的 ResolvedLayout。
  *
  * 当对话关联了项目时，用项目的 path 作为 resourceRoot 重新解析 layout，
- * 加载该目录下的 .thething/ 资源（skills、agents、mcps 等）。
+ * 加载该目录下的配置资源（skills、agents、mcps 等，来自 .agents/）。
  *
  * @param baseLayout - 基础 layout（提供 configDir 等配置）
  * @param projectPath - 项目的本地目录绝对路径

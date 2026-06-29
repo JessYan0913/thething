@@ -9,8 +9,9 @@ import type { SystemPromptSection } from '../types';
 
 /**
  * Base marker files that indicate project context (always checked).
+ * Dot Agents 协议还支持 .agents/agents.md（AGENTS.md 标准）。
  */
-const BASE_CONTEXT_MARKERS = ['THING.md', 'CONTEXT.md'] as const;
+const BASE_CONTEXT_MARKERS = ['THING.md', 'CONTEXT.md', 'AGENTS.md'] as const;
 
 export interface ProjectContextLoadOptions {
   /** 项目上下文文件名列表（来自 ResolvedLayout.contextFileNames） */
@@ -130,8 +131,8 @@ async function searchContextFilesInDir(
  * Stops at the home directory or filesystem root.
  *
  * Multi-level context merging strategy:
- * - User level: configDir/THING.md (personal preferences)
- * - Project level: /project/THING.md (team shared)
+ * - User level: configDir/THING.md + ~/.agents/AGENTS.md (Dot Agents 协议)
+ * - Project level: /project/THING.md + /project/.agents/AGENTS.md
  * - Module level: /project/src/THING.md (module specific)
  *
  * 注意：configDir 和 contextFileNames 从 ProjectContextLoadOptions 获取。
@@ -155,6 +156,9 @@ export async function loadProjectContext(
 
   const userContextDir = computeUserConfigDir(configDir);
 
+  // Dot Agents 协议用户目录：~/.agents/
+  const agentsUserDir = path.join(path.dirname(configDir), '.agents');
+
   const userLevel: LoadedContextFile[] = [];
   const projectLevel: LoadedContextFile[] = [];
 
@@ -174,6 +178,19 @@ export async function loadProjectContext(
       }
     }
 
+    // Check for user-level context in Dot Agents directory
+    if (currentDir === userContextDir) {
+      for (const marker of markers) {
+        const agentsContextPath = path.join(agentsUserDir, marker);
+        if (agentsContextPath !== path.join(userContextDir, marker)) {
+          const loaded = await loadContextFile(agentsContextPath, cwd, marker);
+          if (loaded) {
+            userLevel.push(loaded);
+          }
+        }
+      }
+    }
+
     // Check for project-level context files
     const dirContexts = await searchContextFilesInDir(currentDir, cwd, { ...options, configDir });
     for (const ctx of dirContexts) {
@@ -182,6 +199,15 @@ export async function loadProjectContext(
         continue;
       }
       projectLevel.push(ctx);
+    }
+
+    // Also check for .agents/<marker> at each project level (Dot Agents 协议)
+    const agentsProjectDir = path.join(currentDir, '.agents');
+    if (agentsProjectDir !== agentsUserDir) {
+      const agentsDirContexts = await searchContextFilesInDir(agentsProjectDir, cwd, { ...options, configDir });
+      for (const ctx of agentsDirContexts) {
+        projectLevel.push(ctx);
+      }
     }
 
     // Move up one directory

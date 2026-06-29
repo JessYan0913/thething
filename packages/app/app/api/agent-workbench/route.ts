@@ -1,10 +1,7 @@
-import path from 'path'
-import os from 'os'
-import { getServerContext, getServerDataStore, reloadServerContext } from '@/lib/runtime';
+import { getServerContext, getServerDataStore, reloadServerContext, getModelConfig } from '@/lib/runtime';
 import {
   createAgent,
   finalizeAgentRun,
-  loadGlobalConfig,
   type SubAgentStreamWriter,
 } from '@the-thing/core';
 import {
@@ -208,8 +205,6 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
-    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
-    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,
@@ -223,9 +218,7 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
       messages,
       userId,
       model: {
-        apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
-        baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
+        ...getModelConfig(),
         includeUsage: true,
       },
     });

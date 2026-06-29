@@ -78,18 +78,22 @@ async function generateDirTree(dirPath: string, prefix: string = ''): Promise<st
 const skillsLoader = createMultiSourceLoader<SkillWithSource>({
   subcategory: 'skills',
   filePattern: 'SKILL.md',
+  filePatterns: ['SKILL.md', 'skill.md'],
   scanMode: 'configDir',
   dirPattern: '*',
   priorityOrder: ['project', 'user', 'builtin'],
   parse: async (filePath, source) => {
     const result = await parseFrontmatterFile(filePath, SkillFrontmatterSchema);
 
+    // 协议兼容：id 作为技能标识，fallback 到 name
+    const skillName = result.data.id ?? result.data.name;
+
     // 生成技能目录树结构
     const skillDir = path.dirname(filePath);
     const dirTree = await generateDirTree(skillDir);
 
     return {
-      name: result.data.name,
+      name: skillName,
       description: result.data.description,
       whenToUse: result.data.whenToUse,
       allowedTools: result.data.allowedTools,

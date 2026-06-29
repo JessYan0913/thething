@@ -157,8 +157,13 @@ async function scanDirForFiles(dir: string, options: ScanOptions): Promise<strin
 async function scanDirForConfigFiles(dir: string, config: ScanConfig): Promise<string[]> {
   const files: string[] = [];
 
+  // 获取所有要尝试的文件名模式
+  const patterns = config.filePatterns?.length
+    ? config.filePatterns
+    : [config.filePattern];
+
   if (config.dirPattern) {
-    // 目录格式：查找 dirPattern/SKILL.md 类型的文件
+    // 目录格式：查找 dirPattern/{SKILL.md|skill.md} 类型的文件
     // 支持递归：递归进入匹配的子目录继续扫描
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -172,15 +177,19 @@ async function scanDirForConfigFiles(dir: string, config: ScanConfig): Promise<s
       }
 
       const subDir = path.join(dir, entry.name);
-      const targetFile = path.join(subDir, config.filePattern);
 
-      try {
-        const stat = await fs.stat(targetFile);
-        if (stat.isFile()) {
-          files.push(targetFile);
+      // 尝试所有文件模式，找到第一个存在的文件
+      for (const pattern of patterns) {
+        const targetFile = path.join(subDir, pattern);
+        try {
+          const stat = await fs.stat(targetFile);
+          if (stat.isFile()) {
+            files.push(targetFile);
+            break; // 每个子目录只取第一个匹配的文件
+          }
+        } catch {
+          // 文件不存在，继续尝试下一个模式
         }
-      } catch {
-        // 文件不存在，跳过
       }
 
       // 递归：进入子目录继续扫描匹配的目录

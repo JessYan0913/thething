@@ -5,7 +5,8 @@ import { loadGlobalConfig, saveGlobalConfig, getGlobalConfigPath } from '@the-th
 
 export const runtime = 'nodejs'
 
-const GLOBAL_CONFIG_DIR = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething')
+// 遵循 Dot Agents 协议：配置文件固定在 ~/.agents/ 下
+const GLOBAL_CONFIG_DIR = path.join(os.homedir(), '.agents')
 
 export async function GET() {
   const config = loadGlobalConfig(GLOBAL_CONFIG_DIR)

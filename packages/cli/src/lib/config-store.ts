@@ -4,7 +4,8 @@ import { loadGlobalConfig, saveGlobalConfig, getGlobalConfigPath, type GlobalCon
 
 export type { GlobalConfig }
 
-const GLOBAL_CONFIG_DIR = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething')
+// Dot Agents 协议：配置来自 .agents/
+const GLOBAL_CONFIG_DIR = path.join(os.homedir(), '.agents')
 
 export function loadConfig(): GlobalConfig {
   return loadGlobalConfig(GLOBAL_CONFIG_DIR) ?? {}

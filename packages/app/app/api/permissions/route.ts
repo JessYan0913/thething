@@ -11,7 +11,8 @@ async function getResourceRoot(): Promise<string> {
   return rt.layout.resourceRoot;
 }
 
-const CONFIG_DIR = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething')
+// 权限是运行时数据，存储在 ~/.thething/ 下（非协议配置）
+const CONFIG_DIR = path.join(os.homedir(), '.thething')
 
 export async function GET() {
   try {

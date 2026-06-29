@@ -119,7 +119,7 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
       mcps: [],
       connectors: [],
       permissions: [],
-      memory: [],
+      wiki: [],
     },
   };
 

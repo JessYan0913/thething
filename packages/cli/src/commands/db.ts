@@ -60,7 +60,7 @@ export async function dbBackup(backupPath: string): Promise<void> {
   const runtime = await bootstrap({
     layout: {
       resourceRoot: cwd,
-      configDir: path.join(os.homedir(), '.thething'),
+      configDir: path.join(os.homedir(), '.agents'),
       dataDir: dataDirConfig.dataDir,
     },
     env: envSnapshot,

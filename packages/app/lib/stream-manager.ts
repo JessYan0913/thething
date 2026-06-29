@@ -16,7 +16,8 @@ let streamContext: ReturnType<ReturnType<typeof createResumableStreamContextFact
  */
 export function getStreamManager() {
   if (!streamContext) {
-    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
+    // 运行时数据库路径（留在 .thething/ 下，非协议配置）
+    const runtimeDataBase = path.join(os.homedir(), '.thething');
 
     // 创建内存事件发射器
     const emitter = new EventEmitter();
@@ -38,7 +39,7 @@ export function getStreamManager() {
         promise.catch(console.error);
       },
       database: {
-        path: path.join(globalConfigDir, 'chat-streams.db'),
+        path: path.join(runtimeDataBase, 'chat-streams.db'),
         defaultTtlMs: 24 * 60 * 60 * 1000, // 24 小时
         cleanupIntervalMs: 60 * 60 * 1000, // 1 小时
       },

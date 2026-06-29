@@ -70,7 +70,7 @@ async function runSetupWizard(): Promise<GlobalConfig | null> {
     }
 
     saveConfig(config)
-    console.log(chalk.green('\n✅ 配置已保存到 ~/.thething/config.json'))
+    console.log(chalk.green('\n✅ 配置已保存到 ~/.agents/models.json'))
     console.log(chalk.gray(`   Base URL: ${config.baseURL}`))
     console.log(chalk.gray(`   Model: ${config.model}\n`))
 
@@ -153,7 +153,7 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const runtime = await bootstrap({
     layout: {
       resourceRoot: cwd,
-      configDir: path.join(os.homedir(), '.thething'),
+      configDir: path.join(os.homedir(), '.agents'),
       dataDir: dataDirConfig.dataDir,
     },
     env: envSnapshot,

@@ -362,13 +362,17 @@ export async function buildSystemPrompt(
     .map((s) => s.content)
     .join("\n\n");
 
+  // Append .agents/system-prompt.md 内容（Dot Agents 协议）
+  const systemPromptMd = await loadDotAgentsSystemPromptMd(opts.cwd);
+  const finalPrompt = systemPromptMd ? `${prompt}\n\n${systemPromptMd}` : prompt;
+
   const finalSections = allSections.filter((s) => s.content !== null);
 
   return {
-    prompt,
+    prompt: finalPrompt,
     sections: finalSections,
     includedSections,
-    estimatedTokens: estimateTokens(prompt),
+    estimatedTokens: estimateTokens(finalPrompt),
   };
 }
 
@@ -392,6 +396,51 @@ export function buildSimpleSystemPrompt(): string {
  */
 export function buildTitleGenerationPrompt(): string {
   return "你是一个对话标题生成助手。请根据用户的首条消息和AI的回复，生成一个简洁、准确的对话标题。";
+}
+
+// ============================================================================
+// Dot Agents Protocol: system-prompt.md support
+// ============================================================================
+
+/**
+ * Load the .agents/system-prompt.md file (Dot Agents 协议标准).
+ * 先检查项目级（cwd/.agents/system-prompt.md），再检查用户级（~/.agents/system-prompt.md）。
+ */
+async function loadDotAgentsSystemPromptMd(cwd?: string): Promise<string | null> {
+  const _path = 'path';
+  const _fs = 'fs/promises';
+  try {
+    const { default: fs } = await import(/* webpackIgnore: true */ _fs);
+    const { default: path } = await import(/* webpackIgnore: true */ _path);
+
+    const resolvedCwd = cwd ?? process.cwd();
+    const homeDir = process.env.HOME || '';
+
+    // 检查路径：项目级优先，用户级次之
+    const candidates = [
+      path.join(resolvedCwd, '.agents', 'system-prompt.md'),
+      path.join(homeDir, '.agents', 'system-prompt.md'),
+    ];
+
+    for (const filePath of candidates) {
+      try {
+        const stat = await fs.stat(filePath);
+        if (stat.isFile()) {
+          const content = await fs.readFile(filePath, 'utf-8');
+          const trimmed = content.trim();
+          if (trimmed) {
+            return `【自定义系统提示】\n\n${trimmed}`;
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // 动态导入失败，跳过
+  }
+
+  return null;
 }
 
 // ============================================================================

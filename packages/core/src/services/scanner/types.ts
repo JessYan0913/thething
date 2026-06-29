@@ -22,6 +22,8 @@ export interface ScanConfig {
   dirs: string[];
   /** 文件匹配模式（如 '*.md', 'SKILL.md'） */
   filePattern: string;
+  /** 多个文件匹配模式（与 filePattern 二选一，用于同时匹配多个文件名如 SKILL.md 和 skill.md） */
+  filePatterns?: string[];
   /** 目录名匹配模式（如 '*'，用于目录格式如 skill-name/SKILL.md） */
   dirPattern?: string;
   /** 是否递归扫描 */

@@ -26,10 +26,16 @@ import type { CronJobStore } from '../cron/types'
  * Agent Markdown 文件的 Frontmatter Schema
  */
 export const AgentFrontmatterSchema = z.object({
-  // 标识（支持 name 或 agentType）
-  name: z.string().min(1).max(50).describe('Agent 标识（agentType）').optional(),
-  agentType: z.string().min(1).max(50).describe('Agent 标识').optional(),
+  // 标识（支持 Dot Agents 协议 id + TheThing 原生 agentType/name）
+  id: z.string().min(1).max(50).describe('协议标识（Dot Agents）').optional(),
+  agentType: z.string().min(1).max(50).describe('Agent 标识（TheThing）').optional(),
+  name: z.string().min(1).max(50).describe('协议名称 / 备选标识').optional(),
   displayName: z.string().describe('显示名称').optional(),
+
+  // 协议字段
+  role: z.string().describe('Agent 角色（如 delegation-target）').optional(),
+  enabled: z.boolean().describe('是否启用').optional(),
+  'connection-type': z.enum(['internal', 'stdio']).describe('连接类型').optional(),
 
   // 描述（必填）
   description: z.string().min(1).describe('Agent 描述'),
@@ -81,7 +87,7 @@ export type AgentSource = 'builtin' | 'user' | 'project' | 'plugin';
  * 来源：
  * - builtin: 硬编码 TypeScript（built-in/*.ts）
  * - user: 用户全局目录（~/.thething/agents/*.md）
- * - project: 项目目录（.thething/agents/*.md）
+ * - project: 项目目录（.thething/agents/*.md 或 .agents/agents/<name>/agent.md）
  * - plugin: 插件系统注册
  */
 export interface AgentDefinition {

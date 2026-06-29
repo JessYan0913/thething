@@ -169,7 +169,7 @@ export default function SkillsSettings() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
             {filteredSkills.map((skill) => (
               <SkillCard
                 key={skill.folderName}
@@ -244,17 +244,17 @@ function SkillCard({
 
   return (
     <div
-      className="rounded-lg border p-4 space-y-3 w-full hover:border-accent/50 hover:bg-accent/20 transition-colors relative"
+      className="rounded-lg border p-4 space-y-3 w-full hover:border-accent/50 hover:bg-accent/20 transition-colors relative overflow-hidden"
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 min-w-0">
         <button
           onClick={onClick}
           className="flex items-start gap-3 min-w-0 flex-1 text-left cursor-pointer"
         >
           <WrenchIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm">{skill.name}</span>
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="font-medium text-sm truncate">{skill.name}</span>
               <Badge
                 className={`text-xs border-0 ${effortColors[skill.effort] ?? effortColors.medium}`}
               >
@@ -311,10 +311,10 @@ function SkillCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <FolderIcon className="size-3" />
-          <span className="truncate max-w-64" title={skill.sourcePath}>
+      <div className="flex items-center gap-4 text-xs text-muted-foreground min-w-0">
+        <div className="flex items-center gap-1 min-w-0 flex-1">
+          <FolderIcon className="size-3 shrink-0" />
+          <span className="truncate" title={skill.sourcePath}>
             {skill.sourcePath}
           </span>
         </div>

@@ -1,8 +1,7 @@
-import { getServerContext, getServerDataStore, getServerRuntime, reloadServerContext } from '@/lib/runtime';
+import { getServerContext, getServerDataStore, getServerRuntime, reloadServerContext, getModelConfig } from '@/lib/runtime';
 import {
   createAgent,
   finalizeAgentRun,
-  loadGlobalConfig,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -12,7 +11,6 @@ import {
   createUIMessageStreamResponse,
   type UIMessage,
 } from 'ai';
-import os from 'os';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
@@ -470,8 +468,6 @@ export async function POST(request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
-    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
-    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,
@@ -485,9 +481,7 @@ export async function POST(request: Request) {
       messages,
       userId,
       model: {
-        apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
-        baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
+        ...getModelConfig(),
         includeUsage: true,
       },
       modules: {

@@ -1,7 +1,5 @@
-import path from 'path'
-import os from 'os'
 import { NextRequest, NextResponse } from 'next/server'
-import { loadGlobalConfig } from '@the-thing/core'
+import { getModelConfig } from '@/lib/runtime'
 
 export const runtime = 'nodejs'
 
@@ -24,11 +22,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'baseURL is required' }, { status: 400 })
   }
 
-  // 优先使用参数，其次使用全局配置
-  const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
-  const globalConfig = loadGlobalConfig(globalConfigDir)
-  const resolvedBaseURL = baseURL || globalConfig?.baseURL
-  const resolvedApiKey = apiKey || globalConfig?.apiKey
+  // 优先使用查询参数（settings 页面传入），其次使用 .agents/models.json 全局配置
+  const cachedConfig = getModelConfig()
+  const resolvedBaseURL = baseURL || cachedConfig.baseURL
+  const resolvedApiKey = apiKey || cachedConfig.apiKey
 
   if (!resolvedBaseURL) {
     return NextResponse.json({ error: 'Base URL is required' }, { status: 400 })

@@ -1,7 +1,5 @@
-import path from 'path'
-import os from 'os'
-import { getServerContext, reloadServerContext } from '@/lib/runtime';
-import { createAgent, finalizeAgentRun, loadGlobalConfig } from '@the-thing/core';
+import { getServerContext, reloadServerContext, getModelConfig } from '@/lib/runtime';
+import { createAgent, finalizeAgentRun } from '@the-thing/core';
 import {
   createAgentUIStream,
   createUIMessageStream,
@@ -152,8 +150,6 @@ export async function POST(request: Request) {
       };
     }
 
-    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
-    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,
@@ -166,9 +162,7 @@ export async function POST(request: Request) {
       messages,
       userId: 'default',
       model: {
-        apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
-        baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
+        ...getModelConfig(),
         includeUsage: true,
       },
     });

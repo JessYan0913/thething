@@ -1,12 +1,32 @@
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
-import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext } from '@the-thing/core';
+import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext, type GlobalConfig } from '@the-thing/core';
 import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
 let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
 let initPromise: Promise<CoreRuntime> | null = null;
+
+/** 启动时缓存的全局配置，供 getModelConfig() 使用 */
+let cachedGlobalConfig: GlobalConfig | null = null;
+
+// ============================================================
+// Model Config Helper — 统一读取模型配置，避免各 route 重复加载
+// ============================================================
+
+/**
+ * 获取当前模型配置。
+ * 完全遵循 Dot Agents 协议：仅从 .agents/models.json 读取。
+ * 无需环境变量覆盖——配置即文件。
+ */
+export function getModelConfig(): { apiKey: string; baseURL: string; modelName?: string } {
+  return {
+    apiKey: cachedGlobalConfig?.apiKey || '',
+    baseURL: cachedGlobalConfig?.baseURL || '',
+    modelName: cachedGlobalConfig?.modelAliases?.default?.model || undefined,
+  };
+}
 
 // ============================================================
 // Project Context 缓存（按 projectId 缓存 AppContext）
@@ -56,24 +76,47 @@ async function isSkillDirStale(rt: CoreRuntime): Promise<boolean> {
 async function initializeRuntime(): Promise<CoreRuntime> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env };
 
-  // Stage 1: 从默认位置读取自定义配置目录
-  const defaultGlobalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
-  const bootConfig = loadGlobalConfig(defaultGlobalConfigDir);
-  const rawConfigDir = bootConfig?.configDir || defaultGlobalConfigDir;
-  // 展开 ~ 为实际 home 目录，否则 path.join("~/.thething", "skills") 会变成相对路径
+  // Dot Agents 协议路径：~/.agents/ 为配置目录
+  const defaultConfigDir = path.join(os.homedir(), '.agents');
+
+  // 运行时数据目录：~/.thething/
+  const runtimeDataBase = path.join(os.homedir(), '.thething');
+
+  // 从 .agents/models.json 读取配置
+  let bootConfig = loadGlobalConfig(defaultConfigDir);
+
+  // 迁移兼容：如果 .agents/models.json 不存在，尝试旧的 .thething/config.json
+  if (!bootConfig) {
+    const legacyPath = path.join(os.homedir(), '.thething', 'config.json');
+    try {
+      const content = await fs.readFile(legacyPath, 'utf-8');
+      bootConfig = JSON.parse(content);
+    } catch {
+      // 旧配置文件不存在，使用默认值
+    }
+  }
+
+  const rawConfigDir = bootConfig?.configDir || defaultConfigDir;
   const configDir = rawConfigDir.replace(/^~/, os.homedir());
 
-  // Stage 2: 用真实的 configDir 加载全部配置
-  const globalConfig = loadGlobalConfig(configDir);
+  // 从最终 configDir 加载全部配置（会从 .agents/models.json 读取）
+  const globalConfig = loadGlobalConfig(configDir) || bootConfig;
+  cachedGlobalConfig = globalConfig;
 
   runtime = await bootstrap({
     layout: {
       resourceRoot: process.cwd(),
       configDir,
-      dataDir: process.env.THETHING_DATA_DIR || path.join(configDir, 'data'),
+      // 运行时数据保持在 ~/.thething/ 下
+      dataDir: process.env.THETHING_DATA_DIR || path.join(runtimeDataBase, 'data'),
+      resources: {
+        connectors: [path.join(runtimeDataBase, 'connectors')],
+        permissions: [path.join(runtimeDataBase, 'permissions')],
+        wiki: [path.join(runtimeDataBase, 'wiki')],
+      },
     },
     connectorConfig: {
-      configDir: path.join(configDir, 'connectors'),
+      configDir: path.join(runtimeDataBase, 'connectors'),
     },
     behavior: {
       modelAliases: {
@@ -97,9 +140,9 @@ async function initializeRuntime(): Promise<CoreRuntime> {
   configureConnectorInboundRuntime(runtime.connectorRuntime, {
     appContext: context,
     modelConfig: {
-      apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
-      baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-      modelName: process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model || '',
+      apiKey: globalConfig?.apiKey || '',
+      baseURL: globalConfig?.baseURL || '',
+      modelName: globalConfig?.modelAliases?.default?.model || '',
     },
   });
 
@@ -156,7 +199,7 @@ export async function getServerContext(): Promise<AppContext> {
 
 /**
  * 获取项目特定的 AppContext（带缓存）。
- * 为项目目录创建独立的 layout，加载该目录下的 .thething/ 资源。
+ * 为项目目录创建独立的 layout，加载该目录下的 .agents/ 资源。
  */
 export async function getProjectContext(projectId: string, projectPath: string): Promise<AppContext> {
   const defaultCtx = await getServerContext();

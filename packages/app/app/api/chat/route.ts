@@ -1,13 +1,11 @@
 import path from 'path'
-import os from 'os'
-import { getServerRuntime, getServerContext, getProjectContext } from '@/lib/runtime';
+import { getServerRuntime, getServerContext, getProjectContext, getModelConfig } from '@/lib/runtime';
 import { convertFileToText } from '@/lib/file-convert';
 import { getStreamManager } from '@/lib/stream-manager';
 import {
   createAgent,
   generateConversationTitle,
   finalizeAgentRun,
-  loadGlobalConfig,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -114,8 +112,6 @@ export async function POST(request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
-    const globalConfigDir = process.env.THETHING_GLOBAL_CONFIG_DIR || path.join(os.homedir(), '.thething');
-    const globalConfig = loadGlobalConfig(globalConfigDir);
     const {
       agent,
       sessionState,
@@ -130,9 +126,8 @@ export async function POST(request: Request) {
       userId,
       agentType,
       model: {
-        apiKey: process.env.THETHING_API_KEY || globalConfig?.apiKey || '',
-        baseURL: process.env.THETHING_BASE_URL || globalConfig?.baseURL || '',
-        modelName: modelName || process.env.THETHING_MODEL || globalConfig?.modelAliases?.default?.model,
+        ...getModelConfig(),
+        modelName: modelName || getModelConfig().modelName,
         includeUsage: true,
       },
       modules: enableConnectors === false ? { connectors: false } : undefined,

@@ -239,7 +239,7 @@ function ConfigDirSetting() {
           <div className="min-w-0">
             <span className="text-sm font-medium">自定义路径</span>
             <p className="text-xs text-muted-foreground truncate">
-              修改后需重启应用生效。留空则默认 ~/.thething
+              留空则默认 ~/.agents（遵循 Dot Agents 协议）
             </p>
           </div>
         </div>
@@ -251,7 +251,7 @@ function ConfigDirSetting() {
               onChange={(e) => setConfigDir(e.target.value)}
               className="font-mono text-xs w-72 pr-6"
               disabled={isLoading}
-              placeholder="~/.thething"
+              placeholder="~/.agents"
             />
             {saveStatus === 'success' && (
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs">✓</span>
