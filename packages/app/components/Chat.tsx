@@ -341,6 +341,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     id: conversationId,
     transport,
     resume: isResumeEnabled, // 只有在初始加载完成后才启用流恢复
+    experimental_throttle: 80, // 节流 UI 更新，避免每块 SSE chunk 都触发 React 全量重渲染
     sendAutomaticallyWhen: ({ messages }) => {
       const lastMsg = messages.at(-1);
       if (lastMsg?.role === 'assistant') {
@@ -349,12 +350,93 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
           return false;
         }
 
-        // 检查是否有待审批的工具调用（approval-requested 状态）
-        const pendingApprovals = lastMsg.parts.filter((p) => {
-          const isToolPart = p.type.startsWith('tool-') || p.type === 'dynamic-tool';
-          const state = (p as { state?: string }).state;
-          return isToolPart && state === 'approval-requested';
+        // 使用原始（未节流）消息检测审批请求，避免 throttling 导致中间状态被跳过
+        const pendingApprovals: ApprovalRequest[] = [];
+        const seenApprovalIds = new Set<string>();
+        let questionRequest: {
+          approvalId: string;
+          toolCallId: string;
+          questions: Array<{
+            question: string;
+            header: string;
+            options: string[];
+            multiSelect?: boolean;
+          }>;
+        } | null = null;
+
+        for (const part of lastMsg.parts) {
+          const isToolPart = part.type.startsWith('tool-') || part.type === 'dynamic-tool';
+          const hasToolCallId = 'toolCallId' in part;
+          const toolState = (part as { state?: string }).state;
+
+          if (isToolPart && hasToolCallId && toolState === 'approval-requested') {
+            const toolPart = part as unknown as {
+              toolCallId: string;
+              toolName?: string;
+              input?: Record<string, unknown>;
+              approval?: { id: string };
+              type: string;
+            };
+            const toolName = toolPart.type.startsWith('tool-')
+              ? toolPart.type.replace('tool-', '').replace(/_/g, ' ')
+              : toolPart.toolName || 'unknown';
+
+            const approvalId = toolPart.approval?.id;
+            const toolInput = toolPart.input || {};
+
+            if (approvalId && !seenApprovalIds.has(approvalId)) {
+              seenApprovalIds.add(approvalId);
+              const isQuestionTool = toolName === 'ask user question';
+
+              if (isQuestionTool && !questionRequest) {
+                const questions = (toolInput.questions as Array<{
+                  question: string;
+                  header: string;
+                  options: string[];
+                  multiSelect?: boolean;
+                }>) || [];
+                questionRequest = {
+                  approvalId,
+                  toolCallId: toolPart.toolCallId,
+                  questions,
+                };
+              } else if (!isQuestionTool) {
+                // 会话信任：如果该 scope 已在本次对话中被批准过，自动放行
+                const scope = computeApprovalScope(toolName, toolInput);
+                if (sessionApprovedScopesRef.current.has(scope) && !autoApprovedIdsRef.current.has(approvalId)) {
+                  autoApprovedIdsRef.current.add(approvalId);
+                  addToolApprovalResponse({ id: approvalId, approved: true });
+                } else {
+                  pendingApprovals.push({
+                    approvalId,
+                    toolCallId: toolPart.toolCallId,
+                    toolName,
+                    toolInput,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // 更新审批请求列表（只在有变化时更新）
+        setApprovalRequests(prev => {
+          if (pendingApprovals.length !== prev.length ||
+              !pendingApprovals.every(r => prev.some(ar => ar.approvalId === r.approvalId))) {
+            return pendingApprovals;
+          }
+          return prev;
         });
+
+        // 更新问题面板
+        if (questionRequest) {
+          setQuestionPanel(prev => prev?.isOpen ? prev : {
+            isOpen: true,
+            approvalId: questionRequest.approvalId,
+            toolCallId: questionRequest.toolCallId,
+            questions: questionRequest.questions,
+          });
+        }
 
         // 如果还有待审批的工具调用，不自动发送（等待用户处理所有审批）
         if (pendingApprovals.length > 0) {
@@ -426,102 +508,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
 
   useEffect(() => {
     messagesRef.current = messages;
-
-    // 检测 approval-requested 状态并收集所有审批请求
-    // 注意：审批请求的part类型是 "tool-${toolName}" 或 "dynamic-tool"，state为 "approval-requested"
-    if (status === 'streaming' || status === 'submitted') {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.role === 'assistant') {
-        // 收集所有待审批的工具调用
-        const pendingApprovals: ApprovalRequest[] = [];
-        const seenApprovalIds = new Set<string>();
-        let questionRequest: {
-          approvalId: string;
-          toolCallId: string;
-          questions: Array<{
-            question: string;
-            header: string;
-            options: string[];
-            multiSelect?: boolean;
-          }>;
-        } | null = null;
-
-        for (const part of lastMessage.parts) {
-          // 使用正确的类型检测逻辑：type.startsWith('tool-') 或 type === 'dynamic-tool'
-          const isToolPart = part.type.startsWith('tool-') || part.type === 'dynamic-tool';
-          const hasToolCallId = 'toolCallId' in part;
-          const toolState = (part as { state?: string }).state;
-
-          // 只收集 approval-requested 状态的（排除已响应的）
-          if (isToolPart && hasToolCallId && toolState === 'approval-requested') {
-            const toolPart = part as unknown as {
-              toolCallId: string;
-              toolName?: string;
-              input?: Record<string, unknown>;
-              approval?: { id: string };
-              type: string;
-            };
-            const toolName = toolPart.type.startsWith('tool-')
-              ? toolPart.type.replace('tool-', '').replace(/_/g, ' ')
-              : toolPart.toolName || 'unknown';
-
-            const approvalId = toolPart.approval?.id;
-            const toolInput = toolPart.input || {};
-
-            if (approvalId && !seenApprovalIds.has(approvalId)) {
-              seenApprovalIds.add(approvalId);
-              const isQuestionTool = toolName === 'ask user question';
-
-              if (isQuestionTool && !questionRequest) {
-                // 收集问题工具请求（只取第一个）
-                const questions = (toolInput.questions as Array<{
-                  question: string;
-                  header: string;
-                  options: string[];
-                  multiSelect?: boolean;
-                }>) || [];
-                questionRequest = {
-                  approvalId,
-                  toolCallId: toolPart.toolCallId,
-                  questions,
-                };
-              } else if (!isQuestionTool) {
-                // 会话信任：如果该 scope 已在本次对话中被批准过，自动放行
-                const scope = computeApprovalScope(toolName, toolInput);
-                if (sessionApprovedScopesRef.current.has(scope) && !autoApprovedIdsRef.current.has(approvalId)) {
-                  autoApprovedIdsRef.current.add(approvalId);
-                  addToolApprovalResponse({ id: approvalId, approved: true });
-                } else {
-                  pendingApprovals.push({
-                    approvalId,
-                    toolCallId: toolPart.toolCallId,
-                    toolName,
-                    toolInput,
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        // 更新审批请求列表（只在有变化时更新，避免无限循环）
-        if (pendingApprovals.length !== approvalRequests.length ||
-            !pendingApprovals.every(r => approvalRequests.some(ar => ar.approvalId === r.approvalId))) {
-          setApprovalRequests(pendingApprovals);
-        }
-
-        // 更新问题面板
-        if (questionRequest && !questionPanel?.isOpen) {
-          setQuestionPanel({
-            isOpen: true,
-            approvalId: questionRequest.approvalId,
-            toolCallId: questionRequest.toolCallId,
-            questions: questionRequest.questions,
-          });
-        }
-      }
-    }
-  }, [messages, status, approvalRequests.length, questionPanel?.isOpen, addToolApprovalResponse]);
+  }, [messages]);
 
   // 处理问题收集完成
   const handleQuestionsComplete = useCallback((answers: Record<string, string | string[]>) => {

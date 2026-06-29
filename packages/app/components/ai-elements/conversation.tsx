@@ -81,17 +81,27 @@ export const Conversation = ({
     const el = contentRef.current;
     if (!el) return;
 
+    let rafId: number | null = null;
+
     const observer = new ResizeObserver(() => {
-      if (isNearBottomRef.current) {
-        const scrollEl = scrollRef.current;
-        if (scrollEl) {
-          scrollEl.scrollTop = scrollEl.scrollHeight;
+      // 使用 rAF 合并密集变化，避免 streaming 时 layout thrashing
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (isNearBottomRef.current) {
+          const scrollEl = scrollRef.current;
+          if (scrollEl) {
+            scrollEl.scrollTop = scrollEl.scrollHeight;
+          }
         }
-      }
+      });
     });
 
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   const scrollToBottom = useCallback(
