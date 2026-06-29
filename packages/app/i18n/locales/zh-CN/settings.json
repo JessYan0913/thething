@@ -74,6 +74,16 @@
       "fastDescription": "成本低、速度快的模型，适合简单任务",
       "smartDescription": "能力强的模型，适合复杂任务"
     },
+    "provider": {
+      "openai": "OpenAI",
+      "openrouter": "OpenRouter",
+      "deepseek": "DeepSeek",
+      "moonshot": "Moonshot (月之暗面)",
+      "qwen": "通义千问 (DashScope)",
+      "glm": "智谱 GLM",
+      "doubao": "豆包 (火山引擎)",
+      "custom": "自定义"
+    },
     "fetchModels": {
       "button": "获取模型",
       "dialogTitle": "选择模型",

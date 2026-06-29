@@ -74,6 +74,16 @@
       "fastDescription": "Low-cost, fast model for simple tasks",
       "smartDescription": "High-capability model for complex tasks"
     },
+    "provider": {
+      "openai": "OpenAI",
+      "openrouter": "OpenRouter",
+      "deepseek": "DeepSeek",
+      "moonshot": "Moonshot",
+      "qwen": "Qwen (DashScope)",
+      "glm": "GLM (Zhipu)",
+      "doubao": "Doubao (Volcengine)",
+      "custom": "Custom"
+    },
     "fetchModels": {
       "button": "Fetch Models",
       "dialogTitle": "Select Model",

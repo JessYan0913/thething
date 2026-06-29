@@ -74,6 +74,16 @@
       "fastDescription": "シンプルなタスク向けの低コスト・高速モデル",
       "smartDescription": "複雑なタスク向けの高性能モデル"
     },
+    "provider": {
+      "openai": "OpenAI",
+      "openrouter": "OpenRouter",
+      "deepseek": "DeepSeek",
+      "moonshot": "Moonshot",
+      "qwen": "Qwen (DashScope)",
+      "glm": "GLM",
+      "doubao": "Doubao (Volcengine)",
+      "custom": "カスタム"
+    },
     "fetchModels": {
       "button": "モデル取得",
       "dialogTitle": "モデルを選択",

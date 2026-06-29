@@ -17,6 +17,13 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -41,6 +48,28 @@ interface ModelInfo {
 
 type AliasType = "fast" | "smart" | "default"
 
+const PROVIDERS = [
+  { id: "openai", baseURL: "https://api.openai.com/v1" },
+  { id: "openrouter", baseURL: "https://openrouter.ai/api/v1" },
+  { id: "deepseek", baseURL: "https://api.deepseek.com" },
+  { id: "moonshot", baseURL: "https://api.moonshot.cn/v1" },
+  { id: "qwen", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  { id: "glm", baseURL: "https://open.bigmodel.cn/api/paas/v4" },
+  { id: "doubao", baseURL: "https://ark.cn-beijing.volces.com/api/v3" },
+  { id: "custom", baseURL: "" },
+]
+
+function detectProvider(baseURL: string): string {
+  if (!baseURL) return "custom"
+  const normalized = baseURL.replace(/\/+$/, "")
+  for (const p of PROVIDERS) {
+    if (p.baseURL && normalized.startsWith(p.baseURL.replace(/\/+$/, ""))) {
+      return p.id
+    }
+  }
+  return "custom"
+}
+
 export default function ModelSettings() {
   const { t } = useTranslation("settings")
   const [config, setConfig] = useState<Config>({ apiKey: "", baseURL: "" })
@@ -54,6 +83,8 @@ export default function ModelSettings() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
   const [errors, setErrors] = useState<{ default?: string }>({})
+
+  const [selectedProvider, setSelectedProvider] = useState("custom")
 
   // 模型列表相关状态
   const [isFetchingModels, setIsFetchingModels] = useState(false)
@@ -69,7 +100,9 @@ export default function ModelSettings() {
       const res = await fetch("/api/config")
       if (res.ok) {
         const data = await res.json()
-        setConfig({ apiKey: data.apiKey, baseURL: data.baseURL })
+        const baseURL = data.baseURL || ""
+        setConfig({ apiKey: data.apiKey, baseURL })
+        setSelectedProvider(detectProvider(baseURL))
         setAliases({
           fast: { model: data.modelAliases?.fast?.model || "", contextLimit: data.modelAliases?.fast?.contextLimit },
           smart: { model: data.modelAliases?.smart?.model || "", contextLimit: data.modelAliases?.smart?.contextLimit },
@@ -238,6 +271,54 @@ export default function ModelSettings() {
               </span>
             </div>
 
+            {/* Base URL */}
+            <div className="flex items-center gap-4 px-4 py-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
+                  <GlobeIcon className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{t("models.baseURL.title")}</span>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {t("models.baseURL.description")}
+                  </p>
+                </div>
+              </div>
+              <div className="shrink-0 flex items-center gap-2">
+                <Select
+                  value={selectedProvider}
+                  onValueChange={(value) => {
+                    setSelectedProvider(value)
+                    const provider = PROVIDERS.find((p) => p.id === value)
+                    if (provider) {
+                      updateField("baseURL", provider.baseURL)
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-28 text-xs">
+                    <SelectValue placeholder="..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROVIDERS.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer">
+                        {t(`models.provider.${p.id}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="text"
+                  value={config.baseURL}
+                  onChange={(e) => updateField("baseURL", e.target.value)}
+                  placeholder={t("models.baseURL.placeholder")}
+                  className="font-mono text-xs w-64"
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
             {/* API Key */}
             <div className="flex items-center gap-4 px-4 py-3">
               <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -271,33 +352,6 @@ export default function ModelSettings() {
                     <EyeIcon className="size-3.5" />
                   )}
                 </button>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Base URL */}
-            <div className="flex items-center gap-4 px-4 py-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
-                  <GlobeIcon className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-sm font-medium">{t("models.baseURL.title")}</span>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {t("models.baseURL.description")}
-                  </p>
-                </div>
-              </div>
-              <div className="shrink-0 w-64">
-                <Input
-                  type="text"
-                  value={config.baseURL}
-                  onChange={(e) => updateField("baseURL", e.target.value)}
-                  placeholder={t("models.baseURL.placeholder")}
-                  className="font-mono text-xs"
-                  disabled={isLoading}
-                />
               </div>
             </div>
 
