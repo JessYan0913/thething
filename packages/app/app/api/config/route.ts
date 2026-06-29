@@ -13,7 +13,6 @@ export async function GET() {
   return NextResponse.json({
     apiKey: config?.apiKey ?? '',
     baseURL: config?.baseURL ?? '',
-    configDir: config?.configDir ?? '',
     modelAliases: {
       fast: {
         model: config?.modelAliases?.fast?.model ?? '',
@@ -37,7 +36,6 @@ export async function PUT(request: NextRequest) {
   const config = {
     apiKey: body.apiKey ?? '',
     baseURL: body.baseURL ?? '',
-    ...(body.configDir ? { configDir: body.configDir } : {}),
     ...(body.modelAliases ? {
       modelAliases: {
         fast: {

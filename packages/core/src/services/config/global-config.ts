@@ -6,8 +6,6 @@ import type { ModelAliases } from '../model';
 export interface GlobalConfig {
   apiKey?: string
   baseURL?: string
-  /** 自定义配置目录路径（如不设置则默认 ~/.thething） */
-  configDir?: string
   /** 模型别名映射（default 用作默认模型） */
   modelAliases?: Partial<ModelAliases>
 }

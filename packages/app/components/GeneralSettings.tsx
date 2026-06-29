@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import {
-  FolderIcon,
   PaletteIcon,
   LanguagesIcon,
   CheckIcon,
   ChevronDownIcon,
+  FolderIcon,
   SaveIcon,
   RefreshCwIcon,
 } from "lucide-react"
@@ -166,25 +166,25 @@ function LanguageSelect() {
 }
 
 // ============================================================
-// ConfigDirSetting — 自定义配置目录
+// DataDirSetting — 运行时数据目录
+// 路径保存在 ~/.thethingrc，这是一个固定位置的启动指针文件。
 // ============================================================
 
-function ConfigDirSetting() {
-  const { t } = useTranslation('settings')
-  const [configDir, setConfigDir] = useState('')
-  const [origConfigDir, setOrigConfigDir] = useState('')
+function DataDirSetting() {
+  const [dataDir, setDataDir] = useState('')
+  const [origDataDir, setOrigDataDir] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
-  const loadConfigDir = useCallback(async () => {
+  const loadDataDir = useCallback(async () => {
     setIsLoading(true)
     try {
-      const res = await fetch('/api/config')
+      const res = await fetch('/api/thethingrc')
       if (res.ok) {
         const data = await res.json()
-        setConfigDir(data.configDir || '')
-        setOrigConfigDir(data.configDir || '')
+        setDataDir(data.dataDir || '')
+        setOrigDataDir(data.dataDir || '')
       }
     } catch {
       // ignore
@@ -194,21 +194,20 @@ function ConfigDirSetting() {
   }, [])
 
   useEffect(() => {
-    loadConfigDir()
-  }, [loadConfigDir])
+    loadDataDir()
+  }, [loadDataDir])
 
   const handleSave = useCallback(async () => {
-    if (!configDir.trim()) return
     setIsSaving(true)
     setSaveStatus('idle')
     try {
-      const res = await fetch('/api/config', {
+      const res = await fetch('/api/thethingrc', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ configDir: configDir.trim() }),
+        body: JSON.stringify({ dataDir: dataDir.trim() }),
       })
       if (res.ok) {
-        setOrigConfigDir(configDir.trim())
+        setOrigDataDir(dataDir.trim())
         setSaveStatus('success')
         setTimeout(() => setSaveStatus('idle'), 3000)
       } else {
@@ -219,16 +218,16 @@ function ConfigDirSetting() {
     } finally {
       setIsSaving(false)
     }
-  }, [configDir])
+  }, [dataDir])
 
-  const hasChanged = configDir !== origConfigDir
+  const hasChanged = dataDir !== origDataDir
 
   return (
     <>
       <Separator />
       <div className="px-4 py-2 border-b bg-muted/30">
         <span className="text-xs font-medium text-muted-foreground">
-          配置目录
+          运行时数据
         </span>
       </div>
       <div className="flex items-center gap-4 px-4 py-3">
@@ -237,9 +236,9 @@ function ConfigDirSetting() {
             <FolderIcon className="size-4" />
           </div>
           <div className="min-w-0">
-            <span className="text-sm font-medium">自定义路径</span>
+            <span className="text-sm font-medium">数据目录</span>
             <p className="text-xs text-muted-foreground truncate">
-              留空则默认 ~/.agents（遵循 Dot Agents 协议）
+              数据库、连接器、权限规则等运行时数据的存储位置。留空则默认 ~/.thething
             </p>
           </div>
         </div>
@@ -247,11 +246,11 @@ function ConfigDirSetting() {
           <div className="relative">
             <Input
               type="text"
-              value={configDir}
-              onChange={(e) => setConfigDir(e.target.value)}
+              value={dataDir}
+              onChange={(e) => setDataDir(e.target.value)}
               className="font-mono text-xs w-72 pr-6"
               disabled={isLoading}
-              placeholder="~/.agents"
+              placeholder="~/.thething"
             />
             {saveStatus === 'success' && (
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs">✓</span>
@@ -263,14 +262,14 @@ function ConfigDirSetting() {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadConfigDir}
+            onClick={loadDataDir}
             disabled={isLoading}
             className="h-8 w-8 p-0"
           >
             <RefreshCwIcon className={`size-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
           {hasChanged && (
-            <Button size="sm" onClick={handleSave} disabled={isSaving || !configDir.trim()}>
+            <Button size="sm" onClick={handleSave} disabled={isSaving}>
               <SaveIcon className="size-3.5 mr-1" />
               保存
             </Button>
@@ -320,7 +319,7 @@ export default function GeneralSettings() {
             <LanguageSelect />
           </SettingRow>
 
-          <ConfigDirSetting />
+          <DataDirSetting />
           </div>
         </div>
       </div>

@@ -12,6 +12,39 @@ let initPromise: Promise<CoreRuntime> | null = null;
 let cachedGlobalConfig: GlobalConfig | null = null;
 
 // ============================================================
+// TheThing RC — ~/.thethingrc
+// 固定位置的启动指针文件，回答"运行时数据在哪？"
+// 仅用于指向数据目录（默认 ~/.thething），不是产品配置的中心。
+// ============================================================
+
+const THETHING_RC_PATH = path.join(os.homedir(), '.thethingrc');
+
+/**
+ * 从 ~/.thethingrc 读取运行时数据目录路径。
+ * 文件不存在时返回 null，使用默认 ~/.thething/。
+ */
+export function loadTheThingRC(): { dataDir?: string } | null {
+  const _fs = 'fs';
+  try {
+    const fs = require(_fs) as typeof import('fs');
+    if (!fs.existsSync(THETHING_RC_PATH)) return null;
+    const content = fs.readFileSync(THETHING_RC_PATH, 'utf-8');
+    return JSON.parse(content) as { dataDir?: string };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 保存 ~/.thethingrc，更新数据目录指针。
+ */
+export async function saveTheThingRC(config: { dataDir?: string }): Promise<void> {
+  const _fs2 = 'fs/promises';
+  const { default: fs2 } = await import(/* webpackIgnore: true */ _fs2);
+  await fs2.writeFile(THETHING_RC_PATH, JSON.stringify(config, null, 2));
+}
+
+// ============================================================
 // Model Config Helper — 统一读取模型配置，避免各 route 重复加载
 // ============================================================
 
@@ -76,14 +109,19 @@ async function isSkillDirStale(rt: CoreRuntime): Promise<boolean> {
 async function initializeRuntime(): Promise<CoreRuntime> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env };
 
-  // Dot Agents 协议路径：~/.agents/ 为配置目录
-  const defaultConfigDir = path.join(os.homedir(), '.agents');
+  // Dot Agents 协议：配置目录固定为 ~/.agents/
+  const configDir = path.join(os.homedir(), '.agents');
 
-  // 运行时数据目录：~/.thething/
-  const runtimeDataBase = path.join(os.homedir(), '.thething');
+  // 运行时数据目录（TheThing 产品数据）：
+  // 1. ~/.thethingrc 中 dataDir 指针（用户配置）
+  // 2. 默认 ~/.thething/
+  const thethingRC = loadTheThingRC();
+  const runtimeDataBase = thethingRC?.dataDir
+    ? thethingRC.dataDir.replace(/^~/, os.homedir())
+    : path.join(os.homedir(), '.thething');
 
-  // 从 .agents/models.json 读取配置
-  let bootConfig = loadGlobalConfig(defaultConfigDir);
+  // 从 .agents/models.json 读取协议配置
+  let bootConfig = loadGlobalConfig(configDir);
 
   // 迁移兼容：如果 .agents/models.json 不存在，尝试旧的 .thething/config.json
   if (!bootConfig) {
@@ -96,10 +134,6 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     }
   }
 
-  const rawConfigDir = bootConfig?.configDir || defaultConfigDir;
-  const configDir = rawConfigDir.replace(/^~/, os.homedir());
-
-  // 从最终 configDir 加载全部配置（会从 .agents/models.json 读取）
   const globalConfig = loadGlobalConfig(configDir) || bootConfig;
   cachedGlobalConfig = globalConfig;
 
@@ -107,8 +141,7 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     layout: {
       resourceRoot: process.cwd(),
       configDir,
-      // 运行时数据保持在 ~/.thething/ 下
-      dataDir: process.env.THETHING_DATA_DIR || path.join(runtimeDataBase, 'data'),
+      dataDir: path.join(runtimeDataBase, 'data'),
       resources: {
         connectors: [path.join(runtimeDataBase, 'connectors')],
         permissions: [path.join(runtimeDataBase, 'permissions')],
