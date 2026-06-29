@@ -1,4 +1,5 @@
 import { getServerRuntime } from '@/lib/runtime';
+import type { Todo } from '@/lib/todos/types';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -90,6 +91,22 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
         }
         return NextResponse.json({ success: true, todo });
+      }
+
+      case 'reset-conversation': {
+        const { conversationId } = params as { conversationId: string };
+        const todos = store.getTodosByConversation(conversationId);
+        const inProgress: Todo[] = todos.filter((t: Todo) => t.status === 'in_progress');
+        for (const todo of inProgress) {
+          store.updateTodo({
+            id: todo.id,
+            status: 'pending',
+            claimedBy: null,
+            activeForm: null,
+            metadata: { ...todo.metadata, stopReason: 'Agent stopped by user' },
+          });
+        }
+        return NextResponse.json({ success: true, reset: inProgress.length });
       }
 
       case 'delete': {

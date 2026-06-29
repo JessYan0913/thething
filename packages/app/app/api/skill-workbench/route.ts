@@ -4,6 +4,7 @@ import {
   finalizeAgentRun,
   loadGlobalConfig,
   type SubAgentStreamWriter,
+  type Todo,
 } from '@the-thing/core';
 import {
   createAgentUIStream,
@@ -440,6 +441,30 @@ export async function POST(request: Request) {
           ...firstMsg.parts.filter((p) => p.type !== 'text'),
         ],
       };
+    }
+
+    // 检测未完成的 todo，让 Agent 感知到之前中断的任务
+    const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);
+    const unfinishedTodos = conversationTodos.filter(
+      (t: Todo) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed'
+    );
+
+    if (unfinishedTodos.length > 0) {
+      const todoLines = unfinishedTodos.map((t: Todo) => {
+        const parts = ['ID: ' + t.id, '\u72b6\u6001: ' + t.status];
+        if (t.activeForm) parts.push('\u8fdb\u5ea6: ' + t.activeForm);
+        if (t.status === 'failed') parts.push('\u4e0a\u6b21\u5931\u8d25');
+        return '- **' + t.subject + '** (' + parts.join(', ') + ')';
+      });
+      const todoNote = '\n\n## \u672a\u5b8c\u6210\u4efb\u52a1\n\u4ee5\u4e0b\u662f\u4f60\u4e4b\u524d\u4e2d\u65ad\u540e\u7559\u4e0b\u7684\u672a\u5b8c\u6210\u4efb\u52a1\uff0c\u9700\u8981\u7ee7\u7eed\u5904\u7406\uff1a\n'
+        + todoLines.join('\n')
+        + '\n\n\u4f60\u53ef\u4ee5\u4f7f\u7528 todo_list \u67e5\u770b\u8be6\u7ec6\u4fe1\u606f\uff0c\u7136\u540e\u7ee7\u7eed\u6267\u884c\u3002';
+
+      if (customInstructions) {
+        customInstructions += todoNote;
+      } else {
+        customInstructions = '\n\n## \u7cfb\u7edf\u6307\u4ee4\n' + todoNote;
+      }
     }
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };

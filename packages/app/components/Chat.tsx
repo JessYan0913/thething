@@ -599,6 +599,20 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     // 不立即清空
   }, [addToolApprovalResponse]);
 
+  // 停止 Agent 时清理未完成的 todo，避免 orphaned in_progress 状态
+  const handleStop = useCallback(() => {
+    stop();
+    // Fire and forget: 将在执行中的 todo 重置为 pending，下一轮 Agent 可以继续
+    fetch('/api/todos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'reset-conversation',
+        conversationId,
+      }),
+    }).catch(err => console.error('[Chat] Failed to reset todos:', err));
+  }, [stop, conversationId]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1102,7 +1116,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                   {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
                   <ModelSelector value={selectedModel} onChange={handleModelChange} />
                 </PromptInputTools>
-                <PromptInputSubmit status={status} onStop={stop} />
+                <PromptInputSubmit status={status} onStop={handleStop} />
               </PromptInputFooter>
             </PromptInput>
           </div>
