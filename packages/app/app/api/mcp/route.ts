@@ -1,4 +1,4 @@
-import { getServerRuntime, getServerContext } from '@/lib/runtime';
+import { getServerRuntime, getServerContext, getServerContextIfReady } from '@/lib/runtime';
 import {
   getMcpServerConfigs,
   getMcpServerConfig,
@@ -25,9 +25,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const name = searchParams.get('name');
     const connect = searchParams.get('connect') === 'true';
-    const { resourceRoot, configDir } = await getRuntimeLayout();
 
     if (name) {
+      const { resourceRoot, configDir } = await getRuntimeLayout();
       const config = await getMcpServerConfig(name, resourceRoot, configDir);
       if (!config) {
         return NextResponse.json({ error: 'Server not found' }, { status: 404 });
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
       if (connect) {
         // 优先查共享 registry 的实时状态（已在启动时连接）
-        const context = await getServerContext();
+        const context = getServerContextIfReady() ?? await getServerContext();
         if (context.mcpRegistry) {
           const snap = context.mcpRegistry.snapshot();
           const serverSnap = snap.servers.find(s => s.name === name);
@@ -66,16 +66,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ config });
     }
 
-    const configs = await getMcpServerConfigs(resourceRoot, configDir);
-
-    // 合并共享 registry 的快照，让管理页面显示真实连接状态
-    let snapshot = null;
-    try {
-      const context = await getServerContext();
-      if (context.mcpRegistry) {
-        snapshot = context.mcpRegistry.snapshot();
-      }
-    } catch {}
+    // 列表视图：从磁盘读取配置，不依赖运行时初始化
+    const configs = await getMcpServerConfigs(process.cwd());
+    // Try to get snapshot without forcing runtime init
+    const snapshot = getServerContextIfReady()?.mcpRegistry?.snapshot() ?? null;
 
     return NextResponse.json({ servers: configs, snapshot });
   } catch (error) {

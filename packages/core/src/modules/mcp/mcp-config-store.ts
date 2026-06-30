@@ -1,172 +1,177 @@
-/**
- * MCP 配置存储
- *
- * configDir 由调用方从 ResolvedLayout 获取并传入。
- */
+// ============================================================
+// MCP 配置存储 — 符合 Dot Agents 协议
+// ============================================================
+// 所有 MCP 配置通过 .agents/mcp.json 单文件（mcpServers 格式）管理。
+// 用户级：~/.agents/mcp.json
+// 项目级：{cwd}/.agents/mcp.json（覆盖用户级）
+// ============================================================
 
 import fs from 'fs/promises';
 import path from 'path';
 import { homedir } from 'os';
-import { scanMcpDirs } from './loader';
-import { computeUserConfigDir, computeProjectConfigDir } from '../../primitives/paths';
+import { logger } from '../../primitives/logger';
 import type { McpServerConfig, McpServerConfigSource } from './types';
 
 // ============================================================
-// MCP 配置目录
+// 路径常量
 // ============================================================
 
-/**
- * 获取用户级 MCP 配置目录
- */
-export function getUserMcpConfigDir(configDir: string): string {
-  return computeUserConfigDir(configDir, 'mcps');
+function getUserMcpJsonPath(): string {
+  return path.join(homedir(), '.agents', 'mcp.json');
 }
 
-/**
- * 获取项目级 MCP 配置目录
- */
-export function getProjectMcpConfigDir(
-  cwd: string,
-  configDir: string,
-): string {
-  return computeProjectConfigDir(cwd, 'mcps', configDir);
-}
-
-/**
- * 获取默认 MCP 配置目录（项目级）
- */
-export function getDefaultMcpConfigDir(configDir: string): string {
-  return getProjectMcpConfigDir(process.cwd(), configDir);
+function getProjectMcpJsonPath(cwd: string): string {
+  return path.join(cwd, '.agents', 'mcp.json');
 }
 
 // ============================================================
-// MCP 配置 CRUD
+// Dot Agents 格式的扁平 ↔ 结构化转换
 // ============================================================
 
 /**
- * 确保目录存在
+ * 将 TheThing 结构化 transport 转换为 Dot Agents 扁平格式条目
  */
-async function ensureDir(dir: string): Promise<void> {
-  try {
-    await fs.mkdir(dir, { recursive: true });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
-      throw err;
-    }
+function toDotAgentsEntry(config: McpServerConfig): Record<string, unknown> {
+  const entry: Record<string, unknown> = {};
+  const t = config.transport;
+
+  if (t.type === 'stdio') {
+    entry.command = t.command;
+    if (t.args) entry.args = t.args;
+    if (t.env) entry.env = t.env;
+    entry.transport = 'stdio';
+  } else {
+    entry.url = t.url;
+    if (t.headers) entry.headers = t.headers;
+    entry.transport = t.type;
   }
+
+  // TheThing-specific extensions
+  if (config.enabled === false) entry.enabled = false;
+  if (config.autoConnect === false) entry.autoConnect = false;
+  if (config.alwaysLoad) entry.alwaysLoad = true;
+  if (config.connectionTimeout) entry.connectionTimeout = config.connectionTimeout;
+  if (config.tools) entry.tools = config.tools;
+  if (config.elicitation) entry.elicitation = config.elicitation;
+
+  return entry;
 }
 
 /**
- * 配置文件路径
+ * 将 Dot Agents 扁平配置解析为结构化 transport，解析失败返回 null
  */
-function configFilePath(dir: string, name: string): string {
-  return path.join(dir, `${encodeURIComponent(name)}.json`);
+function parseFlatTransport(
+  name: string,
+  entry: Record<string, unknown>,
+): McpServerConfig['transport'] | null {
+  const tType = entry.transport as string | undefined;
+
+  if (tType === 'stdio') {
+    return {
+      type: 'stdio',
+      command: entry.command as string,
+      args: entry.args as string[] | undefined,
+      env: entry.env as Record<string, string> | undefined,
+    };
+  }
+
+  if (tType === 'sse' || tType === 'http' || tType === 'streamable-http') {
+    return {
+      type: tType,
+      url: entry.url as string,
+      headers: entry.headers as Record<string, string> | undefined,
+    } as McpServerConfig['transport'];
+  }
+
+  logger.warn('McpConfigStore', `Skipping "${name}": unknown transport type "${tType}"`);
+  return null;
 }
 
-/**
- * 序列化配置
- */
-function toSerializable(config: McpServerConfig): Record<string, unknown> {
-  return {
-    name: config.name,
-    transport: config.transport,
-    enabled: config.enabled ?? true,
-    tools: config.tools,
-    elicitation: config.elicitation,
-  };
+// ============================================================
+// 读写 .agents/mcp.json
+// ============================================================
+
+async function readDotAgentsFile(filePath: string): Promise<Map<string, McpServerConfig>> {
+  const servers = new Map<string, McpServerConfig>();
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(content);
+    if (!parsed.mcpServers || typeof parsed.mcpServers !== 'object') return servers;
+
+    for (const [name, config] of Object.entries(parsed.mcpServers)) {
+      const entry = config as Record<string, unknown>;
+      const transport = parseFlatTransport(name, entry);
+      if (!transport) continue;
+
+      servers.set(name, {
+        name,
+        transport,
+        enabled: entry.enabled !== false,
+        autoConnect: entry.autoConnect as boolean | undefined,
+        alwaysLoad: entry.alwaysLoad as boolean | undefined,
+        connectionTimeout: entry.connectionTimeout as number | undefined,
+        tools: entry.tools as McpServerConfig['tools'],
+        elicitation: entry.elicitation as McpServerConfig['elicitation'],
+      });
+    }
+  } catch {
+    // file not found or invalid → empty map
+  }
+  return servers;
 }
 
-/**
- * 反序列化配置（带来源信息）
- *
- * @param data 配置数据
- * @param filePath 文件路径
- * @param configDir 配置目录路径
- */
-function fromSerializable(
-  data: Record<string, unknown>,
-  filePath: string,
-  configDir: string,
-): McpServerConfigSource {
-  // 使用 configDir 判断来源
-  const userConfigDir = getUserMcpConfigDir(configDir);
-  const source = filePath.startsWith(userConfigDir) ? 'user' : 'project';
-
-  return {
-    name: data.name as string,
-    transport: data.transport as McpServerConfig['transport'],
-    enabled: (data.enabled ?? true) as boolean,
-    tools: data.tools as McpServerConfig['tools'],
-    elicitation: data.elicitation as McpServerConfig['elicitation'],
-    source,
-    filePath,
-  };
+async function writeDotAgentsFile(filePath: string, servers: Map<string, McpServerConfig>): Promise<void> {
+  const mcpServers: Record<string, unknown> = {};
+  for (const [name, config] of servers) {
+    mcpServers[name] = toDotAgentsEntry(config);
+  }
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify({ mcpServers }, null, 2), 'utf-8');
 }
 
+// ============================================================
+// 公共 API
+// ============================================================
+
 /**
- * 获取所有 MCP 服务器配置（使用新加载器）
- *
- * @param cwd 项目目录
+ * 获取所有 MCP 服务器配置（通过 Loader，不带来源信息）
  */
-export async function getMcpServerConfigs(cwd?: string, configDir?: string): Promise<McpServerConfig[]> {
-  return scanMcpDirs(cwd, { configDir, homeDir: homedir() });
+export async function getMcpServerConfigs(cwd?: string, _configDir?: string): Promise<McpServerConfig[]> {
+  const { loadMcpServers } = await import('./loader');
+  return loadMcpServers({ cwd, homeDir: homedir() });
 }
 
 /**
  * 获取所有 MCP 服务器配置（带来源信息）
- *
- * @param cwd 项目目录
- * @param configDir 配置目录路径
  */
-export async function getMcpServerConfigsWithSource(cwd?: string, configDir?: string): Promise<McpServerConfigSource[]> {
+export async function getMcpServerConfigsWithSource(cwd?: string, _configDir?: string): Promise<McpServerConfigSource[]> {
   const effectiveCwd = cwd ?? process.cwd();
-  if (!configDir) throw new Error('getMcpServerConfigsWithSource: configDir is required');
-  const configs: McpServerConfigSource[] = [];
-  const dirs: string[] = [
-    getUserMcpConfigDir(configDir),
-    getProjectMcpConfigDir(effectiveCwd, configDir),
+  const paths: Array<{ source: 'user' | 'project'; filePath: string }> = [
+    { source: 'user', filePath: getUserMcpJsonPath() },
+    { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd) },
   ];
 
-  for (const dir of dirs) {
-    try {
-      const entries = await fs.readdir(dir);
-      for (const entry of entries) {
-        if (!entry.endsWith('.json')) continue;
-        try {
-          const filePath = path.join(dir, entry);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const data = JSON.parse(content) as Record<string, unknown>;
-          configs.push(fromSerializable(data, filePath, configDir));
-        } catch {
-          // skip corrupted files
-        }
-      }
-    } catch {
-      // directory not exists, skip
+  const configs: McpServerConfigSource[] = [];
+  for (const { source, filePath } of paths) {
+    const servers = await readDotAgentsFile(filePath);
+    for (const [, config] of servers) {
+      configs.push({ ...config, source, filePath });
     }
   }
-
   return configs;
 }
 
 /**
  * 获取单个 MCP 服务器配置
- *
- * @param name MCP 服务器名称
- * @param cwd 项目目录
- * @param configDir 配置目录路径
  */
-export async function getMcpServerConfig(name: string, cwd?: string, configDir?: string): Promise<McpServerConfig | null> {
-  const configs = await getMcpServerConfigsWithSource(cwd, configDir);
+export async function getMcpServerConfig(name: string, cwd?: string, _configDir?: string): Promise<McpServerConfig | null> {
+  const configs = await getMcpServerConfigs(cwd);
   return configs.find((c) => c.name === name) ?? null;
 }
 
 /**
  * 获取单个 MCP 服务器配置（带来源信息）
- *
- * @param name MCP 服务器名称
- * @param cwd 项目目录
- * @param configDir 配置目录路径
  */
 export async function getMcpServerConfigWithSource(name: string, cwd?: string, configDir?: string): Promise<McpServerConfigSource | null> {
   const configs = await getMcpServerConfigsWithSource(cwd, configDir);
@@ -176,81 +181,115 @@ export async function getMcpServerConfigWithSource(name: string, cwd?: string, c
 /**
  * 添加 MCP 服务器配置
  *
+ * 写入 .agents/mcp.json（Dot Agents 协议单文件格式）。
+ * 默认写入用户级（~/.agents/mcp.json）。
+ *
  * @param config MCP 服务器配置
- * @param cwd 当前工作目录
- * @param configDir 配置目录路径
- * @param targetDir 目标目录类型（'project' 或 'user'）
+ * @param cwd 当前工作目录（项目级写入时使用）
+ * @param _configDir 已废弃，保留向后兼容
+ * @param targetDir 目标层级（'user' | 'project'），默认 'user'
  */
 export async function addMcpServerConfig(
   config: McpServerConfig,
   cwd?: string,
-  configDir?: string,
-  targetDir: 'project' | 'user' = 'project',
+  _configDir?: string,
+  targetDir: 'user' | 'project' = 'user',
 ): Promise<McpServerConfigSource> {
-  if (!configDir) throw new Error('addMcpServerConfig: configDir is required');
-  const dir = targetDir === 'user'
-    ? getUserMcpConfigDir(configDir)
-    : getProjectMcpConfigDir(cwd ?? process.cwd(), configDir);
+  const targetPath = targetDir === 'user'
+    ? getUserMcpJsonPath()
+    : getProjectMcpJsonPath(cwd ?? process.cwd());
 
-  await ensureDir(dir);
-
-  const existing = await getMcpServerConfigWithSource(config.name, cwd);
+  // 检查是否已存在（跨 user 和 project 检查）
+  const existing = await getMcpServerConfig(config.name, cwd);
   if (existing) {
-    throw new Error(`MCP server "${config.name}" already exists at ${existing.filePath}`);
+    throw new Error(`MCP server "${config.name}" already exists`);
   }
 
-  const filePath = configFilePath(dir, config.name);
-  await fs.writeFile(filePath, JSON.stringify(toSerializable(config), null, 2), 'utf-8');
+  const servers = await readDotAgentsFile(targetPath);
+  servers.set(config.name, config);
+  await writeDotAgentsFile(targetPath, servers);
 
-  return fromSerializable(toSerializable(config), filePath, configDir);
+  return { ...config, source: targetDir, filePath: targetPath };
 }
 
 /**
  * 更新 MCP 服务器配置
+ *
+ * 在 .agents/mcp.json 中找到该服务器并更新。
+ * 先在项目级查找，再在用户级查找。
  */
 export async function updateMcpServerConfig(
   name: string,
   updates: Partial<McpServerConfig>,
   cwd?: string,
-  configDir?: string,
+  _configDir?: string,
 ): Promise<McpServerConfigSource | null> {
-  const existing = await getMcpServerConfigWithSource(name, cwd, configDir);
-  if (!existing) return null;
+  const effectiveCwd = cwd ?? process.cwd();
+  const paths: Array<{ source: 'user' | 'project'; filePath: string }> = [
+    { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd) },
+    { source: 'user', filePath: getUserMcpJsonPath() },
+  ];
 
-  const merged: McpServerConfig = {
-    ...existing,
-    ...updates,
-    transport: updates.transport ?? existing.transport,
-  };
+  for (const { source, filePath } of paths) {
+    const servers = await readDotAgentsFile(filePath);
+    const existing = servers.get(name);
+    if (!existing) continue;
 
-  // 如果名称改变，需要删除旧文件
-  if (merged.name !== name) {
-    await fs.unlink(existing.filePath);
-    const newFilePath = configFilePath(path.dirname(existing.filePath), merged.name);
-    await fs.writeFile(newFilePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
-    return fromSerializable(toSerializable(merged), newFilePath, configDir ?? '');
+    const merged: McpServerConfig = { ...existing, ...updates };
+    merged.transport = updates.transport ?? existing.transport;
+
+    if (merged.name !== name) {
+      servers.delete(name);
+    }
+    servers.set(merged.name, merged);
+    await writeDotAgentsFile(filePath, servers);
+
+    return { ...merged, source, filePath };
   }
 
-  await fs.writeFile(existing.filePath, JSON.stringify(toSerializable(merged), null, 2), 'utf-8');
-
-  return fromSerializable(toSerializable(merged), existing.filePath, configDir ?? '');
+  return null;
 }
 
 /**
  * 删除 MCP 服务器配置
  *
- * @param name MCP 服务器名称
- * @param cwd 当前工作目录
- * @param configDir 配置目录路径
+ * 在 .agents/mcp.json 中找到该服务器并删除。
+ * 先在项目级查找，再在用户级查找。
  */
-export async function deleteMcpServerConfig(name: string, cwd?: string, configDir?: string): Promise<boolean> {
-  const existing = await getMcpServerConfigWithSource(name, cwd, configDir);
-  if (!existing) return false;
+export async function deleteMcpServerConfig(name: string, cwd?: string, _configDir?: string): Promise<boolean> {
+  const effectiveCwd = cwd ?? process.cwd();
+  const paths = [
+    getProjectMcpJsonPath(effectiveCwd),
+    getUserMcpJsonPath(),
+  ];
 
-  try {
-    await fs.unlink(existing.filePath);
+  for (const filePath of paths) {
+    const servers = await readDotAgentsFile(filePath);
+    if (!servers.has(name)) continue;
+
+    servers.delete(name);
+    await writeDotAgentsFile(filePath, servers);
     return true;
-  } catch {
-    return false;
   }
+
+  return false;
+}
+
+// ============================================================
+// 已废弃：旧 mcps/*.json 子目录路径
+// ============================================================
+
+/** @deprecated Dot Agents 协议使用 ~/.agents/mcp.json 单文件 */
+export function getUserMcpConfigDir(configDir: string): string {
+  return path.join(configDir, 'mcps');
+}
+
+/** @deprecated Dot Agents 协议使用 {cwd}/.agents/mcp.json 单文件 */
+export function getProjectMcpConfigDir(cwd: string, configDir: string): string {
+  return path.join(cwd, path.basename(configDir), 'mcps');
+}
+
+/** @deprecated */
+export function getDefaultMcpConfigDir(configDir: string): string {
+  return getProjectMcpConfigDir(process.cwd(), configDir);
 }

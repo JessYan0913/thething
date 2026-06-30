@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTheme } from "next-themes"
+import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view"
+import { EditorState, Compartment } from "@codemirror/state"
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
+import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, indentOnInput } from "@codemirror/language"
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete"
+import { searchKeymap, highlightSelectionMatches } from "@codemirror/search"
+import { lintKeymap } from "@codemirror/lint"
+import { json } from "@codemirror/lang-json"
+import { oneDark } from "@codemirror/theme-one-dark"
 import { PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, CopyIcon, CodeIcon, PencilIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -24,6 +33,9 @@ interface McpServerView {
   url: string
   headers: string
   enabled: boolean
+  autoConnect?: boolean
+  alwaysLoad?: boolean
+  connectionTimeout?: number
   status: 'connected' | 'disconnected' | 'error'
   toolCount: number
   tools: Array<{ name: string; description?: string }>
@@ -42,6 +54,9 @@ function configToView(config: Record<string, unknown>, snapshotEntry?: { connect
     url: (type === 'sse' || type === 'http' ? ((transport?.url ?? '') as string) : '') as string,
     headers: ((type === 'sse' || type === 'http') && transport?.headers ? JSON.stringify(transport.headers, null, 2) : '') as string,
     enabled: (config.enabled ?? true) as boolean,
+    autoConnect: config.autoConnect as boolean | undefined,
+    alwaysLoad: config.alwaysLoad as boolean | undefined,
+    connectionTimeout: config.connectionTimeout as number | undefined,
     status: snapshotEntry ? (snapshotEntry.connected ? 'connected' : 'error') : 'disconnected',
     toolCount: snapshotEntry?.toolCount ?? 0,
     tools: snapshotEntry?.tools ?? [],
@@ -81,6 +96,14 @@ export default function McpSettingsPage() {
 
   useEffect(() => { loadServers() }, [loadServers])
 
+  // 自动轮询：有服务器未连接时每 5s 拉一次 snapshot
+  useEffect(() => {
+    const hasDisconnected = servers.some(s => s.status === 'disconnected' || s.status === 'error')
+    if (!hasDisconnected) return
+    const interval = setInterval(loadServers, 5000)
+    return () => clearInterval(interval)
+  }, [servers, loadServers])
+
   const handleJsonImport = useCallback(async () => {
     setJsonError('')
     let parsed: Record<string, unknown>
@@ -91,7 +114,33 @@ export default function McpSettingsPage() {
       return
     }
 
-    // 支持两种格式: { mcpServers: {...} } 或直接 { name: {...} }
+    // 支持三种格式:
+    //   1. { mcpServers: { name: { command, ... } } } (Dot Agents)
+    //   2. { name: { command, url, transport, ... } }   (单服务器 Dot Agents)
+    //   3. { name, transport: { type, url, ... } }       (TheThing API 格式)
+
+    // 情况 3: 单个 TheThing 格式服务器
+    if (typeof parsed.name === 'string' && parsed.transport && typeof parsed.transport === 'object' && 'type' in (parsed.transport as object)) {
+      try {
+        const res = await fetch('/api/mcp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed),
+        })
+        if (res.ok) {
+          setJsonInput('')
+          await loadServers()
+        } else {
+          const err = await res.json()
+          setJsonError(err.error ?? '添加失败')
+        }
+      } catch {
+        setJsonError('网络错误，请重试')
+      }
+      return
+    }
+
+    // 情况 1 & 2: Dot Agents 扁平格式
     const serverBlocks: Record<string, Record<string, unknown>> =
       parsed.mcpServers && typeof parsed.mcpServers === 'object'
         ? parsed.mcpServers as Record<string, Record<string, unknown>>
@@ -107,15 +156,33 @@ export default function McpSettingsPage() {
     let failed = 0
     const results = await Promise.all(
       entries.map(async ([name, block]) => {
-        const transport = block.command
-          ? { type: 'stdio' as const, command: String(block.command), args: Array.isArray(block.args) ? block.args : [], env: block.env ?? {} }
-          : { type: 'sse' as const, url: String(block.url ?? '') }
+        // 读取传输类型（Dot Agents 扁平格式：transport 为字符串）
+        const dotTransport = typeof block.transport === 'string' ? (block.transport as string) : null
+
+        const isStdio = !!(block.command) || dotTransport === 'stdio'
+
+        let transport: Record<string, unknown>
+        if (isStdio) {
+          transport = {
+            type: 'stdio',
+            command: String(block.command ?? ''),
+            args: Array.isArray(block.args) ? block.args : [],
+            ...(block.env ? { env: block.env } : {}),
+          }
+        } else {
+          const tType = (dotTransport === 'http' || dotTransport === 'streamable-http') ? dotTransport : 'sse'
+          transport = {
+            type: tType,
+            url: String(block.url ?? ''),
+            ...(block.headers ? { headers: block.headers } : {}),
+          }
+        }
 
         try {
           const res = await fetch('/api/mcp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, transport, enabled: true }),
+            body: JSON.stringify({ name, transport, enabled: block.enabled !== false }),
           })
           return res.ok
         } catch {
@@ -178,24 +245,26 @@ export default function McpSettingsPage() {
 
     const nameChanged = editForm.name !== editServer.name
 
-    // Build transport
-    let transport: Record<string, unknown>
-    if (editForm.transportType === 'stdio') {
-      transport = {
-        type: 'stdio',
-        command: editForm.command,
-        args: editForm.args ? editForm.args.split(/\s+/).filter(Boolean) : [],
-        ...(editForm.env ? { env: JSON.parse(editForm.env) } : {}),
-      }
-    } else {
-      transport = {
-        type: editForm.transportType,
-        url: editForm.url,
-        ...(editForm.headers ? { headers: JSON.parse(editForm.headers) } : {}),
-      }
-    }
-
     try {
+      // Build transport
+      let transport: Record<string, unknown>
+      if (editForm.transportType === 'stdio') {
+        const env = editForm.env ? JSON.parse(editForm.env) : undefined
+        transport = {
+          type: 'stdio',
+          command: editForm.command,
+          args: editForm.args ? editForm.args.split(/\s+/).filter(Boolean) : [],
+          ...(env ? { env } : {}),
+        }
+      } else {
+        const headers = editForm.headers ? JSON.parse(editForm.headers) : undefined
+        transport = {
+          type: editForm.transportType,
+          url: editForm.url,
+          ...(headers ? { headers } : {}),
+        }
+      }
+
       if (nameChanged) {
         // Delete old, create new
         await fetch(`/api/mcp?name=${encodeURIComponent(editServer.name)}`, { method: 'DELETE' })
@@ -274,11 +343,10 @@ export default function McpSettingsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Textarea
-                className="font-mono text-xs min-h-[240px]"
-                placeholder={`{\n  "mcpServers": {\n    "amap-maps": {\n      "command": "npx",\n      "args": ["-y", "@amap/amap-maps-mcp-server"],\n      "env": {\n        "AMAP_MAPS_API_KEY": "your-key"\n      }\n    }\n  }\n}`}
+              <JsonEditor
+                className="border rounded-md overflow-hidden font-mono text-xs"
                 value={jsonInput}
-                onChange={(e) => { setJsonInput(e.target.value); setJsonError('') }}
+                onChange={(v) => { setJsonInput(v); setJsonError('') }}
               />
 
               {jsonError && (
@@ -343,8 +411,8 @@ export default function McpSettingsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <Textarea
-            className="font-mono text-xs min-h-[320px]"
+          <JsonEditor
+            className="border rounded-md overflow-hidden font-mono text-xs min-h-[320px]"
             value={editForm ? JSON.stringify({
               mcpServers: {
                 [editForm.name]: editForm.transportType === 'stdio'
@@ -359,10 +427,11 @@ export default function McpSettingsPage() {
                     },
               },
             }, null, 2) : ''}
-            onChange={(e) => {
-              // Parse back to update editForm
+            onChange={(v) => {
+              // 编辑中仅静默更新 editForm，不显示错误
+              // 非法 JSON 期间保留上次有效状态，保存时再验证
               try {
-                const parsed = JSON.parse(e.target.value)
+                const parsed = JSON.parse(v)
                 const blocks = parsed.mcpServers ?? parsed
                 const entries = Object.entries(blocks)
                 if (entries.length > 0) {
@@ -382,7 +451,7 @@ export default function McpSettingsPage() {
                   setEditError('')
                 }
               } catch {
-                setEditError('JSON 格式错误')
+                // JSON 不完整期间，静默忽略
               }
             }}
           />
@@ -473,6 +542,18 @@ function ServerCard({
         <Badge variant="outline" className="text-xs">
           {server.transportType === 'stdio' ? 'Stdio' : server.transportType.toUpperCase()}
         </Badge>
+        {server.autoConnect === false ? (
+          <Badge variant="secondary" className="text-xs text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+            手动连接
+          </Badge>
+        ) : server.alwaysLoad ? (
+          <Badge variant="secondary" className="text-xs text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+            启动加载
+          </Badge>
+        ) : null}
+        {server.connectionTimeout && server.connectionTimeout !== 10000 && (
+          <span className="text-xs">超时: {server.connectionTimeout}ms</span>
+        )}
         {server.transportType === 'stdio' && server.command && (
           <span className="truncate max-w-[300px]">{server.command} {server.args}</span>
         )}
@@ -529,4 +610,106 @@ function StatusBadge({ status }: { status: McpServerView['status'] }) {
     case 'disconnected':
       return <Badge variant="secondary" className="text-xs">未连接</Badge>
   }
+}
+
+// ============================================================
+// JsonEditor — 可编辑的 JSON 编辑器（CodeMirror）
+// ============================================================
+
+const lightJsonTheme = EditorView.theme({
+  "&": { backgroundColor: "#ffffff", color: "#1a1a1a" },
+  ".cm-gutters": { backgroundColor: "#f8f8f8", color: "#999", borderRight: "1px solid #e5e5e5" },
+  ".cm-activeLine": { backgroundColor: "#f5f5f5" },
+  ".cm-activeLineGutter": { backgroundColor: "#f0f0f0" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "#d4d4d4" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#1a1a1a" },
+  ".cm-foldPlaceholder": { backgroundColor: "#e5e5e5", border: "none", color: "#666" },
+  "&.cm-editor.cm-focused": { outline: "none" },
+}, { dark: false })
+
+function JsonEditor({ value, onChange, placeholder: ph, className }: {
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  className?: string
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const { theme } = useTheme()
+  const isDark = theme === "dark"
+  const themeCompartment = useRef(new Compartment())
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        onChange(update.state.doc.toString())
+      }
+    })
+
+    const state = EditorState.create({
+      doc: value,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLine(),
+        history(),
+        foldGutter(),
+        indentOnInput(),
+        bracketMatching(),
+        closeBrackets(),
+        highlightSelectionMatches(),
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          ...lintKeymap,
+        ]),
+        syntaxHighlighting(defaultHighlightStyle),
+        json(),
+        EditorView.lineWrapping,
+        EditorState.tabSize.of(2),
+        updateListener,
+        themeCompartment.current.of(isDark ? oneDark : lightJsonTheme),
+      ],
+    })
+
+    viewRef.current = new EditorView({ state, parent: containerRef.current })
+
+    return () => {
+      viewRef.current?.destroy()
+      viewRef.current = null
+    }
+    // 只在首次挂载时创建编辑器
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 同步外部 value 变化
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    const current = view.state.doc.toString()
+    if (current !== value) {
+      view.dispatch({
+        changes: { from: 0, to: current.length, insert: value },
+      })
+    }
+  }, [value])
+
+  // 同步主题变化
+  useEffect(() => {
+    if (!viewRef.current) return
+    viewRef.current.dispatch({
+      effects: themeCompartment.current.reconfigure(isDark ? oneDark : lightJsonTheme),
+    })
+  }, [isDark])
+
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      style={{ minHeight: "240px" }}
+    />
+  )
 }

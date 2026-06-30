@@ -71,7 +71,7 @@ async function loadDotAgentsMcpJson(homeDir?: string, cwd?: string): Promise<Mcp
               args: serverConfig.args as string[] | undefined,
               env: serverConfig.env as Record<string, string> | undefined,
             };
-          } else if (tType === 'sse' || tType === 'http') {
+          } else if (tType === 'sse' || tType === 'http' || tType === 'streamable-http') {
             transport = {
               type: tType,
               url: serverConfig.url as string,
@@ -90,6 +90,11 @@ async function loadDotAgentsMcpJson(homeDir?: string, cwd?: string): Promise<Mcp
           name,
           transport,
           enabled: serverConfig?.enabled !== false,
+          autoConnect: serverConfig?.autoConnect as boolean | undefined,
+          alwaysLoad: serverConfig?.alwaysLoad as boolean | undefined,
+          connectionTimeout: serverConfig?.connectionTimeout as number | undefined,
+          tools: serverConfig?.tools as { include?: string[]; exclude?: string[] } | undefined,
+          elicitation: serverConfig?.elicitation as { enabled: boolean } | undefined,
           sourcePath: mcpJsonPath,
         });
       }

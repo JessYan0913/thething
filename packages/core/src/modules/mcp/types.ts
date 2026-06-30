@@ -4,7 +4,7 @@ import { z } from 'zod';
 // MCP Transport Types
 // ============================================================
 
-export type McpTransportType = 'sse' | 'http' | 'stdio';
+export type McpTransportType = 'sse' | 'http' | 'stdio' | 'streamable-http';
 
 // ============================================================
 // MCP Server Config (运行时类型)
@@ -18,8 +18,15 @@ export interface McpServerConfig {
   transport:
     | { type: 'sse'; url: string; headers?: Record<string, string> }
     | { type: 'http'; url: string; headers?: Record<string, string> }
+    | { type: 'streamable-http'; url: string; headers?: Record<string, string> }
     | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string> };
   enabled?: boolean;
+  /** 是否在启动时自动连接，默认 true。设为 false 则注册但不连接，需要时手动启用 */
+  autoConnect?: boolean;
+  /** 是否阻塞启动直到连接成功，默认 false。仅对 autoConnect 为 true 的服务器有效 */
+  alwaysLoad?: boolean;
+  /** 连接超时（毫秒），默认 10000。0 表示不超时 */
+  connectionTimeout?: number;
   tools?: {
     include?: string[];
     exclude?: string[];
@@ -114,10 +121,17 @@ const HttpTransportSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
+const StreamableHttpTransportSchema = z.object({
+  type: z.literal('streamable-http'),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()).optional(),
+});
+
 const TransportSchema = z.union([
   StdioTransportSchema,
   SseTransportSchema,
   HttpTransportSchema,
+  StreamableHttpTransportSchema,
 ]);
 
 const ToolsFilterSchema = z.object({
@@ -133,6 +147,9 @@ export const McpServerConfigSchema = z.object({
   name: z.string().min(1),
   transport: TransportSchema,
   enabled: z.boolean().default(true),
+  autoConnect: z.boolean().optional(),
+  alwaysLoad: z.boolean().optional(),
+  connectionTimeout: z.number().int().positive().optional(),
   tools: ToolsFilterSchema,
   elicitation: ElicitationSchema,
 });

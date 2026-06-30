@@ -164,9 +164,10 @@ async function initializeRuntime(): Promise<CoreRuntime> {
 
   context = await createContext({ runtime });
 
-  // 启动时主动连接所有 MCP 服务，保持与运行时一致的状态
+  // 后台异步连接所有 MCP 服务，不阻塞启动流程。
+  // 连接状态通过 registry.snapshot() 由调用方按需获取。
   if (context.mcpRegistry) {
-    await context.mcpRegistry.connectAll().catch(() => {});
+    context.mcpRegistry.connectAll().catch(() => {});
   }
 
   // Wire up connector inbound: bind AI agent handler to Feishu/WeChat webhooks
@@ -208,6 +209,13 @@ export async function getServerRuntime(): Promise<CoreRuntime> {
     }
   }
   return runtime;
+}
+
+/**
+ * 获取当前缓存的 AppContext，未初始化时返回 null（不触发初始化）。
+ */
+export function getServerContextIfReady(): AppContext | null {
+  return context;
 }
 
 export async function getServerContext(): Promise<AppContext> {

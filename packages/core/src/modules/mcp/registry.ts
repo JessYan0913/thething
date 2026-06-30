@@ -27,12 +27,34 @@ export class McpRegistry {
 
   async connectAll(): Promise<void> {
     const enabledServers = this._servers.filter((s) => s.enabled !== false);
-    const results = await Promise.allSettled(
-      enabledServers.map((server) => this.connect(server)),
+
+    // 1. Always-load servers — 阻塞直到连接成功（受超时保护）
+    const alwaysLoadServers = enabledServers.filter(
+      (s) => s.alwaysLoad && s.autoConnect !== false,
     );
-    const failed = results.filter((r) => r.status === 'rejected');
-    if (failed.length > 0) {
-      logger.warn('MCP', `${failed.length}/${enabledServers.length} server(s) failed to connect`);
+    if (alwaysLoadServers.length > 0) {
+      const results = await Promise.allSettled(
+        alwaysLoadServers.map((server) => this.connect(server)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        logger.warn('MCP', `${failed.length}/${alwaysLoadServers.length} alwaysLoad server(s) failed to connect`);
+      }
+    }
+
+    // 2. Auto-connect 服务器 — 后台异步，不阻塞
+    const autoConnectServers = enabledServers.filter(
+      (s) => !s.alwaysLoad && s.autoConnect !== false,
+    );
+    if (autoConnectServers.length > 0) {
+      Promise.allSettled(
+        autoConnectServers.map((server) => this.connect(server)),
+      ).then((results) => {
+        const failed = results.filter((r) => r.status === 'rejected');
+        if (failed.length > 0) {
+          logger.warn('MCP', `${failed.length}/${autoConnectServers.length} server(s) failed to connect`);
+        }
+      });
     }
   }
 
@@ -47,10 +69,25 @@ export class McpRegistry {
           ? await this._createStdioTransport(config.transport)
           : (config.transport as { type: 'sse' | 'http'; url: string; headers?: Record<string, string> });
 
-      const client = await createMCPClient({
-        transport: transport as McpTransport,
-        capabilities: config.elicitation?.enabled ? { elicitation: {} } : undefined,
-      });
+      // 应用连接超时（默认 10s，设为 0 则不超时）
+      const timeoutMs = config.connectionTimeout ?? 10_000;
+      let client: MCPClient;
+      if (timeoutMs > 0) {
+        client = await Promise.race([
+          createMCPClient({
+            transport: transport as McpTransport,
+            capabilities: config.elicitation?.enabled ? { elicitation: {} } : undefined,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Connection timed out after ${timeoutMs}ms`)), timeoutMs),
+          ),
+        ]);
+      } else {
+        client = await createMCPClient({
+          transport: transport as McpTransport,
+          capabilities: config.elicitation?.enabled ? { elicitation: {} } : undefined,
+        });
+      }
 
       if (config.elicitation?.enabled && config.elicitation.handler) {
         const { ElicitationRequestSchema } = await import('@ai-sdk/mcp');
@@ -156,10 +193,22 @@ export class McpRegistry {
     env?: Record<string, string>;
   }): Promise<StdioClientTransport> {
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+
+    // 合并代理环境变量（@modelcontextprotocol/sdk 默认只继承安全变量，不含代理）
+    const proxyVars = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy'];
+    const inheritedProxy: Record<string, string> = {};
+    for (const key of proxyVars) {
+      const val = process.env[key];
+      if (val) inheritedProxy[key] = val;
+    }
+
     return new StdioClientTransport({
       command: transport.command,
       args: transport.args ?? [],
-      env: transport.env,
+      env: {
+        ...inheritedProxy,
+        ...transport.env,
+      },
     });
   }
 
