@@ -57,9 +57,38 @@ async function loadDotAgentsMcpJson(homeDir?: string, cwd?: string): Promise<Mcp
 
       for (const [name, config] of Object.entries(parsed.mcpServers)) {
         const serverConfig = config as Record<string, unknown>;
+
+        // 标准化 Dot Agents 扁平格式 → TheThing 结构化 transport
+        // Dot Agents: { command, args, env, transport: "stdio" }
+        // TheThing:  { transport: { type: "stdio", command, args, env } }
+        let transport: McpServerConfig['transport'];
+        if (typeof serverConfig.transport === 'string') {
+          const tType = serverConfig.transport as string;
+          if (tType === 'stdio') {
+            transport = {
+              type: 'stdio',
+              command: serverConfig.command as string,
+              args: serverConfig.args as string[] | undefined,
+              env: serverConfig.env as Record<string, string> | undefined,
+            };
+          } else if (tType === 'sse' || tType === 'http') {
+            transport = {
+              type: tType,
+              url: serverConfig.url as string,
+              headers: serverConfig.headers as Record<string, string> | undefined,
+            };
+          } else {
+            logger.warn('McpLoader', `Skipping "${name}": unknown transport type "${tType}"`);
+            continue;
+          }
+        } else {
+          // 已经是结构化格式
+          transport = serverConfig as McpServerConfig['transport'];
+        }
+
         merged.set(name, {
           name,
-          transport: serverConfig as McpServerConfig['transport'],
+          transport,
           enabled: serverConfig?.enabled !== false,
           sourcePath: mcpJsonPath,
         });

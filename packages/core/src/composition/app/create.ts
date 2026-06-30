@@ -24,6 +24,40 @@ import { resolveModelAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
 import { getPrimaryWikiDir } from '../../modules/wiki'
 import { loadWikiContextForAgent } from '../../modules/agent/context/wiki-context'
+import type { McpRegistry, McpServerConfig } from '../../modules/mcp'
+
+/**
+ * 构建 MCP 工具列表文本，注入系统提示供 Agent 直接查看可用工具。
+ */
+function formatMcpServerTools(
+  mcps: readonly McpServerConfig[],
+  mcpRegistry?: McpRegistry,
+): string | undefined {
+  if (!mcps || mcps.length === 0) return undefined
+
+  const lines: string[] = []
+  const maxDescLen = 80
+
+  if (mcpRegistry) {
+    const snapshot = mcpRegistry.snapshot()
+    for (const server of snapshot.servers) {
+      const toolCount = server.tools.length
+      lines.push(`📡 ${server.name}${!server.connected && toolCount === 0 ? ' (connecting...)' : ''}`)
+      for (const tool of server.tools) {
+        const desc = tool.description
+          ? ` — ${tool.description.length > maxDescLen ? tool.description.slice(0, maxDescLen - 3) + '…' : tool.description}`
+          : ''
+        lines.push(`   ├─ ${tool.name}${desc}`)
+      }
+    }
+  } else {
+    for (const mcp of mcps) {
+      lines.push(`📡 ${mcp.name} (not connected)`)
+    }
+  }
+
+  return lines.join('\n')
+}
 
 /**
  * 创建 Agent。消费 AppContext，不再内部重新加载资源。
@@ -109,6 +143,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     ? { userId, recalledContent: wikiContext?.recalledContent || '' }
     : null
 
+  // 构建 MCP 工具列表文本，让 Agent 在系统提示中直接看到可用工具
+  const mcpServerTools = formatMcpServerTools(context.mcps, context.mcpRegistry)
+
   const instructions = await buildAgentInstructions(wikiPromptContext, {
     cwd: projectRoot,
     wikiBaseDir,
@@ -120,6 +157,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       isNewConversation: options.conversationMeta.isNewConversation,
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
     } : undefined,
+    mcpServerTools,
     // 合并 agent 定义的 instructions 和传入的 customInstructions
     customInstructions: [selectedAgentDef?.instructions, options.customInstructions].filter(Boolean).join('\n\n'),
     // 当选择自定义 Agent 时，跳过默认 identity section

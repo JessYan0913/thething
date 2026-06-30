@@ -155,6 +155,28 @@ Skills provide pre-built, tested workflows. Use the \`skill\` tool to discover a
     cacheStrategy: "session",
   },
   {
+    name: "mcp-tools",
+    create: (options) => {
+      const serverList = options.mcpServerTools
+      const listBlock = serverList
+        ? `\nAvailable servers and tools:\n${serverList}\n`
+        : ''
+
+      return {
+        name: "mcp-tools",
+        content: `## MCP Tools
+
+MCP (Model Context Protocol) provides access to external services.${listBlock}
+Each MCP tool is registered as a native tool with the \`mcp__serverName__toolName\` naming convention.
+
+**Matching principle:** If the user's intent requires real-time, domain-specific, or external data, MCP tools may be relevant.`,
+        cacheStrategy: "session" as const,
+        priority: 31,
+      }
+    },
+    cacheStrategy: "session",
+  },
+  {
     name: "wiki-guidelines",
     create: async (options) => {
       if (options.wikiContext?.userId) {

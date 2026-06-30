@@ -22,7 +22,7 @@ import {
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
-import { createMcpRegistry, type McpRegistry, wrapMcpToolsWithOutputHandler } from '../../modules/mcp'
+import { createMcpRegistry, type McpRegistry, wrapMcpToolWithOutputHandler } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
 import type { LoadToolsConfig } from './types'
 
@@ -143,27 +143,32 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         const sharedRegistry = config.mcpRegistry
         const activeRegistry = sharedRegistry ?? createMcpRegistry(mcpConfigs)
         await activeRegistry.connectAll()
-        const mcpTools = activeRegistry.getAllTools()
 
-        const wrappedMcpTools = wrapMcpToolsWithOutputHandler(
-          mcpTools as Record<string, Tool>,
-          {
-            sessionId: config.conversationId,
-            dataDir: config.sessionState.layout.dataDir,
-            contentReplacementState: config.sessionState.contentReplacementState,
-            toolOutputConfig: config.sessionState.toolOutputConfig,
-          }
-        )
-
-        for (const [toolName, toolDef] of Object.entries(wrappedMcpTools)) {
-          if (!(toolName in tools)) {
-            tools[toolName] = toolDef
+        // Claude Code 风格：直接注册每个 MCP 工具为独立 tool
+        // 命名 mcp__serverName__toolName → 命名空间隔离，防冲突，可路由
+        for (const [serverName, connection] of activeRegistry.connections) {
+          if (!connection.tools) continue
+          for (const [toolName, toolDef] of Object.entries(connection.tools)) {
+            const qualifiedName = `mcp__${serverName}__${toolName}`
+            if (!(qualifiedName in tools)) {
+              tools[qualifiedName] = wrapMcpToolWithOutputHandler(
+                toolDef as Tool,
+                qualifiedName,
+                {
+                  sessionId: config.conversationId,
+                  dataDir: config.sessionState.layout.dataDir,
+                  contentReplacementState: config.sessionState.contentReplacementState,
+                  toolOutputConfig: config.sessionState.toolOutputConfig,
+                },
+              )
+            }
           }
         }
+
         const mcpSnapshot = activeRegistry.snapshot()
         const connected = mcpSnapshot.servers.filter(s => s.connected)
         const failed = mcpSnapshot.servers.filter(s => !s.connected && s.enabled)
-        logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools from ${connected.length} server(s)${sharedRegistry ? ' (reused)' : ''}: ${Object.keys(mcpTools).join(', ')}`)
+        logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools from ${connected.length} server(s)${sharedRegistry ? ' (reused)' : ''}`)
         if (failed.length > 0) {
           logger.warn('MCP', `Failed servers: ${failed.map(s => `${s.name}(${s.error})`).join(', ')}`)
         }

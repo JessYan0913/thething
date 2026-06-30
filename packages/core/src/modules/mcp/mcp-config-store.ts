@@ -6,6 +6,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { homedir } from 'os';
 import { scanMcpDirs } from './loader';
 import { computeUserConfigDir, computeProjectConfigDir } from '../../primitives/paths';
 import type { McpServerConfig, McpServerConfigSource } from './types';
@@ -108,7 +109,7 @@ function fromSerializable(
  * @param cwd 项目目录
  */
 export async function getMcpServerConfigs(cwd?: string, configDir?: string): Promise<McpServerConfig[]> {
-  return scanMcpDirs(cwd, { configDir });
+  return scanMcpDirs(cwd, { configDir, homeDir: homedir() });
 }
 
 /**

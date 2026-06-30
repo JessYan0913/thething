@@ -27,6 +27,8 @@ export interface BuildInstructionsOptions {
   }
   /** 自定义指令（如 Agent 定义的 instructions），追加到系统提示词末尾 */
   customInstructions?: string
+  /** 已连接的 MCP 服务器及工具列表文本 */
+  mcpServerTools?: string
   /** 要跳过的 section 名称列表（如 ['identity'] 用于自定义 Agent） */
   excludeSections?: string[]
 }
@@ -45,6 +47,7 @@ export async function buildAgentInstructions(
     wikiContext: wikiContext ?? undefined,
     wikiBaseDir: options?.wikiBaseDir,
     customInstructions: options?.customInstructions ?? null,
+    mcpServerTools: options?.mcpServerTools,
     excludeSections: options?.excludeSections,
   })
 

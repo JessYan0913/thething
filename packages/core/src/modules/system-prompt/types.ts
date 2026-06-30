@@ -52,6 +52,9 @@ export interface BuildSystemPromptOptions {
   /** 知识库根目录 */
   wikiBaseDir?: string;
 
+  /** 已连接的 MCP 服务器及工具列表文本（由调用方格式化） */
+  mcpServerTools?: string;
+
   // 保留原有选项
   override?: string | null;
   customInstructions?: string | null;
