@@ -20,7 +20,7 @@ export class SQLiteCronJobStore implements CronJobStore {
 
   create(input: CronJobCreateInput): CronJob {
     const now = Date.now()
-    const id = nanoid()
+    const id = input.id ?? nanoid()
     const nextRunAt = input.nextRunAt ?? nextOccurrence(input.schedule, new Date()).getTime()
 
     this.db.prepare(`
@@ -75,6 +75,23 @@ export class SQLiteCronJobStore implements CronJobStore {
   delete(id: string): boolean {
     const result = this.db.prepare('DELETE FROM cron_jobs WHERE id = ?').run(id) as unknown as { changes?: number }
     return (result.changes ?? 0) > 0
+  }
+
+  deleteByMetadata(key: string, value: unknown): number {
+    // Use JSON extract to find matching jobs, fallback to in-memory iteration
+    let rows: { id: string }[]
+    try {
+      rows = this.db.prepare(
+        `SELECT id FROM cron_jobs WHERE json_extract(metadata, '$."${key}"') = ?`,
+      ).all(String(value)) as { id: string }[]
+    } catch {
+      // Fallback for SQLite without JSON1 extension
+      rows = this.listAll()
+        .filter(j => j.metadata?.[key] === value)
+        .map(j => ({ id: j.id }))
+    }
+    for (const row of rows) this.delete(row.id)
+    return rows.length
   }
 
   getById(id: string): CronJob | null {

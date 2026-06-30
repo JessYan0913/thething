@@ -27,6 +27,7 @@ export interface CronExecution {
 }
 
 export type CronJobCreateInput = Omit<CronJob, 'id' | 'createdAt' | 'updatedAt' | 'lastRunAt' | 'nextRunAt'> & {
+  id?: string
   nextRunAt?: number
 }
 
@@ -39,6 +40,7 @@ export interface CronJobStore {
   create(input: CronJobCreateInput): CronJob
   update(id: string, patch: CronJobUpdateInput): CronJob | null
   delete(id: string): boolean
+  deleteByMetadata(key: string, value: unknown): number
   getById(id: string): CronJob | null
   listAll(): CronJob[]
   listDue(now: number): CronJob[]

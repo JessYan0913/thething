@@ -16,7 +16,7 @@ import {
   type ConnectorRegistry,
 } from '../modules/connector';
 import type { ConnectorInboundRuntime } from '../modules/connector/inbound/types';
-import { CronScheduler, SQLiteCronJobStore, type CronJobStore } from '../modules/cron';
+import { CronScheduler, type CronJobStore } from '../modules/cron';
 import { createPricingResolver, type PricingResolver } from '../services/model/pricing';
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from '../services/config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from '../services/config/behavior';
@@ -206,10 +206,20 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   let cronStore: CronJobStore | null = null;
   let cronScheduler: CronScheduler | null = null;
   if (connectorRuntime.inbound) {
-    cronStore = new SQLiteCronJobStore({ dataDir: layout.dataDir });
+    const { InMemoryCronJobStore } = await import('../modules/cron/in-memory-store');
+    cronStore = new InMemoryCronJobStore({ historyDir: path.join(layout.dataDir, 'task-history') });
     cronScheduler = new CronScheduler({
       store: cronStore,
       inbox: connectorRuntime.inbound.inbox,
+    });
+
+    // 从 .agents/tasks/<name>/task.md 加载声明式任务定义（Dot Agents 协议）
+    const { loadTasksFromFiles } = await import('../modules/cron/task-loader');
+    const { default: os } = await import('os');
+    await loadTasksFromFiles({
+      store: cronStore,
+      userDir: path.join(os.homedir(), '.agents', 'tasks'),
+      projectDir: path.join(layout.resourceRoot, '.agents', 'tasks'),
     });
   }
 

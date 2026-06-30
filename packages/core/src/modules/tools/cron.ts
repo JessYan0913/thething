@@ -7,9 +7,13 @@ export interface CronToolOptions {
   cronStore: CronJobStore
 }
 
+function isFileBacked(job: { metadata?: Record<string, unknown> } | null): boolean {
+  return job?.metadata?.source === 'task-file'
+}
+
 export function createCronTool(options: CronToolOptions) {
   return tool({
-    description: '管理定时自动化任务。可以创建、查看、更新、删除定时任务，任务会按 cron 表达式自动触发 Agent 执行。',
+    description: '管理定时自动化任务。可以创建、查看、更新、删除定时任务，任务会按 cron 表达式自动触发 Agent 执行。\n\n注意：来源为 file 的任务由 .agents/tasks/<name>/task.md 文件定义，修改请直接编辑文件，重启后生效。',
     inputSchema: z.object({
       action: z.enum(['create', 'list', 'get', 'update', 'delete', 'enable', 'disable'])
         .describe('操作类型'),
@@ -70,6 +74,7 @@ export function createCronTool(options: CronToolOptions) {
               schedule: j.schedule,
               prompt: j.prompt.slice(0, 100) + (j.prompt.length > 100 ? '...' : ''),
               enabled: j.enabled,
+              source: j.metadata?.source === 'task-file' ? 'file' : 'sqlite',
               lastRunAt: j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : null,
               nextRunAt: new Date(j.nextRunAt).toLocaleString(),
             })),
@@ -96,6 +101,18 @@ export function createCronTool(options: CronToolOptions) {
         case 'update': {
           if (!input.id) return { error: true, message: '缺少 id 参数' }
 
+          const existing = cronStore.getById(input.id)
+          if (!existing) return { error: true, message: `任务 ${input.id} 不存在` }
+
+          if (isFileBacked(existing)) {
+            return {
+              error: true,
+              message: `任务「${existing.name}」由 .agents/tasks/ 文件定义，修改请直接编辑 task.md 文件，重启后生效。当前修改不会被持久化。`,
+              source: 'file',
+              filePath: existing.metadata?.filePath,
+            }
+          }
+
           if (input.schedule) {
             const validationError = validate(input.schedule)
             if (validationError) {
@@ -103,43 +120,80 @@ export function createCronTool(options: CronToolOptions) {
             }
           }
 
-          const patch: Record<string, unknown> = {}
-          if (input.name !== undefined) patch.name = input.name
-          if (input.schedule !== undefined) patch.schedule = input.schedule
-          if (input.prompt !== undefined) patch.prompt = input.prompt
-          if (input.agentType !== undefined) patch.agentType = input.agentType
-          if (input.conversationId !== undefined) patch.conversationId = input.conversationId
-          if (input.enabled !== undefined) patch.enabled = input.enabled
+          const updatePatch: Record<string, unknown> = {}
+          if (input.name !== undefined) updatePatch.name = input.name
+          if (input.schedule !== undefined) updatePatch.schedule = input.schedule
+          if (input.prompt !== undefined) updatePatch.prompt = input.prompt
+          if (input.agentType !== undefined) updatePatch.agentType = input.agentType
+          if (input.conversationId !== undefined) updatePatch.conversationId = input.conversationId
+          if (input.enabled !== undefined) updatePatch.enabled = input.enabled
 
-          const job = cronStore.update(input.id, patch)
-          if (!job) return { error: true, message: `任务 ${input.id} 不存在` }
+          const updatedJob = cronStore.update(input.id, updatePatch)
+          if (!updatedJob) return { error: true, message: `任务 ${input.id} 不存在` }
 
           return {
             success: true,
-            job: { id: job.id, name: job.name, schedule: job.schedule, enabled: job.enabled },
-            message: `已更新定时任务「${job.name}」`,
+            job: { id: updatedJob.id, name: updatedJob.name, schedule: updatedJob.schedule, enabled: updatedJob.enabled },
+            message: `已更新定时任务「${updatedJob.name}」`,
           }
         }
 
         case 'delete': {
           if (!input.id) return { error: true, message: '缺少 id 参数' }
+
+          const taskToDelete = cronStore.getById(input.id)
+          if (!taskToDelete) return { error: true, message: `任务 ${input.id} 不存在` }
+
+          if (isFileBacked(taskToDelete)) {
+            return {
+              error: true,
+              message: `任务「${taskToDelete.name}」由 .agents/tasks/ 文件定义，如需删除请直接删除对应的 task.md 文件，重启后生效。`,
+              source: 'file',
+              filePath: taskToDelete.metadata?.filePath,
+            }
+          }
+
           const deleted = cronStore.delete(input.id)
           if (!deleted) return { error: true, message: `任务 ${input.id} 不存在` }
-          return { success: true, message: '已删除定时任务' }
+          return { success: true, message: `已删除定时任务「${taskToDelete.name}」` }
         }
 
         case 'enable': {
           if (!input.id) return { error: true, message: '缺少 id 参数' }
-          const job = cronStore.update(input.id, { enabled: true })
-          if (!job) return { error: true, message: `任务 ${input.id} 不存在` }
-          return { success: true, message: `已启用定时任务「${job.name}」` }
+
+          const enableJob = cronStore.getById(input.id)
+          if (!enableJob) return { error: true, message: `任务 ${input.id} 不存在` }
+
+          if (isFileBacked(enableJob)) {
+            return {
+              error: true,
+              message: `任务「${enableJob.name}」由 .agents/tasks/ 文件定义，启用/禁用请在 task.md 中修改 enabled 字段，重启后生效。`,
+              source: 'file',
+              filePath: enableJob.metadata?.filePath,
+            }
+          }
+
+          const enabledJob = cronStore.update(input.id, { enabled: true })
+          return { success: true, message: `已启用定时任务「${enabledJob!.name}」` }
         }
 
         case 'disable': {
           if (!input.id) return { error: true, message: '缺少 id 参数' }
-          const job = cronStore.update(input.id, { enabled: false })
-          if (!job) return { error: true, message: `任务 ${input.id} 不存在` }
-          return { success: true, message: `已禁用定时任务「${job.name}」` }
+
+          const disableJob = cronStore.getById(input.id)
+          if (!disableJob) return { error: true, message: `任务 ${input.id} 不存在` }
+
+          if (isFileBacked(disableJob)) {
+            return {
+              error: true,
+              message: `任务「${disableJob.name}」由 .agents/tasks/ 文件定义，启用/禁用请在 task.md 中修改 enabled 字段，重启后生效。`,
+              source: 'file',
+              filePath: disableJob.metadata?.filePath,
+            }
+          }
+
+          const disabledJob = cronStore.update(input.id, { enabled: false })
+          return { success: true, message: `已禁用定时任务「${disabledJob!.name}」` }
         }
 
         default:
