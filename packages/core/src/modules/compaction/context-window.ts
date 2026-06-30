@@ -179,7 +179,7 @@ async function callWithFallback(
     try {
       const { text } = await generateText({
         model,
-        system: SUMMARY_SYSTEM_PROMPT,
+        instructions: SUMMARY_SYSTEM_PROMPT,
         prompt,
         maxOutputTokens: 2000,
       });
@@ -194,7 +194,7 @@ async function callWithFallback(
     try {
       const { text } = await generateText({
         model: fb,
-        system: SUMMARY_SYSTEM_PROMPT,
+        instructions: SUMMARY_SYSTEM_PROMPT,
         prompt,
         maxOutputTokens: 2000,
       });

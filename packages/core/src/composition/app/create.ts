@@ -5,6 +5,7 @@
 // 让组装逻辑正确归属于 composition 层。
 
 import { ToolLoopAgent, wrapLanguageModel } from 'ai'
+import type { LanguageModel, LanguageModelMiddleware } from 'ai'
 import type { SubAgentStreamWriter } from '../../modules/agent'
 import type { CompactionConfig } from '../../modules/compaction/types'
 import type { CreateAgentOptions, CreateAgentResult } from './types'
@@ -178,8 +179,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     middleware: [
       telemetryMiddleware({ debugEnabled: Boolean(context.runtime.env.DEBUG) }),
       costTrackingMiddleware(sessionState.costTracker),
-    ],
-  })
+    ] as LanguageModelMiddleware[],
+  }) as unknown as LanguageModel
 
   // ============================================================
   // Tools

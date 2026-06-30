@@ -60,7 +60,7 @@ function createUsage(options: {
     inputTokens: options.inputTokens ?? 0,
     outputTokens: options.outputTokens ?? 0,
     totalTokens: (options.inputTokens ?? 0) + (options.outputTokens ?? 0),
-    cachedInputTokens: options.cachedInputTokens ?? 0,
+    cachedInputTokens: options.inputTokenDetails.cacheReadTokens ?? 0,
     inputTokenDetails: {},
     outputTokenDetails: {},
   } as LanguageModelUsage;

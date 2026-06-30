@@ -231,7 +231,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
         uiMessages: currentMessages,
         abortSignal: abort.signal,
         sendReasoning: true,
-        onFinish: ({ messages }) => {
+        onEnd: ({ messages }) => {
           finishedMessages = messages
         },
       })

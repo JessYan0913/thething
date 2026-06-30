@@ -996,7 +996,6 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                       })}
                     </MessageContent>
                     )}
-
                     {message.role === 'user' && !isEditing && status !== 'streaming' && status !== 'submitted' && (
                       <MessageToolbar className="mt-0! opacity-0 group-hover:opacity-100 transition-opacity justify-end">
                         <MessageActions>
@@ -1017,7 +1016,6 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                         </MessageActions>
                       </MessageToolbar>
                     )}
-
                     {message.role === 'assistant' && messageIndex === messages.length - 1 && thinkingState ? (
                       <div className="flex items-center gap-2.5 px-1 py-2 text-sm text-muted-foreground">
                         <div className="relative">
@@ -1123,7 +1121,6 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         </div>
       </div>
       </div>
-
       {/* 右侧：文件预览分栏 */}
       {previewFile && (
         <FilePreviewPanel

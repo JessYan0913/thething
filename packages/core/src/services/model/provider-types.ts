@@ -2,7 +2,8 @@
 // Model Provider Types
 // ============================================================
 
-import type { LanguageModelV3 } from '@ai-sdk/provider';
+import type { LanguageModel } from 'ai'
+import type { LanguageModelV3 } from '@ai-sdk/provider'
 
 /**
  * Model Provider Configuration
@@ -22,6 +23,6 @@ export interface ModelProviderConfig {
 
 /**
  * Model Provider function type
- * Returns a LanguageModelV3 instance for a given model name
+ * Returns a LanguageModel instance for a given model name
  */
 export type ModelProviderFn = (modelName: string) => LanguageModelV3;

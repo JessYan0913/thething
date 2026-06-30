@@ -610,7 +610,7 @@ export class AgentInboundHandler implements InboundEventHandler {
           approvalRequests = []
           stepContent = []
 
-          for await (const part of streamResult.fullStream) {
+          for await (const part of streamResult.stream ?? streamResult.stream) {
             if (part.type === 'text-delta') {
               responseText += part.text
             }
@@ -646,7 +646,7 @@ export class AgentInboundHandler implements InboundEventHandler {
           finishReason = await streamResult.finishReason
           steps = await streamResult.steps
           allSteps = [...allSteps, ...steps]
-          lastStreamText = await streamResult.text || ''
+          lastStreamText = (await streamResult.text) || ''
 
           break // 成功消费流，退出重试循环
         } catch (err) {

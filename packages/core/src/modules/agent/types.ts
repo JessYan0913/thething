@@ -4,7 +4,6 @@
 
 import { z } from 'zod';
 import type { LanguageModel, StopCondition, ToolSet, UIMessage } from 'ai';
-import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { TodoStore } from '../../modules/todos';
 import type { AgentRegistry } from './registry';
 import type { SessionStateOptions, SessionState } from '../session'
@@ -397,9 +396,9 @@ export interface LoadToolsConfig {
   enableConnector?: boolean
   connectorRegistry?: ConnectorRegistry
   writerRef?: { current: SubAgentStreamWriter | null }
-  model: LanguageModelV3
+  model: LanguageModel
   /** Model provider for creating sub-agent models (fast/smart) */
-  provider?: (modelName: string) => LanguageModelV3
+  provider?: (modelName: string) => LanguageModel
   /** 预加载的 Agent 定义（来自 AppContext 快照） */
   agents?: AgentDefinition[]
   /** 预加载的 MCP 配置（来自 AppContext 快照） */

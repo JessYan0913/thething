@@ -153,7 +153,7 @@ export function stripImagesFromMessages(messages: UIMessage[]): UIMessage[] {
  */
 export async function estimateToolTokens(tool: Tool, modelName?: string): Promise<number> {
   const nameTokens = TOOL_NAME_TOKENS;
-  const descTokens = await estimateTextTokens(tool.description || '', modelName);
+  const descTokens = await estimateTextTokens(typeof tool.description === 'string' ? tool.description : '', modelName);
 
   let schemaTokens = TOOL_SCHEMA_OVERHEAD;
   try {

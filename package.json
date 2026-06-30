@@ -22,6 +22,7 @@
     "@the-thing/core": "workspace:*"
   },
   "devDependencies": {
+    "@ai-sdk/codemod": "^4.0.0",
     "eslint": "^9",
     "typescript": "^5"
   },

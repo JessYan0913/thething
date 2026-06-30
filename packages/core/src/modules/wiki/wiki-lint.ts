@@ -211,7 +211,7 @@ async function checkSemantic(
   try {
     const result = await generateText({
       model,
-      system: LINT_PROMPT,
+      instructions: LINT_PROMPT,
       prompt: `## 知识库页面\n\n${pagesText}`,
       providerOptions: {
         openai: {

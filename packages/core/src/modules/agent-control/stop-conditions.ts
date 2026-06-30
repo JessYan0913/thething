@@ -1,4 +1,4 @@
-import { hasToolCall, stepCountIs, type StopCondition, type ToolSet } from 'ai';
+import { hasToolCall, isStepCount, type StopCondition, type ToolSet } from 'ai';
 import type { CostTracking } from '../session/interfaces';
 import type { DenialTracking } from '../session/interfaces';
 
@@ -31,7 +31,7 @@ export function createDefaultStopConditions<TOOLS extends ToolSet>(
   const { maxSteps = 50, denialTracker, sessionState } = options ?? {};
 
   const stopWhen: StopCondition<TOOLS>[] = [
-    stepCountIs(maxSteps),
+    isStepCount(maxSteps),
     costBudgetExceeded(costTracker),
     hasToolCall('done'),
   ];

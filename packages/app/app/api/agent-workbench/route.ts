@@ -240,7 +240,7 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
           uiMessages: messagesWithAttachments,
           abortSignal: abortController.signal,
           sendReasoning: true,
-          onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+          onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
               const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length);
               const messagesToSave = [...messages, ...newAssistantMessages];

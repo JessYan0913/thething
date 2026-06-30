@@ -17,12 +17,13 @@ export type { ModelProviderConfig, ModelProviderFn };
  * This is the primary way to create providers for the core engine.
  */
 export function createModelProvider(config: ModelProviderConfig): ModelProviderFn {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createOpenAICompatible({
     name: "openai-compatible",
     apiKey: config.apiKey,
     baseURL: config.baseURL,
     includeUsage: config.includeUsage ?? true,
-  });
+  }) as any;
 }
 
 /**
@@ -31,7 +32,7 @@ export function createModelProvider(config: ModelProviderConfig): ModelProviderF
  *
  * @throws 如果 modelName 未提供
  */
-export function createLanguageModel(config: ModelProviderConfig): LanguageModelV3 {
+export function createLanguageModel(config: ModelProviderConfig): any {
   const provider = createModelProvider(config);
 
   if (!config.modelName) {

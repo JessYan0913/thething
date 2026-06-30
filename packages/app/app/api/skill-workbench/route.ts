@@ -392,8 +392,8 @@ export async function POST(request: Request) {
       const skillsDirs = rt.layout.resources.skills;
 
       // 在所有 skills 目录中查找可用的目录
-      const skillsDir = await findSkillDir(skillsDirs, editSkillName)
-        ?? await findSkillDir(skillsDirs)
+      const skillsDir = (await findSkillDir(skillsDirs, editSkillName))
+        ?? (await findSkillDir(skillsDirs))
         ?? skillsDirs[skillsDirs.length - 1]; // 兜底：使用项目级目录
 
       // 基础指令
@@ -514,7 +514,7 @@ export async function POST(request: Request) {
           uiMessages: messagesWithAttachments,
           abortSignal: abortController.signal,
           sendReasoning: true,
-          onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+          onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
               const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length);
               const messagesToSave = [...messages, ...newAssistantMessages];

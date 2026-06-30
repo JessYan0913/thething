@@ -58,7 +58,7 @@ export async function generateConversationTitle(
 
     const { text } = await generateText({
       model,
-      system:
+      instructions:
         "你是一个对话标题生成助手。请根据用户的首条消息和AI的回复，生成一个简洁、准确的对话标题。",
       prompt: `用户消息: ${userText.slice(0, 300)}\n${
         assistantText ? `AI回复: ${assistantText.slice(0, 300)}` : ""

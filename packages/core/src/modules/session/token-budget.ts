@@ -15,7 +15,7 @@ export class TokenBudgetTracker {
   accumulate(usage: LanguageModelUsage): void {
     this._sessionInputTokens += usage.inputTokens ?? 0;
     this._sessionOutputTokens += usage.outputTokens ?? 0;
-    this._sessionCachedReadTokens += usage.cachedInputTokens ?? 0;
+    this._sessionCachedReadTokens += usage.inputTokenDetails?.cacheReadTokens ?? 0;
   }
 
   get inputTokens(): number {

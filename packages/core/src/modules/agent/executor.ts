@@ -1,4 +1,4 @@
-import { ToolLoopAgent, stepCountIs } from 'ai';
+import { ToolLoopAgent, isStepCount } from 'ai';
 import type { AgentDefinition, AgentExecutionContext, AgentExecutionResult } from './types';
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
@@ -46,7 +46,7 @@ export async function executeRoutedAgent(
 
     // 4. 解析 maxTurns 和 stopWhen
     const maxTurns = definition.maxTurns ?? 20;
-    const stopWhen = definition.stopWhen ?? [stepCountIs(maxTurns)];
+    const stopWhen = definition.stopWhen ?? [isStepCount(maxTurns)];
 
     // 5. 创建 ToolLoopAgent
     const subAgent = new ToolLoopAgent({
@@ -79,7 +79,7 @@ export async function executeRoutedAgent(
     const toolsUsed: string[] = [];
     const toolResults: Array<{ name: string; input: unknown; output: string }> = [];
 
-    for await (const part of streamResult.fullStream) {
+    for await (const part of streamResult.stream) {
       if (part.type === 'text-delta') {
         textContent += part.text;
         writer?.write({
@@ -145,7 +145,7 @@ export async function executeRoutedAgent(
           instructions: 'You must produce a text summary. Do NOT use any tools.',
           tools: context.parentTools,
           activeTools: [], // 禁用所有工具
-          stopWhen: [stepCountIs(1)],
+          stopWhen: [isStepCount(1)],
         });
 
         const summaryResult = await summaryAgent.stream({
@@ -153,7 +153,7 @@ export async function executeRoutedAgent(
           abortSignal,
         });
 
-        for await (const part of summaryResult.fullStream) {
+        for await (const part of summaryResult.stream) {
           if (part.type === 'text-delta') {
             textContent += part.text;
           }

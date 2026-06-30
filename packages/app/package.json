@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/react": "^3.0.148",
+    "@ai-sdk/react": "^4.0.8",
     "@codemirror/autocomplete": "^6",
     "@codemirror/commands": "^6",
     "@codemirror/lang-css": "^6.3.1",
@@ -45,7 +45,8 @@
     "@streamdown/mermaid": "^1.0.2",
     "@the-thing/core": "workspace:*",
     "@the-thing/resumable-stream": "workspace:*",
-    "ai": "^6.0.149",
+    "@types/js-yaml": "^4.0.9",
+    "ai": "^7.0.7",
     "ai-elements": "^1.9.0",
     "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.1",
@@ -53,6 +54,7 @@
     "cmdk": "^1.1.1",
     "i18next": "^26.0.8",
     "i18next-browser-languagedetector": "^8.2.1",
+    "js-yaml": "^4.1.0",
     "jszip": "^3.10.1",
     "lottie-react": "^2.4.1",
     "lucide-react": "^1.8.0",

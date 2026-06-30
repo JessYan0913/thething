@@ -193,7 +193,7 @@ export async function POST(request: Request) {
                 uiMessages: llmMessages,
                 abortSignal: abortController.signal,
                 sendReasoning: true,
-                onFinish: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+                onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
                   try {
                     const newAssistantMessages = completedMessages.slice(llmMessages.length);
                     const messagesToSave = [...messages, ...newAssistantMessages];
