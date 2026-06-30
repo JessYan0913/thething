@@ -214,6 +214,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     modelAliases: behavior.modelAliases,
     dynamicReload: resolved.dynamicReload,
     cronStore: context.runtime.cronStore ?? undefined,
+    tasksDir: context.runtime.tasksDir,
     userId,
     wikiBaseDir,
   })

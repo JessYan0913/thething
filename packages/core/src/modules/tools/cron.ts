@@ -1,10 +1,24 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import fs from 'fs/promises'
+import path from 'path'
 import type { CronJobStore } from '../cron/types'
-import { validate, nextOccurrence } from '../cron/cron-expr'
+import { validate } from '../cron/cron-expr'
+import { logger } from '../../primitives/logger'
 
 export interface CronToolOptions {
   cronStore: CronJobStore
+  /** 文件式 tasks 根目录（~/.agents/tasks），create 时同步写 task.md */
+  tasksDir?: string
+}
+
+/** 将任务名转为文件系统友好的 kebab-case ID */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9一-鿿]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
 }
 
 function isFileBacked(job: { metadata?: Record<string, unknown> } | null): boolean {
@@ -18,7 +32,7 @@ export function createCronTool(options: CronToolOptions) {
       action: z.enum(['create', 'list', 'get', 'update', 'delete', 'enable', 'disable'])
         .describe('操作类型'),
       id: z.string().optional()
-        .describe('任务 ID（get/update/delete/enable/disable 时必填）'),
+        .describe('任务 ID（create 时可选，默认由名称自动生成；get/update/delete/enable/disable 时必填）'),
       name: z.string().optional()
         .describe('任务名称（create 时必填）'),
       schedule: z.string().optional()
@@ -46,7 +60,10 @@ export function createCronTool(options: CronToolOptions) {
             return { error: true, message: `无效的 cron 表达式: ${validationError}` }
           }
 
+          const taskId = input.id || slugify(input.name)
+
           const job = cronStore.create({
+            id: taskId,
             name: input.name,
             schedule: input.schedule,
             prompt: input.prompt,
@@ -55,11 +72,33 @@ export function createCronTool(options: CronToolOptions) {
             enabled: input.enabled ?? true,
           })
 
+          // 同步写 ~/.agents/tasks/<id>/task.md（失败不中断流程）
+          if (options.tasksDir) {
+            try {
+              const taskDir = path.join(options.tasksDir, taskId)
+              await fs.mkdir(taskDir, { recursive: true })
+              const frontmatter = [
+                '---',
+                `kind: task`,
+                `id: ${taskId}`,
+                `name: ${input.name}`,
+                `schedule: ${input.schedule}`,
+                `enabled: ${input.enabled ?? true}`,
+                ...(input.agentType ? [`profileId: ${input.agentType}`] : []),
+                '---',
+                '',
+              ].join('\n')
+              await fs.writeFile(path.join(taskDir, 'task.md'), frontmatter + input.prompt, 'utf-8')
+            } catch (err) {
+              logger.warn('Cron', `写入 task.md 失败: ${(err as Error).message}`)
+            }
+          }
+
           const nextRun = new Date(job.nextRunAt)
           return {
             success: true,
             job: { id: job.id, name: job.name, schedule: job.schedule, enabled: job.enabled },
-            message: `已创建定时任务「${job.name}」，下次执行时间: ${nextRun.toLocaleString()}`,
+            message: `已创建定时任务「${job.name}」（${taskId}），下次执行时间: ${nextRun.toLocaleString()}`,
           }
         }
 

@@ -83,7 +83,10 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId))
 
   if (config.cronStore) {
-    tools.cron = createCronTool({ cronStore: config.cronStore })
+    tools.cron = createCronTool({
+      cronStore: config.cronStore,
+      tasksDir: config.tasksDir,
+    })
   }
 
   // 注册 save_wiki 工具（需要 userId 和 wikiBaseDir）

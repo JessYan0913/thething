@@ -21,6 +21,8 @@ import { createPricingResolver, type PricingResolver } from '../services/model/p
 import { resolveLayout, type LayoutConfig, type ResolvedLayout } from '../services/config/layout';
 import { buildBehaviorConfig, type BehaviorConfig } from '../services/config/behavior';
 import { setDebugEnabled, logger } from '../primitives/logger';
+import os from 'os';
+import path from 'path';
 
 // ============================================================
 // Tokenizer 配置类型
@@ -132,6 +134,8 @@ export interface CoreRuntime {
   readonly cronScheduler: CronScheduler | null;
   /** Cron 任务存储 */
   readonly cronStore: CronJobStore | null;
+  /** 用户级 tasks 目录（~/.agents/tasks），供 cron 工具写 task.md 文件 */
+  readonly tasksDir: string;
   /** 销毁所有资源（关闭数据库连接、停止 gateway 等） */
   dispose(): Promise<void>;
 }
@@ -205,6 +209,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 6. Cron Scheduler（创建但不启动，启动在应用层绑定 Agent handler 之后）
   let cronStore: CronJobStore | null = null;
   let cronScheduler: CronScheduler | null = null;
+  const userTasksDir = path.join(os.homedir(), '.agents', 'tasks');
   if (connectorRuntime.inbound) {
     const { InMemoryCronJobStore } = await import('../modules/cron/in-memory-store');
     cronStore = new InMemoryCronJobStore({ historyDir: path.join(layout.dataDir, 'task-history') });
@@ -215,10 +220,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
     // 从 .agents/tasks/<name>/task.md 加载声明式任务定义（Dot Agents 协议）
     const { loadTasksFromFiles } = await import('../modules/cron/task-loader');
-    const { default: os } = await import('os');
     await loadTasksFromFiles({
       store: cronStore,
-      userDir: path.join(os.homedir(), '.agents', 'tasks'),
+      userDir: userTasksDir,
       projectDir: path.join(layout.resourceRoot, '.agents', 'tasks'),
     });
   }
@@ -234,6 +238,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
     connectorInbound: connectorRuntime.inbound,
     cronScheduler,
     cronStore,
+    tasksDir: userTasksDir,
     async dispose() {
       cronScheduler?.stop();
       cronStore?.close();

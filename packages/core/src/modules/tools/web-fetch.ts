@@ -6,27 +6,32 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { ProxyAgent } from 'undici';
+import { setGlobalDispatcher, ProxyAgent } from 'undici';
 import { logger } from '../../primitives/logger';
 
 /**
- * 从环境变量获取代理 dispatcher
- * Node.js 原生 fetch (undici) 不自动读取 http_proxy 环境变量，需要手动设置
+ * 全局初始化代理（仅执行一次）
+ * Node.js 原生 fetch 不自动读取 http_proxy 环境变量，需通过 setGlobalDispatcher 注入。
+ * 不传 dispatcher 给单次 fetch，避免 undici 版本不兼容导致的 UND_ERR_INVALID_ARG。
  */
-function getProxyDispatcher() {
+let proxyInitialized = false;
+function initGlobalProxy() {
+  if (proxyInitialized) return;
+  proxyInitialized = true;
+
   const proxyUrl = process.env.https_proxy || process.env.http_proxy || process.env.all_proxy;
-  if (!proxyUrl) return undefined;
+  if (!proxyUrl) return;
+
+  if (proxyUrl.startsWith('socks5://')) {
+    logger.warn('WebFetch', `SOCKS5 代理 (${proxyUrl}) 不受 undici 支持，将直连`);
+    return;
+  }
 
   try {
-    // undici ProxyAgent 支持 http/https 代理，不支持 socks5
-    if (proxyUrl.startsWith('socks5://')) {
-      logger.warn('WebFetch', `SOCKS5 代理 (${proxyUrl}) 不受 undici 支持，将直连`);
-      return undefined;
-    }
-    return new ProxyAgent(proxyUrl);
+    setGlobalDispatcher(new ProxyAgent(proxyUrl));
+    logger.info('WebFetch', `已设置全局代理: ${proxyUrl}`);
   } catch (error) {
-    logger.warn('WebFetch', `创建代理失败: ${error}`);
-    return undefined;
+    logger.warn('WebFetch', `设置全局代理失败: ${error}，将直连`);
   }
 }
 
@@ -77,13 +82,12 @@ export function createWebFetchTool() {
     }),
     execute: async ({ url, maxLength = 50000 }) => {
       try {
+        initGlobalProxy();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
-        const dispatcher = getProxyDispatcher();
 
         const response = await fetch(url, {
           signal: controller.signal,
-          ...(dispatcher ? { dispatcher } : {}),
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; TheThing/1.0; +https://github.com/thething)',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

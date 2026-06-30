@@ -416,6 +416,8 @@ export interface LoadToolsConfig {
   dynamicReload?: boolean
   /** Cron 任务存储（来自 CoreRuntime，用于 cron 工具） */
   cronStore?: CronJobStore
+  /** 用户级 tasks 目录（~/.agents/tasks），cron create 时同步写 task.md */
+  tasksDir?: string
   /** 用户 ID（用于记忆系统） */
   userId?: string
   /** 知识库基础目录 */
