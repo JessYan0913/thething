@@ -22,10 +22,6 @@ import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
 import type { AgentDefinition } from '../../modules/agent/types'
 import { resolveModelAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
-import {
-  injectMessageAttachments,
-  clearMessageAttachmentState,
-} from '../../modules/attachments'
 import { getPrimaryWikiDir } from '../../modules/wiki'
 import { loadWikiContextForAgent } from '../../modules/agent/context/wiki-context'
 
@@ -46,9 +42,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const { modelConfig, modules, sessionOptions, behavior, layout } = resolved
 
   const dataStore = context.runtime.dataStore
-
-  // 判断是否是首次对话
-  const isTurnZero = options.conversationMeta?.isNewConversation ?? false
 
   const projectRoot = sessionOptions.projectRoot ?? context.layout.resourceRoot
   const wikiBaseDir = getPrimaryWikiDir(context.layout)
@@ -75,28 +68,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   }
 
   // ============================================================
-  // 技能附件注入
+  // 技能信息改为通过 Skill 工具的 skill: "list" 模式主动拉取
   // ============================================================
-  if (isTurnZero) {
-    clearMessageAttachmentState(conversationId)
-  }
-
-  let messagesWithAttachments = messages
-  if (modules.skills && messages.length > 0) {
-    const attachmentResult = await injectMessageAttachments(messages, {
-      sessionKey: conversationId,
-      skills: [...context.skills],
-      contextWindowTokens: sessionOptions.maxContextTokens ?? 128_000,
-    })
-    messagesWithAttachments = attachmentResult.messages
-
-    if (attachmentResult.hasSkillListing) {
-      logger.debug(
-        'Attachments',
-        `Injected: skill_listing=${attachmentResult.skillListingCount}`,
-      )
-    }
-  }
+  const messagesWithAttachments = messages
 
   // ============================================================
   // Session 状态

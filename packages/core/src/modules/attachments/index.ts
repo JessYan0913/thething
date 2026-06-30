@@ -1,45 +1,12 @@
 /**
- * Attachments 模块入口
+ * Attachments 模块索引
  *
- * 提供消息附件注入功能，用于动态注入技能元数据而不影响系统提示词缓存。
+ * 技能列表信息改为通过 Skill 工具的 `list` 模式主动拉取。
+ * 本目录保留 types.ts 中的遗留类型定义以保持向后兼容。
  */
 
 export type {
   Attachment,
-  SkillListingAttachment,
 } from './types';
 
-export {
-  getSentSkills,
-  markSkillSent,
-  markSkillsSent,
-  clearSentSkills,
-  isNewSkill,
-  getNewSkills,
-  getSentSkillCount,
-  hasSentSkills,
-  clearAllSentSkills,
-  getActiveSessionKeys,
-} from './sent-tracker';
-
-export {
-  SKILL_LISTING_CONFIG,
-  filterVisibleSkills,
-  getSkillListingAttachment,
-  formatSkillListingMessage,
-  shouldSendSkillListing,
-} from './skill-listing';
-
-// 注入器
-export {
-  injectMessageAttachments,
-  clearMessageAttachmentState,
-  extractUserInput,
-} from './injector';
-
-export type {
-  MessageAttachmentConfig,
-  MessageAttachmentResult,
-} from './injector';
-
-export const ATTACHMENTS_MODULE_VERSION = '2.0.0';
+export const ATTACHMENTS_MODULE_VERSION = '3.0.0';

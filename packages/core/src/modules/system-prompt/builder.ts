@@ -132,8 +132,6 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     },
     cacheStrategy: "session",
   },
-  // Skills section 已移除 - 技能元数据现在通过消息附件注入
-  // 参考: docs/skill-metadata-loading-refactoring-plan.md
   {
     name: "permissions",
     create: (options) => createPermissionsSection(options.permissions),
@@ -141,29 +139,19 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   },
   {
     name: "skill-matching",
-    create: (options) => {
-      if (!options.skills || options.skills.length === 0) {
-        return {
-          name: "skill-matching",
-          content: null,
-          cacheStrategy: "session" as const,
-          priority: 30,
-        };
-      }
-      return {
-        name: "skill-matching",
-        content: `## Skill Usage
+    create: () => ({
+      name: "skill-matching",
+      content: `## Skill Usage
 
-Before implementing any workflow, check if a matching skill exists.
-Skills provide pre-built, tested workflows that are more efficient than ad-hoc approaches.
+Skills provide pre-built, tested workflows. Use the \`skill\` tool to discover and invoke them.
 
-**Matching principle:** Read each skill's description. If the user's intent aligns with what the skill describes, invoke it.
+**To see available skills:** Call the \`skill\` tool with \`skill: "list"\`.
+**To invoke a skill:** Call the \`skill\` tool with the full skill name.
 
-**How to invoke:** Use the skill tool with the exact skill name from the listing.`,
-        cacheStrategy: "session" as const,
-        priority: 30,
-      };
-    },
+**Matching principle:** If the user's intent aligns with what a skill describes, invoke it.`,
+      cacheStrategy: "session" as const,
+      priority: 30,
+    }),
     cacheStrategy: "session",
   },
   {

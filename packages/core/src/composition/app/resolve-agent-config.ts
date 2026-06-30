@@ -155,7 +155,7 @@ const FIELD_CONSUMERS: Record<string, string[]> = {
   'modelConfig.modelName': ['session-state', 'agent-control/model-switching'],
   'modelConfig.includeUsage': ['foundation/model/create'],
   'modelConfig.enableThinking': ['foundation/model/create', 'runtime/agent'],
-  'modules.skills': ['system-prompt/skills', 'runtime/agent/tools'],
+  'modules.skills': ['system-prompt/skill-matching', 'runtime/agent/tools/skill'],
   'modules.mcps': ['runtime/agent/tools', 'mcp'],
   'modules.memory': ['system-prompt/memory', 'extensions/memory'],
   'modules.connectors': ['runtime/agent/tools', 'connector'],

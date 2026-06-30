@@ -921,30 +921,16 @@ export class AgentInboundHandler implements InboundEventHandler {
     })
   }
 
+  /**
+   * 技能列表信息不再通过消息附件传递，
+   * 因此无需过滤 system-reminder / skill-listing 内容。
+   */
   private filterSystemContent(response: string): string {
-    if (!response) return ''
-    let filtered = response.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-    filtered = filtered.replace(/The following skills are available[\s\S]*?(?=\n\n[A-Z]|\n\n\n|$)/g, '')
-    filtered = filtered.replace(/New skills are now available[\s\S]*?(?=\n\n[A-Z]|\n\n\n|$)/g, '')
-    return filtered.trim()
+    return (response || '').trim()
   }
 
   private filterInjectedMessages(messages: UIMessage[]): UIMessage[] {
-    return messages.filter(msg => {
-      if (msg.id.startsWith('skill-listing-')) return false
-      const text = this.extractMessageText(msg)
-      if (text.includes('<system-reminder>')) return false
-      if (text.startsWith('The following skills are available')) return false
-      if (text.startsWith('New skills are now available')) return false
-      return true
-    })
-  }
-
-  private extractMessageText(msg: UIMessage): string {
-    return msg.parts
-      .filter(p => p.type === 'text')
-      .map(p => (p as { type: 'text'; text: string }).text)
-      .join(' ')
+    return messages
   }
 
   private async findOrCreateConversation(event: InboundEvent): Promise<string> {

@@ -3,7 +3,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'path';
 import { loadSkills } from '../modules/skills/loader';
 import { buildSystemPrompt } from '../modules/system-prompt/builder';
-import { getSkillListingAttachment, formatSkillListingMessage } from '../modules/attachments/skill-listing';
 
 describe('Skills Mechanism (Skill Tool Approach)', () => {
   beforeAll(async () => {
@@ -41,35 +40,18 @@ describe('Skills Mechanism (Skill Tool Approach)', () => {
 
     // 技能不再注入到系统提示词中
     // Agent 通过 Skill 工具主动调用获取技能指令
-    // skill_listing 通过附件注入（system-reminder 格式）
     expect(result.includedSections).not.toContain('skills');
   });
 
-  it('should format skill listing for Skill tool usage', async () => {
-    const cwd = path.resolve(process.cwd(), '../../');
-    const skills = await loadSkills({ cwd, configDir: path.join(os.homedir(), '.thething') });
+  it('should include skill-matching guidance always, even with 0 skills', async () => {
+    const result = await buildSystemPrompt({
+      skills: [],
+      includeProjectContext: false,
+    });
 
-    if (skills.length === 0) {
-      console.log('No skills found, skipping skill listing test');
-      return;
-    }
-
-    // 获取 skill_listing 附件
-    const listing = await getSkillListingAttachment(
-      skills,
-      'test-session',
-      100000,  // context window tokens
-    );
-
-    if (listing) {
-      // 格式化为消息内容
-      const message = formatSkillListingMessage(listing);
-
-      // 应该包含 "Skill tool" 关键词
-      expect(message).toContain('Skill tool');
-
-      console.log('Skill listing message preview:', message.substring(0, 200));
-    }
+    // skill-matching section 始终存在，指导 Agent 使用 skill: "list"
+    expect(result.includedSections).toContain('skill-matching');
+    expect(result.prompt).toContain('skill: "list"');
   });
 
   it('should return empty sections when no skills', async () => {
