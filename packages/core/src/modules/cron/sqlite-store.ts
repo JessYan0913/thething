@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { getDatabase } from '../../services/datastore/sqlite/native-loader'
 import type { SqliteDatabase } from '../../primitives/datastore/types'
 import type { CronJob, CronJobCreateInput, CronJobUpdateInput, CronExecution, CronJobStore } from './types'
+import { NO_SCHEDULE } from './types'
 import { nextOccurrence } from './cron-expr'
 
 export interface SQLiteCronJobStoreOptions {
@@ -21,15 +22,21 @@ export class SQLiteCronJobStore implements CronJobStore {
   create(input: CronJobCreateInput): CronJob {
     const now = Date.now()
     const id = input.id ?? nanoid()
-    const nextRunAt = input.nextRunAt ?? nextOccurrence(input.schedule, new Date()).getTime()
+
+    // 空 schedule = 未调度，nextRunAt 设为远端安全值
+    const nextRunAt = input.nextRunAt
+      ?? (input.schedule
+        ? nextOccurrence(input.schedule, new Date()).getTime()
+        : Number.MAX_SAFE_INTEGER)
 
     this.db.prepare(`
-      INSERT INTO cron_jobs (id, name, schedule, prompt, agent_type, conversation_id, enabled, last_run_at, next_run_at, created_at, updated_at, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+      INSERT INTO cron_jobs (id, name, schedule, interval_minutes, prompt, agent_type, conversation_id, enabled, last_run_at, next_run_at, created_at, updated_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
-      input.schedule,
+      input.schedule || NO_SCHEDULE,
+      input.intervalMinutes ?? null,
       input.prompt,
       input.agentType ?? null,
       input.conversationId ?? null,
@@ -56,12 +63,16 @@ export class SQLiteCronJobStore implements CronJobStore {
     if (patch.agentType !== undefined) { sets.push('agent_type = ?'); values.push(patch.agentType ?? null) }
     if (patch.conversationId !== undefined) { sets.push('conversation_id = ?'); values.push(patch.conversationId ?? null) }
     if (patch.enabled !== undefined) { sets.push('enabled = ?'); values.push(patch.enabled ? 1 : 0) }
+    if (patch.intervalMinutes !== undefined) { sets.push('interval_minutes = ?'); values.push(patch.intervalMinutes ?? null) }
     if (patch.metadata !== undefined) { sets.push('metadata = ?'); values.push(patch.metadata ? JSON.stringify(patch.metadata) : null) }
 
     if (patch.schedule !== undefined) {
       sets.push('schedule = ?')
-      values.push(patch.schedule)
-      const nextRunAt = nextOccurrence(patch.schedule, new Date()).getTime()
+      values.push(patch.schedule || NO_SCHEDULE)
+      // 空 schedule → 不调度
+      const nextRunAt = patch.schedule
+        ? nextOccurrence(patch.schedule, new Date()).getTime()
+        : Number.MAX_SAFE_INTEGER
       sets.push('next_run_at = ?')
       values.push(nextRunAt)
     }
@@ -106,7 +117,9 @@ export class SQLiteCronJobStore implements CronJobStore {
 
   listDue(now: number): CronJob[] {
     const rows = this.db.prepare(
-      'SELECT * FROM cron_jobs WHERE enabled = 1 AND next_run_at <= ? ORDER BY next_run_at ASC',
+      `SELECT * FROM cron_jobs
+       WHERE enabled = 1 AND schedule != '' AND next_run_at <= ?
+       ORDER BY next_run_at ASC`,
     ).all(now) as Record<string, unknown>[]
     return rows.map(r => this.rowToJob(r))
   }
@@ -153,6 +166,7 @@ export class SQLiteCronJobStore implements CronJobStore {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         schedule TEXT NOT NULL,
+        interval_minutes INTEGER,
         prompt TEXT NOT NULL,
         agent_type TEXT,
         conversation_id TEXT,
@@ -184,13 +198,14 @@ export class SQLiteCronJobStore implements CronJobStore {
       ON cron_executions (job_id, triggered_at DESC);
     `)
 
-    // Migration: add columns to existing cron_executions tables
-    for (const col of ['duration INTEGER', 'conversation_id TEXT']) {
-      try {
-        this.db.prepare(`ALTER TABLE cron_executions ADD COLUMN ${col}`).run()
-      } catch {
-        // Column already exists, ignore
-      }
+    // Migration: add columns to existing tables
+    const migs = [
+      'ALTER TABLE cron_jobs ADD COLUMN interval_minutes INTEGER',
+      'ALTER TABLE cron_executions ADD COLUMN duration INTEGER',
+      'ALTER TABLE cron_executions ADD COLUMN conversation_id TEXT',
+    ]
+    for (const sql of migs) {
+      try { this.db.prepare(sql).run() } catch { /* already exists */ }
     }
   }
 
@@ -199,6 +214,7 @@ export class SQLiteCronJobStore implements CronJobStore {
       id: row.id as string,
       name: row.name as string,
       schedule: row.schedule as string,
+      intervalMinutes: (row.interval_minutes as number) ?? undefined,
       prompt: row.prompt as string,
       agentType: (row.agent_type as string) || undefined,
       conversationId: (row.conversation_id as string) || undefined,

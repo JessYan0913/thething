@@ -1,6 +1,9 @@
 import { getServerRuntime } from '@/lib/runtime';
-import { validateCronExpression, nextOccurrence } from '@the-thing/core';
+import { validateCronExpression, buildFrontmatter, NO_SCHEDULE } from '@the-thing/core';
 import { NextResponse } from 'next/server';
+import { promises as fs } from 'fs';
+import path from 'path';
+import os from 'os';
 
 export const runtime = 'nodejs';
 
@@ -28,7 +31,7 @@ export async function POST(request: Request) {
 
     const body = await request.json() as {
       name: string;
-      schedule: string;
+      schedule?: string;
       prompt: string;
       agentType?: string;
       conversationId?: string;
@@ -36,30 +39,59 @@ export async function POST(request: Request) {
       metadata?: Record<string, unknown>;
     };
 
-    if (!body.name || !body.schedule || !body.prompt) {
+    if (!body.name || !body.prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: name, schedule, prompt' },
+        { error: 'Missing required fields: name, prompt' },
         { status: 400 },
       );
     }
 
-    const validationError = validateCronExpression(body.schedule);
-    if (validationError) {
-      return NextResponse.json(
-        { error: `Invalid cron expression: ${validationError}` },
-        { status: 400 },
-      );
+    const schedule = (body.schedule || '').trim();
+    if (schedule) {
+      const validationError = validateCronExpression(schedule);
+      if (validationError) {
+        return NextResponse.json(
+          { error: `Invalid cron expression: ${validationError}` },
+          { status: 400 },
+        );
+      }
     }
 
     const job = rt.cronStore.create({
       name: body.name,
-      schedule: body.schedule,
+      schedule,
       prompt: body.prompt,
       agentType: body.agentType,
       conversationId: body.conversationId,
-      enabled: body.enabled ?? true,
-      metadata: body.metadata,
+      enabled: schedule ? (body.enabled ?? true) : false,
+      metadata: {
+        source: 'ui',
+        ...body.metadata,
+      },
     });
+
+    // 同步写 task.md 到 ~/.agents/tasks/<id>/task.md
+    try {
+      const tasksDir = path.join(os.homedir(), '.agents', 'tasks');
+      const taskDir = path.join(tasksDir, job.id);
+      await fs.mkdir(taskDir, { recursive: true });
+      const frontmatter = buildFrontmatter({
+        id: job.id,
+        name: job.name,
+        schedule: job.schedule,
+        enabled: job.enabled,
+        agentType: body.agentType,
+      });
+      const filePath = path.join(taskDir, 'task.md');
+      await fs.writeFile(filePath, frontmatter + job.prompt, 'utf-8');
+      // 回写 metadata 记录文件路径
+      rt.cronStore.update(job.id, {
+        metadata: { source: 'task-file', filePath },
+      });
+    } catch (err) {
+      // 写文件失败不中断流程（可能是权限问题或无 ~/.agents/tasks 目录）
+      console.error('[Cron API] Failed to write task.md:', err);
+    }
 
     return NextResponse.json({ success: true, job }, { status: 201 });
   } catch (error) {

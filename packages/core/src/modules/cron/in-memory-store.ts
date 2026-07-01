@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { nextOccurrence } from './cron-expr';
+import { NO_SCHEDULE } from './types';
 import type { CronJob, CronJobCreateInput, CronJobUpdateInput, CronExecution, CronJobStore } from './types';
 
 export interface InMemoryCronJobStoreOptions {
@@ -33,12 +34,17 @@ export class InMemoryCronJobStore implements CronJobStore {
   create(input: CronJobCreateInput): CronJob {
     const now = Date.now();
     const id = input.id ?? nanoid();
-    const nextRunAt = input.nextRunAt ?? nextOccurrence(input.schedule, new Date()).getTime();
+    // 空 schedule = 未调度，nextRunAt 设为远端安全值
+    const nextRunAt = input.nextRunAt
+      ?? (input.schedule
+        ? nextOccurrence(input.schedule, new Date()).getTime()
+        : Number.MAX_SAFE_INTEGER);
 
     const job: CronJob = {
       id,
       name: input.name,
-      schedule: input.schedule,
+      schedule: input.schedule || NO_SCHEDULE,
+      intervalMinutes: input.intervalMinutes,
       prompt: input.prompt,
       agentType: input.agentType,
       conversationId: input.conversationId,
@@ -63,6 +69,7 @@ export class InMemoryCronJobStore implements CronJobStore {
       ...existing,
       name: patch.name ?? existing.name,
       schedule: patch.schedule ?? existing.schedule,
+      intervalMinutes: patch.intervalMinutes !== undefined ? patch.intervalMinutes : existing.intervalMinutes,
       prompt: patch.prompt ?? existing.prompt,
       agentType: patch.agentType !== undefined ? patch.agentType : existing.agentType,
       conversationId: patch.conversationId !== undefined ? patch.conversationId : existing.conversationId,
@@ -72,8 +79,11 @@ export class InMemoryCronJobStore implements CronJobStore {
     };
 
     // 如果 schedule 变了，重新计算 nextRunAt
-    if (patch.schedule) {
-      updated.nextRunAt = nextOccurrence(patch.schedule, new Date()).getTime();
+    if (patch.schedule !== undefined) {
+      updated.schedule = patch.schedule || NO_SCHEDULE;
+      updated.nextRunAt = patch.schedule
+        ? nextOccurrence(patch.schedule, new Date()).getTime()
+        : Number.MAX_SAFE_INTEGER;
     }
 
     this.jobs.set(id, updated);
@@ -106,7 +116,7 @@ export class InMemoryCronJobStore implements CronJobStore {
   listDue(now: number): CronJob[] {
     const due: CronJob[] = [];
     for (const job of this.jobs.values()) {
-      if (job.enabled && job.nextRunAt <= now) {
+      if (job.enabled && job.schedule && job.nextRunAt <= now) {
         due.push(job);
       }
     }

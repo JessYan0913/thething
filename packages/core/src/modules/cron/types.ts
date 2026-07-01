@@ -1,8 +1,16 @@
+/** 空字符串 schedule 表示"未调度"（任务定义但未激活） */
+export const NO_SCHEDULE = ''
+
 export interface CronJob {
   id: string
   name: string
-  /** 5-field cron: "minute hour day-of-month month day-of-week" */
+  /** 5-field cron: "minute hour day-of-month month day-of-week"。
+   *  空字符串表示未调度，不会触发执行。 */
   schedule: string
+  /** Dot Agents 协议原生调度字段：每隔 N 分钟执行一次。
+   *  schedule 为空时以此值为准（转换为 cron）。
+   *  两者都为空 → 未调度。 */
+  intervalMinutes?: number
   prompt: string
   agentType?: string
   conversationId?: string
@@ -33,7 +41,7 @@ export type CronJobCreateInput = Omit<CronJob, 'id' | 'createdAt' | 'updatedAt' 
 
 export type CronJobUpdateInput = Partial<Pick<
   CronJob,
-  'name' | 'schedule' | 'prompt' | 'agentType' | 'conversationId' | 'enabled' | 'metadata'
+  'name' | 'schedule' | 'intervalMinutes' | 'prompt' | 'agentType' | 'conversationId' | 'enabled' | 'metadata'
 >>
 
 export interface CronJobStore {

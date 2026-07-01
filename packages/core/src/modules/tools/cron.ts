@@ -4,11 +4,12 @@ import fs from 'fs/promises'
 import path from 'path'
 import type { CronJobStore } from '../cron/types'
 import { validate } from '../cron/cron-expr'
+import { buildFrontmatter, cronToIntervalMinutes } from '../cron/task-loader'
 import { logger } from '../../primitives/logger'
 
 export interface CronToolOptions {
   cronStore: CronJobStore
-  /** 文件式 tasks 根目录（~/.agents/tasks），create 时同步写 task.md */
+  /** 文件式 tasks 根目录（~/.agents/tasks），create 时可选写 task.md */
   tasksDir?: string
 }
 
@@ -21,13 +22,9 @@ function slugify(text: string): string {
     .slice(0, 64)
 }
 
-function isFileBacked(job: { metadata?: Record<string, unknown> } | null): boolean {
-  return job?.metadata?.source === 'task-file'
-}
-
 export function createCronTool(options: CronToolOptions) {
   return tool({
-    description: '管理定时自动化任务。可以创建、查看、更新、删除定时任务，任务会按 cron 表达式自动触发 Agent 执行。\n\n注意：来源为 file 的任务由 .agents/tasks/<name>/task.md 文件定义，修改请直接编辑文件，重启后生效。',
+    description: '管理定时自动化任务。可以创建、查看、更新、删除定时任务，任务会按 cron 表达式自动触发 Agent 执行。',
     inputSchema: z.object({
       action: z.enum(['create', 'list', 'get', 'update', 'delete', 'enable', 'disable'])
         .describe('操作类型'),
@@ -70,25 +67,29 @@ export function createCronTool(options: CronToolOptions) {
             agentType: input.agentType,
             conversationId: input.conversationId,
             enabled: input.enabled ?? true,
+            metadata: {
+              ...(options.tasksDir ? { source: 'task-file' } : {}),
+            },
           })
 
-          // 同步写 ~/.agents/tasks/<id>/task.md（失败不中断流程）
+          // 可选写 task.md（失败不中断流程）
           if (options.tasksDir) {
             try {
               const taskDir = path.join(options.tasksDir, taskId)
               await fs.mkdir(taskDir, { recursive: true })
-              const frontmatter = [
-                '---',
-                `kind: task`,
-                `id: ${taskId}`,
-                `name: ${input.name}`,
-                `schedule: ${input.schedule}`,
-                `enabled: ${input.enabled ?? true}`,
-                ...(input.agentType ? [`profileId: ${input.agentType}`] : []),
-                '---',
-                '',
-              ].join('\n')
+              const frontmatter = buildFrontmatter({
+                id: taskId,
+                name: input.name,
+                schedule: input.schedule,
+                enabled: input.enabled ?? true,
+                agentType: input.agentType,
+              })
               await fs.writeFile(path.join(taskDir, 'task.md'), frontmatter + input.prompt, 'utf-8')
+              // 更新 metadata 记录文件路径
+              cronStore.update(taskId, {
+                intervalMinutes: cronToIntervalMinutes(input.schedule) ?? undefined,
+                metadata: { source: 'task-file', filePath: path.join(taskDir, 'task.md') },
+              })
             } catch (err) {
               logger.warn('Cron', `写入 task.md 失败: ${(err as Error).message}`)
             }
@@ -111,6 +112,7 @@ export function createCronTool(options: CronToolOptions) {
               id: j.id,
               name: j.name,
               schedule: j.schedule,
+              intervalMinutes: j.intervalMinutes,
               prompt: j.prompt.slice(0, 100) + (j.prompt.length > 100 ? '...' : ''),
               enabled: j.enabled,
               source: j.metadata?.source === 'task-file' ? 'file' : 'sqlite',
@@ -143,15 +145,6 @@ export function createCronTool(options: CronToolOptions) {
           const existing = cronStore.getById(input.id)
           if (!existing) return { error: true, message: `任务 ${input.id} 不存在` }
 
-          if (isFileBacked(existing)) {
-            return {
-              error: true,
-              message: `任务「${existing.name}」由 .agents/tasks/ 文件定义，修改请直接编辑 task.md 文件，重启后生效。当前修改不会被持久化。`,
-              source: 'file',
-              filePath: existing.metadata?.filePath,
-            }
-          }
-
           if (input.schedule) {
             const validationError = validate(input.schedule)
             if (validationError) {
@@ -166,9 +159,32 @@ export function createCronTool(options: CronToolOptions) {
           if (input.agentType !== undefined) updatePatch.agentType = input.agentType
           if (input.conversationId !== undefined) updatePatch.conversationId = input.conversationId
           if (input.enabled !== undefined) updatePatch.enabled = input.enabled
+          // 如果 schedule 变了，同步更新 intervalMinutes
+          if (input.schedule !== undefined) {
+            const interval = cronToIntervalMinutes(input.schedule)
+            if (interval !== null) updatePatch.intervalMinutes = interval
+            else updatePatch.intervalMinutes = null
+          }
 
           const updatedJob = cronStore.update(input.id, updatePatch)
           if (!updatedJob) return { error: true, message: `任务 ${input.id} 不存在` }
+
+          // 同步更新 task.md 文件（如果存在）
+          const filePath = existing.metadata?.filePath as string | undefined
+          if (filePath) {
+            try {
+              const frontmatter = buildFrontmatter({
+                id: updatedJob.id,
+                name: updatedJob.name,
+                schedule: updatedJob.schedule,
+                enabled: updatedJob.enabled,
+                agentType: updatedJob.agentType,
+              })
+              await fs.writeFile(filePath, frontmatter + updatedJob.prompt, 'utf-8')
+            } catch (err) {
+              logger.warn('Cron', `更新 task.md 失败: ${(err as Error).message}`)
+            }
+          }
 
           return {
             success: true,
@@ -183,12 +199,15 @@ export function createCronTool(options: CronToolOptions) {
           const taskToDelete = cronStore.getById(input.id)
           if (!taskToDelete) return { error: true, message: `任务 ${input.id} 不存在` }
 
-          if (isFileBacked(taskToDelete)) {
-            return {
-              error: true,
-              message: `任务「${taskToDelete.name}」由 .agents/tasks/ 文件定义，如需删除请直接删除对应的 task.md 文件，重启后生效。`,
-              source: 'file',
-              filePath: taskToDelete.metadata?.filePath,
+          // 先删 task.md 文件（如果存在）
+          const filePath = taskToDelete.metadata?.filePath as string | undefined
+          if (filePath) {
+            try {
+              await fs.unlink(filePath)
+              // 尝试删除空目录（不强制）
+              await fs.rmdir(path.dirname(filePath)).catch(() => {})
+            } catch (err) {
+              logger.warn('Cron', `删除 task.md 失败: ${(err as Error).message}`)
             }
           }
 
@@ -203,15 +222,6 @@ export function createCronTool(options: CronToolOptions) {
           const enableJob = cronStore.getById(input.id)
           if (!enableJob) return { error: true, message: `任务 ${input.id} 不存在` }
 
-          if (isFileBacked(enableJob)) {
-            return {
-              error: true,
-              message: `任务「${enableJob.name}」由 .agents/tasks/ 文件定义，启用/禁用请在 task.md 中修改 enabled 字段，重启后生效。`,
-              source: 'file',
-              filePath: enableJob.metadata?.filePath,
-            }
-          }
-
           const enabledJob = cronStore.update(input.id, { enabled: true })
           return { success: true, message: `已启用定时任务「${enabledJob!.name}」` }
         }
@@ -221,15 +231,6 @@ export function createCronTool(options: CronToolOptions) {
 
           const disableJob = cronStore.getById(input.id)
           if (!disableJob) return { error: true, message: `任务 ${input.id} 不存在` }
-
-          if (isFileBacked(disableJob)) {
-            return {
-              error: true,
-              message: `任务「${disableJob.name}」由 .agents/tasks/ 文件定义，启用/禁用请在 task.md 中修改 enabled 字段，重启后生效。`,
-              source: 'file',
-              filePath: disableJob.metadata?.filePath,
-            }
-          }
 
           const disabledJob = cronStore.update(input.id, { enabled: false })
           return { success: true, message: `已禁用定时任务「${disabledJob!.name}」` }

@@ -1,5 +1,7 @@
 import { getServerRuntime } from '@/lib/runtime';
-import { validateCronExpression } from '@the-thing/core';
+import { validateCronExpression, buildFrontmatter } from '@the-thing/core';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -71,6 +73,11 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    const existing = rt.cronStore.getById(id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Cron job not found' }, { status: 404 });
+    }
+
     const body = await request.json() as Record<string, unknown>;
 
     if (body.schedule && typeof body.schedule === 'string') {
@@ -83,9 +90,31 @@ export async function PATCH(
       }
     }
 
+    // 清空 schedule → 自动禁用任务
+    if ('schedule' in body && !body.schedule) {
+      body.enabled = false;
+    }
+
     const job = rt.cronStore.update(id, body);
     if (!job) {
       return NextResponse.json({ error: 'Cron job not found' }, { status: 404 });
+    }
+
+    // 同步写回 task.md（如果该任务有文件）
+    const filePath = existing.metadata?.filePath as string | undefined;
+    if (filePath) {
+      try {
+        const frontmatter = buildFrontmatter({
+          id: job.id,
+          name: job.name,
+          schedule: job.schedule,
+          enabled: job.enabled,
+          agentType: job.agentType,
+        });
+        await fs.writeFile(filePath, frontmatter + job.prompt, 'utf-8');
+      } catch (err) {
+        console.error('[Cron API] Failed to sync task.md:', err);
+      }
     }
 
     return NextResponse.json({ success: true, job });
@@ -109,6 +138,19 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const existing = rt.cronStore.getById(id);
+
+    // 如果有文件，先删文件
+    const filePath = existing?.metadata?.filePath as string | undefined;
+    if (filePath) {
+      try {
+        await fs.unlink(filePath);
+        await fs.rmdir(path.dirname(filePath)).catch(() => {});
+      } catch (err) {
+        console.error('[Cron API] Failed to delete task.md:', err);
+      }
+    }
+
     const deleted = rt.cronStore.delete(id);
     if (!deleted) {
       return NextResponse.json({ error: 'Cron job not found' }, { status: 404 });

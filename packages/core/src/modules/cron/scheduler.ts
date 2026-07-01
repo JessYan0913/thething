@@ -80,6 +80,11 @@ export class CronScheduler {
   }
 
   private async fireJob(job: CronJob, now: number): Promise<void> {
+    if (!job.schedule) {
+      logger.warn('CronScheduler', `Job "${job.name}" (${job.id}) has no schedule, skipping`)
+      return
+    }
+
     const eventId = `cron-${job.id}-${now}`
     // Each execution gets its own unique conversation to avoid context pollution.
     // If job.conversationId is explicitly set, the user wants to reuse that conversation.

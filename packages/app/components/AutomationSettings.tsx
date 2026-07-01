@@ -1,3 +1,5 @@
+'use client'
+
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
@@ -5,6 +7,8 @@ import {
   TrashIcon, CheckIcon, XIcon,
   PlayIcon, PauseIcon, AlertCircleIcon,
   ZapIcon, HistoryIcon, StopCircleIcon, SearchIcon,
+  ChevronDownIcon, ChevronRightIcon,
+  ClockIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,6 +34,10 @@ const SCHEDULE_PRESETS = [
   { label: "每周一 9:00", value: "0 9 * * 1" },
 ]
 
+function hasSchedule(job: CronJob): boolean {
+  return !!job.schedule
+}
+
 export default function AutomationSettings() {
   const [jobs, setJobs] = useState<CronJob[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -39,6 +47,7 @@ export default function AutomationSettings() {
   const [editingJob, setEditingJob] = useState<CronJob | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [scheduleExpanded, setScheduleExpanded] = useState(false)
 
   const [formName, setFormName] = useState("")
   const [formSchedule, setFormSchedule] = useState("")
@@ -69,7 +78,8 @@ export default function AutomationSettings() {
     setFormSchedule("")
     setFormPrompt("")
     setFormAgentType("")
-    setFormEnabled(true)
+    setFormEnabled(false)
+    setScheduleExpanded(false)
     setFormError(null)
     setDialogOpen(true)
   }
@@ -81,13 +91,19 @@ export default function AutomationSettings() {
     setFormPrompt(job.prompt)
     setFormAgentType(job.agentType ?? "")
     setFormEnabled(job.enabled)
+    setScheduleExpanded(!!job.schedule)
     setFormError(null)
     setDialogOpen(true)
   }
 
   const handleSave = async () => {
-    if (!formName.trim() || !formSchedule.trim() || !formPrompt.trim()) {
-      setFormError("名称、调度表达式、执行指令均为必填")
+    if (!formName.trim() || !formPrompt.trim()) {
+      setFormError("名称和执行指令为必填")
+      return
+    }
+    const schedule = formSchedule.trim()
+    if (schedule && !/^(\S+\s+){4}\S+$/.test(schedule)) {
+      setFormError("Cron 表达式格式无效，需要 5 个字段")
       return
     }
     setSaving(true)
@@ -95,11 +111,12 @@ export default function AutomationSettings() {
     try {
       const body: Record<string, unknown> = {
         name: formName.trim(),
-        schedule: formSchedule.trim(),
         prompt: formPrompt.trim(),
-        enabled: formEnabled,
       }
+      if (schedule) body.schedule = schedule
       if (formAgentType.trim()) body.agentType = formAgentType.trim()
+      // 有 schedule 时才允许启用
+      if (schedule) body.enabled = formEnabled
 
       if (editingJob) {
         const res = await fetch(`/api/cron/${editingJob.id}`, {
@@ -140,6 +157,7 @@ export default function AutomationSettings() {
   }, [])
 
   const handleToggle = useCallback(async (job: CronJob) => {
+    if (!hasSchedule(job)) return // 无 schedule 的任务不能启用
     const action = job.enabled ? "disable" : "enable"
     const res = await fetch(`/api/cron/${job.id}/actions`, {
       method: "POST",
@@ -229,68 +247,136 @@ export default function AutomationSettings() {
       </div>
 
       {/* Create / Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open) { setDialogOpen(false); return }
+        setDialogOpen(true)
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingJob ? "编辑任务" : "新建自动化任务"}</DialogTitle>
             <DialogDescription>
-              {editingJob ? "修改定时任务配置" : "创建一个定时执行的 Agent 任务"}
+              {editingJob ? "修改任务内容和定时配置" : "定义任务做什么，可选择配置定时执行"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-2">
+            {/* ═══════════════════════════════════════════
+               核心：任务指令
+               ═══════════════════════════════════════════ */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <ZapIcon className="size-3.5 text-primary" />
+                执行指令 <span className="text-muted-foreground font-normal">— Agent 将按此指令执行任务</span>
+              </label>
+              <Textarea
+                value={formPrompt}
+                onChange={e => setFormPrompt(e.target.value)}
+                placeholder="输入 Agent 要执行的指令，例如：&#10;查询今日黄金价格，从 Kitco 获取国际金价...&#10;将结果整理成 markdown 格式保存..."
+                className="min-h-40 text-sm leading-relaxed"
+                autoFocus={!editingJob}
+              />
+            </div>
+
+            {/* 任务名称 */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">任务名称</label>
               <Input
                 value={formName}
                 onChange={e => setFormName(e.target.value)}
-                placeholder="例如：每日数据汇总"
+                placeholder="例如：每日黄金价格查询"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">调度表达式 (Cron)</label>
-              <Input
-                value={formSchedule}
-                onChange={e => setFormSchedule(e.target.value)}
-                placeholder="分 时 日 月 周，例如 0 9 * * 1-5"
-                className="font-mono"
-              />
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {SCHEDULE_PRESETS.map(p => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setFormSchedule(p.value)}
-                    className="text-xs px-2 py-0.5 rounded-full border hover:bg-muted transition-colors"
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+            {/* ═══════════════════════════════════════════
+               折叠：定时执行
+               ═══════════════════════════════════════════ */}
+            <div className="rounded-lg border">
+              <button
+                type="button"
+                onClick={() => setScheduleExpanded(!scheduleExpanded)}
+                className="flex items-center gap-2 w-full px-4 py-2.5 text-left hover:bg-muted/50 transition-colors rounded-lg"
+              >
+                {scheduleExpanded
+                  ? <ChevronDownIcon className="size-4 text-muted-foreground shrink-0" />
+                  : <ChevronRightIcon className="size-4 text-muted-foreground shrink-0" />
+                }
+                <ClockIcon className="size-4 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium">定时执行</span>
+                {formSchedule ? (
+                  <code className="text-xs font-mono text-muted-foreground ml-1">
+                    {formSchedule}
+                  </code>
+                ) : (
+                  <span className="text-xs text-muted-foreground font-normal">（未设置，任务只能手动触发）</span>
+                )}
+              </button>
+
+              {scheduleExpanded && (
+                <div className="px-4 pb-4 space-y-3 border-t pt-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">Cron 表达式</label>
+                    <Input
+                      value={formSchedule}
+                      onChange={e => setFormSchedule(e.target.value)}
+                      placeholder="分 时 日 月 周，例如 0 9 * * 1-5"
+                      className="font-mono text-sm"
+                    />
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {SCHEDULE_PRESETS.map(p => (
+                        <button
+                          key={p.value}
+                          type="button"
+                          onClick={() => {
+                            setFormSchedule(p.value)
+                            setFormEnabled(true)
+                          }}
+                          className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                            formSchedule === p.value
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'hover:bg-muted'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {formSchedule && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormEnabled(!formEnabled)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          formEnabled
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        <span className={`size-1.5 rounded-full ${formEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        {formEnabled ? '启用' : '已暂停'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
+            {/* Agent 类型 */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">执行指令</label>
-              <Textarea
-                value={formPrompt}
-                onChange={e => setFormPrompt(e.target.value)}
-                placeholder="Agent 将按此指令执行任务..."
-                className="min-h-[100px]"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Agent 类型 <span className="text-muted-foreground font-normal">(可选)</span></label>
+              <label className="text-sm font-medium">
+                Agent 类型 <span className="text-muted-foreground font-normal">（可选）</span>
+              </label>
               <Input
                 value={formAgentType}
                 onChange={e => setFormAgentType(e.target.value)}
                 placeholder="留空使用默认 Agent"
+                className="text-sm"
               />
             </div>
 
             {formError && (
-              <div className="flex items-center gap-2 text-sm text-destructive">
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/5 rounded-lg px-3 py-2">
                 <AlertCircleIcon className="size-4 shrink-0" />
                 {formError}
               </div>
@@ -330,6 +416,8 @@ function JobCard({
   onConfirmDelete: () => void
   onCancelDelete: () => void
 }) {
+  const scheduled = hasSchedule(job)
+
   return (
     <div className="rounded-lg border w-full text-left">
       {/* Main card content */}
@@ -346,19 +434,38 @@ function JobCard({
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium text-sm">{job.name}</span>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                    job.enabled
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  }`}
-                >
-                  <span className={`size-1.5 rounded-full ${job.enabled ? "bg-green-500" : "bg-red-500"}`} />
-                  {job.enabled ? "运行中" : "已停止"}
-                </span>
-                <code className="text-xs text-muted-foreground/70 font-mono bg-muted px-1.5 py-0.5 rounded">
-                  {job.schedule}
-                </code>
+                {/* 来源徽章 */}
+                {job.metadata?.source === 'task-file' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    文件定义
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                    手动创建
+                  </span>
+                )}
+                {scheduled ? (
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      job.enabled
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    }`}
+                  >
+                    <span className={`size-1.5 rounded-full ${job.enabled ? "bg-green-500" : "bg-red-500"}`} />
+                    {job.enabled ? "运行中" : "已停止"}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                    <ClockIcon className="size-3" />
+                    手动触发
+                  </span>
+                )}
+                {scheduled && (
+                  <code className="text-xs text-muted-foreground/70 font-mono bg-muted px-1.5 py-0.5 rounded">
+                    {job.schedule}
+                  </code>
+                )}
               </div>
               <p className="text-xs text-muted-foreground line-clamp-2">
                 {job.prompt}
@@ -377,17 +484,19 @@ function JobCard({
               执行
             </Button>
 
-            <Button
-              variant={job.enabled ? "secondary" : "default"}
-              size="sm"
-              className="h-7 px-2 text-xs gap-1"
-              onClick={e => { e.stopPropagation(); onToggle() }}
-            >
-              {job.enabled
-                ? <><StopCircleIcon className="size-3" /> 停用</>
-                : <><PlayIcon className="size-3" /> 启用</>
-              }
-            </Button>
+            {scheduled && (
+              <Button
+                variant={job.enabled ? "secondary" : "default"}
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={e => { e.stopPropagation(); onToggle() }}
+              >
+                {job.enabled
+                  ? <><StopCircleIcon className="size-3" /> 停用</>
+                  : <><PlayIcon className="size-3" /> 启用</>
+                }
+              </Button>
+            )}
 
             {confirmDelete ? (
               <div className="flex items-center gap-0.5">
@@ -428,11 +537,23 @@ function JobCard({
           {job.lastRunAt && (
             <span>上次执行: {new Date(job.lastRunAt).toLocaleString()}</span>
           )}
-          <span>下次执行: {new Date(job.nextRunAt).toLocaleString()}</span>
+          {scheduled ? (
+            <span>下次执行: {new Date(job.nextRunAt).toLocaleString()}</span>
+          ) : (
+            <span className="text-muted-foreground/50">未设置定时执行</span>
+          )}
         </div>
 
-        <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground/60 flex-wrap">
           <span className="font-mono">{job.id}</span>
+          {(() => {
+            const fp = job.metadata?.filePath;
+            return typeof fp === 'string' ? (
+              <span className="truncate max-w-75" title={fp}>
+                📄 {fp.replace(/^.*\/\.agents\//, '~/.agents/')}
+              </span>
+            ) : null;
+          })()}
         </div>
       </div>
 

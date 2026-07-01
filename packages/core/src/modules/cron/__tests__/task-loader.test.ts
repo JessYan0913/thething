@@ -43,32 +43,52 @@ describe('intervalMinutesToCron', () => {
 // ============================================================
 
 describe('TaskFrontmatterSchema', () => {
-  it('parses minimal valid frontmatter with schedule', () => {
+  it('parses minimal valid frontmatter', () => {
     const result = TaskFrontmatterSchema.parse({
       kind: 'task',
       id: 'my-task',
       name: 'My Task',
-      schedule: '0 9 * * *',
     });
     expect(result.id).toBe('my-task');
     expect(result.name).toBe('My Task');
-    expect(result.schedule).toBe('0 9 * * *');
     expect(result.enabled).toBe(true); // default
     expect(result.runOnStartup).toBe(false); // default
   });
 
-  it('parses frontmatter with intervalMinutes', () => {
+  it('parses with intervalMinutes', () => {
+    const result = TaskFrontmatterSchema.parse({
+      id: 'interval-task',
+      name: 'Interval Task',
+      intervalMinutes: 60,
+    });
+    expect(result.intervalMinutes).toBe(60);
+  });
+
+  it('parses with schedule (cron)', () => {
+    const result = TaskFrontmatterSchema.parse({
+      id: 'cron-task',
+      name: 'Cron Task',
+      schedule: '0 9 * * *',
+    });
+    expect(result.schedule).toBe('0 9 * * *');
+  });
+
+  it('parses with enabled false', () => {
+    const result = TaskFrontmatterSchema.parse({
+      id: 'disabled-task',
+      name: 'Disabled Task',
+      enabled: false,
+    });
+    expect(result.enabled).toBe(false);
+  });
+
+  it('parses with profileId', () => {
     const result = TaskFrontmatterSchema.parse({
       id: 'hourly-task',
       name: 'Hourly Task',
-      intervalMinutes: 60,
-      enabled: false,
       profileId: 'dev-agent',
     });
-    expect(result.intervalMinutes).toBe(60);
-    expect(result.enabled).toBe(false);
     expect(result.profileId).toBe('dev-agent');
-    expect(result.schedule).toBeUndefined();
   });
 
   it('rejects missing id', () => {
@@ -81,12 +101,12 @@ describe('TaskFrontmatterSchema', () => {
 
   it('accepts optional kind field', () => {
     const withKind = TaskFrontmatterSchema.parse({
-      id: 'a', name: 'A', intervalMinutes: 60, kind: 'task',
+      id: 'a', name: 'A', kind: 'task',
     });
     expect(withKind.kind).toBe('task');
 
     const withoutKind = TaskFrontmatterSchema.parse({
-      id: 'b', name: 'B', intervalMinutes: 60,
+      id: 'b', name: 'B',
     });
     expect(withoutKind.kind).toBeUndefined();
   });

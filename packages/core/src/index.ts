@@ -300,9 +300,15 @@ export type { SubAgentStreamWriter } from './modules/agent';
 export {
   CronScheduler,
   SQLiteCronJobStore,
+  InMemoryCronJobStore,
   nextOccurrence,
   matches as matchesCronExpression,
   validateCronExpression,
+  NO_SCHEDULE,
+  buildFrontmatter,
+  cronToIntervalMinutes,
+  intervalMinutesToCron,
+  TaskFrontmatterSchema,
 } from './modules/cron';
 export type {
   CronJob,
@@ -311,6 +317,9 @@ export type {
   CronJobUpdateInput,
   CronJobStore,
   CronSchedulerOptions,
+  TaskFrontmatter,
+  TaskLoaderOptions,
+  InMemoryCronJobStoreOptions,
 } from './modules/cron';
 
 // ============================================================

@@ -1,6 +1,15 @@
 export type { CronJob, CronExecution, CronJobCreateInput, CronJobUpdateInput, CronJobStore } from './types'
+export { NO_SCHEDULE } from './types'
 export { CronScheduler, type CronSchedulerOptions } from './scheduler'
 export { SQLiteCronJobStore, type SQLiteCronJobStoreOptions } from './sqlite-store'
 export { InMemoryCronJobStore, type InMemoryCronJobStoreOptions } from './in-memory-store'
 export { nextOccurrence, matches, validate as validateCronExpression } from './cron-expr'
-export { loadTasksFromFiles, intervalMinutesToCron, TaskFrontmatterSchema, type TaskFrontmatter, type TaskLoaderOptions } from './task-loader'
+export {
+  loadTasksFromFiles,
+  intervalMinutesToCron,
+  cronToIntervalMinutes,
+  buildFrontmatter,
+  TaskFrontmatterSchema,
+  type TaskFrontmatter,
+  type TaskLoaderOptions,
+} from './task-loader'
