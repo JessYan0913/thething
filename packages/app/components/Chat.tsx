@@ -45,12 +45,14 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ModelSelector, AgentSelector } from '@/components/chat-selectors';
+import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
+import type { ApprovalMode } from '@/components/chat-selectors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
 const SELECTED_MODEL_KEY = 'chat_selected_model';
 const SELECTED_AGENT_KEY = 'chat_selected_agent';
+const SELECTED_APPROVAL_MODE_KEY = 'chat_approval_mode';
 
 const TODO_TOOL_TYPES = new Set([
   'tool-todo_create',
@@ -328,11 +330,25 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     localStorage.setItem(SELECTED_AGENT_KEY, value);
   }, []);
 
+  // 审批模式选择状态
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem(SELECTED_APPROVAL_MODE_KEY) as ApprovalMode | null) || 'smart';
+    }
+    return 'smart';
+  });
+
+  const handleApprovalModeChange = useCallback((value: string) => {
+    setApprovalMode(value as ApprovalMode);
+    localStorage.setItem(SELECTED_APPROVAL_MODE_KEY, value);
+  }, []);
+
   const extraBodyRef = useRef<Record<string, unknown> | undefined>(extraBody);
   extraBodyRef.current = {
     ...extraBody,
     modelName: selectedModel === 'default' ? undefined : selectedModel,
     agentType: selectedAgent === 'auto' ? undefined : selectedAgent,
+    approvalMode,
   };
 
   const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef, () => messagesRef.current), [conversationId, apiEndpoint]);
@@ -778,6 +794,31 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     setEditingText('');
   }, [editingMessageId, editingText, messages, setMessages, sendMessage]);
 
+  // ── 输入卡片（在空状态和对话模式中复用） ──────────────
+  const inputCard = (
+    <div className="rounded-xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/50">
+      <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
+        <AttachmentPreview />
+        <PromptInputTextarea placeholder="Message AI Assistant..." />
+        <PromptInputFooter>
+          <PromptInputTools>
+            <PromptInputActionMenu>
+              <PromptInputActionMenuTrigger tooltip="Add attachments" />
+              <PromptInputActionMenuContent>
+                <PromptInputActionAddAttachments />
+                <PromptInputActionAddScreenshot />
+              </PromptInputActionMenuContent>
+            </PromptInputActionMenu>
+            {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
+            <ModelSelector value={selectedModel} onChange={handleModelChange} />
+            <ApprovalModeSelector value={approvalMode} onChange={handleApprovalModeChange} />
+          </PromptInputTools>
+          <PromptInputSubmit status={status} onStop={handleStop} />
+        </PromptInputFooter>
+      </PromptInput>
+    </div>
+  )
+
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* 左侧：聊天内容 */}
@@ -787,11 +828,14 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         )}
 
         {messages.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center">
-            <ConversationEmptyState
-              title="How can I help you today?"
-              description="Start a conversation and I'll do my best to assist you."
-            />
+          <div className="flex flex-1 flex-col items-center justify-center p-8">
+            <div className="w-full max-w-2xl space-y-6">
+              <ConversationEmptyState
+                title="How can I help you today?"
+                description="Start a conversation and I'll do my best to assist you."
+              />
+              {inputCard}
+            </div>
           </div>
         ) : (
           <div className="flex flex-1 min-h-0 flex-col pt-4">
@@ -1071,55 +1115,35 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         </div>
       )}
 
-      <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
-        <div className="mx-auto max-w-3xl space-y-2">
-          {/* Task List Panel - always visible above input */}
-          <TodoPanel conversationId={conversationId} />
+      {messages.length > 0 && (
+        <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
+          <div className="mx-auto max-w-3xl space-y-2">
+            <TodoPanel conversationId={conversationId} />
 
-          {/* User Question Panel - 问题收集 */}
-          {questionPanel && (
-            <UserQuestionPanel
-              isOpen={questionPanel.isOpen}
-              questions={questionPanel.questions}
-              onComplete={handleQuestionsComplete}
-              onCancel={handleQuestionsCancel}
-            />
-          )}
+            {questionPanel && (
+              <UserQuestionPanel
+                isOpen={questionPanel.isOpen}
+                questions={questionPanel.questions}
+                onComplete={handleQuestionsComplete}
+                onCancel={handleQuestionsCancel}
+              />
+            )}
 
-          {/* Approval Panel - 工具审批（批量） */}
-          {approvalRequests.length > 0 && (
-            <ApprovalPanel
-              isOpen={true}
-              requests={approvalRequests}
-              onApprove={handleApprove}
-              onApproveAll={handleApproveAll}
-              onDeny={handleDeny}
-              onDenyAll={handleDenyAll}
-            />
-          )}
+            {approvalRequests.length > 0 && (
+              <ApprovalPanel
+                isOpen={true}
+                requests={approvalRequests}
+                onApprove={handleApprove}
+                onApproveAll={handleApproveAll}
+                onDeny={handleDeny}
+                onDenyAll={handleDenyAll}
+              />
+            )}
 
-          <div className="rounded-xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/50">
-            <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
-              <AttachmentPreview />
-              <PromptInputTextarea placeholder="Message AI Assistant..." />
-              <PromptInputFooter>
-                <PromptInputTools>
-                  <PromptInputActionMenu>
-                    <PromptInputActionMenuTrigger tooltip="Add attachments" />
-                    <PromptInputActionMenuContent>
-                      <PromptInputActionAddAttachments />
-                      <PromptInputActionAddScreenshot />
-                    </PromptInputActionMenuContent>
-                  </PromptInputActionMenu>
-                  {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
-                  <ModelSelector value={selectedModel} onChange={handleModelChange} />
-                </PromptInputTools>
-                <PromptInputSubmit status={status} onStop={handleStop} />
-              </PromptInputFooter>
-            </PromptInput>
+            {inputCard}
           </div>
         </div>
-      </div>
+      )}
       </div>
       {/* 右侧：文件预览分栏 */}
       {previewFile && (

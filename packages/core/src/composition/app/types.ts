@@ -2,7 +2,7 @@
 // App Types - 应用层类型定义
 // ============================================================
 
-import type { UIMessage, Tool, ToolLoopAgent } from 'ai';
+import type { UIMessage, Tool } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { Skill } from '../../modules/skills/types';
 import type { AgentDefinition } from '../../modules/agent/types';
@@ -157,6 +157,9 @@ export interface CreateAgentOptions {
    */
   customInstructions?: string;
 
+  /** 审批模式：'smart' | 'full-trust' */
+  approvalMode?: string;
+
   /** Session 配置 */
   session?: {
     maxContextTokens?: number;
@@ -213,7 +216,8 @@ export interface CreateAgentOptions {
  */
 export interface CreateAgentResult {
   /** Vercel AI SDK ToolLoopAgent 实例，可直接调用 streamText/generateText */
-  agent: ToolLoopAgent;
+  /** Agent 实例 */
+  agent: import('ai').Agent;
   /** 当前会话状态（预算、活跃技能、否决计数等） */
   sessionState: SessionState;
   /** 已注册的 MCP 注册表，对话结束后调用 disconnectAll() */

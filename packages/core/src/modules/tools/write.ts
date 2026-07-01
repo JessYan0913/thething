@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { checkPermissionRules, validateWritePath } from '../../modules/permissions';
 import type { PathValidationOptions } from '../../modules/permissions';
 import type { FileToolOptions } from './read';
-import { logger } from '../../primitives/logger';
 
 // 文件类型到语言的映射（用于代码高亮）
 const FILE_TYPE_MAP: Record<string, string> = {
@@ -114,16 +113,6 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
       .default('overwrite')
       .describe('写入模式: overwrite（覆盖/创建）, create（仅创建，存在则报错）, append（追加到末尾）'),
   }),
-  needsApproval: async ({ filePath }) => {
-    const matchedRule = checkPermissionRules('write_file', { filePath }, options.permissionRules);
-    logger.debug('write_file', `needsApproval: filePath=${filePath}, matchedRule=${matchedRule ? JSON.stringify(matchedRule) : 'null'}`);
-    if (matchedRule?.behavior === 'allow') {
-      logger.debug('write_file', 'needsApproval: Auto-approved by permissions.json');
-      return false;
-    }
-    // 写入操作默认需要审批（allow/session 检查由 agent-handler.ts 处理）
-    return true;
-  },
   execute: async ({ filePath, content, mode = 'overwrite' }) => {
     // Step 1: 路径安全检查（移到 execute 中，返回错误结果而非抛出错误）
     const pathCheck = validateWritePath(filePath, pathValidationOptions);

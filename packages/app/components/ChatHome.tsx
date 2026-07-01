@@ -17,7 +17,8 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
 import { useChatContext } from "./ChatLayout"
-import { ModelSelector, AgentSelector } from "@/components/chat-selectors"
+import { ModelSelector, AgentSelector, ApprovalModeSelector } from "@/components/chat-selectors"
+import type { ApprovalMode } from "@/components/chat-selectors"
 
 function AttachmentPreview() {
   const { files, remove } = usePromptInputAttachments()
@@ -59,6 +60,7 @@ function AttachmentPreview() {
 
 const SELECTED_MODEL_KEY = 'chat_selected_model'
 const SELECTED_AGENT_KEY = 'chat_selected_agent'
+const SELECTED_APPROVAL_MODE_KEY = 'chat_approval_mode'
 
 export default function ChatHome() {
   const { t } = useTranslation('chat')
@@ -86,6 +88,18 @@ export default function ChatHome() {
   const handleAgentChange = useCallback((value: string) => {
     setSelectedAgent(value)
     localStorage.setItem(SELECTED_AGENT_KEY, value)
+  }, [])
+
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem(SELECTED_APPROVAL_MODE_KEY) as ApprovalMode | null) || 'smart'
+    }
+    return 'smart'
+  })
+
+  const handleApprovalModeChange = useCallback((value: string) => {
+    setApprovalMode(value as ApprovalMode)
+    localStorage.setItem(SELECTED_APPROVAL_MODE_KEY, value)
   }, [])
 
   const handleSubmit = useCallback(
@@ -136,6 +150,7 @@ export default function ChatHome() {
                 </PromptInputActionMenu>
                 <AgentSelector value={selectedAgent} onChange={handleAgentChange} />
                 <ModelSelector value={selectedModel} onChange={handleModelChange} />
+                <ApprovalModeSelector value={approvalMode} onChange={handleApprovalModeChange} />
               </PromptInputTools>
               <PromptInputSubmit
                 disabled={isSubmitting}

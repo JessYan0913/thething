@@ -88,7 +88,7 @@ export interface BashToolOptions {
 // Safety checks
 // ============================================================
 
-function isCommandDangerous(command: string): { dangerous: boolean; reason?: string } {
+export function isCommandDangerous(command: string): { dangerous: boolean; reason?: string } {
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(command)) {
       return { dangerous: true, reason: `Command matches security blacklist: "${pattern.source}"` };
@@ -97,7 +97,7 @@ function isCommandDangerous(command: string): { dangerous: boolean; reason?: str
   return { dangerous: false };
 }
 
-function isCommandSafe(command: string): boolean {
+export function isCommandSafe(command: string): boolean {
   const trimmed = command.trim();
 
   // Exact match
@@ -231,15 +231,6 @@ export function createBashTool(options: BashToolOptions) {
         .default(DEFAULT_TIMEOUT_MS)
         .describe('Timeout in milliseconds (default 30s, max 5min)'),
     }),
-
-    needsApproval: async ({ command }) => {
-      const matchedRule = checkPermissionRules('bash', { command }, options.permissionRules);
-      if (matchedRule?.behavior === 'allow') return false;
-      if (matchedRule?.behavior === 'deny') return true;
-      if (isCommandDangerous(command).dangerous) return true;
-      if (isCommandSafe(command)) return false;
-      return true;
-    },
 
     execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, execOptions) => {
       // Re-check safety at execution time

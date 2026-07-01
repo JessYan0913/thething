@@ -218,13 +218,6 @@ export function createReadFileTool(options: FileToolOptions & {
       limit: z.number().optional().describe('Maximum number of lines to read (no limit by default, subject to smart truncation)'),
     }),
 
-    needsApproval: async ({ filePath }) => {
-      const matchedRule = checkPermissionRules('read_file', { filePath }, options.permissionRules);
-      if (matchedRule?.behavior === 'allow') return false;
-      if (matchedRule?.behavior === 'deny') return true;
-      return true;
-    },
-
     execute: async ({ filePath, offset, limit }, execOptions) => {
       const pathCheck = validatePath(filePath, pathValidationOptions);
       if (!pathCheck.allowed) {

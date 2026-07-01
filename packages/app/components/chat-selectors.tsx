@@ -30,6 +30,52 @@ const MODEL_LABELS: Record<string, string> = {
   smart: 'Smart',
 };
 
+// ============================================================
+// Approval Mode Selector
+// ============================================================
+
+export type ApprovalMode = 'smart' | 'auto-review' | 'full-trust';
+
+interface ApprovalModeSelectorProps {
+  value: ApprovalMode;
+  onChange: (value: ApprovalMode) => void;
+}
+
+const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string; hint: string }> = {
+  'smart': {
+    label: 'Smart',
+    hint: '智能审批',
+  },
+  'auto-review': {
+    label: 'Auto-review',
+    hint: 'Agent 审批',
+  },
+  'full-trust': {
+    label: 'Full trust',
+    hint: '完全信任',
+  },
+};
+
+export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorProps) {
+  return (
+    <PromptInputSelect value={value} onValueChange={onChange}>
+      <PromptInputSelectTrigger className="gap-1.5 text-xs">
+        <PromptInputSelectValue placeholder="Mode" />
+      </PromptInputSelectTrigger>
+      <PromptInputSelectContent>
+        {Object.entries(APPROVAL_MODE_CONFIG).map(([key, config]) => (
+          <PromptInputSelectItem key={key} value={key}>
+            <span className="font-medium">{config.label}</span>
+            <span className="ml-1.5 text-muted-foreground text-xs">
+              {config.hint}
+            </span>
+          </PromptInputSelectItem>
+        ))}
+      </PromptInputSelectContent>
+    </PromptInputSelect>
+  );
+}
+
 export function ModelSelector({ value, onChange }: ModelSelectorProps) {
   const [aliases, setAliases] = useState<ModelAliasConfig | null>(null);
 

@@ -4,7 +4,8 @@
 // 合并原 composition/app/create.ts（配置解析）+ modules/agent/create.ts（组装编排），
 // 让组装逻辑正确归属于 composition 层。
 
-import { ToolLoopAgent, wrapLanguageModel } from 'ai'
+import type { ToolApprovalStatus } from 'ai';
+import { ToolLoopAgent, wrapLanguageModel, generateText } from 'ai'
 import type { LanguageModel, LanguageModelMiddleware } from 'ai'
 import type { SubAgentStreamWriter } from '../../modules/agent'
 import type { CompactionConfig } from '../../modules/compaction/types'
@@ -13,6 +14,8 @@ import { resolveAgentConfig } from './resolve-agent-config'
 import { createSessionState } from '../../modules/session'
 import { createLanguageModel, createModelProvider } from '../../services/model'
 import { createAgentPipeline, createDefaultStopConditions } from '../../modules/agent-control'
+import { catchAllApproval } from '../../modules/agent-control/tool-approval'
+import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-approval'
 import { telemetryMiddleware, costTrackingMiddleware } from '../../modules/middleware'
 import { loadAllTools } from '../../modules/agent/tools'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
@@ -344,11 +347,27 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     sessionState,
   })
 
-  const agent = new ToolLoopAgent({
+  // ── v7 智能审批：runtimeContext + toolApproval ─────────
+  const reviewer = options.approvalMode === 'auto-review'
+    ? createApprovalReviewer(wrappedModel, instructions)
+    : undefined;
+
+  const approvalRuntimeContext: ApprovalRuntimeContext = {
+    turnCount: sessionState.turnCount,
+    projectRoot: sessionState.projectRoot,
+    permissionRules: sessionState.permissionRules,
+    costTracker: sessionState.costTracker,
+    denialTracker: sessionState.denialTracker,
+    approvalMode: options.approvalMode ?? 'smart',
+    reviewer,
+  }
+  const agent = new ToolLoopAgent<never, ChatToolsType, ApprovalRuntimeContext>({
     model: wrappedModel,
     instructions,
     tools: finalTools,
-    prepareStep,
+    runtimeContext: approvalRuntimeContext,
+    toolApproval: catchAllApproval as unknown as import('ai').ToolApprovalConfiguration<ChatToolsType, ApprovalRuntimeContext>,
+    prepareStep: prepareStep as import('ai').PrepareStepFunction<ChatToolsType, ApprovalRuntimeContext>,
     stopWhen,
     toolChoice: 'auto',
   })
@@ -378,6 +397,108 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     wikiBaseDir,
     dispose,
   }
+}
+
+/**
+ * 创建审批审查 Agent（auto-review 模式用）。
+ * 当 Smart 逻辑不确定时，调一次 LLM 决定是否放行。
+ * 上下文包括：用户原始目标、最近执行记录、Agent 系统指令。
+ */
+function createApprovalReviewer(model: import('ai').LanguageModel, instructions: string): ApprovalRuntimeContext['reviewer'] {
+  return async (toolName: string, input: unknown, messages: unknown[]) => {
+    const msgs = messages as Array<Record<string, unknown>>;
+
+    // 提取对话中的文本内容（兼容 content 字符串/数组格式）
+    function extractText(m: Record<string, unknown>): string {
+      const content = m.content;
+      if (typeof content === 'string') return content.slice(0, 300);
+      if (Array.isArray(content)) {
+        return content
+          .filter((p: Record<string, unknown>) => p.type === 'text')
+          .map((p: Record<string, unknown>) => String(p.text ?? ''))
+          .join('\n')
+          .slice(0, 300);
+      }
+      return '';
+    }
+
+    // 1. 用户原始目标：第一条 user 消息
+    const firstUserMsg = msgs.find(m => m.role === 'user');
+    const originalGoal = firstUserMsg ? extractText(firstUserMsg) : '(none)';
+
+    // 2. 最近行为：最近的 3 条非 user 消息摘要
+    const recentActions = msgs.slice(-4).filter(m => m.role !== 'user').map(m => {
+      const role = m.role === 'assistant' ? 'Agent' : 'Tool';
+      const text = extractText(m);
+      const toolCalls = Array.isArray(m.content)
+        ? (m.content as Array<Record<string, unknown>>)
+            .filter((p: Record<string, unknown>) => p.type === 'tool-call')
+            .map((p: Record<string, unknown>) => `[${p.toolName}](${JSON.stringify(p.args ?? p.input).slice(0, 150)})`)
+            .join('\n')
+        : '';
+      return `${role}: ${text || toolCalls || '(empty)'}`;
+    }).join('\n');
+
+    // 3. 当前要审批的操作（只传标识性参数，不传大段内容）
+    function summarizeToolInput(input: unknown, toolName: string): string {
+      if (typeof input !== 'object' || input === null) return String(input ?? '');
+      const obj = input as Record<string, unknown>;
+      switch (toolName) {
+        case 'read_file':
+        case 'write_file':
+        case 'edit_file':
+          return `filePath: "${obj.filePath ?? '?'}"`;
+        case 'bash':
+          return `command: "${String(obj.command ?? '').slice(0, 200)}"`;
+        case 'web_fetch':
+          return `url: "${obj.url ?? '?'}"`;
+        default:
+          return JSON.stringify(obj).slice(0, 300);
+      }
+    }
+    const toolInput = summarizeToolInput(input, toolName);
+
+    try {
+      const result = await generateText({
+        model,
+        system: `You are a security reviewer for an AI coding assistant.
+
+Your job: determine if the CURRENT tool call should be approved or denied, based on what the user originally asked and what the agent has done so far.
+
+Rules:
+- APPROVED if the operation operates within the project workspace
+- APPROVED if it clearly carries out the user's original request
+- DENIED if the operation is dangerous (rm -rf /, sudo, network downloads, modifying sensitive files)
+- DENIED if it deviates from what the user asked for
+- When in doubt, DENIED — security first
+
+Respond with exactly one word: APPROVED or DENIED`,
+        prompt: [
+          `=== User's original request ===`,
+          originalGoal,
+          ``,
+          `=== Agent's system instructions ===`,
+          instructions.slice(0, 500),
+          ``,
+          `=== Recent agent actions ===`,
+          recentActions || '(none yet)',
+          ``,
+          `=== Current tool call to review ===`,
+          `Tool: ${toolName}`,
+          `Input: ${toolInput}`,
+          ``,
+          `Approve or deny? Respond with exactly one word:`,
+        ].join('\n'),
+      });
+
+      const text = result.text.trim().toUpperCase();
+      if (text.startsWith('APPROVED')) return 'approved' as ToolApprovalStatus;
+      if (text.startsWith('DENIED')) return 'denied' as ToolApprovalStatus;
+      return 'user-approval' as ToolApprovalStatus;
+    } catch {
+      return 'user-approval' as ToolApprovalStatus;
+    }
+  };
 }
 
 async function estimateTokensDiff(before: import('ai').UIMessage[], after: import('ai').UIMessage[]): Promise<number> {

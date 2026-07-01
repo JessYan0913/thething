@@ -182,13 +182,6 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
 
     inputSchema: editSchema,
 
-    needsApproval: async ({ filePath }) => {
-      const matchedRule = checkPermissionRules('edit_file', { filePath }, options.permissionRules);
-      if (matchedRule?.behavior === 'allow') return false;
-      if (matchedRule?.behavior === 'deny') return true;
-      return true;
-    },
-
     execute: async ({ filePath, edits }, execOptions) => {
       // Path safety
       const pathCheck = validateWritePath(filePath, pathValidationOptions);
