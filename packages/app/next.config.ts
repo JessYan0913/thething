@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  turbopack: {},
   // 排除 memory/wiki 目录的文件监听，避免 Fast Refresh 中断流式响应
   webpack: (config, { isServer }) => {
     if (isServer) {
