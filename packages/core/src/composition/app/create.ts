@@ -408,36 +408,48 @@ function createApprovalReviewer(model: import('ai').LanguageModel, instructions:
   return async (toolName: string, input: unknown, messages: unknown[]) => {
     const msgs = messages as Array<Record<string, unknown>>;
 
-    // 提取对话中的文本内容（兼容 content 字符串/数组格式）
-    function extractText(m: Record<string, unknown>): string {
-      const content = m.content;
-      if (typeof content === 'string') return content.slice(0, 300);
-      if (Array.isArray(content)) {
-        return content
-          .filter((p: Record<string, unknown>) => p.type === 'text')
-          .map((p: Record<string, unknown>) => String(p.text ?? ''))
-          .join('\n')
-          .slice(0, 300);
+    // 提取用户消息的前 120 字作为摘要
+    function firstUserText(m: Record<string, unknown>): string {
+      const c = m.content;
+      if (typeof c === 'string') return c.slice(0, 120);
+      if (Array.isArray(c)) {
+        const t = c.find((p: Record<string, unknown>) => p.type === 'text');
+        return String(t?.text ?? '').slice(0, 120);
       }
       return '';
     }
 
-    // 1. 用户原始目标：第一条 user 消息
-    const firstUserMsg = msgs.find(m => m.role === 'user');
-    const originalGoal = firstUserMsg ? extractText(firstUserMsg) : '(none)';
+    // 提取最近工具调用摘要（只传 toolName + 关键参数）
+    function extractToolCalls(m: Record<string, unknown>): string[] {
+      if (!Array.isArray(m.content)) return [];
+      return (m.content as Array<Record<string, unknown>>)
+        .filter((p: Record<string, unknown>) => p.type === 'tool-call')
+        .map((p: Record<string, unknown>) => {
+          const name = p.toolName ?? '?';
+          const args = (p.args ?? p.input) as Record<string, unknown> | undefined;
+          switch (name as string) {
+            case 'read_file': case 'write_file': case 'edit_file':
+              return `${name}(${args?.filePath ?? '?'})`;
+            case 'bash':
+              return `bash(${String(args?.command ?? '').slice(0, 60)})`;
+            case 'web_fetch':
+              return `fetch(${args?.url ?? '?'})`;
+            default:
+              return `${name}`;
+          }
+        });
+    }
 
-    // 2. 最近行为：最近的 3 条非 user 消息摘要
-    const recentActions = msgs.slice(-4).filter(m => m.role !== 'user').map(m => {
-      const role = m.role === 'assistant' ? 'Agent' : 'Tool';
-      const text = extractText(m);
-      const toolCalls = Array.isArray(m.content)
-        ? (m.content as Array<Record<string, unknown>>)
-            .filter((p: Record<string, unknown>) => p.type === 'tool-call')
-            .map((p: Record<string, unknown>) => `[${p.toolName}](${JSON.stringify(p.args ?? p.input).slice(0, 150)})`)
-            .join('\n')
-        : '';
-      return `${role}: ${text || toolCalls || '(empty)'}`;
-    }).join('\n');
+    // 1. 用户原始目标（一句话摘要）
+    const firstUserMsg = msgs.find(m => m.role === 'user');
+    const originalGoal = firstUserMsg ? firstUserText(firstUserMsg) : '(none)';
+
+    // 2. 最近工具调用链（最近 3 轮，只含工具名称+关键参数）
+    const recentToolCalls = msgs.slice(-6)
+      .filter(m => m.role === 'assistant')
+      .flatMap(m => extractToolCalls(m))
+      .slice(-5)
+      .join(' → ') || '(none)';
 
     // 3. 当前要审批的操作（只传标识性参数，不传大段内容）
     function summarizeToolInput(input: unknown, toolName: string): string {
@@ -474,20 +486,12 @@ Rules:
 
 Respond with exactly one word: APPROVED or DENIED`,
         prompt: [
-          `=== User's original request ===`,
-          originalGoal,
+          `User asked: ${originalGoal}`,
+          `Agent instructions: ${instructions.slice(0, 200)}`,
+          `Recent: ${recentToolCalls}`,
+          `→ Need review: ${toolName}(${toolInput})`,
           ``,
-          `=== Agent's system instructions ===`,
-          instructions.slice(0, 500),
-          ``,
-          `=== Recent agent actions ===`,
-          recentActions || '(none yet)',
-          ``,
-          `=== Current tool call to review ===`,
-          `Tool: ${toolName}`,
-          `Input: ${toolInput}`,
-          ``,
-          `Approve or deny? Respond with exactly one word:`,
+          `Approve or deny? One word:`,
         ].join('\n'),
       });
 
