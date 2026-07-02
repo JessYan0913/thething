@@ -3,7 +3,6 @@
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
   AutoScrollToBottom,
 } from '@/components/ai-elements/conversation';
@@ -271,7 +270,6 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   const messagesRef = useRef<UIMessage[]>([]);
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const initialMessageSentRef = useRef(false);
-  const [isResumeEnabled, setIsResumeEnabled] = useState(false);
 
   // 审批对话框状态（用于工具审批）- 支持批量审批
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
@@ -356,7 +354,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId,
     transport,
-    resume: isResumeEnabled, // 只有在初始加载完成后才启用流恢复
+    resume: true,
     experimental_throttle: 80, // 节流 UI 更新，避免每块 SSE chunk 都触发 React 全量重渲染
     sendAutomaticallyWhen: ({ messages }) => {
       const lastMsg = messages.at(-1);
@@ -659,8 +657,6 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
       } finally {
         if (!cancelled) {
           setIsInitialLoadDone(true);
-          // 在初始加载完成后启用流恢复
-          setIsResumeEnabled(true);
         }
       }
     }
@@ -827,15 +823,10 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
           <div className="mx-4 mt-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</div>
         )}
 
-        {messages.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center p-8">
-            <div className="w-full max-w-2xl space-y-6">
-              <ConversationEmptyState
-                title="How can I help you today?"
-                description="Start a conversation and I'll do my best to assist you."
-              />
-              {inputCard}
-            </div>
+        {!isInitialLoadDone ? (
+          /* Show nothing while loading messages — prevents empty state flash */
+          <div className="flex flex-1 items-center justify-center">
+            <Shimmer className="text-sm text-muted-foreground" duration={1.5}>Loading conversation...</Shimmer>
           </div>
         ) : (
           <div className="flex flex-1 min-h-0 flex-col pt-4">
@@ -1115,7 +1106,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         </div>
       )}
 
-      {messages.length > 0 && (
+      {isInitialLoadDone && (
         <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
           <div className="mx-auto max-w-3xl space-y-2">
             <TodoPanel conversationId={conversationId} />
