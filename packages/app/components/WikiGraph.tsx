@@ -80,9 +80,9 @@ export default function WikiGraph({ onSelectPage }: WikiGraphProps) {
   const [edges, setEdges] = useState<CustomLink[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 600, height: 400 })
   const fgRef = useRef<any>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const [dimensions, setDimensions] = useState({ width: 600, height: 400 })
 
   // Load graph data
   useEffect(() => {
@@ -104,10 +104,22 @@ export default function WikiGraph({ onSelectPage }: WikiGraphProps) {
     load()
   }, [])
 
-  // Track container size
-  useEffect(() => {
-    const el = containerRef.current
+  // Callback ref: tracks container size via ResizeObserver
+  // Runs on every mount/re-attach, unlike useEffect + useRef pattern
+  // which would miss the ref assignment if the ref'd element isn't in the
+  // initial render tree (loading / empty states don't have it).
+  const containerRef = useCallback((el: HTMLDivElement | null) => {
+    // Cleanup previous observer before re-attaching
+    observerRef.current?.disconnect()
+
     if (!el) return
+
+    // Initial read: measure directly
+    const rect = el.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      setDimensions({ width: rect.width, height: rect.height })
+    }
+
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect
@@ -117,7 +129,7 @@ export default function WikiGraph({ onSelectPage }: WikiGraphProps) {
       }
     })
     observer.observe(el)
-    return () => observer.disconnect()
+    observerRef.current = observer
   }, [])
 
   // Zoom to fit after data loads
@@ -226,7 +238,7 @@ export default function WikiGraph({ onSelectPage }: WikiGraphProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin mr-2" />
         <span className="text-xs">加载图谱...</span>
       </div>
@@ -235,14 +247,14 @@ export default function WikiGraph({ onSelectPage }: WikiGraphProps) {
 
   if (nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
         <p className="text-xs">暂无知识数据</p>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-0 relative">
+    <div ref={containerRef} className="absolute inset-0 min-h-0">
       <ForceGraph2D
         ref={fgRef}
         graphData={{ nodes, links: edges }}

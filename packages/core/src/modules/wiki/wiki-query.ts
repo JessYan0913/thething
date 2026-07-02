@@ -6,7 +6,7 @@
 
 import fs from 'fs/promises'
 import path from 'path'
-import { getUserWikiDir, ensureWikiDirExists, pageNameToFilename } from './wiki-paths'
+import { ensureWikiDirExists, pageNameToFilename } from './wiki-paths'
 import { parseIndex, readPage, type IndexEntry } from './wiki-io'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
 

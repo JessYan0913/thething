@@ -3,7 +3,7 @@
 // ============================================================
 
 // 路径工具
-export { getPrimaryWikiDir, getUserWikiDir, ensureWikiDirExists, pageNameToFilename, filenameToPageName } from './wiki-paths'
+export { getPrimaryWikiDir, ensureWikiDirExists, pageNameToFilename, filenameToPageName } from './wiki-paths'
 
 // 配置
 export { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'

@@ -8,7 +8,6 @@ import {
 vi.mock('../../../modules/wiki', () => ({
   loadWikiContext: vi.fn(() => Promise.resolve({ indexContent: '', pages: [] })),
   formatWikiContextForPrompt: vi.fn(() => ''),
-  getUserWikiDir: vi.fn((userId: string) => `/wiki/${userId}`),
   ensureWikiDirExists: vi.fn(() => Promise.resolve()),
 }));
 
@@ -42,18 +41,17 @@ describe('runtime/agent/context', () => {
         { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
       ];
 
-      const result = await loadWikiContextForAgent(messages, 'user1', '/wiki');
+      const result = await loadWikiContextForAgent(messages, '/wiki');
 
-      expect(result.userId).toBe('user1');
       expect(result.recalledContent).toBe('');
     });
 
-    it('should return user ID correctly', async () => {
+    it('should handle empty messages', async () => {
       const messages: any[] = [];
 
-      const result = await loadWikiContextForAgent(messages, 'test-user', '/wiki');
+      const result = await loadWikiContextForAgent(messages, '/wiki');
 
-      expect(result.userId).toBe('test-user');
+      expect(result.recalledContent).toBe('');
     });
   });
 

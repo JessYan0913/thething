@@ -3,11 +3,10 @@
 // ============================================================
 
 import type { UIMessage } from 'ai'
-import { getUserWikiDir, ensureWikiDirExists } from '../../wiki/wiki-paths'
+import { ensureWikiDirExists } from '../../wiki/wiki-paths'
 import { loadWikiContext, formatWikiContextForPrompt } from '../../wiki/wiki-query'
 
 export interface WikiContextResult {
-  userId: string
   recalledContent: string
 }
 
@@ -18,26 +17,24 @@ export interface WikiContextResult {
  */
 export async function loadWikiContextForAgent(
   messages: UIMessage[],
-  userId: string,
   wikiBaseDir: string,
 ): Promise<WikiContextResult> {
   try {
-    const wikiDir = getUserWikiDir(userId, wikiBaseDir)
+    const wikiDir = wikiBaseDir
     await ensureWikiDirExists(wikiDir)
 
     const { indexContent, pages } = await loadWikiContext(wikiDir)
 
     if (!indexContent && pages.length === 0) {
-      return { userId, recalledContent: '' }
+      return { recalledContent: '' }
     }
 
     const content = formatWikiContextForPrompt(indexContent, pages)
 
     return {
-      userId,
       recalledContent: content,
     }
   } catch {
-    return { userId, recalledContent: '' }
+    return { recalledContent: '' }
   }
 }

@@ -425,6 +425,5 @@ export interface LoadToolsConfig {
 }
 
 export interface WikiContext {
-  userId: string
   recalledContent?: string
 }

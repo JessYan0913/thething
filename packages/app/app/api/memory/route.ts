@@ -6,7 +6,6 @@ import {
   updatePage,
   deletePage,
   rebuildIndex,
-  getUserWikiDir,
   ensureWikiDirExists,
   pageNameToFilename,
   type WikiPageData,
@@ -23,7 +22,7 @@ export async function GET() {
       return NextResponse.json({ pages: [] });
     }
 
-    const wikiDir = getUserWikiDir('default', memoryDir);
+    const wikiDir = memoryDir;
     await ensureWikiDirExists(wikiDir);
 
     const pages = await readAllPages(wikiDir);
@@ -62,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
     }
 
-    const wikiDir = getUserWikiDir('default', memoryDir);
+    const wikiDir = memoryDir;
     await ensureWikiDirExists(wikiDir);
 
     const now = new Date().toISOString();
@@ -99,7 +98,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
     }
 
-    const wikiDir = getUserWikiDir('default', memoryDir);
+    const wikiDir = memoryDir;
 
     // If name or category changed, use replacePage; otherwise updatePage
     const normalizedName = pageNameToFilename(name).replace('.md', '');
@@ -143,7 +142,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Memory directory not configured' }, { status: 500 });
     }
 
-    const wikiDir = getUserWikiDir('default', memoryDir);
+    const wikiDir = memoryDir;
     await deletePage(wikiDir, filename);
     await rebuildIndex(wikiDir);
 

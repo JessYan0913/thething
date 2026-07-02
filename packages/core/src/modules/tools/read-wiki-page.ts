@@ -4,7 +4,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { getUserWikiDir, ensureWikiDirExists, pageNameToFilename } from '../wiki/wiki-paths'
+import { ensureWikiDirExists, pageNameToFilename } from '../wiki/wiki-paths'
 import { readPage, readPageRaw } from '../wiki/wiki-io'
 
 // ============================================================
@@ -12,7 +12,6 @@ import { readPage, readPageRaw } from '../wiki/wiki-io'
 // ============================================================
 
 export interface ReadWikiPageToolConfig {
-  userId: string
   wikiBaseDir: string
 }
 
@@ -46,7 +45,7 @@ Wiki 是一个持久化的知识工件——你跨会话记忆的唯一机制。
       pageName: z.string().describe('页面名称（与 index.md 中 [[...]] 内的名称一致）'),
     }),
     execute: async ({ pageName }) => {
-      const wikiDir = getUserWikiDir(config.userId, config.wikiBaseDir)
+      const wikiDir = config.wikiBaseDir
       await ensureWikiDirExists(wikiDir)
 
       const filename = pageNameToFilename(pageName)

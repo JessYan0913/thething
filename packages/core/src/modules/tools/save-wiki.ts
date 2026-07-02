@@ -4,7 +4,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { getUserWikiDir, ensureWikiDirExists } from '../wiki/wiki-paths'
+import { ensureWikiDirExists } from '../wiki/wiki-paths'
 import { writePage, updatePage, mergePages, replacePage, rebuildIndex, appendLog, type WikiPageData } from '../wiki/wiki-io'
 import { pageNameToFilename } from '../wiki/wiki-paths'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from '../wiki/wiki-config'
@@ -53,7 +53,6 @@ const wikiActionSchema = z.object({
 // ============================================================
 
 export interface SaveWikiToolConfig {
-  userId: string
   wikiBaseDir: string
   config?: WikiConfig
 }
@@ -130,7 +129,7 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
         error?: string
       }> = []
 
-      const wikiDir = getUserWikiDir(config.userId, config.wikiBaseDir)
+      const wikiDir = config.wikiBaseDir
       await ensureWikiDirExists(wikiDir)
 
       const now = new Date().toISOString()

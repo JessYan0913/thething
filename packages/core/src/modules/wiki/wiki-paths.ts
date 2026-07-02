@@ -18,14 +18,6 @@ export function getPrimaryWikiDir(
 }
 
 /**
- * 获取用户 wiki 目录
- * 路径: {wikiBaseDir}/users/{userId}
- */
-export function getUserWikiDir(userId: string, wikiBaseDir: string): string {
-  return path.join(wikiBaseDir, 'users', userId)
-}
-
-/**
  * 确保 wiki 目录存在
  */
 export async function ensureWikiDirExists(dirPath: string): Promise<void> {

@@ -42,7 +42,7 @@ const categoryConfig: Record<string, { label: string; icon: React.ReactNode; col
 }
 
 const categoryFilters = [
-  { value: null, label: "全部" },
+  { value: "all", label: "全部" },
   { value: "user", label: "用户" },
   { value: "agent", label: "Agent" },
   { value: "project", label: "项目" },
@@ -211,57 +211,76 @@ export default function MemorySettings() {
   }, [formName, formDesc, formCategory, formContent, loadPages])
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* 顶栏 */}
-      <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b bg-muted/30">
-        <h1 className="text-sm font-semibold shrink-0">知识库</h1>
-        <div className="flex-1" />
-        <div className="relative w-52">
-          <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* 顶栏 — 与其他设置页统一风格 */}
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="搜索..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-7 h-7 text-xs"
+            className="pl-8"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
-              <XIcon className="size-3" />
+              <XIcon className="size-4" />
             </button>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={loadPages} disabled={isLoading} className="h-7 px-2">
-          <RefreshCwIcon className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        <Select
+          value={categoryFilter ?? "all"}
+          onValueChange={(v) => setCategoryFilter(v === "all" ? null : v)}
+        >
+          <SelectTrigger className="w-25">
+            <SelectValue placeholder="分类" />
+          </SelectTrigger>
+          <SelectContent>
+            {categoryFilters.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" onClick={loadPages} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
-        <div className="flex items-center border rounded-md">
-          <Button
-            variant={viewMode === "list" ? "secondary" : "ghost"}
-            size="sm"
+        <div className="flex items-center border rounded-md p-0.5 bg-muted/30">
+          <button
             onClick={() => setViewMode("list")}
-            className="h-7 px-2 rounded-r-none"
+            className={cn(
+              "h-8 px-2.5 rounded-sm flex items-center gap-1 transition-colors",
+              viewMode === "list"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <ListIcon className="size-3.5" />
-          </Button>
-          <Button
-            variant={viewMode === "graph" ? "secondary" : "ghost"}
-            size="sm"
+            <ListIcon className="size-4" />
+          </button>
+          <button
             onClick={() => setViewMode("graph")}
-            className="h-7 px-2 rounded-l-none"
+            className={cn(
+              "h-8 px-2.5 rounded-sm flex items-center gap-1 transition-colors",
+              viewMode === "graph"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <NetworkIcon className="size-3.5" />
-          </Button>
+            <NetworkIcon className="size-4" />
+          </button>
         </div>
-        <Button variant="ghost" size="sm" onClick={openCreateDialog} className="h-7 px-2">
-          <PlusIcon className="size-3.5 mr-1" />新建
+        <Button size="sm" onClick={openCreateDialog}>
+          <PlusIcon className="size-4 mr-1" />新建
         </Button>
       </div>
 
       {/* 主体: 列表视图 或 图谱视图 */}
       {viewMode === "graph" ? (
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 relative">
           <WikiGraph onSelectPage={(filename) => {
             setViewMode("list")
             setSelectedFilename(filename)
@@ -271,24 +290,6 @@ export default function MemorySettings() {
       <div className="flex flex-1 min-h-0">
         {/* 左侧目录 */}
         <div className="w-60 shrink-0 border-r flex flex-col min-h-0">
-          {/* 分类筛选 */}
-          <div className="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b">
-            {categoryFilters.map((opt) => (
-              <button
-                key={opt.value ?? "all"}
-                onClick={() => setCategoryFilter(opt.value)}
-                className={cn(
-                  "px-2 py-1 text-[11px] rounded transition-colors",
-                  categoryFilter === opt.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
           {/* 页面列表 */}
           <div className="flex-1 overflow-auto min-h-0">
             {isLoading ? (

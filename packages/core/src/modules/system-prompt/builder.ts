@@ -179,9 +179,8 @@ Each MCP tool is registered as a native tool with the \`mcp__serverName__toolNam
   {
     name: "wiki-guidelines",
     create: async (options) => {
-      if (options.wikiContext?.userId) {
+      if (options.wikiBaseDir) {
         const section = await createWikiGuidelinesSection(
-          options.wikiContext.userId,
           options.wikiBaseDir,
         );
         return section ?? { name: "wiki-guidelines", content: null, cacheStrategy: "session" as const, priority: 45 };

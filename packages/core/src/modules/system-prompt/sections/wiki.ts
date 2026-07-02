@@ -7,11 +7,10 @@ import { logger } from '../../../primitives/logger'
  * 失败时静默返回 null，不阻塞系统提示词构建
  */
 export async function createWikiGuidelinesSection(
-  userId?: string,
   wikiBaseDir?: string,
 ): Promise<SystemPromptSection | null> {
   try {
-    if (!userId || !wikiBaseDir) {
+    if (!wikiBaseDir) {
       return null
     }
 

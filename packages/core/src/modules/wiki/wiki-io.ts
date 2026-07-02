@@ -5,7 +5,7 @@
 
 import fs from 'fs/promises'
 import path from 'path'
-import { getUserWikiDir, ensureWikiDirExists, pageNameToFilename, directoryExists } from './wiki-paths'
+import { ensureWikiDirExists, pageNameToFilename, directoryExists } from './wiki-paths'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
 import { logger } from '../../primitives/logger'
 

@@ -232,32 +232,16 @@ export default function ModelSettings() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-xs">
-            {t("models.badge")}
-          </Badge>
-          {saveStatus === "success" && (
-            <Badge className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25 text-xs">
-              {t("models.saved")}
-            </Badge>
-          )}
-          {saveStatus === "error" && (
-            <Badge variant="destructive" className="text-xs">
-              {t("models.saveError")}
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={loadConfig} disabled={isLoading}>
-            <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={isSaving || isLoading}>
-            <SaveIcon className="size-4" />
-            {t("models.save")}
-          </Button>
-        </div>
+      {/* Toolbar — 与其他设置页统一风格 */}
+      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b bg-muted/30">
+        <div className="flex-1" />
+        <Button variant="ghost" size="sm" onClick={loadConfig} disabled={isLoading}>
+          <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button size="sm" onClick={handleSave} disabled={isSaving || isLoading}>
+          <SaveIcon className="size-4" />
+          {t("models.save")}
+        </Button>
       </div>
 
       {/* Content */}
@@ -265,10 +249,23 @@ export default function ModelSettings() {
         <div className="flex justify-center px-6 py-6">
           <div className="w-full max-w-2xl rounded-lg border">
             {/* Provider Configuration */}
-            <div className="px-4 py-2 border-b bg-muted/30">
+            <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
               <span className="text-xs font-medium text-muted-foreground">
                 {t("models.providerSection")}
               </span>
+              <Badge variant="secondary" className="text-[10px] px-1.5 h-4">
+                {t("models.badge")}
+              </Badge>
+              {saveStatus === "success" && (
+                <Badge className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25 text-[10px] px-1.5 h-4">
+                  {t("models.saved")}
+                </Badge>
+              )}
+              {saveStatus === "error" && (
+                <Badge variant="destructive" className="text-[10px] px-1.5 h-4">
+                  {t("models.saveError")}
+                </Badge>
+              )}
             </div>
 
             {/* Base URL */}
@@ -378,9 +375,8 @@ export default function ModelSettings() {
                     size="sm"
                     onClick={() => handleOpenModelsDialog("default")}
                     disabled={!config.baseURL || !config.apiKey}
-                    className="h-7 text-xs"
                   >
-                    <DownloadIcon className="size-3.5 mr-1" />
+                    <DownloadIcon className="size-4 mr-1" />
                     {t("models.fetchModels.button")}
                   </Button>
                 </div>
@@ -432,9 +428,8 @@ export default function ModelSettings() {
                     size="sm"
                     onClick={() => handleOpenModelsDialog("fast")}
                     disabled={!config.baseURL || !config.apiKey}
-                    className="h-7 text-xs"
                   >
-                    <DownloadIcon className="size-3.5 mr-1" />
+                    <DownloadIcon className="size-4 mr-1" />
                     {t("models.fetchModels.button")}
                   </Button>
                 </div>
@@ -480,9 +475,8 @@ export default function ModelSettings() {
                     size="sm"
                     onClick={() => handleOpenModelsDialog("smart")}
                     disabled={!config.baseURL || !config.apiKey}
-                    className="h-7 text-xs"
                   >
-                    <DownloadIcon className="size-3.5 mr-1" />
+                    <DownloadIcon className="size-4 mr-1" />
                     {t("models.fetchModels.button")}
                   </Button>
                 </div>

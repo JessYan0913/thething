@@ -2,7 +2,6 @@ import { getServerRuntime } from '@/lib/runtime';
 import { NextResponse } from 'next/server';
 import {
   readAllPages,
-  getUserWikiDir,
   ensureWikiDirExists,
   pageNameToFilename,
 } from '@the-thing/core';
@@ -31,7 +30,7 @@ export async function GET() {
       return NextResponse.json({ nodes: [], edges: [] });
     }
 
-    const wikiDir = getUserWikiDir('default', memoryDir);
+    const wikiDir = memoryDir;
     await ensureWikiDirExists(wikiDir);
 
     const pages = await readAllPages(wikiDir);

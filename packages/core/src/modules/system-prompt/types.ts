@@ -62,7 +62,6 @@ export interface BuildSystemPromptOptions {
   includeProjectContext?: boolean;
   conversationMeta?: ConversationMeta | null;
   wikiContext?: {
-    userId: string;
     recalledContent?: string;
   };
 

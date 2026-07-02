@@ -267,7 +267,6 @@ export { removeRule, saveRule, loadRules, updateRule } from './modules/permissio
 // Wiki module (knowledge system)
 export {
   getPrimaryWikiDir,
-  getUserWikiDir,
   ensureWikiDirExists,
   loadWikiContext,
   formatWikiContextForPrompt,

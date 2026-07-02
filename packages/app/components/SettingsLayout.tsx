@@ -44,7 +44,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     { to: "/settings/skills", icon: WrenchIcon, label: t('sidebar.skills') },
     { to: "/settings/connectors", icon: CableIcon, label: t('sidebar.connectors') },
     { to: "/settings/mcp", icon: PlugIcon, label: t('sidebar.mcpServers') },
-    { to: "/settings/memory", icon: DatabaseIcon, label: t('sidebar.memory') },
+    { to: "/settings/wiki", icon: DatabaseIcon, label: t('sidebar.memory') },
     { to: "/settings/permissions", icon: ShieldIcon, label: t('sidebar.permissions') },
     { to: "/settings/automation", icon: TimerIcon, label: t('sidebar.automation') },
   ]

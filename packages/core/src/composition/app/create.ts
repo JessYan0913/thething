@@ -127,7 +127,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const [wikiContext, projectContext] = await Promise.all([
     (async () => {
       if (messagesWithAttachments.length === 0) return null
-      return loadWikiContextForAgent(messagesWithAttachments, userId, wikiBaseDir)
+      return loadWikiContextForAgent(messagesWithAttachments, wikiBaseDir)
     })(),
     loadProjectContext(projectRoot, {
       contextFileNames: layout.contextFileNames,
@@ -140,11 +140,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   const { buildAgentInstructions } = await import('../../modules/agent/context/instructions')
 
-  // wiki 上下文：只要有 userId 就注入 wiki guidelines prompt，
+  // wiki 上下文：注入 wiki guidelines prompt，
   // recalledContent 为空只表示没有已召回的页面，不影响 guidelines 注入
-  const wikiPromptContext = userId
-    ? { userId, recalledContent: wikiContext?.recalledContent || '' }
-    : null
+  const wikiPromptContext = { recalledContent: wikiContext?.recalledContent || '' }
 
   // 构建 MCP 工具列表文本，让 Agent 在系统提示中直接看到可用工具
   const mcpServerTools = formatMcpServerTools(context.mcps, context.mcpRegistry)
