@@ -4,7 +4,7 @@ import path from 'path';
 import { loadSkills } from '../modules/skills/loader';
 import { buildSystemPrompt } from '../modules/system-prompt/builder';
 
-describe('Skills Mechanism (Skill Tool Approach)', () => {
+describe('Skills Mechanism (Progressive Disclosure)', () => {
   beforeAll(async () => {
     // no-op: caches removed
   });
@@ -27,7 +27,7 @@ describe('Skills Mechanism (Skill Tool Approach)', () => {
     }
   });
 
-  it('should NOT include skills in system prompt (skills now via Skill tool)', async () => {
+  it('should include skill names in system prompt (Layer 1: metadata)', async () => {
     const cwd = path.resolve(process.cwd(), '../../');
     const skills = await loadSkills({ cwd, configDir: path.join(os.homedir(), '.thething') });
 
@@ -37,30 +37,31 @@ describe('Skills Mechanism (Skill Tool Approach)', () => {
     });
 
     console.log('Included sections:', result.includedSections);
+    console.log('--- Skill-matching section content preview ---');
+    const matchSection = result.sections.find(s => s.name === 'skill-matching');
+    console.log(matchSection?.content?.slice(0, 500));
 
-    // 技能不再注入到系统提示词中
-    // Agent 通过 Skill 工具主动调用获取技能指令
-    expect(result.includedSections).not.toContain('skills');
-  });
-
-  it('should include skill-matching guidance always, even with 0 skills', async () => {
-    const result = await buildSystemPrompt({
-      skills: [],
-      includeProjectContext: false,
-    });
-
-    // skill-matching section 始终存在，指导 Agent 使用 skill: "list"
+    // skill-matching section 应该存在
     expect(result.includedSections).toContain('skill-matching');
-    expect(result.prompt).toContain('skill: "list"');
+
+    // 技能名称和描述应该出现在 system prompt 中（Layer 1 渐进式披露）
+    if (skills.length > 0) {
+      expect(matchSection?.content).toContain(skills[0].name);
+    }
   });
 
-  it('should return empty sections when no skills', async () => {
+  it('should show minimal guidance when no skills available', async () => {
     const result = await buildSystemPrompt({
       skills: [],
       includeProjectContext: false,
     });
 
-    // 没有 skills 时不应该包含 skills section
-    expect(result.includedSections).not.toContain('skills');
+    expect(result.includedSections).toContain('skill-matching');
+
+    const matchSection = result.sections.find(s => s.name === 'skill-matching');
+    // 无技能时应该显示"无额外技能"的提示
+    expect(matchSection?.content).toContain('No additional skills');
+    // 不应该有技能列表（因为没有技能）
+    expect(matchSection?.content).not.toContain('Available Skills');
   });
 });

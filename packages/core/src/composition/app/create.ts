@@ -105,7 +105,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   }
 
   // ============================================================
-  // 技能信息改为通过 Skill 工具的 skill: "list" 模式主动拉取
+  // 技能信息改为由 System Prompt 的 "Available Skills" section 展示，
+  // Agent 看到匹配的 skill 后通过 skill tool 按需加载完整指令。
   // ============================================================
   const messagesWithAttachments = messages
 

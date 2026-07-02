@@ -2,19 +2,21 @@
 // Skill Tool - 技能调用工具
 // ============================================================
 //
-// Agent 通过此工具主动获取完整技能指令。
-// 支持两种模式：
-//   skill: "list"       → 返回所有可用技能的名称+描述（列举模式）
-//   skill: "<name>"     → 返回指定技能的完整 body + 目录树（调用模式）
+// Agent 通过此工具获取指定技能的完整 body + 目录树。
+// 技能名称和描述通过 System Prompt 的 "Available Skills" section 展示，
+// 模型侧看到匹配的 skill name 后，通过本工具按需加载完整指令。
 //
-// 设计原则：技能信息由 Agent 主动拉取，而非系统推送。
+// 设计原则：渐进式披露（Progressive Disclosure）
+//   Layer 1: 系统提示中展示技能名称+截断描述（预算控制）
+//   Layer 2: 调用本工具加载完整 body（按需获取）
+//   Layer 3: 执行时按需读取附属文件
+//
 // 子 Agent 通过继承 parentTools 自动获得本工具，无需额外注入。
 
 import { tool } from 'ai';
 import { z } from 'zod';
 import * as path from 'path';
 import type { Skill } from '../../modules/skills/types';
-import { formatSkillsWithinBudget } from '../../modules/skills/budget-formatter';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -26,11 +28,11 @@ const SkillToolInputSchema = z.object({
     .string()
     .min(1)
     .max(50)
-    .describe('The skill name to invoke, or "list" to see all available skills'),
+    .describe('The exact skill name to invoke'),
   args: z
     .string()
     .optional()
-    .describe('Optional arguments for the skill. Will be substituted into $ARGUMENTS placeholders'),
+    .describe('Optional arguments. Substituted into $ARGUMENTS placeholders in the skill body'),
 });
 
 // ============================================================
@@ -53,17 +55,7 @@ function findSkill(skillName: string, skills: readonly Skill[]): Skill | null {
 
 /**
  * 格式化技能指令为工具输出
- *
- * @param skill - 技能数据
- * @param args - 可选参数
- * @returns 格式化后的文本
  */
-/**
- * 格式化技能列表输出
- */
-function formatSkillListing(skills: readonly Skill[]): string {
-  return formatSkillsWithinBudget([...skills], undefined, { alwaysFull: [] });
-}
 
 function formatSkillOutput(skill: Skill, args?: string): string {
   // 替换 $ARGUMENTS 占位符
@@ -135,43 +127,29 @@ function formatSkillOutput(skill: Skill, args?: string): string {
 
 export function createSkillTool(options: { skills: readonly Skill[] }) {
   return tool({
-    description: `Execute or list skills within the main conversation.
+    description: `Invoke a skill by its exact name. Use when the Available Skills section in the system prompt lists a skill matching the user's request.
 
 When users reference a "slash command" or "/<something>", they are referring to a skill. Use this tool to invoke it.
 
 How to invoke:
-- { skill: "list" } - list all available skills with descriptions
 - { skill: "docx" } - invoke the docx skill
 - { skill: "commit", args: "-m 'Fix bug'" } - invoke with arguments
 
 IMPORTANT:
-- Use the FULL skill name exactly as returned from skill: "list" (including any namespace prefix before the colon)
-- To see available skills, call skill: "list" first
-- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- When a skill matches the user's request, invoke it BEFORE generating any other response about the task
 - NEVER mention a skill without actually calling this tool
 - Do not invoke a skill that is already running
 - If you see a <skill> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
 
 Matching Guide:
-- First call skill: "list" to see what's available, then read each skill's description carefully
-- Match based on semantic similarity: user intent should align with what the skill describes
+- Match based on semantic similarity: user intent should align with what a skill describes
 - Skills provide pre-built workflows that are more efficient than ad-hoc approaches
-- When uncertain, invoke the skill tool to check - it will return the full skill instructions`,
+- When the system prompt shows an "Available Skills" section, any skill listed there can be invoked by name`,
 
     inputSchema: SkillToolInputSchema,
 
     execute: async ({ skill, args }) => {
       const trimmedSkill = skill.trim().replace(/^\/+/, '');
-
-      // list 模式：返回所有可用技能的列表
-      if (trimmedSkill === 'list') {
-        const output = formatSkillListing(options.skills);
-        return {
-          success: true,
-          skillName: 'list',
-          _skillOutput: output,
-        } as SkillToolResult & { _skillOutput: string };
-      }
 
       logger.debug('SkillTool', `Invoking skill: ${trimmedSkill}${args ? ` with args: ${args}` : ''}`);
 
@@ -182,7 +160,7 @@ Matching Guide:
           success: false,
           skillName: trimmedSkill,
           allowedTools: [],
-          error: `Unknown skill: "${trimmedSkill}". Use skill: "list" to see all available skills.`,
+          error: `Unknown skill: "${trimmedSkill}". Check the Available Skills section in the system prompt for valid skill names.`,
         } as SkillToolResult;
       }
 

@@ -22,6 +22,7 @@ import {
 } from "./sections/session";
 import { createWikiGuidelinesSection, createRecalledWikiSection } from "./sections/wiki";
 import { createPermissionsSection } from "./sections/permissions";
+import { formatSkillsWithinBudget } from '../skills/budget-formatter';
 
 // ============================================================================
 // Default Options
@@ -139,19 +140,23 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   },
   {
     name: "skill-matching",
-    create: () => ({
-      name: "skill-matching",
-      content: `## Skill Usage
+    create: (options) => {
+      const skills = options.skills ?? [];
+      const listing = skills.length > 0
+        ? formatSkillsWithinBudget(skills)
+        : '';
 
-Skills provide pre-built, tested workflows. Use the \`skill\` tool to discover and invoke them.
+      const content = listing
+        ? `## Available Skills\n\n${listing}\n\n---\n\n### How to Use Skills\n\nIf any skill above matches the user's request, invoke it by calling the \`skill\` tool with the exact skill name. The full instructions will be loaded for you.\n\n**Matching rule:** If the user's intent aligns with a skill's description, invoke it **before** generating any other response. Do not mention a skill without invoking it.\n\n**No match?** If no listed skill applies, proceed with your usual capabilities.`
+        : `## Skills\n\nNo additional skills are currently available. You can proceed with your usual capabilities.`;
 
-**To see available skills:** Call the \`skill\` tool with \`skill: "list"\`.
-**To invoke a skill:** Call the \`skill\` tool with the full skill name.
-
-**Matching principle:** If the user's intent aligns with what a skill describes, invoke it.`,
-      cacheStrategy: "session" as const,
-      priority: 30,
-    }),
+      return {
+        name: "skill-matching",
+        content,
+        cacheStrategy: "session" as const,
+        priority: 30,
+      };
+    },
     cacheStrategy: "session",
   },
   {
