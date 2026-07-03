@@ -122,6 +122,41 @@ export function isCommandSafe(command: string): boolean {
 }
 
 // ============================================================
+// Background process redirect warning
+// ============================================================
+
+/**
+ * Detects lines that put a process in the background (&) without redirecting output.
+ * Without redirect the background process holds the pipe open, preventing the
+ * spawn close event and causing the command to hang until the fallback timeout.
+ */
+function checkBgWarning(command: string): string | null {
+  const suspicious: string[] = [];
+
+  for (const line of command.split('\n')) {
+    const code = line.replace(/#.*$/, '').trim();
+    if (!code) continue;
+
+    // Line ends with & (background operator, not &> redirect)
+    if (!/&\s*$/.test(code)) continue;
+
+    // Check for any output redirect on this line (before the trailing &)
+    const beforeBg = code.replace(/\s*&\s*$/, '');
+    if (/>/.test(beforeBg)) continue;
+
+    suspicious.push(code);
+  }
+
+  if (suspicious.length === 0) return null;
+
+  return (
+    '⚠️  Background process without output redirect detected:\n' +
+    suspicious.map((l) => `     ${l}`).join('\n') +
+    '\n   Add > file.log 2>&1 before & so the pipe closes when the main process exits.\n'
+  );
+}
+
+// ============================================================
 // Process management
 // ============================================================
 
@@ -219,7 +254,9 @@ export function createBashTool(options: BashToolOptions) {
       'Useful for running builds, tests, git operations, and other command-line tasks. ' +
       'Dangerous operations (rm -rf /, sudo, wget, reverse shells) are blocked. ' +
       'Safe operations (git commit, npm test, file viewing) run automatically. ' +
-      'Other operations require user approval.',
+      'Other operations require user approval.\n' +
+      'IMPORTANT: Processes put in the background with & MUST redirect their output (> file 2>&1). ' +
+      'Without redirect the pipe never closes, causing the command to hang until timeout.',
 
     inputSchema: z.object({
       command: z.string().describe('The shell command to execute'),
@@ -277,9 +314,13 @@ export function createBashTool(options: BashToolOptions) {
 
         const duration = Date.now() - startTime;
 
+        // Runtime warning for background processes without redirect
+        const bgWarning = checkBgWarning(command);
+        const finalStderr = bgWarning ? bgWarning + stderr : stderr;
+
         return {
           stdout,
-          stderr,
+          stderr: finalStderr,
           exitCode,
           command,
           timedOut: false,
@@ -309,9 +350,11 @@ export function createBashTool(options: BashToolOptions) {
 
         if (stdout || stderr) {
           const exitCode = execError.exitCode ?? execError.code ?? 1;
+          const bgWarning = checkBgWarning(command);
+          const finalStderr = bgWarning ? bgWarning + stderr : stderr;
           return {
             stdout,
-            stderr,
+            stderr: finalStderr,
             exitCode: typeof exitCode === 'number' ? exitCode : 1,
             command,
             timedOut: false,
