@@ -35,8 +35,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const activePath = pathname
 
   const generalItems = [
-    { to: "/settings/models", icon: CpuIcon, label: t('sidebar.models') },
     { to: "/settings/general", icon: PaletteIcon, label: t('sidebar.generalSettings') },
+    { to: "/settings/models", icon: CpuIcon, label: t('sidebar.models') },
   ]
 
   const resourceItems = [
