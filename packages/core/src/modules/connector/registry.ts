@@ -60,6 +60,22 @@ export class ConnectorRegistry {
     logger.debug('ConnectorRegistry', `Initialized from snapshot: ${this.connectors.size} connectors: ${[...this.connectors.keys()].join(', ')}`)
   }
 
+  /**
+   * 合并 connector 定义到注册表（不清除已有定义）。
+   *
+   * 与 initializeFromDefinitions 的区别：只添加/覆盖同 ID 的定义，
+   * 不删除已有的、本次未传入的 connector。
+   * 用途：createContext 用项目级 layout 加载 connector 时，
+   * 不会清掉 bootstrap 阶段从全局目录加载的 connector（如飞书 WS）。
+   */
+  mergeFromDefinitions(defs: ConnectorFrontmatter[]): void {
+    for (const def of defs) {
+      const connector = def as unknown as ConnectorDefinition
+      this.connectors.set(connector.id, connector)
+    }
+    logger.debug('ConnectorRegistry', `Merged from snapshot: ${this.connectors.size} connectors: ${[...this.connectors.keys()].join(', ')}`)
+  }
+
   async loadConnector(yamlPath: string): Promise<void> {
     const content = fs.readFileSync(yamlPath, 'utf-8')
     const raw = yaml.load(content) as Record<string, unknown>

@@ -48,8 +48,9 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     logger.debug('AppContext', `MCP servers: ${loaded.mcps.map(m => m.name).join(', ')}`);
   }
 
-  // 将 connector 快照数据同步到 ConnectorRegistry，确保 runtime 使用与快照一致的定义
-  runtime.connectorRegistry.initializeFromDefinitions(loaded.connectors);
+  // 将 connector 快照合并回 ConnectorRegistry（merge，不清除已有定义）。
+  // 使用 merge 而非 clear+set，避免项目级 context 覆盖掉全局 connector（如飞书 WS）。
+  runtime.connectorRegistry.mergeFromDefinitions(loaded.connectors);
 
   // 构建加载来源信息（使用 layout.resources）
   const loadedFrom: LoadSourceInfo = {
