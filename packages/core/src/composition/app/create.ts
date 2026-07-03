@@ -16,6 +16,7 @@ import { createLanguageModel, createModelProvider } from '../../services/model'
 import { createAgentPipeline, createDefaultStopConditions } from '../../modules/agent-control'
 import { catchAllApproval } from '../../modules/agent-control/tool-approval'
 import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-approval'
+import { setReviewerDenial, extractInputKey } from '../../modules/agent-control/reviewer-feedback'
 import { telemetryMiddleware, costTrackingMiddleware } from '../../modules/middleware'
 import { loadAllTools } from '../../modules/agent/tools'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
@@ -407,50 +408,81 @@ function createApprovalReviewer(model: import('ai').LanguageModel, instructions:
   return async (toolName: string, input: unknown, messages: unknown[]) => {
     const msgs = messages as Array<Record<string, unknown>>;
 
-    // 提取用户消息的前 120 字作为摘要
-    function firstUserText(m: Record<string, unknown>): string {
+    // A: 提取用户上下文 — 原始目标 + 最近意图
+    function userText(m: Record<string, unknown>): string {
       const c = m.content;
-      if (typeof c === 'string') return c.slice(0, 120);
+      if (typeof c === 'string') return c.slice(0, 200);
       if (Array.isArray(c)) {
         const t = c.find((p: Record<string, unknown>) => p.type === 'text');
-        return String(t?.text ?? '').slice(0, 120);
+        return String(t?.text ?? '').slice(0, 200);
       }
       return '';
     }
 
-    // 提取最近工具调用摘要（只传 toolName + 关键参数）
-    function extractToolCalls(m: Record<string, unknown>): string[] {
+    function lastUserMsgText(msgs: Array<Record<string, unknown>>): string {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'user') return userText(msgs[i]);
+      }
+      return '';
+    }
+
+    // A: 提取最近消息摘要（含工具调用 + 助手推理文本）
+    function extractRecentActivity(m: Record<string, unknown>): string[] {
       if (!Array.isArray(m.content)) return [];
-      return (m.content as Array<Record<string, unknown>>)
-        .filter((p: Record<string, unknown>) => p.type === 'tool-call')
-        .map((p: Record<string, unknown>) => {
+      const parts: string[] = [];
+      for (const p of m.content as Array<Record<string, unknown>>) {
+        if (p.type === 'text') {
+          const txt = String(p.text ?? '').trim();
+          if (txt) parts.push(`agent: ${txt.slice(0, 100)}`);
+        }
+        if (p.type === 'tool-call') {
           const name = p.toolName ?? '?';
           const args = (p.args ?? p.input) as Record<string, unknown> | undefined;
           switch (name as string) {
             case 'read_file': case 'write_file': case 'edit_file':
-              return `${name}(${args?.filePath ?? '?'})`;
+              parts.push(`${name}(${args?.filePath ?? '?'})`);
+              break;
             case 'bash':
-              return `bash(${String(args?.command ?? '').slice(0, 60)})`;
+              parts.push(`bash(${String(args?.command ?? '').slice(0, 80)})`);
+              break;
             case 'web_fetch':
-              return `fetch(${args?.url ?? '?'})`;
+              parts.push(`fetch(${args?.url ?? '?'})`);
+              break;
             default:
-              return `${name}`;
+              parts.push(`${name}`);
           }
-        });
+        }
+      }
+      return parts;
     }
 
-    // 1. 用户原始目标（一句话摘要）
+    // C: Review 历史缓存
+    const reviewCache = new Map<string, { decision: 'approved' | 'denied'; timestamp: number }>();
+    const REVIEW_CACHE_TTL = 120_000;
+    function cacheKey(toolName: string, input: unknown): string {
+      return `${toolName}::${extractInputKey(input, toolName)}`;
+    }
+    const cacheKeyStr = cacheKey(toolName, input);
+    const cached = reviewCache.get(cacheKeyStr);
+    if (cached && Date.now() - cached.timestamp < REVIEW_CACHE_TTL) {
+      return cached.decision;
+    }
+
+    // 1. 原始目标（第一条用户消息）
     const firstUserMsg = msgs.find(m => m.role === 'user');
-    const originalGoal = firstUserMsg ? firstUserText(firstUserMsg) : '(none)';
+    const originalGoal = firstUserMsg ? userText(firstUserMsg) : '(none)';
 
-    // 2. 最近工具调用链（最近 3 轮，只含工具名称+关键参数）
-    const recentToolCalls = msgs.slice(-6)
+    // A: 当前意图（最后一条用户消息）
+    const currentRequest = lastUserMsgText(msgs);
+
+    // A: 最近执行链（最近 6 条 assistant 消息）
+    const recentActivity = msgs.slice(-6)
       .filter(m => m.role === 'assistant')
-      .flatMap(m => extractToolCalls(m))
-      .slice(-5)
-      .join(' → ') || '(none)';
+      .flatMap(m => extractRecentActivity(m))
+      .slice(-8)
+      .join('\n') || '(none)';
 
-    // 3. 当前要审批的操作（只传标识性参数，不传大段内容）
+    // 当前要审批的操作摘要
     function summarizeToolInput(input: unknown, toolName: string): string {
       if (typeof input !== 'object' || input === null) return String(input ?? '');
       const obj = input as Record<string, unknown>;
@@ -477,26 +509,49 @@ function createApprovalReviewer(model: import('ai').LanguageModel, instructions:
 Your job: determine if the CURRENT tool call should be approved or denied, based on what the user originally asked and what the agent has done so far.
 
 Rules:
-- APPROVED if the operation operates within the project workspace
-- APPROVED if it clearly carries out the user's original request
-- DENIED if the operation is dangerous (rm -rf /, sudo, network downloads, modifying sensitive files)
-- DENIED if it deviates from what the user asked for
-- When in doubt, DENIED — security first
+- APPROVED if the operation clearly carries out the user's original request (even if it involves network access, file modification, or external services — judge by intent, not by category)
+- APPROVED if the operation is within the project workspace and advances the task
+- DENIED if the operation is destructive (rm -rf /, sudo, modifying system files)
+- DENIED if it clearly deviates from what the user asked for
+- For network operations: evaluate whether they serve the user's stated goal (e.g. uploading a file for processing, fetching documentation, calling an API). Do not automatically deny network requests — they are often a legitimate part of a workflow.
+- When uncertain, APPROVED if the intent is clear and the operation is not destructive; DENIED only if the intent is unknown or actively suspicious.
 
-Respond with exactly one word: APPROVED or DENIED`,
+Respond with exactly "APPROVED", or "DENIED: <brief reason>" if denied. Include a specific reason so the agent can understand why.`,
         prompt: [
-          `User asked: ${originalGoal}`,
-          `Agent instructions: ${instructions.slice(0, 200)}`,
-          `Recent: ${recentToolCalls}`,
-          `→ Need review: ${toolName}(${toolInput})`,
+          `[User's original goal] ${originalGoal}`,
+          currentRequest && currentRequest !== originalGoal ? `[User's latest request] ${currentRequest}` : '',
+          `[Agent instructions] ${instructions.slice(0, 500)}`,
+          `[Recent activity]`,
+          recentActivity,
           ``,
-          `Approve or deny? One word:`,
+          `[Review] ${toolName}(${toolInput})`,
+          ``,
+          `Approve or deny?`,
         ].join('\n'),
       });
 
-      const text = result.text.trim().toUpperCase();
-      if (text.startsWith('APPROVED')) return 'approved' as ToolApprovalStatus;
-      if (text.startsWith('DENIED')) return 'denied' as ToolApprovalStatus;
+      const text = result.text.trim();
+      const upper = text.toUpperCase();
+      if (upper.startsWith('APPROVED')) {
+        reviewCache.set(cacheKeyStr, { decision: 'approved', timestamp: Date.now() });
+        // 防止缓存无限增长
+        if (reviewCache.size > 100) {
+          const firstKey = reviewCache.keys().next().value;
+          if (firstKey !== undefined) reviewCache.delete(firstKey);
+        }
+        return 'approved' as ToolApprovalStatus;
+      }
+      if (upper.startsWith('DENIED')) {
+        // B: 提取拒绝原因供工具执行层使用
+        const reason = text.slice(6).trim().replace(/^:\s*/, '') || 'Operation denied by reviewer';
+        setReviewerDenial(toolName, extractInputKey(input, toolName), reason);
+        reviewCache.set(cacheKeyStr, { decision: 'denied', timestamp: Date.now() });
+        if (reviewCache.size > 100) {
+          const firstKey = reviewCache.keys().next().value;
+          if (firstKey !== undefined) reviewCache.delete(firstKey);
+        }
+        return 'denied' as ToolApprovalStatus;
+      }
       return 'user-approval' as ToolApprovalStatus;
     } catch {
       return 'user-approval' as ToolApprovalStatus;

@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { spawn, type ChildProcess } from 'child_process';
 import { z } from 'zod';
 import { checkPermissionRules } from '../../modules/permissions';
+import { consumeReviewerDenial } from '../agent-control/reviewer-feedback';
 import type { PermissionRule } from '../../modules/permissions/types';
 
 // ============================================================
@@ -277,6 +278,16 @@ export function createBashTool(options: BashToolOptions) {
           error: true,
           command,
           message: `Security block: ${safety.reason}`,
+        };
+      }
+
+      // B: 检查 reviewer 拒绝原因（catchAllApproval 放行后由工具层返回详细错误）
+      const denialReason = consumeReviewerDenial('bash', command);
+      if (denialReason) {
+        return {
+          error: true,
+          command,
+          message: `Operation denied by reviewer: ${denialReason}`,
         };
       }
 

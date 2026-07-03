@@ -17,6 +17,7 @@ import type { ToolApprovalStatus } from 'ai';
 import { checkPermissionRules } from '../../modules/permissions';
 import { isCommandDangerous, isCommandSafe } from '../../modules/tools/bash';
 import type { PermissionRule } from '../../modules/permissions/types';
+import { hasReviewerDenial } from './reviewer-feedback';
 
 // ============================================================
 // Runtime Context 类型
@@ -172,6 +173,10 @@ export async function catchAllApproval(options: {
   // auto-review: 当决策为 user-approval 时，转交 reviewer agent
   if (decision === 'user-approval' && ctx.approvalMode === 'auto-review' && ctx.reviewer) {
     const reviewResult = await ctx.reviewer(toolName, input, options.messages);
+    // B: 当 reviewer 拒绝时，如果已存储拒绝原因，让工具执行层返回详细错误
+    if (reviewResult === 'denied' && hasReviewerDenial()) {
+      return 'approved';
+    }
     return reviewResult;
   }
 
