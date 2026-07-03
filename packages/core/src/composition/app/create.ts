@@ -366,6 +366,11 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   let checkpointStepCount = 0;
   const checkpointToolsUsed: string[] = [];
 
+  // 创建 agent run checkpoint（如果 store 和 conversationId 都存在）
+  if (agentRunStore && conversationId) {
+    agentRunStore.createRun(conversationId);
+  }
+
   const agent = new ToolLoopAgent<never, ChatToolsType, ApprovalRuntimeContext>({
     model: wrappedModel,
     instructions,
