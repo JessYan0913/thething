@@ -82,7 +82,7 @@ export class DenialTracker {
     return this.getDenialCount(toolName) >= this._config.maxDenialsPerTool;
   }
 
-  getInjectMessage(): { role: 'system'; content: string } | null {
+  getInjectMessage(): { role: 'user'; content: string } | null {
     const exceeded: DenialEntry[] = [];
 
     for (const entry of this._denials.values()) {
@@ -107,7 +107,7 @@ export class DenialTracker {
       .join('\n\n');
 
     return {
-      role: 'system',
+      role: 'user',
       content: warnings,
     };
   }

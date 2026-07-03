@@ -112,8 +112,11 @@ export async function enforceContextWindow(
 
   const summaryMessage: UIMessage = {
     id: `summary-${Date.now()}`,
-    role: 'system',
-    parts: [{ type: 'text', text: `[Previous conversation summary]\n${summary}\n[End of summary]` }],
+    role: 'user',
+    parts: [{
+      type: 'text',
+      text: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}`,
+    }],
   };
 
   const result = [summaryMessage, ...newerMessages];
