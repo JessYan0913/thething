@@ -29,8 +29,67 @@ export class SQLiteTodoStore implements TodoStore {
   private listeners: Set<TodoEventListener> = new Set();
   private agentStatus: Map<string, AgentStatus> = new Map();
 
+  // Agent status persistence statements (lazy init)
+  private _upsertAgentStatusStmt: ReturnType<SqliteDatabase['prepare']> | null = null;
+  private _getAgentStatusStmt: ReturnType<SqliteDatabase['prepare']> | null = null;
+  private _clearAgentStatusStmt: ReturnType<SqliteDatabase['prepare']> | null = null;
+  private _agentStatusTableExists: boolean | null = null;
+
   constructor(db: SqliteDatabase) {
     this.db = db;
+
+    // 启动时恢复 agent 状态（如果表存在）
+    if (this.agentStatusTableReady()) {
+      this.recoverAgentStatus();
+    }
+  }
+
+  /**
+   * 检查 agent_status 表是否存在，结果缓存
+   */
+  private agentStatusTableReady(): boolean {
+    if (this._agentStatusTableExists !== null) return this._agentStatusTableExists;
+    try {
+      const row = this.db.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='agent_status'`
+      ).get() as { name: string } | undefined;
+      this._agentStatusTableExists = !!row;
+    } catch {
+      this._agentStatusTableExists = false;
+    }
+    return this._agentStatusTableExists;
+  }
+
+  private get upsertAgentStatusStmt() {
+    if (!this._upsertAgentStatusStmt) {
+      this._upsertAgentStatusStmt = this.db.prepare(`
+        INSERT INTO agent_status (agent_id, is_busy, current_todo_id, updated_at)
+        VALUES (?, ?, ?, datetime('now'))
+        ON CONFLICT(agent_id) DO UPDATE SET
+          is_busy = excluded.is_busy,
+          current_todo_id = excluded.current_todo_id,
+          updated_at = excluded.updated_at
+      `);
+    }
+    return this._upsertAgentStatusStmt;
+  }
+
+  private get getAgentStatusStmt() {
+    if (!this._getAgentStatusStmt) {
+      this._getAgentStatusStmt = this.db.prepare(`
+        SELECT * FROM agent_status WHERE agent_id = ?
+      `);
+    }
+    return this._getAgentStatusStmt;
+  }
+
+  private get clearAgentStatusStmt() {
+    if (!this._clearAgentStatusStmt) {
+      this._clearAgentStatusStmt = this.db.prepare(`
+        DELETE FROM agent_status
+      `);
+    }
+    return this._clearAgentStatusStmt;
   }
 
   // ============================================================
@@ -384,7 +443,26 @@ export class SQLiteTodoStore implements TodoStore {
   }
 
   getAgentStatus(agentId: string): AgentStatus {
-    return this.agentStatus.get(agentId) ?? {
+    // 先检查内存缓存
+    const cached = this.agentStatus.get(agentId);
+    if (cached) return cached;
+
+    // 从 SQLite 读取（如果表存在）
+    if (!this.agentStatusTableReady()) {
+      return { agentId, isBusy: false, currentTodoId: null };
+    }
+    const row = this.getAgentStatusStmt.get(agentId) as { agent_id: string; is_busy: number; current_todo_id: string | null } | undefined;
+    if (row) {
+      const status: AgentStatus = {
+        agentId: row.agent_id,
+        isBusy: row.is_busy === 1,
+        currentTodoId: row.current_todo_id,
+      };
+      this.agentStatus.set(agentId, status);
+      return status;
+    }
+
+    return {
       agentId,
       isBusy: false,
       currentTodoId: null,
@@ -392,16 +470,66 @@ export class SQLiteTodoStore implements TodoStore {
   }
 
   setAgentBusy(agentId: string, busy: boolean, todoId?: string): void {
-    this.agentStatus.set(agentId, {
+    const status: AgentStatus = {
       agentId,
       isBusy: busy,
       currentTodoId: busy ? todoId ?? null : null,
-    });
+    };
+    this.agentStatus.set(agentId, status);
+
+    // 持久化到 SQLite（如果表存在）
+    if (this.agentStatusTableReady()) {
+      this.upsertAgentStatusStmt.run(agentId, busy ? 1 : 0, status.currentTodoId);
+    }
   }
 
   clearAllTodos(): void {
     this.db.prepare(`DELETE FROM todos`).run();
     this.agentStatus.clear();
+    if (this.agentStatusTableReady()) {
+      this.clearAgentStatusStmt.run();
+    }
     logger.debug('SQLiteTodoStore', 'All todos cleared');
+  }
+
+  /**
+   * 启动时恢复 agent 状态。
+   * 清理无效的 busy 状态（对应的 todo 不存在或已完成）。
+   */
+  private recoverAgentStatus(): void {
+    try {
+      const rows = this.db.prepare(`SELECT * FROM agent_status WHERE is_busy = 1`).all() as Array<{
+        agent_id: string;
+        current_todo_id: string | null;
+      }>;
+
+      for (const row of rows) {
+        // 验证对应的 todo 是否仍然有效
+        if (row.current_todo_id) {
+          const todo = this.db.prepare(
+            `SELECT status FROM todos WHERE id = ?`
+          ).get(row.current_todo_id) as { status: string } | undefined;
+
+          if (!todo || todo.status !== 'in_progress') {
+            // todo 不存在或已完成/失败，清除 busy 状态
+            this.db.prepare(
+              `UPDATE agent_status SET is_busy = 0, current_todo_id = NULL, updated_at = datetime('now') WHERE agent_id = ?`
+            ).run(row.agent_id);
+            logger.debug('SQLiteTodoStore', `Recovered agent ${row.agent_id}: cleared stale busy state (todo ${row.current_todo_id} is ${todo?.status ?? 'missing'})`);
+            continue;
+          }
+        }
+
+        // 有效的 busy 状态，恢复到内存缓存
+        this.agentStatus.set(row.agent_id, {
+          agentId: row.agent_id,
+          isBusy: true,
+          currentTodoId: row.current_todo_id,
+        });
+        logger.debug('SQLiteTodoStore', `Recovered agent ${row.agent_id}: busy with todo ${row.current_todo_id}`);
+      }
+    } catch (err) {
+      logger.warn('SQLiteTodoStore', 'Failed to recover agent status:', err);
+    }
   }
 }

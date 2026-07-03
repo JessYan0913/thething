@@ -134,6 +134,7 @@ export async function POST(request: Request) {
       modules: enableConnectors === false ? { connectors: false } : undefined,
       customInstructions: finalInstructions,
       approvalMode,
+      agentRunStore: store.agentRunStore,
     });
 
     const messagesWithAttachments = adjustedMessages ?? messages;
@@ -197,6 +198,10 @@ export async function POST(request: Request) {
                 sendReasoning: true,
                 onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
                   try {
+                    // 标记 agent run 完成并清理 stream chunks
+                    store.agentRunStore.completeRun(conversationId);
+                    store.agentRunStore.clearChunks(conversationId);
+
                     const newAssistantMessages = completedMessages.slice(llmMessages.length);
                     const messagesToSave = [...messages, ...newAssistantMessages];
 
@@ -233,7 +238,10 @@ export async function POST(request: Request) {
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
-                  controller.enqueue(JSON.stringify(value));
+                  const serialized = JSON.stringify(value);
+                  controller.enqueue(serialized);
+                  // 持久化 chunk 用于跨重启恢复
+                  store.agentRunStore.addChunk(conversationId, agentChunkCount, serialized);
                   agentChunkCount++;
                 }
               } catch (agentErr) {

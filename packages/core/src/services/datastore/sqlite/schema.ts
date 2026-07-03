@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -171,6 +171,48 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     `);
 
     logger.debug('Schema', 'Migrated to v6: added projects table and project_id column');
+  }
+
+  if (currentVersion < 7) {
+    // v7: add agent_runs and stream_chunks tables for durable execution
+    db.exec(`
+      -- Agent run checkpoints (one row per conversation, updated in place)
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        conversation_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'running'
+          CHECK(status IN ('running', 'paused_approval', 'completed', 'failed')),
+        step_count INTEGER DEFAULT 0,
+        accumulated_text TEXT DEFAULT '',
+        tools_used TEXT DEFAULT '[]',
+        error TEXT,
+        pending_approval_id TEXT,
+        started_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      -- Stream chunks for cross-restart stream recovery
+      CREATE TABLE IF NOT EXISTS stream_chunks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        chunk_data TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_stream_chunks_conversation
+        ON stream_chunks(conversation_id, sequence);
+
+      -- Agent busy/idle status (persisted across restarts)
+      CREATE TABLE IF NOT EXISTS agent_status (
+        agent_id TEXT PRIMARY KEY,
+        is_busy INTEGER NOT NULL DEFAULT 0,
+        current_todo_id TEXT,
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    logger.debug('Schema', 'Migrated to v7: added agent_runs, stream_chunks, and agent_status tables');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

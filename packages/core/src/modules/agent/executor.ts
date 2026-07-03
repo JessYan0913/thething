@@ -31,10 +31,29 @@ export async function executeRoutedAgent(
   task: string,
 ): Promise<AgentExecutionResult> {
   const startTime = Date.now();
-  const { toolCallId, writerRef, abortSignal, todoStore, todoId } = context;
+  const { toolCallId, writerRef, abortSignal, todoStore, todoId, agentRunStore, conversationId } = context;
   const writer = writerRef.current;
 
   try {
+    // 0. 检查是否有未完成的 run（进程恢复场景）
+    let textContent = '';
+    let stepsExecuted = 0;
+    const toolsUsed: string[] = [];
+
+    if (agentRunStore && conversationId) {
+      const existingRun = agentRunStore.getRun(conversationId);
+      if (existingRun?.status === 'running' && existingRun.stepCount > 0) {
+        // 从 checkpoint 恢复：记录已有的进度
+        stepsExecuted = existingRun.stepCount;
+        textContent = existingRun.accumulatedText;
+        toolsUsed.push(...existingRun.toolsUsed);
+      } else if (!existingRun || existingRun.status === 'completed' || existingRun.status === 'failed') {
+        // 新 run 或已完成/失败的 run → 创建新 run
+        agentRunStore.createRun(conversationId);
+      }
+      // 'paused_approval' 状态不处理，由审批恢复逻辑处理
+    }
+
     // 1. 解析工具
     const activeTools = resolveToolsForAgent(definition, context);
 
@@ -74,9 +93,6 @@ export async function executeRoutedAgent(
     });
 
     // 9. 处理输出流
-    let textContent = '';
-    let stepsExecuted = 0;
-    const toolsUsed: string[] = [];
     const toolResults: Array<{ name: string; input: unknown; output: string }> = [];
 
     for await (const part of streamResult.stream) {
@@ -109,6 +125,15 @@ export async function executeRoutedAgent(
           id: toolCallId,
           data: { name: part.toolName, result: output },
         });
+
+        // 写入 checkpoint（每完成一步更新一次）
+        if (agentRunStore && conversationId) {
+          agentRunStore.updateRun(conversationId, {
+            stepCount: stepsExecuted,
+            accumulatedText: textContent,
+            toolsUsed: [...new Set(toolsUsed)],
+          });
+        }
       }
     }
 
@@ -185,6 +210,11 @@ export async function executeRoutedAgent(
       });
     }
 
+    // 13. 标记 run 完成
+    if (agentRunStore && conversationId) {
+      agentRunStore.completeRun(conversationId);
+    }
+
     return result;
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -205,6 +235,11 @@ export async function executeRoutedAgent(
       fireAndForget(() => {
         failTodo(todoStore, todoId, errorMsg);
       });
+    }
+
+    // 标记 run 失败
+    if (agentRunStore && conversationId) {
+      agentRunStore.failRun(conversationId, errorMsg);
     }
 
     return result;

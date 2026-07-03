@@ -361,6 +361,11 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     approvalMode: options.approvalMode ?? 'smart',
     reviewer,
   }
+  // ── Checkpoint 回调：跟踪工具调用，每步结束写 checkpoint ──
+  const agentRunStore = options.agentRunStore;
+  let checkpointStepCount = 0;
+  const checkpointToolsUsed: string[] = [];
+
   const agent = new ToolLoopAgent<never, ChatToolsType, ApprovalRuntimeContext>({
     model: wrappedModel,
     instructions,
@@ -370,6 +375,16 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     prepareStep: prepareStep as import('ai').PrepareStepFunction<ChatToolsType, ApprovalRuntimeContext>,
     stopWhen,
     toolChoice: 'auto',
+    onToolExecutionEnd: ({ toolCall }) => {
+      checkpointStepCount++;
+      checkpointToolsUsed.push(toolCall.toolName);
+      if (agentRunStore && conversationId) {
+        agentRunStore.updateRun(conversationId, {
+          stepCount: checkpointStepCount,
+          toolsUsed: [...new Set(checkpointToolsUsed)],
+        });
+      }
+    },
   })
 
   // ============================================================

@@ -10,6 +10,7 @@ import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';
 import type { CoreRuntime } from '../../composition/bootstrap';
+import type { AgentRunStore } from '../../primitives/datastore/types';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { BehaviorConfig } from '../../services/config/behavior';
 import type { SessionState } from '../../modules/session';
@@ -194,6 +195,9 @@ export interface CreateAgentOptions {
 
   /** 自动批准所有工具调用，跳过 needsApproval 检查。CLI 等无 UI 场景使用。 */
   autoApprove?: boolean;
+
+  /** Agent run checkpoint store（用于持久化执行恢复） */
+  agentRunStore?: AgentRunStore;
 
   /** 对话元数据（用于控制技能附件注入等行为） */
   conversationMeta?: {

@@ -396,6 +396,9 @@ export class AgentInboundHandler implements InboundEventHandler {
         // ── 审批回复：拒绝 ──
         if (isResume && isDeny) {
           clearSuspendedState(conversationId)
+          // 恢复 agent run 状态并标记完成（拒绝后不继续执行）
+          store.agentRunStore.resumeFromApproval(conversationId)
+          store.agentRunStore.completeRun(conversationId)
           const denyMsg: UIMessage = {
             id: nanoid(),
             role: 'user',
@@ -523,6 +526,9 @@ export class AgentInboundHandler implements InboundEventHandler {
     ]
 
     clearSuspendedState(conversationId)
+
+    // 恢复 agent run 状态
+    store.agentRunStore.resumeFromApproval(conversationId)
 
     logger.debug('AgentInboundHandler', `Resuming from suspended state: conversation=${conversationId} tools=${suspended.pendingApprovals.map(item => item.toolName).join(', ')} pausedCount=${suspended.pausedModelMessages.length}`)
 
@@ -781,6 +787,9 @@ export class AgentInboundHandler implements InboundEventHandler {
           approvalAskMessageId: approvalAskMsgId,
           createdAt: Date.now(),
         })
+
+        // 持久化审批暂停状态（跨重启恢复）
+        store.agentRunStore.pauseForApproval(conversationId, pendingApprovalRequests[0].approvalId)
 
         // 将审批询问保存为 assistant 消息（供 Web UI 展示）
         const approvalAskMsg: UIMessage = {

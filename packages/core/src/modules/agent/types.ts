@@ -10,6 +10,7 @@ import type { SessionStateOptions, SessionState } from '../session'
 import type { ModelProviderConfig } from '../../services/model'
 import type { Skill } from '../../modules/skills/types'
 import type { McpServerConfig } from '../../modules/mcp/types'
+import type { AgentRunStore } from '../../primitives/datastore/types'
 import type { BehaviorConfig } from '../../services/config/behavior'
 import type { ModelAliases } from '../../services/model'
 import type { ConnectorRegistry } from '../../modules/connector'
@@ -213,6 +214,12 @@ export interface AgentExecutionContext {
 
   /** 当前执行绑定的 Agent 注册表 */
   agentRegistry?: AgentRegistry;
+
+  /** Agent run checkpoint store（仅顶层 agent 设置，子 agent 不设置） */
+  agentRunStore?: AgentRunStore;
+
+  /** 会话 ID（配合 agentRunStore 使用） */
+  conversationId?: string;
 }
 
 // ============================================================

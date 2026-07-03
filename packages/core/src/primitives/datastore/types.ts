@@ -327,6 +327,9 @@ export interface DataStore {
   /** Project storage */
   projectStore: ProjectStore;
 
+  /** Agent run checkpoint storage */
+  agentRunStore: AgentRunStore;
+
   /**
    * Execute a function within a database transaction.
    * SQLite implementation uses db.transaction();
@@ -539,6 +542,80 @@ export interface TodoStore {
   getAgentStatus(agentId: string): AgentStatus;
   setAgentBusy(agentId: string, busy: boolean, todoId?: string): void;
   clearAllTodos(): void;
+}
+
+// ============================================================
+// Agent Run Types (durable execution checkpoint)
+// ============================================================
+
+/**
+ * Agent run status state machine
+ */
+export type AgentRunStatus = 'running' | 'paused_approval' | 'completed' | 'failed';
+
+/**
+ * Agent run entity — one row per conversation, updated in place
+ */
+export interface AgentRun {
+  conversationId: string;
+  status: AgentRunStatus;
+  stepCount: number;
+  accumulatedText: string;
+  toolsUsed: string[];
+  error: string | null;
+  pendingApprovalId: string | null;
+  startedAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Stream chunk entity for cross-restart stream recovery
+ */
+export interface StreamChunk {
+  id: number;
+  conversationId: string;
+  sequence: number;
+  chunkData: string;
+  createdAt: string;
+}
+
+/**
+ * Agent run storage interface — checkpoint + stream persistence
+ */
+export interface AgentRunStore {
+  /** Create or overwrite a run for a conversation */
+  createRun(conversationId: string): void;
+
+  /** Update checkpoint fields (step_count, accumulated_text, tools_used) */
+  updateRun(conversationId: string, update: {
+    stepCount?: number;
+    accumulatedText?: string;
+    toolsUsed?: string[];
+  }): void;
+
+  /** Get the current run for a conversation */
+  getRun(conversationId: string): AgentRun | null;
+
+  /** Mark run as completed */
+  completeRun(conversationId: string): void;
+
+  /** Mark run as failed */
+  failRun(conversationId: string, error: string): void;
+
+  /** Pause run for approval */
+  pauseForApproval(conversationId: string, approvalId: string): void;
+
+  /** Resume run from approval */
+  resumeFromApproval(conversationId: string): void;
+
+  /** Add a stream chunk */
+  addChunk(conversationId: string, sequence: number, data: string): void;
+
+  /** Get stream chunks, optionally from a specific sequence */
+  getChunks(conversationId: string, fromSequence?: number): StreamChunk[];
+
+  /** Clear all stream chunks for a conversation */
+  clearChunks(conversationId: string): void;
 }
 
 export interface ConversationRow {
