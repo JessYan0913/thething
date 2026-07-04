@@ -205,6 +205,7 @@ async function main() {
   console.log('[Prepare Standalone] Creating start-standalone.js wrapper...');
   const wrapperScript = `
 const http = require('http');
+const net = require('net');
 const mod = require('module');
 
 // Turbopack hashes external module names (e.g. "better-sqlite3-0167c515dc271f66").
@@ -218,35 +219,54 @@ mod._resolveFilename = function (request, parent, isMain, options) {
   return originalResolve.call(this, request, parent, isMain, options);
 };
 
-// Set PORT before requiring server.js
-// server.js uses: parseInt(process.env.PORT, 10) || 3000
-process.env.PORT = '3000';
-// Bind to localhost only for security
-process.env.HOSTNAME = '127.0.0.1';
+// Parse -p <port> from command line args (passed by Electron main process)
+const pIdx = process.argv.indexOf('-p');
+const requestedPort = pIdx !== -1 ? parseInt(process.argv[pIdx + 1], 10) : 0;
 
-// server.js starts the Next.js server directly (no exports)
-require('./packages/app/server.js');
-
-// Poll until ready, then output the port for Electron
-const PORT = 3000;
-const checkUrl = 'http://127.0.0.1:' + PORT;
-const start = Date.now();
-const timeout = 30000;
-
-function check() {
-  http.get(checkUrl, (res) => {
-    res.resume();
-    console.log('THETHING_PORT=' + PORT);
-    console.log('THETHING_READY');
-  }).on('error', () => {
-    if (Date.now() - start > timeout) {
-      console.error('Server did not start within ' + (timeout / 1000) + 's');
-      process.exit(1);
-    }
-    setTimeout(check, 200);
+// Find a free port by binding to port 0
+function findFreePort() {
+  return new Promise(function (resolve) {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1', function () {
+      const port = server.address().port;
+      server.close(function () { resolve(port); });
+    });
   });
 }
-check();
+
+(async function main() {
+  // Use requested port, or find a free one if 0 (or not specified)
+  const PORT = requestedPort || await findFreePort();
+
+  // Set PORT before requiring server.js
+  // server.js uses: parseInt(process.env.PORT, 10) || 3000
+  process.env.PORT = String(PORT);
+  // Bind to localhost only for security
+  process.env.HOSTNAME = '127.0.0.1';
+
+  // server.js starts the Next.js server directly (no exports)
+  require('./packages/app/server.js');
+
+  // Poll until ready, then output the port for Electron
+  var checkUrl = 'http://127.0.0.1:' + PORT;
+  var start = Date.now();
+  var timeout = 30000;
+
+  function check() {
+    http.get(checkUrl, function (res) {
+      res.resume();
+      console.log('THETHING_PORT=' + PORT);
+      console.log('THETHING_READY');
+    }).on('error', function () {
+      if (Date.now() - start > timeout) {
+        console.error('Server did not start within ' + (timeout / 1000) + 's');
+        process.exit(1);
+      }
+      setTimeout(check, 200);
+    });
+  }
+  check();
+})();
 `;
 
   const wrapperPath = join(OUTPUT_DIR, 'start-standalone.js');
