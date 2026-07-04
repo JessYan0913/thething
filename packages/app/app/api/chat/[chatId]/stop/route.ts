@@ -5,7 +5,7 @@
 
 import { getStreamManager } from '@/lib/stream-manager';
 import { getServerRuntime } from '@/lib/runtime';
-import { SQLiteAgentStateStore } from '@the-thing/workflow';
+import { SQLiteAgentStateStore } from '@the-thing/core';
 import type { SQLiteDataStore } from '@the-thing/core';
 import { NextResponse } from 'next/server';
 
@@ -25,7 +25,7 @@ export async function POST(
       await streamManager.stopStream(chatId);
     }
 
-    // 清理 workflow state
+    // 清理 DurableAgent state
     try {
       const rt = await getServerRuntime();
       const stateStore = new SQLiteAgentStateStore((rt.dataStore as unknown as SQLiteDataStore).db);

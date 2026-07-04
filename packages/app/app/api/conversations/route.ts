@@ -1,5 +1,5 @@
 import { getServerRuntime } from '@/lib/runtime';
-import { SQLiteAgentStateStore } from '@the-thing/workflow';
+import { SQLiteAgentStateStore } from '@the-thing/core';
 import type { SQLiteDataStore } from '@the-thing/core';
 import { NextResponse } from 'next/server';
 

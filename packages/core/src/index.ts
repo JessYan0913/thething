@@ -325,6 +325,14 @@ export type {
 // DataStore exports（补充）
 // ============================================================
 export { SQLiteDataStore } from './services/datastore/sqlite/sqlite-data-store';
+export { SQLiteAgentStateStore, createFreshState, isResumable } from './services/datastore/sqlite/agent-state-store';
+export type { DurableAgentState, DurableAgentStatus, AgentStateStore } from './services/datastore/sqlite/agent-state-store';
+
+// ============================================================
+// DurableAgent
+// ============================================================
+export { DurableAgent } from './modules/agent/durable-agent';
+export type { DurableAgentOptions } from './modules/agent/durable-agent';
 
 // ============================================================
 // Native 模块加载（SEA 支持）

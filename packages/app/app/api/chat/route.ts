@@ -6,19 +6,17 @@ import {
   createAgent,
   generateConversationTitle,
   finalizeAgentRun,
+  DurableAgent,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
-import type { SQLiteDataStore } from '@the-thing/core';
 import {
-  createAgentUIStream,
+  convertToModelMessages,
+  toUIMessageStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
-  type UIMessageChunk,
 } from 'ai';
-import { runWorkflow, SQLiteAgentStateStore } from '@the-thing/workflow';
-import type { StreamFactory } from '@the-thing/workflow';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -117,7 +115,6 @@ export async function POST(request: Request) {
     const existingRun = store.agentRunStore.getRun(conversationId);
     if (existingRun?.status === 'running') {
       console.log(`[Chat API] Detected interrupted run for ${conversationId} (${existingRun.stepCount} steps, ${existingRun.toolsUsed.length} tools used)`);
-      // 尝试从 stream chunks 重建部分回复
       const chunks = store.agentRunStore.getChunks(conversationId);
       if (chunks.length > 0) {
         const partialText = reconstructPartialText(chunks);
@@ -145,14 +142,14 @@ export async function POST(request: Request) {
     let finalInstructions = systemPrompt;
     if (unfinishedTodos.length > 0) {
       const todoLines = unfinishedTodos.map((t: Todo) => {
-        const parts = ['ID: ' + t.id, '\u72b6\u6001: ' + t.status];
-        if (t.activeForm) parts.push('\u8fdb\u5ea6: ' + t.activeForm);
-        if (t.status === 'failed') parts.push('\u4e0a\u6b21\u5931\u8d25');
+        const parts = ['ID: ' + t.id, '状态: ' + t.status];
+        if (t.activeForm) parts.push('进度: ' + t.activeForm);
+        if (t.status === 'failed') parts.push('上次失败');
         return '- **' + t.subject + '** (' + parts.join(', ') + ')';
       });
-      const todoNote = '\n\n## \u672a\u5b8c\u6210\u4efb\u52a1\n\u4ee5\u4e0b\u662f\u4f60\u4e4b\u524d\u4e2d\u65ad\u540e\u7559\u4e0b\u7684\u672a\u5b8c\u6210\u4efb\u52a1\uff0c\u9700\u8981\u7ee7\u7eed\u5904\u7406\uff1a\n'
+      const todoNote = '\n\n## 未完成任务\n以下是你之前中断后留下的未完成任务，需要继续处理：\n'
         + todoLines.join('\n')
-        + '\n\n\u4f60\u53ef\u4ee5\u4f7f\u7528 todo_list \u67e5\u770b\u8be6\u7ec6\u4fe1\u606f\uff0c\u7136\u540e\u7ee7\u7eed\u6267\u884c\u3002';
+        + '\n\n你可以使用 todo_list 查看详细信息，然后继续执行。';
 
       finalInstructions = systemPrompt
         ? systemPrompt + '\n\n' + todoNote
@@ -167,6 +164,9 @@ export async function POST(request: Request) {
       sessionState,
       mcpRegistry,
       model,
+      wrappedModel,
+      tools: agentTools,
+      instructions: agentInstructions,
       adjustedMessages,
       wikiBaseDir,
     } = await createAgent({
@@ -186,10 +186,29 @@ export async function POST(request: Request) {
       agentRunStore: store.agentRunStore,
     });
 
+    // 创建 DurableAgent 替代 ToolLoopAgent
+    const durableAgent = new DurableAgent({
+      model: wrappedModel!,
+      instructions: agentInstructions,
+      tools: agentTools,
+      onStepEnd: ({ stepNumber, toolCalls }) => {
+        console.log(`[DurableAgent] Step ${stepNumber} completed, tools: ${toolCalls.map(t => t.toolName).join(', ')}`);
+        store.agentRunStore.updateRun(conversationId, {
+          stepCount: stepNumber + 1,
+          toolsUsed: toolCalls.map(t => t.toolName),
+        });
+      },
+      onToolExecutionEnd: ({ toolCall }) => {
+        const existing = store.agentRunStore.getRun(conversationId);
+        store.agentRunStore.updateRun(conversationId, {
+          toolsUsed: [...new Set([...(existing?.toolsUsed ?? []), toolCall.toolName])],
+        });
+      },
+    });
+
     const messagesWithAttachments = adjustedMessages ?? messages;
 
     // Convert unsupported file types (e.g. docx, xlsx, pptx) to text for the LLM.
-    // We create a new array so original messages (with file parts) are preserved for storage.
     const llmMessages: UIMessage[] = await Promise.all(
       messagesWithAttachments.map(async (msg) => {
         if (msg.role !== 'user') return msg;
@@ -231,18 +250,6 @@ export async function POST(request: Request) {
 
     const abortController = new AbortController();
 
-    // 创建 StreamFactory 包装 createAgentUIStream
-    const agentRef = { agent };
-    const createStream: StreamFactory = async ({ messages: streamMessages, abortSignal, onStep }: Parameters<StreamFactory>[0]) => {
-      return createAgentUIStream({
-        agent: agentRef.agent,
-        uiMessages: streamMessages,
-        abortSignal,
-        sendReasoning: true,
-        onStepEnd: onStep as unknown as Parameters<typeof createAgentUIStream>[0]['onStepEnd'],
-      });
-    };
-
     // 创建可恢复流
     const resumableStream = await streamManager.createNewResumableStream(
       conversationId,
@@ -253,73 +260,81 @@ export async function POST(request: Request) {
           },
           start: async (controller) => {
             try {
-              // 创建 writable 用于收集 chunks
-              const collectedChunks: string[] = [];
-              let chunkSeq = 0;
-              const writable = new WritableStream<UIMessageChunk>({
-                write(chunk) {
-                  const serialized = JSON.stringify(chunk);
-                  collectedChunks.push(serialized);
-                  controller.enqueue(serialized);
-                  // 持久化 chunk 用于跨重启恢复
-                  store.agentRunStore.addChunk(conversationId, chunkSeq, serialized);
-                  chunkSeq++;
-                },
-              });
+              // 1. 转换 UI 消息为 Model 消息
+              const modelMessages = await convertToModelMessages(
+                llmMessages as Array<Omit<UIMessage, 'id'>>,
+              );
 
-              // 使用 workflow orchestrator 执行 agent
-              const stateStore = new SQLiteAgentStateStore((store as unknown as SQLiteDataStore).db);
-              const finalState = await runWorkflow({
-                createStream,
-                conversationId,
-                messages: llmMessages,
-                stateStore,
-                sliceTimeoutMs: 300_000,
-                writable,
+              // 2. DurableAgent generator 循环 → TextStreamPart 流
+              const { stream: textStream } = await durableAgent.stream({
+                prompt: modelMessages,
                 abortSignal: abortController.signal,
               });
 
-              // 处理最终状态
-              if (finalState.status === 'finished') {
-                store.agentRunStore.completeRun(conversationId);
-                store.agentRunStore.clearChunks(conversationId);
+              // 3. toUIMessageStream 转换 TextStreamPart → UIMessageChunk
+              const uiStream = toUIMessageStream({
+                stream: textStream as unknown as ReadableStream,
+                tools: agentTools,
+                sendReasoning: true,
+                onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+                  try {
+                    store.agentRunStore.completeRun(conversationId);
+                    store.agentRunStore.clearChunks(conversationId);
 
-                // 从累积消息中提取新的 assistant 消息
-                const completedMessages = finalState.accumulatedMessages;
-                const newAssistantMessages = completedMessages.slice(llmMessages.length);
-                const messagesToSave = [...messages, ...newAssistantMessages];
+                    const newAssistantMessages = completedMessages.slice(llmMessages.length);
+                    const messagesToSave = [...messages, ...newAssistantMessages];
 
-                console.log(
-                  `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
-                );
+                    console.log(
+                      `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+                    );
 
-                const costSummary = sessionState.costTracker.getSummary();
-                console.log(
-                  `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
-                );
+                    const costSummary = sessionState.costTracker.getSummary();
+                    console.log(
+                      `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
+                    );
 
-                await finalizeAgentRun({
-                  dataStore: store,
-                  messages: messagesToSave,
-                  conversationId,
-                  costTracker: sessionState.costTracker,
-                  mcpRegistry,
-                  model,
-                  isNewConversation: isFirstMessage,
-                  userId,
-                  wikiBaseDir,
-                });
-              } else if (finalState.status === 'timed_out') {
-                console.log(`[Chat API] Slice timed out for ${conversationId}, state persisted for resume`);
-                store.agentRunStore.failRun(conversationId, 'Slice timed out');
-              } else if (finalState.status === 'failed') {
-                console.log(`[Chat API] Workflow failed for ${conversationId}: ${finalState.error}`);
-                store.agentRunStore.failRun(conversationId, finalState.error || 'Workflow failed');
+                    await finalizeAgentRun({
+                      dataStore: store,
+                      messages: messagesToSave,
+                      conversationId,
+                      costTracker: sessionState.costTracker,
+                      mcpRegistry,
+                      model,
+                      isNewConversation: isFirstMessage,
+                      userId,
+                      wikiBaseDir,
+                    });
+                  } catch (err) {
+                    console.error('[Chat API] onFinish error:', err);
+                  }
+                },
+              });
+
+              // 4. 消费 UIMessageChunk 流，序列化写入 resumable stream
+              const reader = uiStream.getReader();
+              let agentChunkCount = 0;
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  const serialized = JSON.stringify(value);
+                  controller.enqueue(serialized);
+                  store.agentRunStore.addChunk(conversationId, agentChunkCount, serialized);
+                  agentChunkCount++;
+                }
+              } catch (agentErr) {
+                console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
               }
 
-              console.log('[Chat API] Workflow complete, chunks:', chunkSeq);
+              if (abortController.signal.aborted) {
+                console.log('[Chat API] Agent aborted, marking run as stopped');
+                store.agentRunStore.failRun(conversationId, 'Stopped by user');
+              }
+
+              console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
               controller.close();
             } catch (error) {
+              console.error('[Chat API] Stream error:', error);
               controller.error(error);
             }
           },
@@ -338,6 +353,7 @@ export async function POST(request: Request) {
       execute: async ({ writer }) => {
         writerRef.current = writer as unknown as SubAgentStreamWriter;
 
+        // 读取可恢复流（JSON 字符串）并解析为 UIMessageChunk 后写入 UI 流
         const reader = resumableStream.getReader();
         let chunkCount = 0;
         try {

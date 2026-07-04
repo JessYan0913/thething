@@ -6,7 +6,7 @@
 
 import { getStreamManager } from '@/lib/stream-manager';
 import { getServerRuntime } from '@/lib/runtime';
-import { SQLiteAgentStateStore } from '@the-thing/workflow';
+import { SQLiteAgentStateStore } from '@the-thing/core';
 import type { SQLiteDataStore } from '@the-thing/core';
 import { NextResponse } from 'next/server';
 
@@ -70,94 +70,73 @@ export async function GET(
     // 内存中没有流 — 检查 SQLite
     const rt = await getServerRuntime();
 
-    // 优先检查 workflow state（新的 slice-based 系统）
-    const stateStore = new SQLiteAgentStateStore((rt.dataStore as unknown as SQLiteDataStore).db);
-    const agentState = stateStore.getState(chatId);
+    // 优先检查 DurableAgent state
+    try {
+      const stateStore = new SQLiteAgentStateStore((rt.dataStore as unknown as SQLiteDataStore).db);
+      const agentState = stateStore.getState(chatId);
 
-    if (agentState?.status === 'timed_out' && agentState.accumulatedMessages.length > 0) {
-      // Slice 超时 — 告诉客户端需要发送 resume 请求
-      // 返回已有的 chunks 让客户端重建进度
-      const run = rt.dataStore.agentRunStore.getRun(chatId);
-      if (run) {
-        const chunks = rt.dataStore.agentRunStore.getChunks(chatId);
-        if (chunks.length > 0) {
-          console.log(`[Stream API] Replaying ${chunks.length} chunks (timed_out state) for ${chatId}`);
-          const encoder = new TextEncoder();
-          const replayStream = new ReadableStream({
-            start(controller) {
-              for (const chunk of chunks) {
-                controller.enqueue(encoder.encode(`data: ${chunk.chunkData}\n\n`));
-              }
-              // 发送 resume 指示器
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: 'resume-available',
-                stepCount: agentState.stepCount,
-                message: 'Slice timed out. Send a new message to continue execution.',
-              })}\n\n`));
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              controller.close();
-            },
-          });
-          return new NextResponse(replayStream, { headers: sseHeaders });
+      if (agentState?.status === 'timed_out' && agentState.modelMessages.length > 0) {
+        const run = rt.dataStore.agentRunStore.getRun(chatId);
+        if (run) {
+          const chunks = rt.dataStore.agentRunStore.getChunks(chatId);
+          if (chunks.length > 0) {
+            console.log(`[Stream API] Replaying ${chunks.length} chunks (timed_out) for ${chatId}`);
+            const encoder = new TextEncoder();
+            const replayStream = new ReadableStream({
+              start(controller) {
+                for (const chunk of chunks) {
+                  controller.enqueue(encoder.encode(`data: ${chunk.chunkData}\n\n`));
+                }
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'resume-available',
+                  stepCount: agentState.stepCount,
+                  message: 'Execution paused. Send a new message to continue.',
+                })}\n\n`));
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
+              },
+            });
+            return new NextResponse(replayStream, { headers: sseHeaders });
+          }
         }
       }
-    }
 
-    if (agentState?.status === 'awaiting_approval') {
-      // 等待审批 — 返回已有 chunks + 审批提示
-      const run = rt.dataStore.agentRunStore.getRun(chatId);
-      if (run) {
-        const chunks = rt.dataStore.agentRunStore.getChunks(chatId);
-        if (chunks.length > 0) {
-          console.log(`[Stream API] Replaying ${chunks.length} chunks (awaiting_approval) for ${chatId}`);
-          const encoder = new TextEncoder();
-          const replayStream = new ReadableStream({
-            start(controller) {
-              for (const chunk of chunks) {
-                controller.enqueue(encoder.encode(`data: ${chunk.chunkData}\n\n`));
-              }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: 'approval-needed',
-                message: 'Agent is waiting for tool approval.',
-              })}\n\n`));
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              controller.close();
-            },
-          });
-          return new NextResponse(replayStream, { headers: sseHeaders });
+      if (agentState?.status === 'awaiting_approval') {
+        const run = rt.dataStore.agentRunStore.getRun(chatId);
+        if (run) {
+          const chunks = rt.dataStore.agentRunStore.getChunks(chatId);
+          if (chunks.length > 0) {
+            console.log(`[Stream API] Replaying ${chunks.length} chunks (awaiting_approval) for ${chatId}`);
+            const encoder = new TextEncoder();
+            const replayStream = new ReadableStream({
+              start(controller) {
+                for (const chunk of chunks) {
+                  controller.enqueue(encoder.encode(`data: ${chunk.chunkData}\n\n`));
+                }
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'approval-needed',
+                  message: 'Agent is waiting for tool approval.',
+                })}\n\n`));
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
+              },
+            });
+            return new NextResponse(replayStream, { headers: sseHeaders });
+          }
         }
       }
+    } catch {
+      // workflow 表可能不存在，忽略
     }
 
     // 回退到旧的 agent_runs 系统
     const run = rt.dataStore.agentRunStore.getRun(chatId);
 
     if (run?.status === 'running') {
-      const chunks = rt.dataStore.agentRunStore.getChunks(chatId);
-      if (chunks.length > 0) {
-        console.log(`[Stream API] Replaying ${chunks.length} chunks from SQLite for ${chatId}`);
-        const encoder = new TextEncoder();
-        const replayStream = new ReadableStream({
-          start(controller) {
-            for (const chunk of chunks) {
-              controller.enqueue(encoder.encode(`data: ${chunk.chunkData}\n\n`));
-            }
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'error',
-              errorText: 'Agent run was interrupted by server restart. Your message has been saved — please resend to continue.',
-            })}\n\n`));
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
-          },
-        });
-
-        rt.dataStore.agentRunStore.failRun(chatId, 'Process restarted');
-        rt.dataStore.agentRunStore.clearChunks(chatId);
-
-        return new NextResponse(replayStream, { headers: sseHeaders });
-      }
-
+      // 进程重启后，running 状态是陈旧数据，静默标记为 failed
+      console.log(`[Stream API] Stale running state for ${chatId}, marking as failed`);
       rt.dataStore.agentRunStore.failRun(chatId, 'Process restarted');
+      rt.dataStore.agentRunStore.clearChunks(chatId);
     }
 
     // 没有可恢复的数据

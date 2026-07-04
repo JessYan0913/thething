@@ -46,7 +46,6 @@
     "@streamdown/mermaid": "^1.0.2",
     "@the-thing/core": "workspace:*",
     "@the-thing/resumable-stream": "workspace:*",
-    "@the-thing/workflow": "workspace:*",
     "@types/js-yaml": "^4.0.9",
     "ai": "^7.0.7",
     "ai-elements": "^1.9.0",
