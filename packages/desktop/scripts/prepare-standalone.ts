@@ -98,7 +98,10 @@ async function main() {
       if (seenPkgs.has(pkg)) continue;
       seenPkgs.add(pkg);
 
-      const target = join(OUTPUT_DIR, 'node_modules', pkg);
+      // pnpm stores packages in .pnpm/node_modules/ rather than at the top level
+      const target = existsSync(join(OUTPUT_DIR, 'node_modules', pkg))
+        ? join(OUTPUT_DIR, 'node_modules', pkg)
+        : join(OUTPUT_DIR, 'node_modules', '.pnpm', 'node_modules', pkg);
       if (!existsSync(target)) continue;
 
       // Find all hash variants for this package
@@ -210,11 +213,18 @@ const mod = require('module');
 
 // Turbopack hashes external module names (e.g. "better-sqlite3-0167c515dc271f66").
 // Register a require hook to map hashed names back to the real package.
+// If the unhashed name doesn't resolve (e.g. only the hashed copy exists in
+// node_modules), fall back to the original hashed request.
 const originalResolve = mod._resolveFilename;
 mod._resolveFilename = function (request, parent, isMain, options) {
   const match = request.match(/^(.+)-([0-9a-f]{16})$/);
   if (match) {
-    request = match[1];
+    try {
+      return originalResolve.call(this, match[1], parent, isMain, options);
+    } catch (e) {
+      // Unhashed name not found — try the original hashed name as-is
+      return originalResolve.call(this, request, parent, isMain, options);
+    }
   }
   return originalResolve.call(this, request, parent, isMain, options);
 };
