@@ -63,6 +63,7 @@ export class SQLiteAgentRunStore implements AgentRunStore {
   private getChunksStmt: SqliteStatement;
   private getChunksFromStmt: SqliteStatement;
   private clearChunksStmt: SqliteStatement;
+  private getRunningIdsStmt: SqliteStatement;
 
   constructor(private db: SqliteDatabase) {
     this.insertRun = db.prepare(`
@@ -114,6 +115,10 @@ export class SQLiteAgentRunStore implements AgentRunStore {
 
     this.clearChunksStmt = db.prepare(`
       DELETE FROM stream_chunks WHERE conversation_id = ?
+    `);
+
+    this.getRunningIdsStmt = db.prepare(`
+      SELECT conversation_id FROM agent_runs WHERE status IN ('running', 'paused_approval')
     `);
   }
 
@@ -171,5 +176,10 @@ export class SQLiteAgentRunStore implements AgentRunStore {
 
   clearChunks(conversationId: string): void {
     this.clearChunksStmt.run(conversationId);
+  }
+
+  getRunningConversationIds(): string[] {
+    const rows = this.getRunningIdsStmt.all() as { conversation_id: string }[];
+    return rows.map(r => r.conversation_id);
   }
 }

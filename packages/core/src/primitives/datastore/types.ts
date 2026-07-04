@@ -198,6 +198,12 @@ export interface MessageStore {
   saveMessages(conversationId: string, messages: UIMessage[]): void;
 
   /**
+   * Append a single message to a conversation without replacing existing messages.
+   * Useful for incremental persistence (e.g. saving user message before agent starts).
+   */
+  appendMessage(conversationId: string, message: UIMessage): void;
+
+  /**
    * Get the next order number for a conversation
    */
   getNextMessageOrder(conversationId: string): number;
@@ -616,6 +622,9 @@ export interface AgentRunStore {
 
   /** Clear all stream chunks for a conversation */
   clearChunks(conversationId: string): void;
+
+  /** Get all conversation IDs with active (running/paused) agent runs */
+  getRunningConversationIds(): string[];
 }
 
 export interface ConversationRow {

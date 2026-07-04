@@ -4,6 +4,9 @@
  */
 
 import { getStreamManager } from '@/lib/stream-manager';
+import { getServerRuntime } from '@/lib/runtime';
+import { SQLiteAgentStateStore } from '@the-thing/workflow';
+import type { SQLiteDataStore } from '@the-thing/core';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -20,6 +23,15 @@ export async function POST(
     const existing = await streamManager.hasExistingStream(chatId);
     if (existing === true) {
       await streamManager.stopStream(chatId);
+    }
+
+    // 清理 workflow state
+    try {
+      const rt = await getServerRuntime();
+      const stateStore = new SQLiteAgentStateStore((rt.dataStore as unknown as SQLiteDataStore).db);
+      stateStore.updateStatus(chatId, 'failed');
+    } catch {
+      // 非关键操作，忽略错误
     }
 
     return NextResponse.json({ success: true });

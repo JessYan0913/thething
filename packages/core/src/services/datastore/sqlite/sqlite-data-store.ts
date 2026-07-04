@@ -57,8 +57,13 @@ const getDefaultDataDir = () => path.join(process.cwd(), DEFAULT_DATA_DIR);
  * in .siact/memory/, not by this DataStore.
  */
 export class SQLiteDataStore implements DataStore {
-  private db: SqliteDatabase;
+  private _db: SqliteDatabase;
   private _isConnected: boolean = true;
+
+  /** Expose the raw database connection for extension (e.g., workflow state store) */
+  get db(): SqliteDatabase {
+    return this._db;
+  }
 
   readonly conversationStore: ConversationStore;
   readonly messageStore: MessageStore;
@@ -78,44 +83,44 @@ export class SQLiteDataStore implements DataStore {
     }
 
     const Database = getDatabase();
-    this.db = new Database(dbPath);
+    this._db = new Database(dbPath);
 
     // Configure SQLite
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
+    this._db.pragma('journal_mode = WAL');
+    this._db.pragma('foreign_keys = ON');
 
     // Initialize schema
-    initializeSchema(this.db);
+    initializeSchema(this._db);
 
     // Initialize sub-stores with shared connection
-    this.conversationStore = new SQLiteConversationStore(this.db);
-    this.summaryStore = new SQLiteSummaryStore(this.db);
-    this.costStore = new SQLiteCostStore(this.db);
-    this.todoStore = new SQLiteTodoStore(this.db);
-    this.projectStore = new SQLiteProjectStore(this.db);
-    this.agentRunStore = new SQLiteAgentRunStore(this.db);
+    this.conversationStore = new SQLiteConversationStore(this._db);
+    this.summaryStore = new SQLiteSummaryStore(this._db);
+    this.costStore = new SQLiteCostStore(this._db);
+    this.todoStore = new SQLiteTodoStore(this._db);
+    this.projectStore = new SQLiteProjectStore(this._db);
+    this.agentRunStore = new SQLiteAgentRunStore(this._db);
     // MessageStore needs conversationStore for auto-creating conversations
-    this.messageStore = new SQLiteMessageStore(this.db, this.conversationStore);
+    this.messageStore = new SQLiteMessageStore(this._db, this.conversationStore);
   }
 
   close(): void {
-    if (this.db && this.db.open) {
-      this.db.close();
+    if (this._db && this._db.open) {
+      this._db.close();
       this._isConnected = false;
     }
   }
 
   isConnected(): boolean {
-    return this._isConnected && this.db.open;
+    return this._isConnected && this._db.open;
   }
 
   transaction<T>(fn: () => T): T {
-    const tx = this.db.transaction(fn);
+    const tx = this._db.transaction(fn);
     return tx();
   }
 
   async backup(destination: string): Promise<void> {
-    await this.db.backup(destination);
+    await this._db.backup(destination);
   }
 }
 

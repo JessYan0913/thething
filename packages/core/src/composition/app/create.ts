@@ -366,9 +366,18 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   let checkpointStepCount = 0;
   const checkpointToolsUsed: string[] = [];
 
-  // 创建 agent run checkpoint（如果 store 和 conversationId 都存在）
+  // 创建或恢复 agent run checkpoint
   if (agentRunStore && conversationId) {
-    agentRunStore.createRun(conversationId);
+    const existingRun = agentRunStore.getRun(conversationId);
+    if (existingRun?.status === 'running' && existingRun.stepCount > 0) {
+      // 还有未清理的 running checkpoint（可能由 POST handler 未覆盖的路径触发），恢复状态
+      checkpointStepCount = existingRun.stepCount;
+      checkpointToolsUsed.push(...existingRun.toolsUsed);
+      logger.info('AgentCreate', `Resuming from checkpoint: ${checkpointStepCount} steps, tools: [${checkpointToolsUsed.join(', ')}]`);
+    } else {
+      // 新 run 或已完成/失败的 run → 创建新 checkpoint
+      agentRunStore.createRun(conversationId);
+    }
   }
 
   const agent = new ToolLoopAgent<never, ChatToolsType, ApprovalRuntimeContext>({

@@ -244,6 +244,7 @@ export interface ConversationItem {
   projectId: string | null;
   createdAt: string;
   updatedAt: string;
+  isRunning?: boolean;
 }
 
 export interface ProjectItem {
@@ -691,7 +692,12 @@ const ConversationItem = ({
           />
         ) : (
           <>
-            <MessageSquareIcon className="size-4 shrink-0" />
+            <span className="relative shrink-0">
+              <MessageSquareIcon className="size-4" />
+              {conversation.isRunning && (
+                <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-green-500 animate-pulse" />
+              )}
+            </span>
             <span className="truncate flex-1 min-w-0">{conversation.title}</span>
           </>
         )}

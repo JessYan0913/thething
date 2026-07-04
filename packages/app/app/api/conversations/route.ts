@@ -1,4 +1,6 @@
 import { getServerRuntime } from '@/lib/runtime';
+import { SQLiteAgentStateStore } from '@the-thing/workflow';
+import type { SQLiteDataStore } from '@the-thing/core';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -27,7 +29,23 @@ export async function GET(request: Request) {
       conversations = conversations.filter((c) => c.sourceId === sourceId);
     }
 
-    return NextResponse.json({ conversations });
+    // 附加 agent run 状态（检查旧的 agent_runs 和新的 workflow states）
+    const runningIds = new Set(rt.dataStore.agentRunStore.getRunningConversationIds());
+    try {
+      const stateStore = new SQLiteAgentStateStore((rt.dataStore as unknown as SQLiteDataStore).db);
+      const runningStates = stateStore.getRunningStates();
+      for (const s of runningStates) {
+        runningIds.add(s.conversationId);
+      }
+    } catch {
+      // workflow 表可能不存在，忽略
+    }
+    const conversationsWithStatus = conversations.map(c => ({
+      ...c,
+      isRunning: runningIds.has(c.id),
+    }));
+
+    return NextResponse.json({ conversations: conversationsWithStatus });
   } catch (error) {
     console.error('[Conversations API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 });

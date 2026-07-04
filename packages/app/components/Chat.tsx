@@ -208,6 +208,8 @@ export function getStoredConversationId(): string | null {
 // 用原始 chunk 数量跳过才能避免跳到序列中间导致错误。
 class ResumableChatTransport extends DefaultChatTransport<UIMessage> {
   rawChunkCount = 0;
+  /** 用于中止重连 HTTP 连接的 AbortController */
+  reconnectAbortController: AbortController | null = null;
 
   protected processResponseStream(stream: ReadableStream<Uint8Array<ArrayBufferLike>>): ReadableStream<UIMessageChunk> {
     this.rawChunkCount = 0;
@@ -219,6 +221,40 @@ class ResumableChatTransport extends DefaultChatTransport<UIMessage> {
         },
       })
     );
+  }
+
+  /**
+   * 覆盖重连方法，注入 abort signal 以支持中止 HTTP 连接。
+   * 默认的 HttpChatTransport.reconnectToStream 不传递 signal，
+   * 导致 stop() 无法关闭 SSE 连接。
+   */
+  async reconnectToStream(options: Parameters<import('ai').ChatTransport<UIMessage>['reconnectToStream']>[0]): Promise<ReadableStream<UIMessageChunk> | null> {
+    this.reconnectAbortController = new AbortController();
+    const prepared = await (this as any).prepareReconnectToStreamRequest?.({
+      api: (this as any).api,
+      id: options.chatId,
+      body: { ...((this as any).body ?? {}), ...options.body },
+      headers: { ...((this as any).headers ?? {}), ...options.headers },
+      credentials: (this as any).credentials,
+      requestMetadata: options.metadata,
+    });
+
+    const api = prepared?.api ?? `${(this as any).api}/${options.chatId}/stream`;
+    const headers = prepared?.headers ?? { ...((this as any).headers ?? {}), ...options.headers };
+    const credentials = prepared?.credentials ?? (this as any).credentials;
+    const fetchFn = (this as any).fetch ?? globalThis.fetch;
+
+    const response = await fetchFn(api, {
+      method: 'GET',
+      headers,
+      credentials,
+      signal: this.reconnectAbortController.signal,
+    });
+
+    if (response.status === 204) return null;
+    if (!response.ok) throw new Error(await response.text() || 'Failed to fetch the chat response.');
+    if (!response.body) throw new Error('The response body is empty.');
+    return this.processResponseStream(response.body);
   }
 }
 
@@ -524,6 +560,18 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     messagesRef.current = messages;
   }, [messages]);
 
+  // 浏览器标签页运行状态指示 + 侧边栏刷新
+  useEffect(() => {
+    const isStreaming = status === 'streaming' || status === 'submitted';
+    if (isStreaming) {
+      document.title = '⏳ The Thing';
+    } else {
+      document.title = 'The Thing';
+    }
+    // 状态变化时刷新侧边栏对话列表
+    onTitleUpdated?.();
+  }, [status, onTitleUpdated]);
+
   // 处理问题收集完成
   const handleQuestionsComplete = useCallback((answers: Record<string, string | string[]>) => {
     if (questionPanel) {
@@ -616,7 +664,13 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   // 停止 Agent 时清理未完成的 todo，避免 orphaned in_progress 状态
   const handleStop = useCallback(() => {
     stop();
-    // Fire and forget: 将在执行中的 todo 重置为 pending，下一轮 Agent 可以继续
+    // 中止重连的 HTTP 连接（修复刷新页面后 stop 无效的问题）
+    transport.reconnectAbortController?.abort();
+    // 通知服务端停止 agent 执行和流
+    const baseEndpoint = apiEndpoint || '/api/chat';
+    fetch(`${baseEndpoint}/${conversationId}/stop`, { method: 'POST' })
+      .catch(err => console.error('[Chat] Failed to stop server stream:', err));
+    // 将在执行中的 todo 重置为 pending，下一轮 Agent 可以继续
     fetch('/api/todos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -625,7 +679,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
         conversationId,
       }),
     }).catch(err => console.error('[Chat] Failed to reset todos:', err));
-  }, [stop, conversationId]);
+  }, [stop, conversationId, apiEndpoint, transport]);
 
   useEffect(() => {
     let cancelled = false;

@@ -9,15 +9,38 @@ import {
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
+import type { SQLiteDataStore } from '@the-thing/core';
 import {
   createAgentUIStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
+  type UIMessageChunk,
 } from 'ai';
+import { runWorkflow, SQLiteAgentStateStore } from '@the-thing/workflow';
+import type { StreamFactory } from '@the-thing/workflow';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
+
+/**
+ * 从持久化的 stream chunks 重建部分回复文本。
+ * 提取所有 text-delta chunks 的内容拼接为完整文本。
+ */
+function reconstructPartialText(chunks: Array<{ chunkData: string }>): string | null {
+  const parts: string[] = [];
+  for (const chunk of chunks) {
+    try {
+      const data = JSON.parse(chunk.chunkData);
+      if (data.type === 'text-delta' && typeof data.delta === 'string') {
+        parts.push(data.delta);
+      }
+    } catch {
+      // skip unparseable chunks
+    }
+  }
+  return parts.length > 0 ? parts.join('') : null;
+}
 
 // GET: Load messages for a conversation
 export async function GET(request: Request) {
@@ -86,6 +109,32 @@ export async function POST(request: Request) {
     }
 
     const messages: UIMessage[] = [...existingMessages, message];
+
+    // 立即持久化用户消息，确保进程崩溃后不丢失
+    store.messageStore.saveMessages(conversationId, messages);
+
+    // 检测上次未完成的 agent run（进程重启恢复）
+    const existingRun = store.agentRunStore.getRun(conversationId);
+    if (existingRun?.status === 'running') {
+      console.log(`[Chat API] Detected interrupted run for ${conversationId} (${existingRun.stepCount} steps, ${existingRun.toolsUsed.length} tools used)`);
+      // 尝试从 stream chunks 重建部分回复
+      const chunks = store.agentRunStore.getChunks(conversationId);
+      if (chunks.length > 0) {
+        const partialText = reconstructPartialText(chunks);
+        if (partialText) {
+          const partialAssistantMsg: UIMessage = {
+            id: `recovered-${conversationId}`,
+            role: 'assistant',
+            parts: [{ type: 'text', text: partialText }],
+          };
+          messages.push(partialAssistantMsg);
+          store.messageStore.saveMessages(conversationId, messages);
+          console.log(`[Chat API] Recovered partial reply (${partialText.length} chars) from ${chunks.length} chunks`);
+        }
+      }
+      store.agentRunStore.failRun(conversationId, 'Process restarted');
+      store.agentRunStore.clearChunks(conversationId);
+    }
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
     const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);
@@ -182,72 +231,93 @@ export async function POST(request: Request) {
 
     const abortController = new AbortController();
 
+    // 创建 StreamFactory 包装 createAgentUIStream
+    const agentRef = { agent };
+    const createStream: StreamFactory = async ({ messages: streamMessages, abortSignal, onStep }: Parameters<StreamFactory>[0]) => {
+      return createAgentUIStream({
+        agent: agentRef.agent,
+        uiMessages: streamMessages,
+        abortSignal,
+        sendReasoning: true,
+        onStepEnd: onStep as unknown as Parameters<typeof createAgentUIStream>[0]['onStepEnd'],
+      });
+    };
+
     // 创建可恢复流
     const resumableStream = await streamManager.createNewResumableStream(
       conversationId,
       () => {
-        // 创建原始流：将 UIMessageChunk 对象序列化为 JSON 字符串，
-        // 因为可恢复流按字符串缓冲/恢复，逐个 chunk 独立传输。
         const stream = new ReadableStream<string>({
+          cancel() {
+            abortController.abort();
+          },
           start: async (controller) => {
             try {
-              const agentStream = await createAgentUIStream({
-                agent,
-                uiMessages: llmMessages,
-                abortSignal: abortController.signal,
-                sendReasoning: true,
-                onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
-                  try {
-                    // 标记 agent run 完成并清理 stream chunks
-                    store.agentRunStore.completeRun(conversationId);
-                    store.agentRunStore.clearChunks(conversationId);
-
-                    const newAssistantMessages = completedMessages.slice(llmMessages.length);
-                    const messagesToSave = [...messages, ...newAssistantMessages];
-
-                    console.log(
-                      `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
-                    );
-
-                    const costSummary = sessionState.costTracker.getSummary();
-                    console.log(
-                      `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
-                    );
-
-                    await finalizeAgentRun({
-                      dataStore: store,
-                      messages: messagesToSave,
-                      conversationId,
-                      costTracker: sessionState.costTracker,
-                      mcpRegistry,
-                      model,
-                      isNewConversation: isFirstMessage,
-                      userId,
-                      wikiBaseDir,
-                    });
-                  } catch (err) {
-                    console.error('[Chat API] onFinish error:', err);
-                  }
+              // 创建 writable 用于收集 chunks
+              const collectedChunks: string[] = [];
+              let chunkSeq = 0;
+              const writable = new WritableStream<UIMessageChunk>({
+                write(chunk) {
+                  const serialized = JSON.stringify(chunk);
+                  collectedChunks.push(serialized);
+                  controller.enqueue(serialized);
+                  // 持久化 chunk 用于跨重启恢复
+                  store.agentRunStore.addChunk(conversationId, chunkSeq, serialized);
+                  chunkSeq++;
                 },
               });
 
-              // 读取代理流并序列化为 JSON 字符串后发送到控制器
-              const reader = agentStream.getReader();
-              let agentChunkCount = 0;
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  const serialized = JSON.stringify(value);
-                  controller.enqueue(serialized);
-                  // 持久化 chunk 用于跨重启恢复
-                  store.agentRunStore.addChunk(conversationId, agentChunkCount, serialized);
-                  agentChunkCount++;
-                }
-              } catch (agentErr) {
-                console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
+              // 使用 workflow orchestrator 执行 agent
+              const stateStore = new SQLiteAgentStateStore((store as unknown as SQLiteDataStore).db);
+              const finalState = await runWorkflow({
+                createStream,
+                conversationId,
+                messages: llmMessages,
+                stateStore,
+                sliceTimeoutMs: 300_000,
+                writable,
+                abortSignal: abortController.signal,
+              });
+
+              // 处理最终状态
+              if (finalState.status === 'finished') {
+                store.agentRunStore.completeRun(conversationId);
+                store.agentRunStore.clearChunks(conversationId);
+
+                // 从累积消息中提取新的 assistant 消息
+                const completedMessages = finalState.accumulatedMessages;
+                const newAssistantMessages = completedMessages.slice(llmMessages.length);
+                const messagesToSave = [...messages, ...newAssistantMessages];
+
+                console.log(
+                  `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+                );
+
+                const costSummary = sessionState.costTracker.getSummary();
+                console.log(
+                  `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
+                );
+
+                await finalizeAgentRun({
+                  dataStore: store,
+                  messages: messagesToSave,
+                  conversationId,
+                  costTracker: sessionState.costTracker,
+                  mcpRegistry,
+                  model,
+                  isNewConversation: isFirstMessage,
+                  userId,
+                  wikiBaseDir,
+                });
+              } else if (finalState.status === 'timed_out') {
+                console.log(`[Chat API] Slice timed out for ${conversationId}, state persisted for resume`);
+                store.agentRunStore.failRun(conversationId, 'Slice timed out');
+              } else if (finalState.status === 'failed') {
+                console.log(`[Chat API] Workflow failed for ${conversationId}: ${finalState.error}`);
+                store.agentRunStore.failRun(conversationId, finalState.error || 'Workflow failed');
               }
-              console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
+
+              console.log('[Chat API] Workflow complete, chunks:', chunkSeq);
               controller.close();
             } catch (error) {
               controller.error(error);
@@ -268,7 +338,6 @@ export async function POST(request: Request) {
       execute: async ({ writer }) => {
         writerRef.current = writer as unknown as SubAgentStreamWriter;
 
-        // 读取可恢复流（JSON 字符串）并解析为 UIMessageChunk 后写入 UI 流
         const reader = resumableStream.getReader();
         let chunkCount = 0;
         try {
@@ -297,7 +366,7 @@ export async function POST(request: Request) {
       stream,
       headers: {
         'X-Conversation-Id': conversationId,
-        'X-Stream-Id': conversationId, // 使用 conversationId 作为 streamId
+        'X-Stream-Id': conversationId,
       },
     });
   } catch (error) {

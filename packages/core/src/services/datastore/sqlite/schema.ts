@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -215,6 +215,27 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v7: added agent_runs, stream_chunks, and agent_status tables');
   }
 
+  if (currentVersion < 8) {
+    // v8: add agent_states table for durable workflow execution
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_states (
+        conversation_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'running'
+          CHECK(status IN ('running', 'timed_out', 'awaiting_approval', 'finished', 'failed')),
+        accumulated_messages TEXT DEFAULT '[]',
+        stream_context TEXT,
+        pending_messages TEXT,
+        step_count INTEGER DEFAULT 0,
+        tools_used TEXT DEFAULT '[]',
+        error TEXT,
+        started_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+    `);
+    logger.debug('Schema', 'Migrated to v8: added agent_states table');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -305,6 +326,22 @@ export function initializeSchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_todos_conversation ON todos(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
     CREATE INDEX IF NOT EXISTS idx_todos_claimed ON todos(claimed_by);
+
+    -- Agent states table for durable workflow execution (v8)
+    CREATE TABLE IF NOT EXISTS agent_states (
+      conversation_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'running'
+        CHECK(status IN ('running', 'timed_out', 'awaiting_approval', 'finished', 'failed')),
+      accumulated_messages TEXT DEFAULT '[]',
+      stream_context TEXT,
+      pending_messages TEXT,
+      step_count INTEGER DEFAULT 0,
+      tools_used TEXT DEFAULT '[]',
+      error TEXT,
+      started_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
   `);
 
   ensureSchemaVersion(db);

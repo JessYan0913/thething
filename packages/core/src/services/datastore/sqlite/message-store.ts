@@ -93,6 +93,34 @@ export class SQLiteMessageStore implements MessageStore {
     transaction();
   }
 
+  appendMessage(conversationId: string, message: UIMessage): void {
+    // Ensure conversation exists
+    const existing = this.conversationStore.getConversation(conversationId);
+    if (!existing) {
+      const firstUserMessage = message.role === 'user' ? message : undefined;
+      const title = firstUserMessage
+        ? firstUserMessage.parts
+            .filter((p) => p.type === 'text')
+            .map((p) => (p.type === 'text' ? p.text : ''))
+            .join('')
+            .slice(0, 50) || 'New Conversation'
+        : 'New Conversation';
+      this.conversationStore.createConversation(conversationId, title, { source: 'user' });
+    }
+
+    const nextOrder = this.getNextMessageOrder(conversationId);
+    const id = message.id || nanoid();
+
+    // Skip if message with this ID already exists
+    const checkStmt = this.db.prepare('SELECT id FROM messages WHERE id = ?');
+    if (checkStmt.get(id)) return;
+
+    const insertStmt = this.db.prepare(
+      'INSERT INTO messages (id, conversation_id, role, content, "order") VALUES (?, ?, ?, ?, ?)'
+    );
+    insertStmt.run(id, conversationId, message.role, JSON.stringify(message), nextOrder);
+  }
+
   getNextMessageOrder(conversationId: string): number {
     const stmt = this.db.prepare(
       'SELECT MAX("order") as maxOrder FROM messages WHERE conversation_id = ?'
