@@ -1,211 +1,364 @@
 // ============================================================
 // Prepare Next.js Standalone for Electron Packaging
+// Adopted from Si-Octo (ai-chatbot) approach:
+// - Hardlink-based copy for speed and disk space
+// - pnpm symlink materialization (flat node_modules)
+// - Source code pruning
+// - Incremental build with git hash
+// - EBUSY retry for Windows
 // ============================================================
 
-import { mkdirSync, existsSync, copyFileSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
-import { join } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, cpSync, linkSync, lstatSync, realpathSync, rmSync, statSync } from 'fs';
+import { join, dirname, relative } from 'path';
 
 const ROOT_DIR = join(__dirname, '..', '..', '..');
 const NEXT_APP_DIR = join(ROOT_DIR, 'packages', 'app');
 const STANDALONE_DIR = join(NEXT_APP_DIR, '.next', 'standalone');
-const OUTPUT_DIR = join(__dirname, '..', 'resources', 'standalone');
+const VENDOR_DIR = join(__dirname, '..', 'vendor');
+const VENDOR_AGENT_DIR = join(VENDOR_DIR, 'agent');
+const HASH_FILE = join(VENDOR_DIR, '.agent-hash');
 
-// rsync on macOS can return exit code 23 (extended attribute warnings) even on success.
-// Wrap in try-catch and verify the transfer actually completed.
-function rsyncCopy(src: string, dest: string) {
-  try {
-    execSync(`rsync -a --copy-links "${src}/" "${dest}/"`, { stdio: 'inherit' });
-  } catch (err: any) {
-    // Exit code 23 = "Some files could not be transferred" — usually extended attribute
-    // warnings on macOS. The transfer itself completed successfully.
-    if (err.status !== 23) throw err;
-    console.warn('[Prepare Standalone] rsync exited with code 23 (extended attribute warning, transfer OK)');
+const MISSING_DEPENDENCIES = [
+  'react',
+  'react-dom',
+  'react-is',
+  'styled-jsx',
+  '@swc/helpers',
+  '@next/env',
+  'postcss',
+  'caniuse-lite',
+];
+
+const IGNORED_PACKAGE_ENTRIES = new Set(['.bin']);
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function rmSyncRetry(target: string, options: Parameters<typeof rmSync>[1] = {}) {
+  const maxRetries = 5;
+  const retryDelay = 500;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      rmSync(target, options);
+      return;
+    } catch (err: any) {
+      if (err.code === 'EBUSY' && attempt < maxRetries) {
+        console.warn(`[Prepare Standalone] EBUSY on "${target}", retrying in ${retryDelay}ms (attempt ${attempt}/${maxRetries})...`);
+        execSync(`timeout /t ${retryDelay / 1000} /nobreak >nul 2>nul || sleep ${retryDelay / 1000}`, { stdio: 'ignore' });
+        continue;
+      }
+      throw err;
+    }
   }
 }
 
-async function main() {
-  console.log('[Prepare Standalone] Starting...');
-
-  // 1. Verify standalone build exists (built by `pnpm build:next` upstream)
-  if (!existsSync(STANDALONE_DIR)) {
-    throw new Error(`Standalone build not found at ${STANDALONE_DIR}. Run "pnpm build:next" first.`);
+function assertDir(dir: string, label: string) {
+  if (!existsSync(dir)) {
+    throw new Error(`${label} not found: ${dir}`);
   }
+}
 
-  // 2. Copy standalone output (dereference all symlinks for Electron bundling)
-  console.log('[Prepare Standalone] Copying standalone output...');
-  if (existsSync(OUTPUT_DIR)) {
-    rmSync(OUTPUT_DIR, { recursive: true, force: true });
+function getAgentGitHash(): string | null {
+  try {
+    return execSync('git rev-parse HEAD:packages/app', { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+  } catch {
+    return null;
   }
-  mkdirSync(OUTPUT_DIR, { recursive: true });
-  rsyncCopy(STANDALONE_DIR, OUTPUT_DIR);
+}
 
-  // 3. Copy static assets (standalone doesn't include public/ and .next/static/)
-  console.log('[Prepare Standalone] Copying static assets...');
-  const publicDir = join(NEXT_APP_DIR, 'public');
-  const staticDir = join(NEXT_APP_DIR, '.next', 'static');
-  const appInResources = join(OUTPUT_DIR, 'packages', 'app');
+// ---------------------------------------------------------------------------
+// Copy helpers
+// ---------------------------------------------------------------------------
 
-  if (existsSync(publicDir)) {
-    rsyncCopy(publicDir, join(appInResources, 'public'));
+function copyFileHardlink(src: string, dest: string) {
+  mkdirSync(dirname(dest), { recursive: true });
+  try {
+    linkSync(src, dest);
+  } catch {
+    cpSync(src, dest);
   }
+}
 
-  if (existsSync(staticDir)) {
-    mkdirSync(join(appInResources, '.next', 'static'), { recursive: true });
-    rsyncCopy(staticDir, join(appInResources, '.next', 'static'));
-  }
+function copyDirHardlink(source: string, target: string) {
+  assertDir(source, 'Source directory');
+  rmSyncRetry(target, { recursive: true, force: true });
 
-  // 4. Remove stale better-sqlite3 copies from .next/node_modules
-  //    Next.js standalone includes old copies that lack dependencies (e.g. bindings).
-  //    These shadow the correct standalone copy and cause MODULE_NOT_FOUND at runtime.
-  console.log('[Prepare Standalone] Cleaning stale .next/node_modules...');
-  const staleDir = join(OUTPUT_DIR, 'packages', 'app', '.next', 'node_modules');
-  if (existsSync(staleDir)) {
-    for (const name of readdirSync(staleDir)) {
-      if (name.startsWith('better-sqlite3')) {
-        rmSync(join(staleDir, name), { recursive: true, force: true });
-        console.log(`[Prepare Standalone] Removed stale ${name}`);
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const srcPath = join(dir, entry.name);
+      const destPath = join(target, relative(source, srcPath));
+      if (entry.isDirectory()) {
+        mkdirSync(destPath, { recursive: true });
+        walk(srcPath);
+      } else if (entry.isFile()) {
+        copyFileHardlink(srcPath, destPath);
       }
     }
-  }
+  };
+  walk(source);
+}
 
-  // 4b. Copy directories for Turbopack-hashed external module names
-  //     Turbopack renames external modules like "better-sqlite3" to "better-sqlite3-<hash>"
-  //     at build time. The require-hook.js doesn't map these back, so we need to copy
-  //     the real package under each hashed name so Node.js can resolve them.
-  //     NOTE: We use rsyncCopy instead of symlinks because electron-builder's asar
-  //     does not preserve symlinks.
-  console.log('[Prepare Standalone] Copying Turbopack hashed module directories...');
-  const chunksDir = join(appInResources, '.next', 'server', 'chunks');
-  if (existsSync(chunksDir)) {
-    // Collect all hashed module names from chunk files
-    const allHashedNames = new Set<string>();
-    const hashPattern = /require\("([a-z@][a-z0-9/._-]+)-([0-9a-f]{16})"\)/g;
-    for (const file of readdirSync(chunksDir)) {
-      if (!file.endsWith('.js')) continue;
-      const content = readFileSync(join(chunksDir, file), 'utf8');
-      for (const m of content.matchAll(hashPattern)) {
-        allHashedNames.add(m[0]);
+function copyDir(source: string, target: string) {
+  assertDir(source, 'Source directory');
+  rmSyncRetry(target, { recursive: true, force: true });
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(source, target, { recursive: true, dereference: true });
+}
+
+// ---------------------------------------------------------------------------
+// Symlink materialization helpers (pnpm node_modules handling)
+// ---------------------------------------------------------------------------
+
+function getPackageEntries(nodeModulesDir: string): string[] {
+  if (!existsSync(nodeModulesDir)) return [];
+
+  const entries: string[] = [];
+  for (const dirent of readdirSync(nodeModulesDir, { withFileTypes: true })) {
+    if (IGNORED_PACKAGE_ENTRIES.has(dirent.name)) continue;
+
+    const entryPath = join(nodeModulesDir, dirent.name);
+    if (dirent.name.startsWith('@')) {
+      if (!dirent.isDirectory()) continue;
+      for (const scopedDirent of readdirSync(entryPath, { withFileTypes: true })) {
+        entries.push(join(entryPath, scopedDirent.name));
       }
+      continue;
     }
 
-    // For each hashed name, copy the real package directory
-    const seenPkgs = new Set<string>();
-    for (const req of allHashedNames) {
-      const pkgMatch = req.match(/"([a-z@][a-z0-9/._-]+)-[0-9a-f]{16}"/);
-      if (!pkgMatch) continue;
-      const pkg = pkgMatch[1];
-      if (seenPkgs.has(pkg)) continue;
-      seenPkgs.add(pkg);
-
-      // pnpm stores packages in .pnpm/node_modules/ rather than at the top level
-      const target = existsSync(join(OUTPUT_DIR, 'node_modules', pkg))
-        ? join(OUTPUT_DIR, 'node_modules', pkg)
-        : join(OUTPUT_DIR, 'node_modules', '.pnpm', 'node_modules', pkg);
-      if (!existsSync(target)) continue;
-
-      // Find all hash variants for this package
-      const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const hashRegex = new RegExp('require\\("' + escapedPkg + '-([0-9a-f]{16})"\\)', 'g');
-      const hashNames = new Set<string>();
-      for (const file of readdirSync(chunksDir)) {
-        if (!file.endsWith('.js')) continue;
-        const content = readFileSync(join(chunksDir, file), 'utf8');
-        for (const m of content.matchAll(hashRegex)) {
-          hashNames.add(pkg + '-' + m[1]);
-        }
-      }
-
-      for (const hashName of hashNames) {
-        const dest = join(OUTPUT_DIR, 'node_modules', hashName);
-        if (!existsSync(dest)) {
-          rsyncCopy(target, dest);
-          console.log('[Prepare Standalone] Copied ' + hashName + ' -> ' + pkg);
-        }
-      }
-    }
+    entries.push(entryPath);
   }
 
-  // 5. Create native/better-sqlite3 for SEA fallback loading
-  //    The bundled code looks for native/better-sqlite3/lib/index.js relative to cwd.
-  //    Copy from pnpm store (system Node binding) — afterPack will replace with Electron binding later.
-  console.log('[Prepare Standalone] Setting up native better-sqlite3...');
+  return entries;
+}
+
+function copyMaterializedPackage(sourcePackagePath: string, targetPackagePath: string) {
+  const stat = lstatSync(sourcePackagePath);
+  const realSource = stat.isSymbolicLink()
+    ? realpathSync(sourcePackagePath)
+    : sourcePackagePath;
+
+  cpSync(realSource, targetPackagePath, { recursive: true, dereference: true });
+  return stat.isSymbolicLink();
+}
+
+function materializePackageLinksInPlace(nodeModulesDir: string) {
+  if (!existsSync(nodeModulesDir)) return 0;
+
+  let count = 0;
+  for (const packagePath of getPackageEntries(nodeModulesDir)) {
+    if (!existsSync(packagePath)) continue;
+    if (!lstatSync(packagePath).isSymbolicLink()) continue;
+
+    copyMaterializedPackage(packagePath, packagePath);
+    count += 1;
+  }
+  return count;
+}
+
+function flattenStandaloneNodeModules() {
+  const hoistedNodeModulesDir = join(VENDOR_AGENT_DIR, 'node_modules', '.pnpm', 'node_modules');
+  const appNodeModulesDir = join(VENDOR_AGENT_DIR, 'packages', 'app', 'node_modules');
+  const tracedExternalNodeModulesDir = join(VENDOR_AGENT_DIR, 'packages', 'app', '.next', 'node_modules');
+
+  assertDir(hoistedNodeModulesDir, 'Next standalone hoisted node_modules');
+  mkdirSync(appNodeModulesDir, { recursive: true });
+
+  let materializedCount = 0;
+  let copiedCount = 0;
+
+  for (const packagePath of getPackageEntries(hoistedNodeModulesDir)) {
+    if (!existsSync(packagePath)) continue;
+
+    const relativePackagePath = relative(hoistedNodeModulesDir, packagePath);
+    if (copyMaterializedPackage(packagePath, join(appNodeModulesDir, relativePackagePath))) {
+      materializedCount += 1;
+    }
+    copiedCount += 1;
+  }
+
+  const appMaterializedCount = materializePackageLinksInPlace(appNodeModulesDir);
+  const tracedExternalMaterializedCount = materializePackageLinksInPlace(tracedExternalNodeModulesDir);
+  rmSync(join(VENDOR_AGENT_DIR, 'node_modules'), { recursive: true, force: true });
+
+  console.log(`[Prepare Standalone] Materialized ${materializedCount} standalone package links`);
+  console.log(`[Prepare Standalone] Flattened ${copiedCount} runtime packages into the app node_modules`);
+  console.log(`[Prepare Standalone] Materialized ${appMaterializedCount} app package links`);
+  console.log(`[Prepare Standalone] Materialized ${tracedExternalMaterializedCount} traced external package links`);
+  console.log('[Prepare Standalone] Removed standalone root node_modules after flattening');
+}
+
+// ---------------------------------------------------------------------------
+// Copy missing dependencies from pnpm store
+// ---------------------------------------------------------------------------
+
+function copyMissingDeps() {
   const pnpmStore = join(ROOT_DIR, 'node_modules', '.pnpm');
-  const nativeDest = join(OUTPUT_DIR, 'packages', 'app', 'native', 'better-sqlite3');
-  if (!existsSync(nativeDest)) {
-    mkdirSync(join(nativeDest, '..'), { recursive: true });
-    const pnpmSqlitePrefix = 'better-sqlite3@';
-    const pnpmSqliteDirs = readdirSync(pnpmStore).filter((d: string) => d.startsWith(pnpmSqlitePrefix));
-    const sqliteFound = pnpmSqliteDirs[0];
-    if (sqliteFound) {
-      const sqliteSrc = join(pnpmStore, sqliteFound, 'node_modules', 'better-sqlite3');
-      rsyncCopy(sqliteSrc, nativeDest);
-      console.log(`[Prepare Standalone] Created native/better-sqlite3 from pnpm store`);
-    } else {
-      console.warn(`[Prepare Standalone] Warning: better-sqlite3 not found in pnpm store`);
-    }
-  }
+  const appInResources = join(VENDOR_AGENT_DIR, 'packages', 'app');
 
-  // 5b. Copy 'bindings' and 'file-uri-to-path' into native/better-sqlite3/node_modules/
-  //     better-sqlite3's database.js calls require('bindings') internally.
-  //     In the packaged app, the standard require() looks up the directory tree
-  //     for node_modules/bindings. pnpm symlinks break in the packaged app,
-  //     and after-pack.js replaces better-sqlite3 with a flat npm install
-  //     that doesn't nest bindings inside better-sqlite3/node_modules/.
-  //     So we explicitly copy them here to ensure the require() resolves.
-  const nativeModulesDir = join(nativeDest, 'node_modules');
-  const nativeDepsToCopy = ['bindings', 'file-uri-to-path'];
-  for (const dep of nativeDepsToCopy) {
-    const depPrefix = `${dep}@`;
-    const depDirs = readdirSync(pnpmStore).filter((d: string) => d.startsWith(depPrefix));
-    const depFound = depDirs[0];
-    if (depFound) {
-      const depSrc = join(pnpmStore, depFound, 'node_modules', dep);
-      const depDest = join(nativeModulesDir, dep);
-      if (!existsSync(depDest)) {
-        mkdirSync(nativeModulesDir, { recursive: true });
-        rsyncCopy(depSrc, depDest);
-        console.log(`[Prepare Standalone] Copied ${dep} to native/better-sqlite3/node_modules/`);
-      }
-    } else {
-      console.warn(`[Prepare Standalone] Warning: ${dep} not found in pnpm store`);
-    }
-  }
-
-  // 6. Copy missing dependencies that Next.js standalone doesn't include with pnpm
-  console.log('[Prepare Standalone] Copying missing dependencies...');
-  const missingDeps = [
-    'react',
-    'react-dom',
-    'react-is',
-    'styled-jsx',
-    '@swc/helpers',
-    '@next/env',
-    'postcss',
-    'caniuse-lite',
-  ];
-
-  for (const dep of missingDeps) {
-    // Handle scoped packages: @swc/helpers -> @swc+helpers
+  for (const dep of MISSING_DEPENDENCIES) {
     const pnpmFriendlyName = dep.replace('/', '+');
     const prefix = `${pnpmFriendlyName}@`;
-    const pnpmDirs = readdirSync(pnpmStore).filter((d: string) => d.startsWith(prefix));
+    const pnpmDirs = readdirSync(pnpmStore).filter((d) => d.startsWith(prefix));
     const found = pnpmDirs[0];
 
     if (found) {
       const srcDir = join(pnpmStore, found, 'node_modules', dep);
       const destDir = join(appInResources, 'node_modules', dep);
       if (existsSync(srcDir)) {
-        console.log(`[Prepare Standalone] Copying ${dep}...`);
-        rsyncCopy(srcDir, destDir);
+        console.log(`[Prepare Standalone] Copying missing dep: ${dep}...`);
+        cpSync(srcDir, destDir, { recursive: true, dereference: true });
+      }
+    } else {
+      console.warn(`[Prepare Standalone] Warning: missing dep ${dep} not found in pnpm store`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Native better-sqlite3 setup
+// ---------------------------------------------------------------------------
+
+function setupNativeBetterSqlite3() {
+  const pnpmStore = join(ROOT_DIR, 'node_modules', '.pnpm');
+  const nativeDest = join(VENDOR_AGENT_DIR, 'packages', 'app', 'native', 'better-sqlite3');
+
+  if (!existsSync(nativeDest)) {
+    mkdirSync(join(nativeDest, '..'), { recursive: true });
+    const pnpmSqlitePrefix = 'better-sqlite3@';
+    const pnpmSqliteDirs = readdirSync(pnpmStore).filter((d) => d.startsWith(pnpmSqlitePrefix));
+    const sqliteFound = pnpmSqliteDirs[0];
+    if (sqliteFound) {
+      const sqliteSrc = join(pnpmStore, sqliteFound, 'node_modules', 'better-sqlite3');
+      cpSync(sqliteSrc, nativeDest, { recursive: true, dereference: true });
+      console.log('[Prepare Standalone] Created native/better-sqlite3 from pnpm store');
+    } else {
+      console.warn('[Prepare Standalone] Warning: better-sqlite3 not found in pnpm store');
+    }
+  }
+
+  // Copy bindings and file-uri-to-path into native/better-sqlite3/node_modules/
+  const nativeModulesDir = join(nativeDest, 'node_modules');
+  const nativeDepsToCopy = ['bindings', 'file-uri-to-path'];
+  for (const dep of nativeDepsToCopy) {
+    const depPrefix = `${dep}@`;
+    const depDirs = readdirSync(pnpmStore).filter((d) => d.startsWith(depPrefix));
+    const depFound = depDirs[0];
+    if (depFound) {
+      const depSrc = join(pnpmStore, depFound, 'node_modules', dep);
+      const depDest = join(nativeModulesDir, dep);
+      if (!existsSync(depDest)) {
+        mkdirSync(nativeModulesDir, { recursive: true });
+        cpSync(depSrc, depDest, { recursive: true, dereference: true });
+        console.log(`[Prepare Standalone] Copied ${dep} to native/better-sqlite3/node_modules/`);
       }
     } else {
       console.warn(`[Prepare Standalone] Warning: ${dep} not found in pnpm store`);
     }
   }
+}
 
-  // 7. Create start-standalone.js wrapper
-  console.log('[Prepare Standalone] Creating start-standalone.js wrapper...');
+// ---------------------------------------------------------------------------
+// Handle Turbopack hashed module names
+// ---------------------------------------------------------------------------
+
+function copyHashedModules() {
+  const appInResources = join(VENDOR_AGENT_DIR, 'packages', 'app');
+  const chunksDir = join(appInResources, '.next', 'server', 'chunks');
+
+  if (!existsSync(chunksDir)) return;
+
+  console.log('[Prepare Standalone] Copying Turbopack hashed module directories...');
+
+  const allHashedNames = new Set<string>();
+  const hashPattern = /require\("([a-z@][a-z0-9/._-]+)-([0-9a-f]{16})"\)/g;
+  for (const file of readdirSync(chunksDir)) {
+    if (!file.endsWith('.js')) continue;
+    const content = readFileSync(join(chunksDir, file), 'utf8');
+    for (const m of content.matchAll(hashPattern)) {
+      allHashedNames.add(m[0]);
+    }
+  }
+
+  const seenPkgs = new Set<string>();
+  for (const req of allHashedNames) {
+    const pkgMatch = req.match(/"([a-z@][a-z0-9/._-]+)-[0-9a-f]{16}"/);
+    if (!pkgMatch) continue;
+    const pkg = pkgMatch[1];
+    if (seenPkgs.has(pkg)) continue;
+    seenPkgs.add(pkg);
+
+    const target = existsSync(join(VENDOR_AGENT_DIR, 'node_modules', pkg))
+      ? join(VENDOR_AGENT_DIR, 'node_modules', pkg)
+      : join(VENDOR_AGENT_DIR, 'node_modules', '.pnpm', 'node_modules', pkg);
+    if (!existsSync(target)) continue;
+
+    const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const hashRegex = new RegExp('require\\("' + escapedPkg + '-([0-9a-f]{16})"\\)', 'g');
+    const hashNames = new Set<string>();
+    for (const file of readdirSync(chunksDir)) {
+      if (!file.endsWith('.js')) continue;
+      const content = readFileSync(join(chunksDir, file), 'utf8');
+      for (const m of content.matchAll(hashRegex)) {
+        hashNames.add(pkg + '-' + m[1]);
+      }
+    }
+
+    for (const hashName of hashNames) {
+      const dest = join(VENDOR_AGENT_DIR, 'node_modules', hashName);
+      if (!existsSync(dest)) {
+        copyDir(target, dest);
+        console.log(`[Prepare Standalone] Copied ${hashName} -> ${pkg}`);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Source code pruning — ship only compiled output, no source
+// ---------------------------------------------------------------------------
+
+function pruneSourceDirs() {
+  const appDir = join(VENDOR_AGENT_DIR, 'packages', 'app');
+  const sourceDirs = ['app', 'components', 'hooks', 'i18n', 'lib', 'types', 'docs'];
+  for (const dir of sourceDirs) {
+    const target = join(appDir, dir);
+    if (existsSync(target)) {
+      rmSyncRetry(target, { recursive: true, force: true });
+      console.log(`[Prepare Standalone] Pruned source: ${dir}/`);
+    }
+  }
+
+  const sourceFiles = ['next.config.ts', 'next.config.mjs', 'next-env.d.ts', 'tsconfig.json', 'tsconfig.*.json', 'postcss.config.mjs', 'instrumentation.ts'];
+  for (const pattern of sourceFiles) {
+    if (pattern.includes('*')) {
+      // Glob-like pattern matching
+      const prefix = pattern.replace('*', '');
+      for (const entry of readdirSync(appDir)) {
+        if (entry.startsWith(prefix)) {
+          const target = join(appDir, entry);
+          if (statSync(target).isFile()) {
+            rmSyncRetry(target, { force: true });
+            console.log(`[Prepare Standalone] Pruned source file: ${entry}`);
+          }
+        }
+      }
+    } else {
+      const target = join(appDir, pattern);
+      if (existsSync(target)) {
+        rmSyncRetry(target, { force: true });
+        console.log(`[Prepare Standalone] Pruned source file: ${pattern}`);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Create start-standalone.js wrapper
+// ---------------------------------------------------------------------------
+
+function createWrapperScript() {
   const wrapperScript = `
 const http = require('http');
 const net = require('net');
@@ -213,8 +366,6 @@ const mod = require('module');
 
 // Turbopack hashes external module names (e.g. "better-sqlite3-0167c515dc271f66").
 // Register a require hook to map hashed names back to the real package.
-// If the unhashed name doesn't resolve (e.g. only the hashed copy exists in
-// node_modules), fall back to the original hashed request.
 const originalResolve = mod._resolveFilename;
 mod._resolveFilename = function (request, parent, isMain, options) {
   const match = request.match(/^(.+)-([0-9a-f]{16})$/);
@@ -222,18 +373,16 @@ mod._resolveFilename = function (request, parent, isMain, options) {
     try {
       return originalResolve.call(this, match[1], parent, isMain, options);
     } catch (e) {
-      // Unhashed name not found — try the original hashed name as-is
       return originalResolve.call(this, request, parent, isMain, options);
     }
   }
   return originalResolve.call(this, request, parent, isMain, options);
 };
 
-// Parse -p <port> from command line args (passed by Electron main process)
+// Parse -p <port> from command line args
 const pIdx = process.argv.indexOf('-p');
 const requestedPort = pIdx !== -1 ? parseInt(process.argv[pIdx + 1], 10) : 0;
 
-// Find a free port by binding to port 0
 function findFreePort() {
   return new Promise(function (resolve) {
     const server = net.createServer();
@@ -245,19 +394,12 @@ function findFreePort() {
 }
 
 (async function main() {
-  // Use requested port, or find a free one if 0 (or not specified)
   const PORT = requestedPort || await findFreePort();
-
-  // Set PORT before requiring server.js
-  // server.js uses: parseInt(process.env.PORT, 10) || 3000
   process.env.PORT = String(PORT);
-  // Bind to localhost only for security
   process.env.HOSTNAME = '127.0.0.1';
 
-  // server.js starts the Next.js server directly (no exports)
   require('./packages/app/server.js');
 
-  // Poll until ready, then output the port for Electron
   var checkUrl = 'http://127.0.0.1:' + PORT;
   var start = Date.now();
   var timeout = 30000;
@@ -279,8 +421,79 @@ function findFreePort() {
 })();
 `;
 
-  const wrapperPath = join(OUTPUT_DIR, 'start-standalone.js');
+  const wrapperPath = join(VENDOR_AGENT_DIR, 'start-standalone.js');
   writeFileSync(wrapperPath, wrapperScript);
+  console.log('[Prepare Standalone] Created start-standalone.js wrapper');
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main() {
+  console.log('[Prepare Standalone] Starting...');
+
+  // 1. Verify standalone build exists
+  if (!existsSync(STANDALONE_DIR)) {
+    throw new Error(`Standalone build not found at ${STANDALONE_DIR}. Run "pnpm build:next" first.`);
+  }
+
+  // 2. Check incremental build via git hash
+  const currentHash = getAgentGitHash();
+  if (currentHash && existsSync(VENDOR_AGENT_DIR) && existsSync(HASH_FILE)) {
+    const storedHash = readFileSync(HASH_FILE, 'utf8').trim();
+    if (storedHash === currentHash) {
+      console.log('[Prepare Standalone] vendor/agent is up-to-date, skipping (hash match)');
+      return;
+    }
+  }
+
+  // 3. Copy standalone output using hardlinks for speed
+  console.log('[Prepare Standalone] Copying standalone output...');
+  rmSyncRetry(VENDOR_AGENT_DIR, { recursive: true, force: true });
+  mkdirSync(VENDOR_AGENT_DIR, { recursive: true });
+  copyDirHardlink(STANDALONE_DIR, VENDOR_AGENT_DIR);
+
+  // 4. Copy static assets
+  console.log('[Prepare Standalone] Copying static assets...');
+  const publicDir = join(NEXT_APP_DIR, 'public');
+  const staticDir = join(NEXT_APP_DIR, '.next', 'static');
+  const appInResources = join(VENDOR_AGENT_DIR, 'packages', 'app');
+
+  if (existsSync(publicDir)) {
+    copyDir(publicDir, join(appInResources, 'public'));
+  }
+  if (existsSync(staticDir)) {
+    copyDir(staticDir, join(appInResources, '.next', 'static'));
+  }
+
+  // 5. Flatten pnpm node_modules (materialize symlinks)
+  console.log('[Prepare Standalone] Flattening pnpm node_modules...');
+  flattenStandaloneNodeModules();
+
+  // 6. Copy Turbopack hashed module directories
+  copyHashedModules();
+
+  // 7. Setup native better-sqlite3
+  console.log('[Prepare Standalone] Setting up native better-sqlite3...');
+  setupNativeBetterSqlite3();
+
+  // 8. Copy missing dependencies from pnpm store
+  console.log('[Prepare Standalone] Copying missing dependencies...');
+  copyMissingDeps();
+
+  // 9. Prune source code directories
+  console.log('[Prepare Standalone] Pruning source code...');
+  pruneSourceDirs();
+
+  // 10. Create start-standalone.js wrapper
+  createWrapperScript();
+
+  // 11. Write git hash for incremental builds
+  if (currentHash) {
+    mkdirSync(dirname(HASH_FILE), { recursive: true });
+    writeFileSync(HASH_FILE, currentHash);
+  }
 
   console.log('[Prepare Standalone] Done!');
 }

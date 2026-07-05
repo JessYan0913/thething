@@ -9,11 +9,15 @@ files:
   - loading/**/*
 
 extraResources:
-  - from: resources/standalone
-    to: standalone
+  - from: vendor/agent
+    to: agent
     filter:
       - "**/*"
       - "!**/*.map"
+  - from: vendor/node
+    to: node
+    filter:
+      - "**/*"
 
 asarUnpack:
   - "**/*.node"

@@ -2,7 +2,7 @@
 // afterPack hook: Install and rebuild better-sqlite3 for Electron
 // ============================================================
 // electron-builder's npmRebuild only handles modules in the `files` config.
-// Native modules coming through `extraResources` (like standalone's better-sqlite3)
+// Native modules coming through `extraResources` (like agent's better-sqlite3)
 // are NOT rebuilt. This hook installs, rebuilds, and replaces better-sqlite3
 // with versions compiled for Electron's Node.js.
 //
@@ -74,9 +74,9 @@ module.exports = async function afterPack(context) {
 
     // Ensure standalone/node_modules exists in packaged app
     // electron-builder may exclude it from extraResources despite the **/* filter
-    const standaloneNmDir = path.join(resourcesDir, 'standalone', 'node_modules');
+    const standaloneNmDir = path.join(resourcesDir, 'agent', 'node_modules');
     if (!fs.existsSync(standaloneNmDir)) {
-      const srcNmDir = path.join(process.cwd(), 'resources', 'standalone', 'node_modules');
+      const srcNmDir = path.join(process.cwd(), 'vendor', 'agent', 'node_modules');
       if (fs.existsSync(srcNmDir)) {
         console.log('[afterPack] Copying standalone/node_modules to packaged app...');
         execSync(`cp -R "${srcNmDir}" "${standaloneNmDir}"`, { stdio: 'inherit' });

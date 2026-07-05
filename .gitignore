@@ -41,7 +41,7 @@ dist/
 
 # Electron desktop
 packages/desktop/build/
-packages/desktop/resources/standalone/
+packages/desktop/vendor/
 
 # misc
 .DS_Store
