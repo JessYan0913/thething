@@ -9,8 +9,8 @@
 // ============================================================
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, cpSync, linkSync, lstatSync, realpathSync, rmSync, statSync } from 'fs';
-import { join, dirname, relative } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, cpSync, lstatSync, realpathSync, readlinkSync, rmSync, statSync, linkSync } from 'fs';
+import { join, dirname, relative, resolve } from 'path';
 
 const ROOT_DIR = join(__dirname, '..', '..', '..');
 const NEXT_APP_DIR = join(ROOT_DIR, 'packages', 'app');
@@ -28,6 +28,8 @@ const MISSING_DEPENDENCIES = [
   '@next/env',
   'postcss',
   'caniuse-lite',
+  'bindings',
+  'file-uri-to-path',
 ];
 
 const IGNORED_PACKAGE_ENTRIES = new Set(['.bin']);
@@ -36,18 +38,28 @@ const IGNORED_PACKAGE_ENTRIES = new Set(['.bin']);
 // Utilities
 // ---------------------------------------------------------------------------
 
+function sleepSync(ms: number) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) { /* spin */ }
+}
+
 function rmSyncRetry(target: string, options: Parameters<typeof rmSync>[1] = {}) {
-  const maxRetries = 5;
-  const retryDelay = 500;
+  const maxRetries = 10;
+  const retryDelay = 1000;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       rmSync(target, options);
       return;
     } catch (err: any) {
-      if (err.code === 'EBUSY' && attempt < maxRetries) {
-        console.warn(`[Prepare Standalone] EBUSY on "${target}", retrying in ${retryDelay}ms (attempt ${attempt}/${maxRetries})...`);
-        execSync(`timeout /t ${retryDelay / 1000} /nobreak >nul 2>nul || sleep ${retryDelay / 1000}`, { stdio: 'ignore' });
+      if ((err.code === 'EBUSY' || err.code === 'EPERM') && attempt < maxRetries) {
+        console.warn(`[Prepare Standalone] ${err.code} on "${target}", retrying in ${retryDelay}ms (attempt ${attempt}/${maxRetries})...`);
+        sleepSync(retryDelay);
         continue;
+      }
+      // Last resort: try PowerShell Remove-Item which handles Windows locks better
+      if (attempt >= maxRetries) {
+        try { execSync(`powershell -Command "Remove-Item -Recurse -Force '${target}'" 2>$null`, { stdio: 'ignore' }); } catch {}
+        if (!existsSync(target)) return;
       }
       throw err;
     }
@@ -62,7 +74,10 @@ function assertDir(dir: string, label: string) {
 
 function getAgentGitHash(): string | null {
   try {
-    return execSync('git rev-parse HEAD:packages/app', { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+    const hash = execSync('git rev-parse HEAD:packages/app', { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+    // Check for uncommitted changes — incremental build would serve stale content
+    const hasChanges = !!execSync('git status --porcelain packages/app', { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+    return hasChanges ? hash + '-dirty' : hash;
   } catch {
     return null;
   }
@@ -94,6 +109,35 @@ function copyDirHardlink(source: string, target: string) {
         walk(srcPath);
       } else if (entry.isFile()) {
         copyFileHardlink(srcPath, destPath);
+      } else if (entry.isSymbolicLink()) {
+        // readdirSync Dirent on Windows returns isDirectory/isFile = false
+        // for symlinks regardless of target type. Resolve and copy.
+        let resolved: string;
+        try {
+          resolved = realpathSync(srcPath);
+        } catch {
+          // realpathSync may fail on Windows (EPERM) with pnpm junction points.
+          // fs.readlinkSync does not have this limitation — read the target
+          // manually and resolve the relative path.
+          try {
+            const linkTarget = readlinkSync(srcPath);
+            resolved = resolve(dirname(srcPath), linkTarget);
+          } catch {
+            console.warn(`[Prepare Standalone] Warning: skipping unresolvable symlink: ${srcPath}`);
+            return;
+          }
+        }
+        try {
+          const stat = statSync(resolved);
+          if (stat.isDirectory()) {
+            mkdirSync(destPath, { recursive: true });
+            cpSync(resolved, destPath, { recursive: true, dereference: true });
+          } else {
+            copyFileHardlink(resolved, destPath);
+          }
+        } catch {
+          console.warn(`[Prepare Standalone] Warning: symlink target not accessible: ${srcPath} -> ${resolved}`);
+        }
       }
     }
   };
@@ -135,9 +179,18 @@ function getPackageEntries(nodeModulesDir: string): string[] {
 
 function copyMaterializedPackage(sourcePackagePath: string, targetPackagePath: string) {
   const stat = lstatSync(sourcePackagePath);
-  const realSource = stat.isSymbolicLink()
-    ? realpathSync(sourcePackagePath)
-    : sourcePackagePath;
+  let realSource: string;
+  if (stat.isSymbolicLink()) {
+    try {
+      realSource = realpathSync(sourcePackagePath);
+    } catch {
+      // Windows EPERM workaround — use readlinkSync to resolve pnpm junction targets
+      const linkTarget = readlinkSync(sourcePackagePath);
+      realSource = resolve(dirname(sourcePackagePath), linkTarget);
+    }
+  } else {
+    realSource = sourcePackagePath;
+  }
 
   cpSync(realSource, targetPackagePath, { recursive: true, dereference: true });
   return stat.isSymbolicLink();
@@ -448,7 +501,10 @@ async function main() {
     }
   }
 
+  // 3. Copy standalone output with symlink dereference
   // 3. Copy standalone output using hardlinks for speed
+  // copyDirHardlink handles symlinks by resolving them via realpathSync
+  // before hardlinking (pnpm's node_modules uses symlinks extensively).
   console.log('[Prepare Standalone] Copying standalone output...');
   rmSyncRetry(VENDOR_AGENT_DIR, { recursive: true, force: true });
   mkdirSync(VENDOR_AGENT_DIR, { recursive: true });

@@ -5,7 +5,7 @@
   "main": "build/main.js",
   "scripts": {
     "dev": "electron .",
-    "build": "tsc -p tsconfig.json && electron-builder",
+    "build": "pnpm prepare:node && pnpm prepare:standalone && tsc -p tsconfig.json && electron-builder",
     "prepare:standalone": "tsx scripts/prepare-standalone.ts",
     "prepare:node": "tsx scripts/prepare-node-runtime.ts",
     "rebuild:sqlite": "electron-rebuild -f -w better-sqlite3 -m ../app"
@@ -14,7 +14,7 @@
     "@electron/rebuild": "^4.0.0",
     "@types/node": "^20",
     "electron": "^35.0.0",
-    "electron-builder": "^26.0.0",
+    "electron-builder": "26.8.1",
     "tsx": "^4.19.3",
     "typescript": "^5"
   }

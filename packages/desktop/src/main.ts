@@ -78,9 +78,7 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  const loadingPath = isDev()
-    ? path.join(__dirname, '..', 'loading', 'index.html')
-    : path.join(process.resourcesPath, 'loading', 'index.html');
+  const loadingPath = path.join(__dirname, '..', 'loading', 'index.html');
 
   win.loadFile(loadingPath);
   win.once('ready-to-show', () => win.show());
