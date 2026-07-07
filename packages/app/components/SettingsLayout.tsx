@@ -28,7 +28,7 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTranslation } from "react-i18next"
-import { ModeToggle } from "@/components/ModeToggle"
+
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation('settings')
@@ -131,9 +131,6 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             {activeItem && (
               <h1 className="text-sm font-semibold">{activeItem.label}</h1>
             )}
-            <div className="ml-auto">
-              <ModeToggle />
-            </div>
           </div>
           {children}
         </SidebarInset>

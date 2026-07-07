@@ -2,21 +2,79 @@ import {
   ConversationSidebar,
   type ConversationItem,
 } from "@/components/ConversationSidebar";
-import { ModeToggle } from "@/components/ModeToggle";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { nanoid } from "nanoid";
 import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-
-// ============================================================================
-// ChatContext - Share sidebar state with child pages
-// ============================================================================
+import { useTranslation } from "react-i18next";
 
 export interface FilterOption {
   value: string;
   label: string;
   group?: string;
 }
+
+const SourceFilter = ({
+  filterOptions,
+  activeFilter,
+  onFilterChange,
+}: {
+  filterOptions: FilterOption[];
+  activeFilter: string;
+  onFilterChange: (value: string) => void;
+}) => {
+  const { t } = useTranslation();
+  return (
+    <Select value={activeFilter} onValueChange={onFilterChange}>
+      <SelectTrigger size="sm" className="h-8 w-[160px] gap-1 rounded-md bg-sidebar-accent/50 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors px-3 border-0 shadow-none [&>svg]:size-3">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent sideOffset={4} className="min-w-36">
+        {(() => {
+          const ungrouped = filterOptions.filter((o) => !o.group);
+          const grouped = filterOptions.filter((o) => o.group);
+          const groups = [...new Set(grouped.map((o) => o.group!))];
+          return (
+            <>
+              {ungrouped.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {t(option.label)}
+                </SelectItem>
+              ))}
+              {groups.map((groupKey) => (
+                <SelectGroup key={groupKey}>
+                  <SelectSeparator />
+                  <SelectLabel>{t(groupKey)}</SelectLabel>
+                  {grouped
+                    .filter((o) => o.group === groupKey)
+                    .map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                </SelectGroup>
+              ))}
+            </>
+          );
+        })()}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ============================================================================
+// ChatContext - Share sidebar state with child pages
+// ============================================================================
 
 export interface ProjectItem {
   id: string;
@@ -408,9 +466,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             onDeleteConversation={handleDeleteConversation}
             onRenameConversation={handleRenameConversation}
             onSelectConversation={handleSelectConversation}
-            filterOptions={showFilter ? filterOptions : undefined}
             activeFilter={sourceFilter}
-            onFilterChange={handleFilterChange}
             projects={projects}
             activeProjectId={activeProjectId}
             onSelectProject={handleSelectProject}
@@ -429,7 +485,15 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                   {activeConversationTitle || (isChatHome ? 'TheThing' : '...')}
                 </span>
               </div>
-              <ModeToggle />
+              <div className="flex items-center gap-2">
+                {showFilter && (
+                  <SourceFilter
+                    filterOptions={filterOptions}
+                    activeFilter={sourceFilter}
+                    onFilterChange={handleFilterChange}
+                  />
+                )}
+              </div>
             </div>
             {/* Children renders child routes */}
             {children}

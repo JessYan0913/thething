@@ -19,16 +19,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -57,7 +47,6 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { FilterOption } from "@/components/ChatLayout";
 
 // ============================================================================
 // Directory Picker Component
@@ -266,9 +255,7 @@ export type ConversationSidebarProps = {
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
   isLoading?: boolean;
-  filterOptions?: FilterOption[];
   activeFilter?: string;
-  onFilterChange?: (value: string) => void;
   projects?: ProjectItem[];
   activeProjectId?: string | null;
   onSelectProject?: (projectId: string | null) => void;
@@ -284,9 +271,7 @@ export const ConversationSidebar = ({
   onDeleteConversation,
   onRenameConversation,
   isLoading = false,
-  filterOptions,
   activeFilter = "user",
-  onFilterChange,
   projects = [],
   activeProjectId = null,
   onSelectProject,
@@ -323,46 +308,6 @@ export const ConversationSidebar = ({
             TheThing
           </span>
         </div>
-
-        {/* Source filter — full width below brand */}
-        {filterOptions && filterOptions.length > 1 && onFilterChange && (
-          <div className="px-2 pb-1 group-data-[collapsible=icon]:hidden">
-            <Select value={activeFilter} onValueChange={onFilterChange}>
-              <SelectTrigger size="sm" className="h-8 w-full gap-1 rounded-md bg-sidebar-accent/50 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors px-3 border-0 shadow-none [&>svg]:size-3">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent sideOffset={4} className="min-w-36">
-                {(() => {
-                  const ungrouped = filterOptions.filter((o) => !o.group);
-                  const grouped = filterOptions.filter((o) => o.group);
-                  const groups = [...new Set(grouped.map((o) => o.group!))];
-                  return (
-                    <>
-                      {ungrouped.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {t(option.label)}
-                        </SelectItem>
-                      ))}
-                      {groups.map((groupKey) => (
-                        <SelectGroup key={groupKey}>
-                          <SelectSeparator />
-                          <SelectLabel>{t(groupKey)}</SelectLabel>
-                          {grouped
-                            .filter((o) => o.group === groupKey)
-                            .map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      ))}
-                    </>
-                  );
-                })()}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
 
         {/* New conversation — only in user mode */}
         {activeFilter === 'user' && (
