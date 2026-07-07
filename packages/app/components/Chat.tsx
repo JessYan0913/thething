@@ -47,6 +47,7 @@ import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
+import { parseCommand } from '@/lib/command-parser';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
@@ -491,16 +492,13 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   // Detect / at start of input to open slash command menu
   const handleSlashCommandInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.currentTarget.value;
-    // If we just selected a command, don't re-open the menu
-    if (slashCommandJustSelectedRef.current) {
-      slashCommandJustSelectedRef.current = false;
-      return;
-    }
+    
     // Only show menu when input starts with '/' and doesn't contain space after '/'
     // If there's a space after '/', it means the command type is already selected
     if (value.startsWith('/') && !value.includes('\n')) {
       const slashQuery = value.slice(1);
       if (!slashQuery.includes(' ')) {
+        // 如果输入只有 '/'，无条件打开菜单（忽略 slashCommandJustSelectedRef）
         setSlashCommandOpen(true);
         setSlashCommandQuery(slashQuery);
         setSlashCommandSelectedIndex(0);
@@ -510,6 +508,8 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     } else {
       setSlashCommandOpen(false);
     }
+    // 重置标志，允许下次输入 / 时打开菜单
+    slashCommandJustSelectedRef.current = false;
   }, []);
 
   // Handle keyboard navigation in slash command menu
@@ -947,11 +947,41 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
 
   const handleSend = useCallback(
     async ({ text, files }: PromptInputMessage) => {
-      if (text.trim() || files.length > 0) {
-        sendMessage({ text, files: files.length > 0 ? files : undefined });
+      const trimmed = text.trim();
+      if (!trimmed && files.length === 0) return;
+
+      // 解析命令
+      const commandResult = parseCommand(trimmed);
+
+      // 前端命令：执行后不发送消息
+      if (commandResult.type === 'frontend') {
+        switch (commandResult.command) {
+          case 'agent':
+            handleAgentChange(commandResult.args || 'auto');
+            break;
+          case 'model':
+            handleModelChange(commandResult.args || 'default');
+            break;
+          case 'mode':
+            handleApprovalModeChange(commandResult.args || 'smart');
+            break;
+        }
+        // 清空输入框
+        const textarea = document.querySelector('textarea[name="message"]') as HTMLTextAreaElement;
+        if (textarea) {
+          textarea.value = '';
+          textarea.focus();
+        }
+        // 重置 slash command 标志，允许下次输入 / 时重新打开菜单
+        slashCommandJustSelectedRef.current = false;
+        setSlashCommandOpen(false);
+        return;
       }
+
+      // AI 命令或普通消息：发送给 AI
+      sendMessage({ text, files: files.length > 0 ? files : undefined });
     },
-    [sendMessage],
+    [sendMessage, handleAgentChange, handleModelChange, handleApprovalModeChange],
   );
 
   const handleCopy = useCallback((content: string) => {
