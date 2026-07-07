@@ -48,7 +48,11 @@ import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components
 import type { ApprovalMode } from '@/components/chat-selectors';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
+import { TShapeBlink } from '@/components/TShapeBlink';
+import { useRouter } from 'next/navigation';
+import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
 const SELECTED_MODEL_KEY = 'chat_selected_model';
@@ -257,7 +261,7 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
 }
 
 export interface ChatProps {
-  conversationId: string;
+  conversationId?: string | null;
   onTitleUpdated?: () => void;
   apiEndpoint?: string;
   onTurnFinish?: () => void;
@@ -266,7 +270,11 @@ export interface ChatProps {
   showAgentSelector?: boolean;
 }
 
-export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true }: ChatProps) {
+export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true }: ChatProps) {
+  const { t } = useTranslation('chat');
+  const router = useRouter();
+  const [conversationId, setConversationId] = useState<string | null>(propConversationId ?? null);
+  const isNewConversation = !conversationId;
   const initialMessageCountRef = useRef<number | null>(null);
   const originalTitleRef = useRef<string | null>(null);
   const messagesRef = useRef<UIMessage[]>([]);
@@ -296,6 +304,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   // 消息编辑状态
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [editingAttachments, setEditingAttachments] = useState<Array<{ type: 'file'; mediaType?: string; url: string; filename?: string }>>([]);
 
   // 文件预览分栏状态
   const [previewFile, setPreviewFile] = useState<{
@@ -544,12 +553,15 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     approvalMode,
   };
 
-  const transport = useMemo(() => createChatTransport(conversationId, apiEndpoint, extraBodyRef, () => messagesRef.current), [conversationId, apiEndpoint]);
+  const transport = useMemo(() => {
+    if (!conversationId) return undefined;
+    return createChatTransport(conversationId, apiEndpoint, extraBodyRef, () => messagesRef.current);
+  }, [conversationId, apiEndpoint]);
 
   const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
-    id: conversationId,
-    transport,
-    resume: true,
+    id: conversationId || 'pending',
+    transport: transport as any,
+    resume: !!conversationId,
     experimental_throttle: 80, // 节流 UI 更新，避免每块 SSE chunk 都触发 React 全量重渲染
     sendAutomaticallyWhen: ({ messages }) => {
       const lastMsg = messages.at(-1);
@@ -825,10 +837,16 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
   useEffect(() => {
     let cancelled = false;
 
+    // 新建对话状态（无 conversationId）：直接标记加载完成
+    if (!conversationId) {
+      setIsInitialLoadDone(true);
+      return;
+    }
+
     async function loadMessages() {
       const endpoint = apiEndpoint || '/api/chat';
       try {
-        const res = await fetch(`${endpoint}?conversationId=${encodeURIComponent(conversationId)}`);
+        const res = await fetch(`${endpoint}?conversationId=${encodeURIComponent(conversationId!)}`);
         if (!res.ok) return;
 
         const data = await res.json();
@@ -979,6 +997,25 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
       }
 
       // AI 命令或普通消息：发送给 AI
+      // 如果是新建对话状态（无 conversationId），先创建对话
+      if (isNewConversation) {
+        try {
+          const newId = nanoid();
+          const res = await fetch('/api/conversations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: newId }),
+          });
+          if (res.ok) {
+            setConversationId(newId);
+            // 导航到新对话 URL（不触发重新加载）
+            router.replace(`/chat/user/${newId}?msg=${encodeURIComponent(text)}`);
+            return; // 等待 conversationId 更新后会自动发送
+          }
+        } catch {
+          // 创建失败
+        }
+      }
       sendMessage({ text, files: files.length > 0 ? files : undefined });
     },
     [sendMessage, handleAgentChange, handleModelChange, handleApprovalModeChange],
@@ -1007,14 +1044,16 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     [messages, setMessages, sendMessage],
   );
 
-  const handleEditStart = useCallback((messageId: string, currentText: string) => {
+  const handleEditStart = useCallback((messageId: string, currentText: string, attachments?: Array<{ type: 'file'; mediaType?: string; url: string; filename?: string }>) => {
     setEditingMessageId(messageId);
     setEditingText(currentText);
+    setEditingAttachments(attachments ?? []);
   }, []);
 
   const handleEditCancel = useCallback(() => {
     setEditingMessageId(null);
     setEditingText('');
+    setEditingAttachments([]);
   }, []);
 
   const handleEditConfirm = useCallback(() => {
@@ -1044,6 +1083,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
 
     setEditingMessageId(null);
     setEditingText('');
+    setEditingAttachments([]);
   }, [editingMessageId, editingText, messages, setMessages, sendMessage]);
 
   // ── 输入卡片（在空状态和对话模式中复用） ──────────────
@@ -1096,6 +1136,21 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
           </div>
         ) : (
           <div className="flex flex-1 min-h-0 flex-col pt-4">
+            {messages.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center px-8">
+                <div className="text-center space-y-3">
+                  <div className="mx-auto mb-2" style={{ width: 80, height: 80 }}>
+                    <TShapeBlink />
+                  </div>
+                  <h2 className="text-2xl font-bold">
+                    {t('emptyState.quickStartTitle')}
+                  </h2>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                    {t('emptyState.quickStartDescription')}
+                  </p>
+                </div>
+              </div>
+            ) : (
             <Conversation>
               <ConversationContent>
                 {messages.map((message, messageIndex) => {
@@ -1115,7 +1170,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                 return (
                   <Message from={message.role} key={message.id}>
                     {message.role === 'user' && isEditing ? (
-                      <div className="ml-auto w-fit max-w-[95%] rounded-lg bg-secondary px-4 py-3">
+                      <div className="ml-auto w-full max-w-2xl rounded-xl border bg-background px-4 py-3 shadow-sm">
                         <textarea
                           value={editingText}
                           onChange={(e) => setEditingText(e.target.value)}
@@ -1132,6 +1187,28 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                           rows={Math.min(editingText.split('\n').length + 1, 10)}
                           autoFocus
                         />
+                        {editingAttachments.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t">
+                            {editingAttachments.map((att, i) => (
+                              att.mediaType?.startsWith('image/') ? (
+                                <img
+                                  key={i}
+                                  src={att.url}
+                                  alt={att.filename ?? 'image'}
+                                  className="size-14 rounded-md border object-cover"
+                                />
+                              ) : (
+                                <div
+                                  key={i}
+                                  className="flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground"
+                                >
+                                  <FileTextIcon className="size-3" />
+                                  <span className="truncate max-w-20">{att.filename ?? 'file'}</span>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
                         <div className="flex justify-end gap-1 mt-2">
                           <Button
                             size="icon-sm"
@@ -1179,7 +1256,7 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                                   key={`${message.id}-${index}`}
                                   src={filePart.url}
                                   alt={filePart.filename ?? 'image'}
-                                  className="max-h-64 rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                                  className="size-20 rounded-md border object-cover cursor-pointer hover:opacity-80 transition-opacity"
                                   onClick={handleFilePreview}
                                 />
                               );
@@ -1302,7 +1379,12 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                         <MessageActions>
                           <MessageAction
                             label="Edit"
-                            onClick={() => handleEditStart(message.id, userMessageText)}
+                            onClick={() => {
+                              const fileParts = message.parts
+                                .filter(p => p.type === 'file')
+                                .map(p => ({ type: 'file' as const, mediaType: (p as any).mediaType, url: (p as any).url, filename: (p as any).filename }));
+                              handleEditStart(message.id, userMessageText, fileParts);
+                            }}
                             tooltip="Edit message"
                           >
                             <EditIcon className="size-4" />
@@ -1365,17 +1447,18 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
                   <span className="animate-pulse">Thinking...</span>
                 </div>
               )}
-            </ConversationContent>
-            <AutoScrollToBottom trigger={isInitialLoadDone && messages.length > 0} />
-            <ConversationScrollButton />
-          </Conversation>
+              </ConversationContent>
+              <AutoScrollToBottom trigger={isInitialLoadDone && messages.length > 0} />
+              <ConversationScrollButton />
+            </Conversation>
+            )}
         </div>
       )}
 
       {isInitialLoadDone && (
         <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
           <div className="mx-auto max-w-3xl space-y-2">
-            <TodoPanel conversationId={conversationId} />
+            {conversationId && <TodoPanel conversationId={conversationId} />}
 
             {questionPanel && (
               <UserQuestionPanel

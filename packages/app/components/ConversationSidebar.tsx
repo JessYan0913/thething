@@ -365,7 +365,11 @@ export const ConversationSidebar = ({
                       onClick={() => onSelectProject?.(null)}
                       tooltip={t('chat:conversation.allProjects', 'All Projects')}
                     >
-                      <MessageSquareIcon className="size-4 shrink-0" />
+                      {activeProjectId === null ? (
+                        <FolderOpenIcon className="size-4 shrink-0" />
+                      ) : (
+                        <FolderIcon className="size-4 shrink-0" />
+                      )}
                       <span className="truncate">{t('chat:conversation.allProjects', 'All Projects')}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

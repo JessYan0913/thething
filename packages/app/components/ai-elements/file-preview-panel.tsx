@@ -99,9 +99,18 @@ export function FilePreviewPanel({
   const fileType: FileType = detectFileType(filePath, mediaType);
   const isMediaFile = fileType === "image" || fileType === "pdf" || fileType === "office" || fileType === "html";
 
+  // 判断是否为 data URL 或 blob URL（用户上传的附件）
+  const isDataOrBlobUrl = fileUrl?.startsWith('data:') || fileUrl?.startsWith('blob:');
+
   // 打开时加载完整文件内容
   useEffect(() => {
     if (!open || !filePath) return;
+
+    // 如果是 data URL 或 blob URL，不需要从文件系统加载
+    if (isDataOrBlobUrl) {
+      setIsLoading(false);
+      return;
+    }
 
     const loadContent = async () => {
       setIsLoading(true);
@@ -130,7 +139,7 @@ export function FilePreviewPanel({
     };
 
     loadContent();
-  }, [open, filePath, language]);
+  }, [open, filePath, language, isDataOrBlobUrl]);
 
   if (!open) return null;
 

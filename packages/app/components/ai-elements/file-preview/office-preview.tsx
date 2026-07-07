@@ -52,7 +52,16 @@ export function OfficePreview({ src, filename, mediaType, className }: OfficePre
         // 获取文件内容
         let arrayBuffer: ArrayBuffer;
 
-        if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("blob:")) {
+        if (src.startsWith("data:")) {
+          // Data URL，直接解码
+          const base64 = src.split(",")[1];
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          arrayBuffer = bytes.buffer;
+        } else if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("blob:")) {
           // HTTP URL 或 blob URL，直接 fetch
           const response = await fetch(src);
           const blob = await response.blob();

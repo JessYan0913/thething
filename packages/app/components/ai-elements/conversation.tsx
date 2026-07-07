@@ -130,7 +130,7 @@ export const Conversation = ({
           ref={scrollRef}
           className="absolute inset-0 overflow-y-auto"
         >
-          <div ref={contentRef}>{children}</div>
+          <div ref={contentRef} className="min-h-full flex flex-col">{children}</div>
         </div>
       </div>
     </ConversationContext.Provider>
