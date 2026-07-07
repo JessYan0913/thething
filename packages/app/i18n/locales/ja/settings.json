@@ -12,7 +12,8 @@
     "memory": "Wiki",
     "automation": "自動化タスク",
     "backToChat": "チャットに戻る",
-    "systemSettings": "システム設定"
+    "systemSettings": "システム設定",
+    "logs": "ログ"
   },
   "general": {
     "appearance": "外観",

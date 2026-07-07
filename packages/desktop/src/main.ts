@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
 import { spawn, spawnSync, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
@@ -9,6 +9,8 @@ import * as net from 'net';
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
 let serverPort: number | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
 
 function isDev(): boolean {
   return !app.isPackaged;
@@ -83,7 +85,112 @@ function createWindow(): BrowserWindow {
   win.loadFile(loadingPath);
   win.once('ready-to-show', () => win.show());
 
+  // 窗口关闭时隐藏到托盘而不是退出
+  win.on('close', (event) => {
+    // 如果应用正在退出，则正常关闭
+    if (isQuitting) {
+      return;
+    }
+    
+    // 否则隐藏窗口
+    event.preventDefault();
+    win.hide();
+  });
+
   return win;
+}
+
+// ---------------------------------------------------------------------------
+// Tray (System Tray)
+// ---------------------------------------------------------------------------
+
+function createTrayIcon(): Electron.NativeImage {
+  // 使用应用 logo 作为托盘图标
+  const iconPath = path.join(__dirname, '..', 'icons', '128x128.png');
+  
+  if (!fs.existsSync(iconPath)) {
+    console.error('[desktop] Tray icon not found:', iconPath);
+    return nativeImage.createEmpty();
+  }
+  
+  const icon = nativeImage.createFromPath(iconPath);
+  const resized = icon.resize({ width: 22, height: 22 });
+  
+  // macOS: 设置为模板图像，系统自动适配深色/浅色模式
+  if (process.platform === 'darwin') {
+    resized.setTemplateImage(true);
+  }
+  
+  return resized;
+}
+
+function createTray(): void {
+  console.log('[desktop] Creating tray...');
+  
+  const trayIcon = createTrayIcon();
+  console.log('[desktop] Tray icon created, size:', trayIcon.getSize());
+  
+  tray = new Tray(trayIcon);
+  console.log('[desktop] Tray created successfully');
+  
+  // 设置托盘工具提示
+  tray.setToolTip('The Thing - 运行中');
+  
+  // 显示通知，确认托盘创建成功
+  if (process.platform === 'darwin') {
+    // macOS使用通知中心
+    console.log('[desktop] Tray icon should now be visible in menu bar');
+  } else {
+    // Windows使用气球通知
+    tray.displayBalloon({
+      title: 'The Thing',
+      content: '应用已最小化到系统托盘',
+    });
+  }
+  
+  // 创建上下文菜单
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主窗口',
+      click: () => {
+        console.log('[desktop] Tray menu: Show main window');
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        console.log('[desktop] Tray menu: Quit');
+        // 退出前清理
+        killServer();
+        app.quit();
+      },
+    },
+  ]);
+  
+  // 设置上下文菜单
+  tray.setContextMenu(contextMenu);
+  
+  // 点击托盘图标时显示/隐藏主窗口
+  tray.on('click', () => {
+    console.log('[desktop] Tray clicked');
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+        console.log('[desktop] Window hidden');
+      } else {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        console.log('[desktop] Window shown');
+      }
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +401,7 @@ function showError(message: string): void {
 
 app.whenReady().then(async () => {
   mainWindow = createWindow();
+  createTray();
 
   try {
     serverPort = await startServer();
@@ -306,16 +414,24 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  killServer();
-  app.quit();
+  // 在macOS上，关闭所有窗口不应该退出应用，而是隐藏到托盘
+  // 在其他平台上，也隐藏到托盘而不是退出
+  // 注意：服务器进程继续在后台运行
+  console.log('[desktop] All windows closed, app stays in tray');
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   killServer();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  // 在macOS上，点击Dock图标时重新显示窗口
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  } else if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createWindow();
     if (serverPort) {
       mainWindow!.loadURL(`http://127.0.0.1:${serverPort}`);

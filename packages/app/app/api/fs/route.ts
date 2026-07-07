@@ -13,6 +13,13 @@ async function getAllowedRoots(): Promise<string[]> {
   return [resourceRoot, homeDir];
 }
 
+function expandTilde(filePath: string): string {
+  if (filePath.startsWith('~')) {
+    return path.join(os.homedir(), filePath.slice(1));
+  }
+  return filePath;
+}
+
 function isPathAllowed(resolved: string, allowedRoots: string[]): boolean {
   return allowedRoots.some(
     (root) => resolved.startsWith(root + path.sep) || resolved === root,
@@ -100,7 +107,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Missing path query parameter' }, { status: 400 });
       }
 
-      const resolvedFile = path.resolve(fileParam);
+      const expandedFile = expandTilde(fileParam);
+      const resolvedFile = path.resolve(expandedFile);
       const allowedRoots = await getAllowedRoots();
       if (!isPathAllowed(resolvedFile, allowedRoots)) {
         return NextResponse.json({ error: 'Path not allowed' }, { status: 403 });

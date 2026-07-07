@@ -12,7 +12,8 @@
     "memory": "Wiki",
     "automation": "Automation",
     "backToChat": "Back to Chat",
-    "systemSettings": "System Settings"
+    "systemSettings": "System Settings",
+    "logs": "Logs"
   },
   "general": {
     "appearance": "Appearance",

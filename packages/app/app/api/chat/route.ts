@@ -163,9 +163,32 @@ export async function POST(request: Request) {
       })
     );
 
+    // Strip remaining multimodal parts (images, PDFs, etc.) that the LLM may not support.
+    // After file-conversion, only image/PDF file parts survive; replace them with
+    // text placeholders so text-only models (e.g. mimo-v2.5) don't 400.
+    const finalMessages: UIMessage[] = llmMessages.map((msg) => {
+      if (msg.role !== 'user') return msg;
+      const strippedParts: typeof msg.parts = [];
+      let changed = false;
+      for (const part of msg.parts) {
+        if (part.type === 'file') {
+          const fp = part as { mediaType: string; filename?: string };
+          const label = fp.filename || '未命名文件';
+          strippedParts.push({
+            type: 'text',
+            text: `[附件: ${label} (${fp.mediaType})]`,
+          } as (typeof msg.parts)[number]);
+          changed = true;
+        } else {
+          strippedParts.push(part);
+        }
+      }
+      return changed ? { ...msg, parts: strippedParts } : msg;
+    });
+
     console.log(
-      `[LLM Input] ${llmMessages.length} messages:\n` +
-        llmMessages
+      `[LLM Input] ${finalMessages.length} messages:\n` +
+        finalMessages
           .map((m, i) => {
             const partSummaries = m.parts.map((p) => {
               if (p.type === 'text') return `text(${(p as { text: string }).text.slice(0, 40)})`;
@@ -193,7 +216,7 @@ export async function POST(request: Request) {
             try {
               const agentStream = await createAgentUIStream({
                 agent,
-                uiMessages: llmMessages,
+                uiMessages: finalMessages,
                 abortSignal: abortController.signal,
                 sendReasoning: true,
                 onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
