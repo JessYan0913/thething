@@ -69,7 +69,13 @@ export async function GET(request: Request) {
     // 列表视图：从磁盘读取配置，不依赖运行时初始化
     const configs = await getMcpServerConfigs(process.cwd());
     // Try to get snapshot without forcing runtime init
-    const snapshot = getServerContextIfReady()?.mcpRegistry?.snapshot() ?? null;
+    const ctx = getServerContextIfReady();
+    const snapshot = ctx?.mcpRegistry?.snapshot() ?? null;
+    if (snapshot) {
+      console.log('[MCP API] snapshot:', snapshot.servers.map(s => `${s.name}:${s.connected ? 'connected' : 'disconnected'}(${s.toolCount} tools)`).join(', '));
+    } else {
+      console.log('[MCP API] snapshot: null (context ready:', !!ctx, ')');
+    }
 
     return NextResponse.json({ servers: configs, snapshot });
   } catch (error) {
