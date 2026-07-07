@@ -21,12 +21,16 @@ import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
+import { CronResult } from "./cron-result";
 import { DiffView } from "./diff-view";
 import { FileContent } from "./file-content";
+import { GlobResult } from "./glob-result";
 import { GrepResult } from "./grep-result";
 import { Shimmer } from "./shimmer";
 import { TerminalJson } from "./terminal-json";
 import { TerminalOutput } from "./terminal-output";
+import { WebFetchResult } from "./web-fetch-result";
+import { WikiResult } from "./wiki-result";
 import { WriteFileResult } from "./write-file-result";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
@@ -247,6 +251,52 @@ export const ToolOutput = ({
     return (
       <div className={cn("space-y-2", className)} {...props}>
         <GrepResult
+          output={output as string | Record<string, unknown>}
+          input={toolInput as Record<string, unknown> | undefined}
+        />
+      </div>
+    );
+  }
+
+  // glob 工具：文件列表渲染
+  if (toolType === "tool-glob" && output !== null && !isValidElement(output)) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <GlobResult
+          output={output as string | Record<string, unknown>}
+          input={toolInput as Record<string, unknown> | undefined}
+        />
+      </div>
+    );
+  }
+
+  // web_fetch 工具：网页内容渲染
+  if (toolType === "tool-web_fetch" && output !== null && !isValidElement(output)) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <WebFetchResult output={output as string | Record<string, unknown>} />
+      </div>
+    );
+  }
+
+  // save_wiki / read_wiki_page 工具：Wiki 渲染
+  if (
+    (toolType === "tool-save_wiki" || toolType === "tool-read_wiki_page") &&
+    output !== null &&
+    !isValidElement(output)
+  ) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <WikiResult output={output as string | Record<string, unknown>} toolType={toolType} />
+      </div>
+    );
+  }
+
+  // cron 工具：定时任务渲染
+  if (toolType === "tool-cron" && output !== null && !isValidElement(output)) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <CronResult
           output={output as string | Record<string, unknown>}
           input={toolInput as Record<string, unknown> | undefined}
         />

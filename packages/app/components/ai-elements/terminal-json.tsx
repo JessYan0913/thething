@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { memo, useMemo, useState } from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 
 interface TerminalJsonProps {
   /** JSON 数据 */
@@ -14,37 +15,32 @@ interface TerminalJsonProps {
   className?: string;
 }
 
-// 终端配色方案
-const TERMINAL_COLORS = {
-  key: "text-emerald-400",        // 绿色 - 对象键
-  string: "text-amber-300",       // 琥珀色 - 字符串值
-  number: "text-cyan-400",        // 青色 - 数字
-  boolean: "text-purple-400",     // 紫色 - 布尔值
-  null: "text-red-400",           // 红色 - null
-  bracket: "text-slate-400",      // 灰色 - 括号
-  comma: "text-slate-500",        // 深灰 - 逗号
-  colon: "text-slate-500",        // 深灰 - 冒号
-  lineNumber: "text-slate-600",   // 深灰 - 行号
-};
-
 // 语法化 JSON 渲染
 const JsonToken = memo(({ value, type }: { value: string; type: string }) => {
-  const colorClass = TERMINAL_COLORS[type as keyof typeof TERMINAL_COLORS] || "text-slate-300";
+  const colorClass = {
+    key: "text-emerald-600 dark:text-emerald-400",
+    string: "text-amber-600 dark:text-amber-400",
+    number: "text-cyan-600 dark:text-cyan-400",
+    boolean: "text-purple-600 dark:text-purple-400",
+    null: "text-red-600 dark:text-red-400",
+    bracket: "text-muted-foreground",
+    comma: "text-muted-foreground/60",
+    colon: "text-muted-foreground/60",
+  }[type] ?? "text-foreground";
+
   return <span className={colorClass}>{value}</span>;
 });
 JsonToken.displayName = "JsonToken";
 
 // 单行 JSON 渲染
-const JsonLine = memo(({ 
-  line, 
-  lineNumber, 
+const JsonLine = memo(({
+  line,
+  lineNumber,
   showLineNumbers,
-  indent 
-}: { 
-  line: string; 
-  lineNumber: number; 
+}: {
+  line: string;
+  lineNumber: number;
   showLineNumbers: boolean;
-  indent: number;
 }) => {
   // 简单的语法高亮
   const tokens = useMemo(() => {
@@ -69,7 +65,7 @@ const JsonLine = memo(({
           j++;
         }
         const str = trimmed.slice(i, j + 1);
-        
+
         // 检查是否是键（后面跟着冒号）
         const rest = trimmed.slice(j + 1).trimStart();
         if (rest.startsWith(':')) {
@@ -139,16 +135,13 @@ const JsonLine = memo(({
   }, [line]);
 
   return (
-    <div className="flex hover:bg-white/5 transition-colors">
+    <div className="flex hover:bg-accent/30 transition-colors">
       {showLineNumbers && (
-        <span className={cn(
-          "select-none text-right pr-4 min-w-[2.5rem] shrink-0",
-          TERMINAL_COLORS.lineNumber
-        )}>
+        <span className="select-none text-right pr-4 min-w-[2.5rem] shrink-0 text-muted-foreground/50 font-mono text-xs">
           {lineNumber}
         </span>
       )}
-      <code className="flex-1 break-words whitespace-pre-wrap overflow-hidden">
+      <code className="flex-1 break-words whitespace-pre-wrap overflow-hidden text-xs font-mono">
         {tokens.map((token, idx) => (
           <JsonToken key={idx} value={token.value} type={token.type} />
         ))}
@@ -182,43 +175,53 @@ export const TerminalJson = memo(({
 
   return (
     <div className={cn(
-      "rounded-lg border border-slate-700/50 bg-slate-900/95 overflow-hidden",
+      "rounded-md border overflow-hidden bg-card font-mono text-xs",
       className
     )}>
-      {/* 终端标题栏 */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/80 border-b border-slate-700/50">
-        <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-500/80" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-          <div className="w-3 h-3 rounded-full bg-green-500/80" />
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span className="font-medium">Output</span>
+          <span className="text-muted-foreground/60">({lines.length} lines)</span>
         </div>
-        <span className="text-xs text-slate-400 font-mono ml-2">JSON Output</span>
+        {lines.length > maxLines && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {expanded ? (
+              <>
+                <ChevronDownIcon className="size-3" />
+                <span>Collapse</span>
+              </>
+            ) : (
+              <>
+                <ChevronRightIcon className="size-3" />
+                <span>Expand all</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
-      {/* 内容区域 */}
-      <div className="max-h-[400px] overflow-y-auto">
-        <div className="p-4 font-mono text-sm leading-relaxed break-all">
+      {/* Content */}
+      <div className="max-h-80 overflow-y-auto">
+        <div className="p-3 leading-relaxed">
           {displayLines.map((line, idx) => (
             <JsonLine
               key={idx}
               line={line}
               lineNumber={idx + 1}
               showLineNumbers={showLineNumbers}
-              indent={0}
             />
           ))}
         </div>
       </div>
 
-      {/* 展开/折叠按钮 */}
-      {lines.length > maxLines && (
-        <div className="flex justify-center py-2 border-t border-slate-700/50 bg-slate-800/50">
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-xs text-slate-400 hover:text-slate-200 transition-colors px-3 py-1 rounded hover:bg-slate-700/50"
-          >
-            {expanded ? `▲ 收起 (${lines.length} 行)` : `▼ 展开全部 (${lines.length} 行)`}
-          </button>
+      {/* Truncation info */}
+      {isCollapsed && (
+        <div className="px-3 py-2 border-t bg-muted/30 text-xs text-muted-foreground text-center">
+          Showing {maxLines} of {lines.length} lines
         </div>
       )}
     </div>

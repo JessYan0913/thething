@@ -1356,12 +1356,17 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                   <SubAgentStream parts={subParts} />
                                 ) : (
                                   <>
-                                    {/* edit_file / read_file / bash / grep: always skip Parameters */}
+                                    {/* Tools with custom rendering: skip Parameters */}
                                     {!(
                                       toolPart.type === 'tool-edit_file' ||
                                       toolPart.type === 'tool-read_file' ||
                                       toolPart.type === 'tool-bash' ||
-                                      toolPart.type === 'tool-grep'
+                                      toolPart.type === 'tool-grep' ||
+                                      toolPart.type === 'tool-glob' ||
+                                      toolPart.type === 'tool-web_fetch' ||
+                                      toolPart.type === 'tool-save_wiki' ||
+                                      toolPart.type === 'tool-read_wiki_page' ||
+                                      toolPart.type === 'tool-cron'
                                     ) && (
                                       <ToolInput input={toolPart.input} />
                                     )}
