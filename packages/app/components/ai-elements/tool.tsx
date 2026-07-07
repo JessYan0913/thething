@@ -22,6 +22,7 @@ import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
 import { Shimmer } from "./shimmer";
+import { TerminalJson } from "./terminal-json";
 import { WriteFileResult } from "./write-file-result";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
@@ -132,9 +133,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
       Parameters
     </h4>
-    <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input ?? null, null, 2)} language="json" />
-    </div>
+    <TerminalJson data={input ?? null} maxLines={30} />
   </div>
 );
 
@@ -177,11 +176,16 @@ export const ToolOutput = ({
   let Output = <div>{output as ReactNode}</div>;
 
   if (typeof output === "object" && !isValidElement(output)) {
-    Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
-    );
+    Output = <TerminalJson data={output} maxLines={50} />;
   } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
+    // 尝试解析字符串为 JSON
+    try {
+      const parsed = JSON.parse(output);
+      Output = <TerminalJson data={parsed} maxLines={50} />;
+    } catch {
+      // 不是 JSON，使用代码块渲染
+      Output = <CodeBlock code={output} language="json" />;
+    }
   }
 
   return (
@@ -189,17 +193,13 @@ export const ToolOutput = ({
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {errorText ? "Error" : "Result"}
       </h4>
-      <div
-        className={cn(
-          "overflow-x-auto rounded-md text-xs [&_table]:w-full",
-          errorText
-            ? "bg-destructive/10 text-destructive"
-            : "bg-muted/50 text-foreground"
-        )}
-      >
-        {errorText && <div>{errorText}</div>}
-        {Output}
-      </div>
+      {errorText ? (
+        <div className="overflow-x-auto rounded-md text-xs bg-destructive/10 text-destructive p-3">
+          {errorText}
+        </div>
+      ) : (
+        Output
+      )}
     </div>
   );
 };
