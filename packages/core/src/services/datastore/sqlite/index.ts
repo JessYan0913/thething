@@ -15,6 +15,7 @@ export { SQLiteCostStore } from './cost-store';
 export { SQLiteTodoStore } from './todo-store';
 export { SQLiteProjectStore } from './project-store';
 export { SQLiteAgentRunStore } from './agent-run-store';
+export { SQLiteSuspendedStateStore } from './suspended-state-store';
 
 // Schema utilities (for advanced users)
 export { initializeSchema } from './schema';

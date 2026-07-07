@@ -32,6 +32,7 @@ import {
   setSuspendedState,
   clearSuspendedState,
   detectApprovalResponse,
+  initializeApprovalContext,
 } from './approval-context'
 
 // ============================================================
@@ -367,6 +368,12 @@ export class AgentInboundHandler implements InboundEventHandler {
   constructor(config: AgentHandlerConfig) {
     this.config = config
     this.conversationResolver = config.conversationResolver
+    
+    // 初始化 Approval Context，绑定 SQLite 存储以支持跨重启恢复
+    const store = config.context.runtime.dataStore
+    if (store?.suspendedStateStore) {
+      initializeApprovalContext(store.suspendedStateStore)
+    }
   }
 
   async handle(event: InboundEvent): Promise<InboundEventResult> {

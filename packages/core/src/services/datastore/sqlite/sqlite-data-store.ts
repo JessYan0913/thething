@@ -27,6 +27,7 @@ import type {
   TodoStore,
   ProjectStore,
   AgentRunStore,
+  SuspendedStateStore,
 } from '../../../primitives/datastore/types';
 import { SQLiteConversationStore } from './conversation-store';
 import { SQLiteMessageStore } from './message-store';
@@ -35,6 +36,7 @@ import { SQLiteCostStore } from './cost-store';
 import { SQLiteTodoStore } from './todo-store';
 import { SQLiteProjectStore } from './project-store';
 import { SQLiteAgentRunStore } from './agent-run-store';
+import { SQLiteSuspendedStateStore } from './suspended-state-store';
 
 // 从统一配置模块导入常量（作为 fallback）
 import {
@@ -67,6 +69,7 @@ export class SQLiteDataStore implements DataStore {
   readonly todoStore: TodoStore;
   readonly projectStore: ProjectStore;
   readonly agentRunStore: AgentRunStore;
+  readonly suspendedStateStore: SuspendedStateStore;
 
   constructor(config: SQLiteDataStoreConfig = {}) {
     const dataDir = config.dataDir || getDefaultDataDir();
@@ -94,6 +97,7 @@ export class SQLiteDataStore implements DataStore {
     this.todoStore = new SQLiteTodoStore(this.db);
     this.projectStore = new SQLiteProjectStore(this.db);
     this.agentRunStore = new SQLiteAgentRunStore(this.db);
+    this.suspendedStateStore = new SQLiteSuspendedStateStore(this.db);
     // MessageStore needs conversationStore for auto-creating conversations
     this.messageStore = new SQLiteMessageStore(this.db, this.conversationStore);
   }

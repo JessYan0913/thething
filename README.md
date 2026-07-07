@@ -7,12 +7,12 @@
 ```
 thething/
 ├── packages/
-│   ├── core/          # 核心引擎 (@the-thing/core)
-│   ├── cli/           # 命令行工具 (@the-thing/cli)
-│   ├── server/        # HTTP 服务端 (@the-thing/server)
-│   ├── web/           # Web 前端 (@the-thing/web)
-│   └── build/         # 构建工具 (@the-thing/build)
-├── docs/              # 设计文档和指南
+│   ├── core/              # 核心引擎 (@the-thing/core)
+│   ├── cli/               # 命令行工具 (@the-thing/cli)
+│   ├── app/               # Next.js Web 应用 (@the-thing/app)
+│   ├── desktop/           # 桌面应用 (@the-thing/desktop)
+│   └── resumable-stream/  # 可恢复流处理 (@the-thing/resumable-stream)
+├── docs/                  # 设计文档和指南
 └── pnpm-workspace.yaml
 ```
 
@@ -30,19 +30,19 @@ pnpm install
 # CLI 模式
 pnpm dev:cli
 
-# Server 模式
-pnpm dev:server
+# Next.js Web 应用
+pnpm dev:next
 
-# Web 模式
-pnpm dev:web
+# 桌面应用
+pnpm dev:desktop
 ```
 
 ### 构建
 
 ```bash
 pnpm build:cli      # 构建 CLI
-pnpm build:web      # 构建 Web
-pnpm build:portable # 构建便携版
+pnpm build:next     # 构建 Next.js Web 应用
+pnpm build:desktop  # 构建桌面应用
 ```
 
 ## 核心模块 (packages/core)

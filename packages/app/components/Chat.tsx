@@ -46,6 +46,7 @@ import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIc
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
+import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
@@ -340,6 +341,200 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     setApprovalMode(value as ApprovalMode);
     localStorage.setItem(SELECTED_APPROVAL_MODE_KEY, value);
   }, []);
+
+  // ── Slash Command Menu ──────────────
+  const [slashCommandOpen, setSlashCommandOpen] = useState(false);
+  const [slashCommandQuery, setSlashCommandQuery] = useState('');
+  const [slashCommandSelectedIndex, setSlashCommandSelectedIndex] = useState(0);
+  const [slashCommandAgents, setSlashCommandAgents] = useState<Array<{ agentType: string; displayName?: string; description: string; source: string; metadata?: Record<string, unknown> }>>([]);
+  const [slashCommandModels, setSlashCommandModels] = useState<Record<string, { model: string; contextLimit?: number }> | null>(null);
+  const [slashCommandSkills, setSlashCommandSkills] = useState<Array<{ name: string; folderName: string; description: string }>>([]);
+  const [slashCommandDataLoaded, setSlashCommandDataLoaded] = useState(false);
+  const slashCommandJustSelectedRef = useRef(false);
+
+  // Fetch data for slash command menu on first open
+  useEffect(() => {
+    if (slashCommandOpen && !slashCommandDataLoaded) {
+      setSlashCommandDataLoaded(true);
+      Promise.all([
+        fetch('/api/agents').then((r) => r.json()).catch(() => ({ agents: [] })),
+        fetch('/api/config').then((r) => r.json()).catch(() => ({ modelAliases: null })),
+        fetch('/api/skills').then((r) => r.json()).catch(() => ({ skills: [] })),
+      ]).then(([agentsData, configData, skillsData]) => {
+        setSlashCommandAgents(
+          (agentsData.agents || []).filter(
+            (a: { source: string; metadata?: Record<string, unknown> }) =>
+              (a.source === 'user' || a.source === 'project') && a.metadata?.enabled !== false,
+          ),
+        );
+        setSlashCommandModels(configData.modelAliases || null);
+        setSlashCommandSkills(skillsData.skills || []);
+      });
+    }
+  }, [slashCommandOpen, slashCommandDataLoaded]);
+
+  // Build all slash command items
+  const allSlashCommandItems = useMemo<SlashCommandItem[]>(() => {
+    const items: SlashCommandItem[] = [];
+
+    // Agents
+    items.push({ id: 'agent:auto', type: 'agent', label: 'Auto', description: '自动路由' });
+    for (const agent of slashCommandAgents) {
+      items.push({
+        id: `agent:${agent.agentType}`,
+        type: 'agent',
+        label: agent.displayName || agent.agentType,
+        description: agent.description,
+      });
+    }
+
+    // Models
+    if (slashCommandModels) {
+      const LABELS: Record<string, string> = { default: 'Default', fast: 'Fast', smart: 'Smart' };
+      for (const [key, config] of Object.entries(slashCommandModels)) {
+        if (config.model) {
+          items.push({
+            id: `model:${key}`,
+            type: 'model',
+            label: config.model.split('/').pop() || key,
+            description: LABELS[key] || key,
+          });
+        }
+      }
+    }
+
+    // Approval Modes
+    items.push(
+      { id: 'mode:smart', type: 'mode', label: 'Smart', description: '智能审批' },
+      { id: 'mode:auto-review', type: 'mode', label: 'Auto-review', description: 'Agent 审批' },
+      { id: 'mode:full-trust', type: 'mode', label: 'Full trust', description: '完全信任' },
+    );
+
+    // Skills
+    for (const skill of slashCommandSkills) {
+      items.push({
+        id: `skill:${skill.name}`,
+        type: 'skill',
+        label: skill.name,
+        description: skill.description,
+      });
+    }
+
+    return items;
+  }, [slashCommandAgents, slashCommandModels, slashCommandSkills]);
+
+  // Filter items by query
+  const filteredSlashCommandItems = useMemo(() => {
+    if (!slashCommandQuery) return allSlashCommandItems;
+    const lower = slashCommandQuery.toLowerCase();
+    return allSlashCommandItems.filter(
+      (item) =>
+        item.label.toLowerCase().includes(lower) ||
+        item.description?.toLowerCase().includes(lower),
+    );
+  }, [allSlashCommandItems, slashCommandQuery]);
+
+  // Clamp selected index when items change
+  useEffect(() => {
+    if (filteredSlashCommandItems.length === 0) {
+      setSlashCommandSelectedIndex(0);
+    } else if (slashCommandSelectedIndex >= filteredSlashCommandItems.length) {
+      setSlashCommandSelectedIndex(filteredSlashCommandItems.length - 1);
+    }
+  }, [filteredSlashCommandItems.length, slashCommandSelectedIndex]);
+
+  // Close slash command menu on click outside
+  useEffect(() => {
+    if (!slashCommandOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('textarea[name="message"]') && !target.closest('[data-slash-menu]')) {
+        setSlashCommandOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick, true);
+    return () => document.removeEventListener('mousedown', handleClick, true);
+  }, [slashCommandOpen]);
+
+  // Handle slash command selection
+  const handleSlashCommandSelect = useCallback(
+    (item: SlashCommandItem) => {
+      const textarea = document.querySelector('textarea[name="message"]') as HTMLTextAreaElement;
+
+      switch (item.type) {
+        case 'agent':
+          handleAgentChange(item.id.replace('agent:', ''));
+          if (textarea) { textarea.value = ''; textarea.focus(); }
+          break;
+        case 'model':
+          handleModelChange(item.id.replace('model:', ''));
+          if (textarea) { textarea.value = ''; textarea.focus(); }
+          break;
+        case 'mode':
+          handleApprovalModeChange(item.id.replace('mode:', ''));
+          if (textarea) { textarea.value = ''; textarea.focus(); }
+          break;
+        case 'skill':
+          if (textarea) { textarea.value = `/skill ${item.label} `; textarea.focus(); }
+          break;
+      }
+
+      setSlashCommandOpen(false);
+      setSlashCommandQuery('');
+      setSlashCommandSelectedIndex(0);
+      // Prevent the menu from re-opening on the next input change
+      slashCommandJustSelectedRef.current = true;
+    },
+    [handleAgentChange, handleModelChange, handleApprovalModeChange],
+  );
+
+  // Detect / at start of input to open slash command menu
+  const handleSlashCommandInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.currentTarget.value;
+    // If we just selected a command, don't re-open the menu
+    if (slashCommandJustSelectedRef.current) {
+      slashCommandJustSelectedRef.current = false;
+      return;
+    }
+    // Only show menu when input starts with '/' and doesn't contain space after '/'
+    // If there's a space after '/', it means the command type is already selected
+    if (value.startsWith('/') && !value.includes('\n')) {
+      const slashQuery = value.slice(1);
+      if (!slashQuery.includes(' ')) {
+        setSlashCommandOpen(true);
+        setSlashCommandQuery(slashQuery);
+        setSlashCommandSelectedIndex(0);
+      } else {
+        setSlashCommandOpen(false);
+      }
+    } else {
+      setSlashCommandOpen(false);
+    }
+  }, []);
+
+  // Handle keyboard navigation in slash command menu
+  const handleSlashCommandKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!slashCommandOpen) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashCommandSelectedIndex((prev) => Math.min(prev + 1, filteredSlashCommandItems.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashCommandSelectedIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (filteredSlashCommandItems[slashCommandSelectedIndex]) {
+          handleSlashCommandSelect(filteredSlashCommandItems[slashCommandSelectedIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setSlashCommandOpen(false);
+      }
+    },
+    [slashCommandOpen, filteredSlashCommandItems, slashCommandSelectedIndex, handleSlashCommandSelect],
+  );
 
   const extraBodyRef = useRef<Record<string, unknown> | undefined>(extraBody);
   extraBodyRef.current = {
@@ -667,6 +862,37 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
     };
   }, [conversationId, setMessages, apiEndpoint]);
 
+  // 恢复待审批状态（跨重启恢复）
+  useEffect(() => {
+    if (!isInitialLoadDone || !conversationId) return;
+    
+    let cancelled = false;
+    
+    async function restorePendingApprovals() {
+      try {
+        const res = await fetch('/api/chat/pending-approvals');
+        if (!res.ok || cancelled) return;
+        
+        const data = await res.json();
+        const pendingForConversation = data.pendingApprovals?.find(
+          (p: { conversationId: string }) => p.conversationId === conversationId
+        );
+        
+        if (pendingForConversation && pendingForConversation.approvals?.length > 0 && !cancelled) {
+          console.log(`[Chat] Restored ${pendingForConversation.approvals.length} pending approvals for conversation ${conversationId}`);
+          setApprovalRequests(pendingForConversation.approvals);
+        }
+      } catch (error) {
+        console.error('[Chat] Failed to restore pending approvals:', error);
+      }
+    }
+    
+    restorePendingApprovals();
+    return () => {
+      cancelled = true;
+    };
+  }, [isInitialLoadDone, conversationId]);
+
   useEffect(() => {
     if (
       isInitialLoadDone &&
@@ -792,26 +1018,36 @@ export default function Chat({ conversationId, onTitleUpdated, apiEndpoint, onTu
 
   // ── 输入卡片（在空状态和对话模式中复用） ──────────────
   const inputCard = (
-    <div className="rounded-xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/50">
-      <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
-        <AttachmentPreview />
-        <PromptInputTextarea placeholder="Message AI Assistant..." />
-        <PromptInputFooter>
-          <PromptInputTools>
-            <PromptInputActionMenu>
-              <PromptInputActionMenuTrigger tooltip="Add attachments" />
-              <PromptInputActionMenuContent>
-                <PromptInputActionAddAttachments />
-                <PromptInputActionAddScreenshot />
-              </PromptInputActionMenuContent>
-            </PromptInputActionMenu>
-            {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
-            <ModelSelector value={selectedModel} onChange={handleModelChange} />
-            <ApprovalModeSelector value={approvalMode} onChange={handleApprovalModeChange} />
-          </PromptInputTools>
-          <PromptInputSubmit status={status} onStop={handleStop} />
-        </PromptInputFooter>
-      </PromptInput>
+    <div className="relative">
+      {slashCommandOpen && (
+        <SlashCommandMenu
+          items={filteredSlashCommandItems}
+          selectedIndex={slashCommandSelectedIndex}
+          onSelect={handleSlashCommandSelect}
+          onHover={setSlashCommandSelectedIndex}
+        />
+      )}
+      <div className="rounded-xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/50">
+        <PromptInput onSubmit={handleSend} accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.go,.rs,.rb,.sh,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp" multiple>
+          <AttachmentPreview />
+          <PromptInputTextarea placeholder="Message AI Assistant... (Type / for commands)" onChange={handleSlashCommandInputChange} onKeyDown={handleSlashCommandKeyDown} />
+          <PromptInputFooter>
+            <PromptInputTools>
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger tooltip="Add attachments" />
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments />
+                  <PromptInputActionAddScreenshot />
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
+              {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
+              <ModelSelector value={selectedModel} onChange={handleModelChange} />
+              <ApprovalModeSelector value={approvalMode} onChange={handleApprovalModeChange} />
+            </PromptInputTools>
+            <PromptInputSubmit status={status} onStop={handleStop} />
+          </PromptInputFooter>
+        </PromptInput>
+      </div>
     </div>
   )
 

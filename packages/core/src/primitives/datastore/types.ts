@@ -330,6 +330,9 @@ export interface DataStore {
   /** Agent run checkpoint storage */
   agentRunStore: AgentRunStore;
 
+  /** Suspended state storage for cross-restart approval recovery */
+  suspendedStateStore: SuspendedStateStore;
+
   /**
    * Execute a function within a database transaction.
    * SQLite implementation uses db.transaction();
@@ -616,6 +619,26 @@ export interface AgentRunStore {
 
   /** Clear all stream chunks for a conversation */
   clearChunks(conversationId: string): void;
+}
+
+/**
+ * Suspended agent state storage interface — for cross-restart approval recovery
+ */
+export interface SuspendedStateStore {
+  /** Save suspended state for a conversation */
+  saveSuspendedState(conversationId: string, state: string, createdAt: Date, expiresAt: Date): void;
+
+  /** Get suspended state for a conversation */
+  getSuspendedState(conversationId: string): { state: string; createdAt: Date; expiresAt: Date } | null;
+
+  /** Clear suspended state for a conversation */
+  clearSuspendedState(conversationId: string): void;
+
+  /** Get all conversations with pending suspended states */
+  getConversationsWithSuspendedStates(): string[];
+
+  /** Clean up expired suspended states */
+  cleanupExpiredStates(): number;
 }
 
 export interface ConversationRow {

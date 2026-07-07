@@ -1,0 +1,9 @@
+{
+  "name": "temp-docx-generator",
+  "version": "1.0.0",
+  "description": "Temporary package for generating DOCX",
+  "main": "create-readme.js",
+  "dependencies": {
+    "docx": "^8.0.0"
+  }
+}

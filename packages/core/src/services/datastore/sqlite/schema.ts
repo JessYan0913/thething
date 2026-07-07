@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -213,6 +213,25 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
       );
     `);
     logger.debug('Schema', 'Migrated to v7: added agent_runs, stream_chunks, and agent_status tables');
+  }
+
+  if (currentVersion < 8) {
+    // v8: add suspended_agent_states table for cross-restart approval recovery
+    db.exec(`
+      -- Suspended agent states for approval recovery across restarts
+      CREATE TABLE IF NOT EXISTS suspended_agent_states (
+        conversation_id TEXT PRIMARY KEY,
+        suspended_state TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      -- Index for expiration cleanup
+      CREATE INDEX IF NOT EXISTS idx_suspended_states_expires
+        ON suspended_agent_states(expires_at);
+    `);
+    logger.debug('Schema', 'Migrated to v8: added suspended_agent_states table');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
