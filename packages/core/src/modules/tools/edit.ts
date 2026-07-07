@@ -248,18 +248,9 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
           bom + newNormalized,
         );
 
-        // 8. Build applied edits info with line numbers
-        const appliedEditsInfo = validated.map(({ edit, position }) => ({
-          oldText: truncate(edit.oldText, 100),
-          newText: truncate(edit.newText, 100),
-          line: getLineFromPosition(normalizedContent, position.start),
-        }));
-
+        // Simplified return: only essential fields for rendering
         return {
           path: filePath,
-          mode: 'multi' as const,
-          editsApplied: appliedEditsInfo.length,
-          edits: appliedEditsInfo,
           diff: diffResult.diff,
           summary: summarizeChanges(diffResult),
         };

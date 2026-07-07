@@ -1356,7 +1356,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                   <SubAgentStream parts={subParts} />
                                 ) : (
                                   <>
-                                    <ToolInput input={toolPart.input} />
+                                    {/* edit_file / read_file / bash / grep: always skip Parameters */}
+                                    {!(
+                                      toolPart.type === 'tool-edit_file' ||
+                                      toolPart.type === 'tool-read_file' ||
+                                      toolPart.type === 'tool-bash' ||
+                                      toolPart.type === 'tool-grep'
+                                    ) && (
+                                      <ToolInput input={toolPart.input} />
+                                    )}
                                     <ToolOutput
                                       output={toolPart.output}
                                       errorText={toolPart.errorText}

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { checkPermissionRules, validateWritePath } from '../../modules/permissions';
 import type { PathValidationOptions } from '../../modules/permissions';
 import type { FileToolOptions } from './read';
+import { generateUnifiedDiff, summarizeChanges } from './utils/diff';
 
 // 文件类型到语言的映射（用于代码高亮）
 const FILE_TYPE_MAP: Record<string, string> = {
@@ -166,48 +167,41 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
     const bytesWritten = Buffer.byteLength(content, 'utf-8');
     const isNewFile = mode !== 'append' && existingContent.length === 0;
 
-    // 分析内容
-    const stats = analyzeContent(content);
-
-    // 检查文件是否已存在
-    let fileExists = false;
-    try {
-      await fs.access(absolutePath);
-      fileExists = true;
-    } catch {
-      // 文件不存在
+    // Generate diff for overwrite/append modes (not for new files)
+    let diffResult: string | undefined;
+    let diffSummary: string | undefined;
+    
+    if (!isNewFile && existingContent.length > 0) {
+      const diff = generateUnifiedDiff(
+        filePath,
+        filePath,
+        existingContent,
+        mode === 'append' ? existingContent + content : content,
+      );
+      if (diff.diff) {
+        diffResult = diff.diff;
+        diffSummary = summarizeChanges(diff);
+      }
     }
 
-    // 构建结果
+    // Simplified return: only essential fields for rendering
     const result: Record<string, unknown> = {
       path: filePath,
-      bytesWritten,
+      size: bytesWritten,
       mode,
       created: isNewFile,
-      exists: fileExists,
-      stats: {
-        lines: stats.lines,
-        words: stats.words,
-        codeLines: stats.codeLines,
-        blankLines: stats.blankLines,
-      },
     };
 
-    // 添加语言信息
+    // Add language info
     const language = getLanguageFromFile(filePath);
     if (language) {
       result.language = language;
     }
 
-    // 添加内容预览（最多 5 行）
-    if (content.length > 0) {
-      result.preview = formatContentPreview(content, 5);
-    }
-
-    // 追加模式时显示原有大小
-    if (mode === 'append' && existingContent.length > 0) {
-      result.previousSize = Buffer.byteLength(existingContent, 'utf-8');
-      result.newTotalSize = Buffer.byteLength(existingContent + content, 'utf-8');
+    // Add diff if available
+    if (diffResult) {
+      result.diff = diffResult;
+      result.summary = diffSummary;
     }
 
     return result;

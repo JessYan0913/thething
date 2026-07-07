@@ -21,8 +21,12 @@ import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
+import { DiffView } from "./diff-view";
+import { FileContent } from "./file-content";
+import { GrepResult } from "./grep-result";
 import { Shimmer } from "./shimmer";
 import { TerminalJson } from "./terminal-json";
+import { TerminalOutput } from "./terminal-output";
 import { WriteFileResult } from "./write-file-result";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
@@ -156,6 +160,71 @@ export const ToolOutput = ({
     return null;
   }
 
+  // edit_file 工具：优先渲染 diff（不显示 Parameters）
+  if (
+    toolType === "tool-edit_file" &&
+    typeof output === "object" &&
+    output !== null &&
+    !isValidElement(output)
+  ) {
+    const out = output as Record<string, unknown>;
+    const diff = out.diff as string | undefined;
+    const summary = out.summary as string | undefined;
+    
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        {summary && (
+          <p className="text-xs text-muted-foreground">{summary}</p>
+        )}
+        {diff ? (
+          <DiffView diff={diff} defaultExpanded={true} />
+        ) : (
+          <TerminalJson data={output} maxLines={50} />
+        )}
+      </div>
+    );
+  }
+
+  // bash 工具：命令行风格渲染
+  if (
+    toolType === "tool-bash" &&
+    typeof output === "object" &&
+    output !== null &&
+    !isValidElement(output)
+  ) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <TerminalOutput output={output as Record<string, unknown>} />
+      </div>
+    );
+  }
+
+  // read_file 工具：代码预览渲染
+  if (toolType === "tool-read_file" && output !== null && !isValidElement(output)) {
+    let parsedOutput: Record<string, unknown>;
+    if (typeof output === "string") {
+      try {
+        parsedOutput = JSON.parse(output);
+      } catch {
+        // 解析失败，使用通用渲染
+        return (
+          <div className={cn("space-y-2", className)} {...props}>
+            <TerminalJson data={output} maxLines={50} />
+          </div>
+        );
+      }
+    } else if (typeof output === "object") {
+      parsedOutput = output as Record<string, unknown>;
+    } else {
+      return null;
+    }
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <FileContent output={parsedOutput} />
+      </div>
+    );
+  }
+
   // write_file 工具特殊渲染
   if (
     toolType === "tool-write_file" &&
@@ -167,6 +236,18 @@ export const ToolOutput = ({
       <div className={cn("space-y-2", className)} {...props}>
         <WriteFileResult
           output={output as Record<string, unknown>}
+          input={toolInput as Record<string, unknown> | undefined}
+        />
+      </div>
+    );
+  }
+
+  // grep 工具：搜索结果渲染
+  if (toolType === "tool-grep" && output !== null && !isValidElement(output)) {
+    return (
+      <div className={cn("space-y-2", className)} {...props}>
+        <GrepResult
+          output={output as string | Record<string, unknown>}
           input={toolInput as Record<string, unknown> | undefined}
         />
       </div>
