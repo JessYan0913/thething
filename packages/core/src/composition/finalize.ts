@@ -44,7 +44,7 @@ export interface FinalizeAgentRunOptions {
 export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<void> {
   const { dataStore, messages, conversationId, costTracker, mcpRegistry } = opts
 
-  // 1. 保存消息
+  // 1. 保存消息（空 assistant 消息已在上游 onEnd 中过滤）
   dataStore.messageStore.saveMessages(conversationId, messages)
 
   // 2-5. 后台任务

@@ -252,8 +252,25 @@ function truncateFromHead(
     startIndex++;
   }
 
+  const result = messages.slice(startIndex);
+
+  // 验证：如果剩余消息仍超过目标预算，递归截断（处理单条超大消息的情况）
+  // 使用更激进的目标：targetMessageTokens 的80%
+  if (result.length > 3 && tokens > targetMessageTokens) {
+    const avgTokensPerMsg = tokens / result.length;
+    // 如果平均每条消息超过目标的50%，说明还有很大的消息需要截断
+    if (avgTokensPerMsg > targetMessageTokens * 0.5) {
+      const furtherTarget = Math.floor(targetMessageTokens * 0.8);
+      const furtherResult = truncateFromHead(result, furtherTarget, { ...estimation, messagesTokens: tokens });
+      return {
+        messages: furtherResult.messages,
+        removed: startIndex + furtherResult.removed,
+      };
+    }
+  }
+
   return {
-    messages: messages.slice(startIndex),
+    messages: result,
     removed: startIndex,
   };
 }

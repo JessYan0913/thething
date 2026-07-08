@@ -171,6 +171,8 @@ export {
   compactBeforeStep,
   manageToolOutputLifecycle,
   estimateMessagesTokens,
+  handleReactiveRetry,
+  isContextLengthError,
 } from './modules/compaction';
 
 // Todos

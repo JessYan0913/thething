@@ -130,3 +130,4 @@ function applyPendingCompactions(messages: UIMessage[], ids: string[]): UIMessag
 export { manageToolOutputLifecycle } from './lifecycle';
 export { estimateMessagesTokens } from './token-counter';
 export { generateConversationTitle } from './title-generator';
+export { handleReactiveRetry, isContextLengthError } from './retry';

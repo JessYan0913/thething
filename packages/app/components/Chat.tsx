@@ -670,13 +670,24 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       }
       return false;
     },
-    onFinish: async ({ messages: finishedMessages }) => {
+    onFinish: async ({ messages: finishedMessages, isError, isDisconnect }) => {
+      // 流失败/断连时不保存，避免空 assistant 消息污染 store
+      if (isError || isDisconnect) {
+        console.warn(`[Chat] Stream failed (error=${isError}, disconnect=${isDisconnect}), skipping save`);
+        return;
+      }
+
       const endpoint = apiEndpoint || '/api/chat';
       try {
+        // 过滤空 assistant 消息（防御性检查）
+        const validMessages = finishedMessages.filter(
+          (m) => !(m.role === 'assistant' && (!m.parts || m.parts.length === 0)),
+        );
+
         const res = await fetch(endpoint, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId, messages: finishedMessages }),
+          body: JSON.stringify({ conversationId, messages: validMessages }),
         });
         if (!res.ok) {
           console.error('[Chat] Failed to save messages');

@@ -6,6 +6,8 @@ import {
   createAgent,
   generateConversationTitle,
   finalizeAgentRun,
+  handleReactiveRetry,
+  isContextLengthError,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -205,6 +207,53 @@ export async function POST(request: Request) {
 
     const abortController = new AbortController();
 
+    // onEnd 回调：流结束时保存消息（成功时保存，失败/0 chunks 时跳过）
+    const onEndHandler = async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+      try {
+        store.agentRunStore.completeRun(conversationId);
+        store.agentRunStore.clearChunks(conversationId);
+
+        const newAssistantMessages = completedMessages.slice(llmMessages.length);
+        const hasValidNewMessages = newAssistantMessages.some(
+          (m) => m.role === 'assistant' && m.parts && m.parts.length > 0,
+        );
+
+        if (!hasValidNewMessages) {
+          console.warn(
+            `[Chat API] Stream produced no valid assistant messages, skipping save.\n` +
+            `  Conversation: ${conversationId}\n` +
+            `  Messages sent to LLM: ${finalMessages.length}\n` +
+            `  Message roles: ${finalMessages.map((m) => m.role).join(' → ')}`,
+          );
+          return;
+        }
+
+        const messagesToSave = [...messages, ...newAssistantMessages];
+        console.log(
+          `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+        );
+
+        const costSummary = sessionState.costTracker.getSummary();
+        console.log(
+          `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
+        );
+
+        await finalizeAgentRun({
+          dataStore: store,
+          messages: messagesToSave,
+          conversationId,
+          costTracker: sessionState.costTracker,
+          mcpRegistry,
+          model,
+          isNewConversation: isFirstMessage,
+          userId,
+          wikiBaseDir,
+        });
+      } catch (err) {
+        console.error('[Chat API] onFinish error:', err);
+      }
+    };
+
     // 创建可恢复流
     const resumableStream = await streamManager.createNewResumableStream(
       conversationId,
@@ -214,45 +263,47 @@ export async function POST(request: Request) {
         const stream = new ReadableStream<string>({
           start: async (controller) => {
             try {
-              const agentStream = await createAgentUIStream({
-                agent,
-                uiMessages: finalMessages,
-                abortSignal: abortController.signal,
-                sendReasoning: true,
-                onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+              let agentStream;
+              try {
+                agentStream = await createAgentUIStream({
+                  agent,
+                  uiMessages: finalMessages,
+                  abortSignal: abortController.signal,
+                  sendReasoning: true,
+                  onEnd: onEndHandler,
+                });
+              } catch (streamErr) {
+                // context_length_error：压缩消息后重试
+                if (isContextLengthError(streamErr)) {
+                  console.warn(`[Chat API] Context length error, attempting reactive retry for ${conversationId}`);
                   try {
-                    // 标记 agent run 完成并清理 stream chunks
-                    store.agentRunStore.completeRun(conversationId);
-                    store.agentRunStore.clearChunks(conversationId);
-
-                    const newAssistantMessages = completedMessages.slice(llmMessages.length);
-                    const messagesToSave = [...messages, ...newAssistantMessages];
-
-                    console.log(
-                      `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+                    const retryResult = await handleReactiveRetry(
+                      streamErr,
+                      finalMessages,
+                      undefined, // 使用默认 compaction config
+                      {
+                        model: model!,
+                        modelName: modelName || getModelConfig().modelName || '',
+                        conversationId,
+                        dataStore: store,
+                      },
                     );
-
-                    const costSummary = sessionState.costTracker.getSummary();
-                    console.log(
-                      `[Cost] Total: $${costSummary.totalCostUsd.toFixed(6)} | Input: ${costSummary.inputTokens} | Output: ${costSummary.outputTokens}`,
-                    );
-
-                    await finalizeAgentRun({
-                      dataStore: store,
-                      messages: messagesToSave,
-                      conversationId,
-                      costTracker: sessionState.costTracker,
-                      mcpRegistry,
-                      model,
-                      isNewConversation: isFirstMessage,
-                      userId,
-                      wikiBaseDir,
+                    console.log(`[Chat API] Reactive retry: compressed ${finalMessages.length} → ${retryResult.messages.length} messages`);
+                    agentStream = await createAgentUIStream({
+                      agent,
+                      uiMessages: retryResult.messages,
+                      abortSignal: abortController.signal,
+                      sendReasoning: true,
+                      onEnd: onEndHandler,
                     });
-                  } catch (err) {
-                    console.error('[Chat API] onFinish error:', err);
+                  } catch (retryErr) {
+                    console.error('[Chat API] Reactive retry failed:', retryErr);
+                    throw streamErr; // 重试也失败，抛出原始错误
                   }
-                },
-              });
+                } else {
+                  throw streamErr; // 非 context_length_error，直接抛出
+                }
+              }
 
               // 读取代理流并序列化为 JSON 字符串后发送到控制器
               const reader = agentStream.getReader();
@@ -273,6 +324,15 @@ export async function POST(request: Request) {
               console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
               controller.close();
             } catch (error) {
+              // 记录错误详情，便于排查
+              const errStr = String(error);
+              const isCtxErr = isContextLengthError(error);
+              console.error(
+                `[Chat API] Stream creation failed for ${conversationId}:\n` +
+                `  Type: ${isCtxErr ? 'context_length_exceeded' : 'unknown'}\n` +
+                `  Error: ${errStr.slice(0, 200)}\n` +
+                `  Messages: ${finalMessages.length}`,
+              );
               controller.error(error);
             }
           },
@@ -336,8 +396,16 @@ export async function PATCH(request: Request) {
     if (!body.conversationId || !body.messages) {
       return NextResponse.json({ error: 'Missing conversationId or messages' }, { status: 400 });
     }
+    // 过滤掉空 parts 的 assistant 消息（流返回 0 chunks 时前端可能产生空消息）
+    const filteredMessages = body.messages.filter((m) => {
+      if (m.role === 'assistant' && (!m.parts || m.parts.length === 0)) {
+        console.warn(`[Chat API PATCH] Filtering out empty assistant message: ${m.id}`);
+        return false;
+      }
+      return true;
+    });
     const rt = await getServerRuntime();
-    rt.dataStore.messageStore.saveMessages(body.conversationId, body.messages);
+    rt.dataStore.messageStore.saveMessages(body.conversationId, filteredMessages);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Chat API] PATCH error:', error);

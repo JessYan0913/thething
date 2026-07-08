@@ -2,8 +2,8 @@
 
 /**
  * TodoPanel - Todo list display component
- * 
- * Displays todos grouped by status with actions.
+ *
+ * Displays todos in a single list with in-progress items at top.
  * Uses the existing UI component patterns (shadcn-style with Radix UI).
  */
 
@@ -13,21 +13,11 @@ import type { Todo, TodoStatus } from "@/lib/todos/types";
 import { STATUS_CONFIG, STATUS_STYLES } from "@/lib/todos/types";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
   Clock,
   CheckCircle,
   XCircle,
   Loader2,
   AlertCircle,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
 
 /**
@@ -64,6 +54,17 @@ const STATUS_ICONS: Record<TodoStatus, React.ReactNode> = {
 };
 
 /**
+ * Status sort order - in_progress first
+ */
+const STATUS_ORDER: Record<TodoStatus, number> = {
+  in_progress: 0,
+  pending: 1,
+  failed: 2,
+  completed: 3,
+  cancelled: 4,
+};
+
+/**
  * TodoPanel component
  */
 export function TodoPanel({
@@ -76,148 +77,55 @@ export function TodoPanel({
   onTodoClick,
   className,
 }: TodoPanelProps) {
-  // Group todos by status
-  const todosByStatus = React.useMemo(() => {
-    const groups: Record<TodoStatus, Todo[]> = {
-      pending: [],
-      in_progress: [],
-      completed: [],
-      failed: [],
-      cancelled: [],
-    };
-    
-    for (const todo of todos) {
-      groups[todo.status].push(todo);
-    }
-    
-    return groups;
+  // Sort todos: in_progress first, then by status order
+  const sortedTodos = React.useMemo(() => {
+    return [...todos].sort((a, b) => {
+      const orderDiff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+      if (orderDiff !== 0) return orderDiff;
+      // Within same status, newest first
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
   }, [todos]);
 
-  return (
-    <div className={cn("flex flex-col gap-4", className)}>
-      {/* In Progress */}
-      <TodoSection
-        title="In Progress"
-        icon={STATUS_ICONS.in_progress}
-        todos={todosByStatus.in_progress}
-        actions={[
-          { label: "Complete", onClick: onComplete },
-          { label: "Stop", onClick: onStop },
-        ]}
-        onTodoClick={onTodoClick}
-        defaultOpen={true}
-      />
-
-      {/* Pending */}
-      <TodoSection
-        title="Pending"
-        icon={STATUS_ICONS.pending}
-        todos={todosByStatus.pending}
-        actions={onClaim ? [{ label: "Claim", onClick: onClaim }] : []}
-        onTodoClick={onTodoClick}
-        defaultOpen={true}
-        showBlockedBy
-      />
-
-      {/* Completed */}
-      <TodoSection
-        title="Completed"
-        icon={STATUS_ICONS.completed}
-        todos={todosByStatus.completed}
-        onTodoClick={onTodoClick}
-        defaultOpen={false}
-      />
-
-      {/* Failed */}
-      {todosByStatus.failed.length > 0 && (
-        <TodoSection
-          title="Failed"
-          icon={STATUS_ICONS.failed}
-          todos={todosByStatus.failed}
-          actions={[
+  // Get actions based on todo status
+  const getActions = React.useCallback(
+    (todo: Todo) => {
+      switch (todo.status) {
+        case "in_progress":
+          return [
+            { label: "Complete", onClick: onComplete },
+            { label: "Stop", onClick: onStop },
+          ];
+        case "pending":
+          return onClaim ? [{ label: "Claim", onClick: onClaim }] : [];
+        case "failed":
+          return [
             ...(onRetry ? [{ label: "Retry", onClick: onRetry }] : []),
             { label: "Delete", onClick: onDelete },
-          ]}
-          onTodoClick={onTodoClick}
-          defaultOpen={false}
-        />
-      )}
-
-      {/* Cancelled */}
-      {todosByStatus.cancelled.length > 0 && (
-        <TodoSection
-          title="Cancelled"
-          icon={STATUS_ICONS.cancelled}
-          todos={todosByStatus.cancelled}
-          actions={[{ label: "Delete", onClick: onDelete }]}
-          onTodoClick={onTodoClick}
-          defaultOpen={false}
-        />
-      )}
-    </div>
+          ];
+        case "cancelled":
+          return [{ label: "Delete", onClick: onDelete }];
+        default:
+          return [];
+      }
+    },
+    [onClaim, onComplete, onStop, onDelete, onRetry]
   );
-}
 
-/**
- * TodoSection Props
- */
-interface TodoSectionProps {
-  title: string;
-  icon: React.ReactNode;
-  todos: Todo[];
-  actions?: Array<{ label: string; onClick: (todoId: string) => void }>;
-  onTodoClick?: (todo: Todo) => void;
-  defaultOpen?: boolean;
-  showBlockedBy?: boolean;
-}
-
-/**
- * Collapsible todo section
- */
-function TodoSection({
-  title,
-  icon,
-  todos,
-  actions = [],
-  onTodoClick,
-  defaultOpen = true,
-  showBlockedBy = false,
-}: TodoSectionProps) {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen);
-
-  if (todos.length === 0) return null;
+  if (sortedTodos.length === 0) return null;
 
   return (
-    <div className="border rounded-lg overflow-hidden">
-      {/* Section Header */}
-      <button
-        className="flex items-center gap-2 w-full px-4 py-3 bg-muted/50 hover:bg-muted transition-colors"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        )}
-        {icon}
-        <span className="font-medium">{title}</span>
-        <span className="text-sm text-muted-foreground">({todos.length})</span>
-      </button>
-
-      {/* Section Content */}
-      {isOpen && (
-        <div className="divide-y">
-          {todos.map((todo) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              actions={actions}
-              onClick={() => onTodoClick?.(todo)}
-              showBlockedBy={showBlockedBy}
-            />
-          ))}
-        </div>
-      )}
+    <div className={cn("border rounded-lg overflow-hidden", className)}>
+      <div className="divide-y">
+        {sortedTodos.map((todo) => (
+          <TodoItem
+            key={todo.id}
+            todo={todo}
+            actions={getActions(todo)}
+            onClick={() => onTodoClick?.(todo)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -229,13 +137,12 @@ interface TodoItemProps {
   todo: Todo;
   actions: Array<{ label: string; onClick: (todoId: string) => void }>;
   onClick?: () => void;
-  showBlockedBy?: boolean;
 }
 
 /**
  * Single todo item
  */
-function TodoItem({ todo, actions, onClick, showBlockedBy }: TodoItemProps) {
+function TodoItem({ todo, actions, onClick }: TodoItemProps) {
   const config = STATUS_CONFIG[todo.status];
 
   return (
@@ -265,7 +172,7 @@ function TodoItem({ todo, actions, onClick, showBlockedBy }: TodoItemProps) {
         )}
 
         {/* Blocked By */}
-        {showBlockedBy && todo.blockedBy.length > 0 && (
+        {todo.blockedBy.length > 0 && (
           <p className="text-sm text-amber-600 mt-1">
             Blocked by: {todo.blockedBy.join(", ")}
           </p>

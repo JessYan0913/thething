@@ -3,7 +3,7 @@
 /**
  * TodoPanel - Fetches and displays todos from API
  * 
- * Displays todos in collapsible sections grouped by status.
+ * Single list sorted by status: in_progress first, then others.
  */
 
 import * as React from "react";
@@ -19,7 +19,6 @@ import {
   XCircle,
   Loader2,
   AlertCircle,
-  ChevronDownIcon,
 } from "lucide-react";
 
 interface TodoStats {
@@ -51,6 +50,14 @@ const STATUS_COLORS: Record<TodoStatus, string> = {
   cancelled: "text-gray-400",
 };
 
+const STATUS_PRIORITY: Record<TodoStatus, number> = {
+  in_progress: 0,
+  pending: 1,
+  completed: 2,
+  failed: 3,
+  cancelled: 4,
+};
+
 export function TodoPanel({ conversationId }: { conversationId: string }) {
   const [todos, setTodos] = React.useState<Todo[]>([]);
   const [stats, setStats] = React.useState<TodoStats | null>(null);
@@ -75,26 +82,18 @@ export function TodoPanel({ conversationId }: { conversationId: string }) {
     }
   }, [conversationId]);
 
-  // Poll for todo updates
   React.useEffect(() => {
     fetchTodos();
     const interval = setInterval(fetchTodos, 5000);
     return () => clearInterval(interval);
   }, [fetchTodos]);
 
-  // Group todos by status
-  const todosByStatus = React.useMemo(() => {
-    const groups: Record<TodoStatus, Todo[]> = {
-      pending: [],
-      in_progress: [],
-      completed: [],
-      failed: [],
-      cancelled: [],
-    };
-    for (const todo of todos) {
-      groups[todo.status].push(todo);
-    }
-    return groups;
+  const sortedTodos = React.useMemo(() => {
+    return [...todos].sort((a, b) => {
+      const diff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
+      if (diff !== 0) return diff;
+      return b.createdAt - a.createdAt;
+    });
   }, [todos]);
 
   const totalTodos = stats
@@ -109,7 +108,6 @@ export function TodoPanel({ conversationId }: { conversationId: string }) {
     );
   }
 
-  // Only show panel when there are todos
   if (totalTodos === 0) {
     return null;
   }
@@ -118,84 +116,13 @@ export function TodoPanel({ conversationId }: { conversationId: string }) {
     <div className="shrink-0 bg-background/95 backdrop-blur">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleContent>
-          <div className="px-3 pb-3 space-y-2 max-h-64 overflow-y-auto">
-            {/* In Progress */}
-            {todosByStatus.in_progress.length > 0 && (
-              <TodoSection
-                title="In Progress"
-                todos={todosByStatus.in_progress}
-                icon={STATUS_ICONS.in_progress}
-              />
-            )}
-
-            {/* Pending */}
-            {todosByStatus.pending.length > 0 && (
-              <TodoSection
-                title="Pending"
-                todos={todosByStatus.pending}
-                icon={STATUS_ICONS.pending}
-              />
-            )}
-
-            {/* Completed */}
-            {todosByStatus.completed.length > 0 && (
-              <TodoSection
-                title="Completed"
-                todos={todosByStatus.completed}
-                icon={STATUS_ICONS.completed}
-                defaultCollapsed
-              />
-            )}
-
-            {/* Failed */}
-            {todosByStatus.failed.length > 0 && (
-              <TodoSection
-                title="Failed"
-                todos={todosByStatus.failed}
-                icon={STATUS_ICONS.failed}
-                defaultCollapsed
-              />
-            )}
+          <div className="px-3 pb-3 max-h-64 overflow-y-auto divide-y">
+            {sortedTodos.map((todo) => (
+              <TodoItem key={todo.id} todo={todo} />
+            ))}
           </div>
         </CollapsibleContent>
       </Collapsible>
-    </div>
-  );
-}
-
-interface TodoSectionProps {
-  title: string;
-  todos: Todo[];
-  icon: React.ReactNode;
-  defaultCollapsed?: boolean;
-}
-
-function TodoSection({ title, todos, icon, defaultCollapsed }: TodoSectionProps) {
-  const [isOpen, setIsOpen] = React.useState(!defaultCollapsed);
-
-  if (todos.length === 0) return null;
-
-  return (
-    <div className="border rounded-lg overflow-hidden">
-      <button
-        className="flex items-center gap-2 w-full px-3 py-2 bg-muted/50 hover:bg-muted transition-colors"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {icon}
-        <span className="text-sm font-medium">{title}</span>
-        <span className="text-xs text-muted-foreground">({todos.length})</span>
-        <ChevronDownIcon className={cn(
-          "h-3 w-3 ml-auto transition-transform",
-          isOpen ? "rotate-180" : ""
-        )} />
-      </button>
-      {isOpen && (
-        <div className="divide-y">
-          {todos.map((todo) => (
-            <TodoItem key={todo.id} todo={todo} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

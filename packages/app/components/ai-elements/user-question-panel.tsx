@@ -116,7 +116,7 @@ export function UserQuestionPanel({
   return (
     <div className='shrink-0 bg-background/95 backdrop-blur'>
       <div className='px-4 py-3'>
-        {/* 问题标题行 */}
+        {/* Question */}
         <div className='flex items-center justify-between gap-2 mb-3'>
           <p className='text-sm font-medium'>{currentQuestion.question}</p>
           <button
