@@ -223,7 +223,11 @@ export {
   addMcpServerConfig,
   updateMcpServerConfig,
   deleteMcpServerConfig,
+  readMCPAppResource,
+  splitMCPAppTools,
+  mcpAppClientCapabilities,
 } from './modules/mcp';
+export type { MCPAppResource } from '@ai-sdk/mcp';
 
 // Connector types
 export type { ConnectorFrontmatter } from './modules/connector/loader';

@@ -56,10 +56,12 @@ export interface McpServerConfigSource extends McpServerConfig {
 
 export interface McpClientConnection {
   config: McpServerConfig;
-  client: unknown; // MCPClient from @ai-sdk/mcp
+  client: import('@ai-sdk/mcp').MCPClient | null;
   tools: Record<string, unknown>; // ToolSet from ai
   connectedAt: number;
   error?: Error;
+  /** 自动重连尝试次数（用于退避计算） */
+  reconnectAttempts?: number;
 }
 
 export interface ToolInfo {
@@ -153,3 +155,38 @@ export const McpServerConfigSchema = z.object({
   tools: ToolsFilterSchema,
   elicitation: ElicitationSchema,
 });
+
+// ============================================================
+// MCP Apps 相关类型
+// ============================================================
+
+/**
+ * MCP App 元数据
+ */
+export interface MCPAppMetadata {
+  resourceUri: string;
+  mimeType: string;
+  sandboxConfig?: MCPAppSandboxConfig;
+}
+
+/**
+ * MCP App 沙箱配置
+ */
+export interface MCPAppSandboxConfig {
+  url: string;
+  className?: string;
+  style?: Record<string, unknown>;
+}
+
+// MCPAppResource 从 @ai-sdk/mcp 导出，不再本地定义
+// 使用: import type { MCPAppResource } from '@the-thing/core'
+
+/**
+ * MCP App 桥接处理器
+ */
+export interface MCPAppBridgeHandlers {
+  callTool: (params: { name: string; arguments: Record<string, unknown> }) => Promise<unknown>;
+  openLink: (params: { url: string }) => void;
+}
+
+// MCPAppToolSplitResult 已移除，getAllToolsWithAppVisibility 直接返回内联类型

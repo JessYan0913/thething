@@ -40,8 +40,10 @@ import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
-import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type ToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
+import { useChat, experimental_MCPAppRenderer as MCPAppRenderer, type MCPAppMetadata, type MCPAppBridgeHandlers } from '@ai-sdk/react';
+import type { MCPAppResource } from '@the-thing/core';
+import type { CSSProperties } from 'react';
+import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
@@ -58,6 +60,35 @@ const CONVERSATION_ID_KEY = 'chat_conversation_id';
 const SELECTED_MODEL_KEY = 'chat_selected_model';
 const SELECTED_AGENT_KEY = 'chat_selected_agent';
 const SELECTED_APPROVAL_MODE_KEY = 'chat_approval_mode';
+
+// MCP Apps 资源加载函数
+const loadResource = async (app: MCPAppMetadata): Promise<MCPAppResource> => {
+  const response = await fetch('/api/mcp-app-host', {
+    method: 'POST',
+    body: JSON.stringify({ 
+      action: 'read-resource', 
+      uri: app.resourceUri 
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to load MCP App resource');
+  }
+  
+  return response.json() as Promise<MCPAppResource>;
+};
+
+// MCP Apps 处理器
+const handlers: MCPAppBridgeHandlers = {
+  callTool: (params) =>
+    fetch('/api/mcp-app-host', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'call-tool', ...params }),
+    }).then(response => response.json()),
+  openLink: (params) => {
+    window.open(params.url, '_blank', 'noopener,noreferrer');
+  },
+};
 
 const TODO_TOOL_TYPES = new Set([
   'tool-todo_create',
@@ -1290,6 +1321,29 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
                             const toolPart = part as ToolUIPart;
+                            
+                            // MCP App 工具渲染：仅当 toolMetadata 包含 app 元数据时渲染
+                            if (isToolUIPart(part)) {
+                              const toolMeta = part.toolMetadata as Record<string, unknown> | undefined;
+                              const appMeta = toolMeta?.app as Record<string, unknown> | undefined;
+                              const isMcpApp = appMeta?.mimeType === 'text/html;profile=mcp-app' && typeof appMeta?.resourceUri === 'string';
+                              if (isMcpApp) {
+                                return (
+                                  <MCPAppRenderer
+                                    key={`${message.id}-${index}`}
+                                    part={part}
+                                    loadResource={loadResource}
+                                    handlers={handlers}
+                                    sandbox={{
+                                      url: '/mcp-app-sandbox',
+                                      className: 'h-80 w-full rounded-lg border',
+                                      style: { border: 0 } as CSSProperties,
+                                    }}
+                                    fallback={<div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Loading MCP App...</div>}
+                                  />
+                                );
+                              }
+                            }
 
                           if (TODO_TOOL_TYPES.has(toolPart.type)) {
                             return null;
@@ -1482,7 +1536,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       {isInitialLoadDone && (
         <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
           <div className="mx-auto max-w-3xl space-y-2">
-            {conversationId && <TodoPanel conversationId={conversationId} />}
+            {conversationId && !questionPanel && approvalRequests.length === 0 && (
+              <TodoPanel conversationId={conversationId} />
+            )}
 
             {questionPanel && (
               <UserQuestionPanel

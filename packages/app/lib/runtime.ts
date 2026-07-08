@@ -8,6 +8,14 @@ let runtime: CoreRuntime | null = null;
 let context: AppContext | null = null;
 let initPromise: Promise<CoreRuntime> | null = null;
 
+/**
+ * MCP 连接就绪的 Promise。
+ * 由 initializeRuntime() 设置，在 connectAll() 完成后 resolve。
+ * MCP API 路由等待此 Promise 以确保返回准确的连接状态。
+ */
+let mcpReadyPromise: Promise<void> | null = null;
+let mcpReadyResolve: (() => void) | null = null;
+
 /** 启动时缓存的全局配置，供 getModelConfig() 使用 */
 let cachedGlobalConfig: GlobalConfig | null = null;
 
@@ -166,8 +174,18 @@ async function initializeRuntime(): Promise<CoreRuntime> {
 
   // 后台异步连接所有 MCP 服务，不阻塞启动流程。
   // 连接状态通过 registry.snapshot() 由调用方按需获取。
+  // MCP API 路由通过 mcpReadyPromise 等待连接完成。
   if (context.mcpRegistry) {
-    context.mcpRegistry.connectAll().catch(() => {});
+    mcpReadyPromise = new Promise<void>((resolve) => {
+      mcpReadyResolve = resolve;
+    });
+    context.mcpRegistry.connectAll()
+      .then(() => mcpReadyResolve?.())
+      .catch(() => mcpReadyResolve?.())  // 即使失败也 resolve，让 API 可以返回错误状态
+      .finally(() => {
+        mcpReadyPromise = null;
+        mcpReadyResolve = null;
+      });
   }
 
   // Wire up connector inbound: bind AI agent handler to Feishu/WeChat webhooks
@@ -216,6 +234,17 @@ export async function getServerRuntime(): Promise<CoreRuntime> {
  */
 export function getServerContextIfReady(): AppContext | null {
   return context;
+}
+
+/**
+ * 等待 MCP 连接完成。
+ * 如果连接已在进行中，返回当前的 Promise；否则立即 resolve。
+ * MCP API 路由使用此函数确保返回准确的连接状态。
+ */
+export async function waitForMcpReady(): Promise<void> {
+  if (mcpReadyPromise) {
+    await mcpReadyPromise;
+  }
 }
 
 export async function getServerContext(): Promise<AppContext> {

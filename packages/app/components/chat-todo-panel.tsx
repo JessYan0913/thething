@@ -4,6 +4,7 @@
  * TodoPanel - Fetches and displays todos from API
  * 
  * Single list sorted by status: in_progress first, then others.
+ * When all todos are done, shows collapsed summary.
  */
 
 import * as React from "react";
@@ -11,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { Todo, TodoStatus } from "@/lib/todos/types";
 import {
   Collapsible,
+  CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 import {
@@ -19,6 +21,7 @@ import {
   XCircle,
   Loader2,
   AlertCircle,
+  ChevronDownIcon,
 } from "lucide-react";
 
 interface TodoStats {
@@ -57,6 +60,10 @@ const STATUS_PRIORITY: Record<TodoStatus, number> = {
   failed: 3,
   cancelled: 4,
 };
+
+function isDoneStatus(status: TodoStatus): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
 
 export function TodoPanel({ conversationId }: { conversationId: string }) {
   const [todos, setTodos] = React.useState<Todo[]>([]);
@@ -100,6 +107,17 @@ export function TodoPanel({ conversationId }: { conversationId: string }) {
     ? stats.pending + stats.in_progress + stats.completed + stats.failed + stats.cancelled
     : 0;
 
+  const activeCount = stats ? stats.pending + stats.in_progress : 0;
+  const doneCount = stats ? stats.completed + stats.failed + stats.cancelled : 0;
+  const allDone = totalTodos > 0 && activeCount === 0;
+
+  // Auto-collapse when all done
+  React.useEffect(() => {
+    if (allDone) {
+      setIsOpen(false);
+    }
+  }, [allDone]);
+
   if (error) {
     return (
       <div className="shrink-0 border-b p-3 bg-destructive/10 text-destructive text-sm">
@@ -112,6 +130,32 @@ export function TodoPanel({ conversationId }: { conversationId: string }) {
     return null;
   }
 
+  // All done - show collapsed summary
+  if (allDone) {
+    return (
+      <div className="shrink-0 bg-background/95 backdrop-blur">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            <span>任务已完成 ({doneCount})</span>
+            <ChevronDownIcon className={cn(
+              "h-3 w-3 ml-auto transition-transform",
+              isOpen ? "rotate-180" : ""
+            )} />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-3 pb-3 max-h-64 overflow-y-auto divide-y opacity-60">
+              {sortedTodos.map((todo) => (
+                <TodoItem key={todo.id} todo={todo} />
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+    );
+  }
+
+  // Active todos - show expanded
   return (
     <div className="shrink-0 bg-background/95 backdrop-blur">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>

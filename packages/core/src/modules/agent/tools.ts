@@ -22,7 +22,7 @@ import {
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
-import { createMcpRegistry, type McpRegistry, wrapMcpToolWithOutputHandler } from '../../modules/mcp'
+import { createMcpRegistry, type McpRegistry, wrapMcpToolWithOutputHandler, wrapMcpAppTool } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
 import type { LoadToolsConfig } from './types'
 
@@ -150,18 +150,42 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         for (const [serverName, connection] of activeRegistry.connections) {
           if (!connection.tools) continue
           for (const [toolName, toolDef] of Object.entries(connection.tools)) {
+            // 跳过 app-only 工具（仅供 iframe 内部调用，不传给 LLM）
+            const visibility = (toolDef as { _meta?: { ui?: { visibility?: string[] } } })?._meta?.ui?.visibility
+            if (Array.isArray(visibility) && visibility.includes('app') && !visibility.includes('model')) {
+              continue
+            }
             const qualifiedName = `mcp__${serverName}__${toolName}`
             if (!(qualifiedName in tools)) {
-              tools[qualifiedName] = wrapMcpToolWithOutputHandler(
-                toolDef as Tool,
-                qualifiedName,
-                {
-                  sessionId: config.conversationId,
-                  dataDir: config.sessionState.layout.dataDir,
-                  contentReplacementState: config.sessionState.contentReplacementState,
-                  toolOutputConfig: config.sessionState.toolOutputConfig,
-                },
-              )
+              // 检测 MCP App 工具（包含 resourceUri）
+              const resourceUri = (toolDef as { _meta?: { ui?: { resourceUri?: string } } })?._meta?.ui?.resourceUri
+
+              const wrapOptions = {
+                sessionId: config.conversationId,
+                dataDir: config.sessionState.layout.dataDir,
+                contentReplacementState: config.sessionState.contentReplacementState,
+                toolOutputConfig: config.sessionState.toolOutputConfig,
+              }
+
+              if (resourceUri && connection.client) {
+                // MCP App 工具：使用预加载包装器
+                tools[qualifiedName] = wrapMcpAppTool(
+                  toolDef as Tool,
+                  qualifiedName,
+                  {
+                    ...wrapOptions,
+                    resourceUri,
+                    client: connection.client as any,
+                  },
+                )
+              } else {
+                // 普通 MCP 工具：使用标准包装器
+                tools[qualifiedName] = wrapMcpToolWithOutputHandler(
+                  toolDef as Tool,
+                  qualifiedName,
+                  wrapOptions,
+                )
+              }
             }
           }
         }

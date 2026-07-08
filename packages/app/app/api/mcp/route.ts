@@ -1,4 +1,4 @@
-import { getServerRuntime, getServerContext, getServerContextIfReady } from '@/lib/runtime';
+import { getServerRuntime, getServerContext, getServerContextIfReady, waitForMcpReady } from '@/lib/runtime';
 import {
   getMcpServerConfigs,
   getMcpServerConfig,
@@ -34,6 +34,9 @@ export async function GET(request: Request) {
       }
 
       if (connect) {
+        // 等待 MCP 连接完成
+        await waitForMcpReady();
+
         // 优先查共享 registry 的实时状态（已在启动时连接）
         const context = getServerContextIfReady() ?? await getServerContext();
         if (context.mcpRegistry) {
@@ -68,6 +71,10 @@ export async function GET(request: Request) {
 
     // 列表视图：从磁盘读取配置，不依赖运行时初始化
     const configs = await getMcpServerConfigs(process.cwd());
+
+    // 等待 MCP 连接完成，确保返回准确的连接状态
+    await waitForMcpReady();
+
     // Try to get snapshot without forcing runtime init
     const ctx = getServerContextIfReady();
     const snapshot = ctx?.mcpRegistry?.snapshot() ?? null;

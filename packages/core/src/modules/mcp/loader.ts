@@ -5,8 +5,89 @@
 // 通过 .agents/mcp.json 单文件（mcpServers 格式）管理。
 // ============================================================
 
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { McpServerConfig } from './types';
 import { logger } from '../../primitives/logger';
+
+const execFileAsync = promisify(execFile);
+
+// ============================================================
+// PATH Resolution (从 registry.ts 移入，配置加载阶段一次性完成)
+// ============================================================
+
+/** 缓存：command → 绝对路径 */
+const _resolvedCommandCache = new Map<string, string>();
+/** 缓存：完整 PATH 字符串 */
+let _resolvedFullPath: string | null | undefined; // undefined=未初始化
+
+/**
+ * 通过用户登录 shell 解析完整 PATH。
+ * Electron 桌面应用的 process.env.PATH 通常只有系统默认值，
+ * 不含 nvm / Homebrew / conda 等通过 shell profile 注入的路径。
+ */
+async function resolveUserPath(): Promise<string | null> {
+  if (_resolvedFullPath !== undefined) return _resolvedFullPath;
+
+  const shell = process.env.SHELL || '/bin/zsh';
+  const shellName = shell.split('/').pop() ?? 'zsh';
+  const currentPath = process.env.PATH || '';
+
+  logger.debug('MCP', `Resolving user PATH via ${shell}`);
+
+  try {
+    const { stdout } = await execFileAsync(shell, ['-l', '-c', 'echo "$PATH"'], {
+      timeout: 10_000,
+      env: process.env as Record<string, string>,
+    });
+
+    const resolved = stdout.trim();
+    if (resolved && resolved !== currentPath) {
+      _resolvedFullPath = resolved;
+      logger.debug('MCP', `Resolved user PATH via ${shellName} (${resolved.length} chars)`);
+      return resolved;
+    }
+
+    logger.debug('MCP', `User PATH same as process PATH, no override needed`);
+  } catch (err) {
+    logger.error('MCP', `Failed to resolve PATH via ${shellName}: ${err instanceof Error ? err.message : err}`);
+  }
+
+  _resolvedFullPath = null;
+  return null;
+}
+
+/**
+ * 解析命令的绝对路径（如 npx → /Users/xxx/.nvm/.../bin/npx）。
+ * 优先使用缓存，未缓存时通过用户登录 shell 的 which 命令解析。
+ */
+async function resolveCommand(command: string): Promise<string> {
+  // 已是绝对路径，直接返回
+  if (command.startsWith('/')) return command;
+  // 已缓存，直接返回
+  const cached = _resolvedCommandCache.get(command);
+  if (cached) return cached;
+
+  const shell = process.env.SHELL || '/bin/zsh';
+
+  try {
+    const { stdout } = await execFileAsync(shell, ['-l', '-c', `which ${command}`], {
+      timeout: 5_000,
+      env: process.env as Record<string, string>,
+    });
+
+    const fullPath = stdout.trim();
+    if (fullPath && fullPath.startsWith('/') && !fullPath.includes('not found')) {
+      _resolvedCommandCache.set(command, fullPath);
+      logger.debug('MCP', `Resolved command '${command}' → ${fullPath}`);
+      return fullPath;
+    }
+  } catch {}
+
+  // 解析失败，返回原始命令名（让 spawn 按系统 PATH 查找）
+  logger.debug('MCP', `Could not resolve '${command}', using as-is`);
+  return command;
+}
 
 // ============================================================
 // Public API
@@ -103,7 +184,21 @@ async function loadDotAgentsMcpJson(homeDir?: string, cwd?: string): Promise<Mcp
     }
   }
 
-  return Array.from(merged.values());
+  // 预解析 stdio 命令的绝对路径和用户完整 PATH
+  const configs = Array.from(merged.values());
+  const userPath = await resolveUserPath();
+
+  for (const config of configs) {
+    if (config.transport.type === 'stdio') {
+      config.transport.command = await resolveCommand(config.transport.command);
+      // 注入用户完整 PATH（如果配置中没有显式设置）
+      if (userPath && !config.transport.env?.PATH) {
+        config.transport.env = { ...config.transport.env, PATH: userPath };
+      }
+    }
+  }
+
+  return configs;
 }
 
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
