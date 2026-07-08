@@ -4,6 +4,23 @@ import type { ToolSet } from 'ai';
 import type { McpServerConfig, McpClientConnection, McpRegistrySnapshot } from './types';
 import { logger } from '../../primitives/logger';
 
+// ============================================================
+// 超时工具
+// ============================================================
+
+/** 带超时的 Promise */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
+/** 默认连接超时（毫秒） */
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
+
 // ------------------------------------------------------------------
 // MCP Registry — 管理 MCP 服务器连接和工具
 // ------------------------------------------------------------------
@@ -26,32 +43,43 @@ export class McpRegistry {
 
   async connectAll(): Promise<void> {
     const enabledServers = this._servers.filter((s) => s.enabled !== false);
+    const totalTimeoutMs = 30_000; // 整体超时 30 秒
 
-    // 1. Always-load servers — 必须成功，失败则抛出错误
-    const alwaysLoadServers = enabledServers.filter(
-      (s) => s.alwaysLoad && s.autoConnect !== false,
-    );
-    for (const server of alwaysLoadServers) {
-      const conn = await this.connect(server);
-      if (conn.error) {
-        throw new Error(
-          `alwaysLoad MCP server "${server.name}" failed: ${conn.error.message}`,
-        );
-      }
-    }
-
-    // 2. Auto-connect servers — best-effort，不阻塞
-    const autoConnectServers = enabledServers.filter(
-      (s) => !s.alwaysLoad && s.autoConnect !== false,
-    );
-    if (autoConnectServers.length > 0) {
-      const results = await Promise.allSettled(
-        autoConnectServers.map((server) => this.connect(server)),
+    const connectOperation = async (): Promise<void> => {
+      // 1. Always-load servers — 必须成功，失败则抛出错误
+      const alwaysLoadServers = enabledServers.filter(
+        (s) => s.alwaysLoad && s.autoConnect !== false,
       );
-      const failed = results.filter((r) => r.status === 'rejected');
-      if (failed.length > 0) {
-        logger.warn('MCP', `${failed.length}/${autoConnectServers.length} server(s) failed to connect`);
+      for (const server of alwaysLoadServers) {
+        const conn = await this.connect(server);
+        if (conn.error) {
+          throw new Error(
+            `alwaysLoad MCP server "${server.name}" failed: ${conn.error.message}`,
+          );
+        }
       }
+
+      // 2. Auto-connect servers — best-effort，不阻塞
+      const autoConnectServers = enabledServers.filter(
+        (s) => !s.alwaysLoad && s.autoConnect !== false,
+      );
+      if (autoConnectServers.length > 0) {
+        // 并行连接所有服务器，每个服务器有独立超时
+        const results = await Promise.allSettled(
+          autoConnectServers.map((server) => this.connect(server)),
+        );
+        const failed = results.filter((r) => r.status === 'rejected');
+        if (failed.length > 0) {
+          logger.warn('MCP', `${failed.length}/${autoConnectServers.length} server(s) failed to connect`);
+        }
+      }
+    };
+
+    try {
+      await withTimeout(connectOperation(), totalTimeoutMs, 'MCP connectAll');
+    } catch (error) {
+      logger.error('MCP', `connectAll failed: ${error}`);
+      // 不抛出错误，让调用方继续执行（best-effort）
     }
   }
 
@@ -62,17 +90,22 @@ export class McpRegistry {
       return existing;
     }
 
-    // 2. 创建新连接
+    // 2. 创建新连接（带超时）
+    const timeoutMs = config.connectionTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS;
     try {
       const transport = this._createTransport(config.transport);
 
-      const client = await createMCPClient({
-        transport,
-        capabilities: {
-          ...(config.elicitation?.enabled ? { elicitation: {} } : {}),
-          ...mcpAppClientCapabilities,
-        },
-      });
+      const client = await withTimeout(
+        createMCPClient({
+          transport,
+          capabilities: {
+            ...(config.elicitation?.enabled ? { elicitation: {} } : {}),
+            ...mcpAppClientCapabilities,
+          },
+        }),
+        timeoutMs,
+        `MCP connect ${config.name}`
+      );
 
       // 注册 elicitation 处理器
       if (config.elicitation?.enabled && config.elicitation.handler) {
@@ -82,7 +115,11 @@ export class McpRegistry {
         });
       }
 
-      const tools = await client.tools();
+      const tools = await withTimeout(
+        client.tools(),
+        timeoutMs,
+        `MCP tools ${config.name}`
+      );
       const filteredTools = this._filterTools(tools, config.tools);
 
       const connection: McpClientConnection = {

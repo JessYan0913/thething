@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { checkPermissionRules } from '../../modules/permissions';
 import { consumeReviewerDenial } from '../agent-control/reviewer-feedback';
 import type { PermissionRule } from '../../modules/permissions/types';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // ============================================================
 // Safety constants
@@ -169,6 +172,56 @@ function killProcessTree(pid: number): void {
 }
 
 // ============================================================
+// Background process spawning
+// ============================================================
+
+const BG_LOG_DIR = path.join(os.tmpdir(), '.thething', 'bash-logs');
+
+/**
+ * Spawn a command in the background (detached process).
+ * Returns immediately with PID and log file path.
+ * The process continues running after this function returns.
+ */
+function spawnBackground(
+  command: string,
+  cwd: string,
+): { pid: number; logFile: string } {
+  // Ensure log directory exists
+  fs.mkdirSync(BG_LOG_DIR, { recursive: true });
+
+  const logFile = path.join(
+    BG_LOG_DIR,
+    `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`,
+  );
+  const logStream = fs.createWriteStream(logFile);
+
+  const child = spawn(command, [], {
+    cwd,
+    shell: true,
+    detached: true,
+    stdio: ['ignore', logStream, logStream],
+  });
+
+  // Unref so the parent process can exit independently
+  child.unref();
+  logStream.close();
+
+  return { pid: child.pid!, logFile };
+}
+
+/**
+ * Check if a log file exists and is readable
+ */
+function checkBgLogExists(logFile: string): boolean {
+  try {
+    fs.accessSync(logFile, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
 // Default operations: local spawn-based execution
 // ============================================================
 
@@ -243,6 +296,158 @@ const defaultBashOperations: BashOperations = {
 };
 
 // ============================================================
+// Bash execute entry point
+// ============================================================
+
+async function bashExecute({
+  command,
+  timeoutMs,
+  background,
+  execOptions,
+  ops,
+  options,
+}: {
+  command: string;
+  timeoutMs: number;
+  background: boolean;
+  execOptions: { abortSignal?: AbortSignal };
+  ops: BashOperations;
+  options: BashToolOptions;
+}) {
+  // Re-check safety at execution time
+  const safety = isCommandDangerous(command);
+  if (safety.dangerous) {
+    return {
+      error: true,
+      command,
+      message: `Security block: ${safety.reason}`,
+    };
+  }
+
+  const denialReason = consumeReviewerDenial('bash', command);
+  if (denialReason) {
+    return {
+      error: true,
+      command,
+      message: `Operation denied by reviewer: ${denialReason}`,
+    };
+  }
+
+  const matchedRule = checkPermissionRules('bash', { command }, options.permissionRules);
+  if (matchedRule?.behavior === 'deny') {
+    return {
+      error: true,
+      command,
+      message: `Operation denied: ${matchedRule.pattern}`,
+    };
+  }
+
+  // Background mode: spawn detached process and return immediately
+  if (background) {
+    let resolvedCwd = options.cwd;
+    if (options.spawnHook) {
+      const ctx = await options.spawnHook(command, {
+        command,
+        cwd: options.cwd,
+        timeout: timeoutMs,
+        shell: '/bin/bash',
+      });
+      resolvedCwd = ctx.cwd;
+    }
+
+    try {
+      const { pid, logFile } = spawnBackground(command, resolvedCwd);
+      return {
+        pid,
+        logFile,
+        command,
+        background: true,
+        message: `Process started in background (PID: ${pid}). Use \`cat ${logFile}\` to check output, \`kill ${pid}\` to stop.`,
+      };
+    } catch (err) {
+      return {
+        error: true,
+        command,
+        message: `Failed to start background process: ${String(err)}`,
+      };
+    }
+  }
+
+  // Normal mode: execute and wait for result (original behavior)
+  const startTime = Date.now();
+
+  let resolvedCwd = options.cwd;
+  let resolvedTimeout = timeoutMs;
+  if (options.spawnHook) {
+    const ctx = await options.spawnHook(command, {
+      command,
+      cwd: options.cwd,
+      timeout: timeoutMs,
+      shell: '/bin/bash',
+    });
+    resolvedCwd = ctx.cwd;
+    resolvedTimeout = ctx.timeout;
+  }
+
+  try {
+    const { stdout, stderr, exitCode } = await ops.exec(command, {
+      cwd: resolvedCwd,
+      timeout: resolvedTimeout,
+      signal: execOptions.abortSignal,
+    });
+
+    const duration = Date.now() - startTime;
+    const bgWarning = checkBgWarning(command);
+    const finalStderr = bgWarning ? bgWarning + stderr : stderr;
+
+    return {
+      stdout,
+      stderr: finalStderr,
+      exitCode,
+      command,
+      timedOut: false,
+      duration,
+    };
+  } catch (error: unknown) {
+    const execError = error as Error & {
+      killed?: boolean; code?: string | number; status?: number;
+      stdout?: string; stderr?: string; exitCode?: number | null;
+    };
+
+    if (execError.name === 'AbortError') {
+      throw new Error('Command execution aborted by user.');
+    }
+
+    if (execError.killed || execError.code === 'ETIMEDOUT') {
+      throw new Error(
+        `Command timed out after ${resolvedTimeout}ms. ` +
+        `Increase timeoutMs or optimize the command.\n` +
+        `Partial stdout: ${(execError.stdout || '').slice(-500)}`,
+      );
+    }
+
+    const stdout = (execError.stdout || '').toString();
+    const stderr = (execError.stderr || '').toString();
+
+    if (stdout || stderr) {
+      const exitCode = execError.exitCode ?? execError.code ?? 1;
+      const bgWarning = checkBgWarning(command);
+      const finalStderr = bgWarning ? bgWarning + stderr : stderr;
+      return {
+        stdout,
+        stderr: finalStderr,
+        exitCode: typeof exitCode === 'number' ? exitCode : 1,
+        command,
+        timedOut: false,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    throw error;
+  }
+}
+
+// ============================================================
 // Tool factory
 // ============================================================
 
@@ -257,7 +462,10 @@ export function createBashTool(options: BashToolOptions) {
       'Safe operations (git commit, npm test, file viewing) run automatically. ' +
       'Other operations require user approval.\n' +
       'IMPORTANT: Processes put in the background with & MUST redirect their output (> file 2>&1). ' +
-      'Without redirect the pipe never closes, causing the command to hang until timeout.',
+      'Without redirect the pipe never closes, causing the command to hang until timeout.\n' +
+      'To start a long-running process (server, dev server), set background: true. ' +
+      'The command runs detached and returns immediately with pid and logFile. ' +
+      'Use `cat <logFile>` to check output, `kill <pid>` to stop.',
 
     inputSchema: z.object({
       command: z.string().describe('The shell command to execute'),
@@ -268,113 +476,18 @@ export function createBashTool(options: BashToolOptions) {
         .optional()
         .default(DEFAULT_TIMEOUT_MS)
         .describe('Timeout in milliseconds (default 30s, max 5min)'),
+      background: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Run command in background (detached process). ' +
+          'Use for long-running processes like servers. Returns immediately with pid and logFile.',
+        ),
     }),
 
-    execute: async ({ command, timeoutMs = DEFAULT_TIMEOUT_MS }, execOptions) => {
-      // Re-check safety at execution time
-      const safety = isCommandDangerous(command);
-      if (safety.dangerous) {
-        return {
-          error: true,
-          command,
-          message: `Security block: ${safety.reason}`,
-        };
-      }
-
-      // B: 检查 reviewer 拒绝原因（catchAllApproval 放行后由工具层返回详细错误）
-      const denialReason = consumeReviewerDenial('bash', command);
-      if (denialReason) {
-        return {
-          error: true,
-          command,
-          message: `Operation denied by reviewer: ${denialReason}`,
-        };
-      }
-
-      const matchedRule = checkPermissionRules('bash', { command }, options.permissionRules);
-      if (matchedRule?.behavior === 'deny') {
-        return {
-          error: true,
-          command,
-          message: `Operation denied: ${matchedRule.pattern}`,
-        };
-      }
-
-      const startTime = Date.now();
-
-      // Apply spawn hook if provided
-      let resolvedCwd = options.cwd;
-      let resolvedTimeout = timeoutMs;
-      if (options.spawnHook) {
-        const ctx = await options.spawnHook(command, {
-          command,
-          cwd: options.cwd,
-          timeout: timeoutMs,
-          shell: '/bin/bash',
-        });
-        resolvedCwd = ctx.cwd;
-        resolvedTimeout = ctx.timeout;
-      }
-
-      try {
-        const { stdout, stderr, exitCode } = await ops.exec(command, {
-          cwd: resolvedCwd,
-          timeout: resolvedTimeout,
-          signal: execOptions.abortSignal,
-        });
-
-        const duration = Date.now() - startTime;
-
-        // Runtime warning for background processes without redirect
-        const bgWarning = checkBgWarning(command);
-        const finalStderr = bgWarning ? bgWarning + stderr : stderr;
-
-        return {
-          stdout,
-          stderr: finalStderr,
-          exitCode,
-          command,
-          timedOut: false,
-          duration,
-        };
-      } catch (error: unknown) {
-        const execError = error as Error & {
-          killed?: boolean; code?: string | number; status?: number;
-          stdout?: string; stderr?: string; exitCode?: number | null;
-        };
-
-        if (execError.name === 'AbortError') {
-          throw new Error('Command execution aborted by user.');
-        }
-
-        if (execError.killed || execError.code === 'ETIMEDOUT') {
-          throw new Error(
-            `Command timed out after ${resolvedTimeout}ms. ` +
-            `Increase timeoutMs or optimize the command.\n` +
-            `Partial stdout: ${(execError.stdout || '').slice(-500)}`,
-          );
-        }
-
-        // If we have partial output, return it (non-zero exit)
-        const stdout = (execError.stdout || '').toString();
-        const stderr = (execError.stderr || '').toString();
-
-        if (stdout || stderr) {
-          const exitCode = execError.exitCode ?? execError.code ?? 1;
-          const bgWarning = checkBgWarning(command);
-          const finalStderr = bgWarning ? bgWarning + stderr : stderr;
-          return {
-            stdout,
-            stderr: finalStderr,
-            exitCode: typeof exitCode === 'number' ? exitCode : 1,
-            command,
-            timedOut: false,
-            duration: Date.now() - startTime,
-          };
-        }
-
-        throw error;
-      }
+    execute: ({ command, timeoutMs = DEFAULT_TIMEOUT_MS, background = false }, execOptions) => {
+      return bashExecute({ command, timeoutMs, background, execOptions, ops, options });
     },
   });
 }

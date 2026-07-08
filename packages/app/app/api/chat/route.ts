@@ -1,7 +1,7 @@
 import path from 'path'
 import { getServerRuntime, getServerContext, getProjectContext, getModelConfig } from '@/lib/runtime';
 import { convertFileToText } from '@/lib/file-convert';
-import { getStreamManager } from '@/lib/stream-manager';
+import { getStreamManager, registerAbortController, unregisterAbortController } from '@/lib/stream-manager';
 import {
   createAgent,
   generateConversationTitle,
@@ -43,6 +43,7 @@ export async function GET(request: Request) {
 // POST: Stream chat response
 export async function POST(request: Request) {
   try {
+    const startTime = Date.now();
     const body = await request.json() as {
       message: UIMessage;
       conversationId: string;
@@ -60,7 +61,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
     }
 
+    console.log(`[Chat API] POST start: conversationId=${conversationId}`);
+
     const defaultContext = await getServerContext();
+    console.log(`[Chat API] getServerContext done: ${Date.now() - startTime}ms`);
+
     const store = defaultContext.runtime.dataStore;
     const streamManager = getStreamManager();
 
@@ -115,6 +120,8 @@ export async function POST(request: Request) {
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
     const userId = messageUserId || 'default';
 
+    console.log(`[Chat API] createAgent start: ${Date.now() - startTime}ms`);
+
     const {
       agent,
       sessionState,
@@ -138,6 +145,8 @@ export async function POST(request: Request) {
       approvalMode,
       agentRunStore: store.agentRunStore,
     });
+
+    console.log(`[Chat API] createAgent done: ${Date.now() - startTime}ms`);
 
     const messagesWithAttachments = adjustedMessages ?? messages;
 
@@ -206,10 +215,12 @@ export async function POST(request: Request) {
     );
 
     const abortController = new AbortController();
+    registerAbortController(conversationId, abortController);
 
     // onEnd 回调：流结束时保存消息（成功时保存，失败/0 chunks 时跳过）
     const onEndHandler = async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
       try {
+        unregisterAbortController(conversationId);
         store.agentRunStore.completeRun(conversationId);
         store.agentRunStore.clearChunks(conversationId);
 

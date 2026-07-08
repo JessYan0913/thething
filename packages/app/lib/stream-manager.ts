@@ -11,6 +11,42 @@ import os from 'os';
 // 单例模式
 let streamContext: ReturnType<ReturnType<typeof createResumableStreamContextFactory>> | null = null;
 
+// ============================================================
+// Abort Controller Registry
+// 用于将 stopStream 与 abortController.abort() 连接起来，
+// 确保点击停止按钮时能真正终止服务端的 LLM 调用和 bash 进程。
+// ============================================================
+
+const abortControllers = new Map<string, AbortController>();
+
+/**
+ * 注册 AbortController，关联到 conversationId
+ */
+export function registerAbortController(chatId: string, controller: AbortController) {
+  abortControllers.set(chatId, controller);
+}
+
+/**
+ * 移除 AbortController（流正常结束时调用）
+ */
+export function unregisterAbortController(chatId: string) {
+  abortControllers.delete(chatId);
+}
+
+/**
+ * 中止指定会话的执行（触发 abort signal）
+ * @returns true 如果找到了并中止了对应的 controller
+ */
+export function abortChat(chatId: string): boolean {
+  const controller = abortControllers.get(chatId);
+  if (controller) {
+    controller.abort();
+    abortControllers.delete(chatId);
+    return true;
+  }
+  return false;
+}
+
 /**
  * 获取流管理器实例
  */

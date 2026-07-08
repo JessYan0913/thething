@@ -9,6 +9,7 @@ import {
   CheckIcon,
   ClockIcon,
   AlertCircleIcon,
+  Loader2Icon,
 } from "lucide-react";
 
 // ============================================================
@@ -84,6 +85,39 @@ export function TerminalOutput({ output, className }: TerminalOutputProps) {
   const timedOut = output.timedOut as boolean | undefined;
   const error = output.error as boolean | undefined;
   const message = (output.message as string) ?? "";
+  const background = output.background as boolean | undefined;
+  const pid = output.pid as number | undefined;
+  const logFile = output.logFile as string | undefined;
+
+  // Background mode: show special UI
+  if (background && pid && logFile) {
+    return (
+      <div className={cn("rounded-md border overflow-hidden bg-card font-mono text-xs", className)}>
+        <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b">
+          <code className="flex-1 truncate">
+            <span className="text-blue-600 dark:text-blue-400">$</span>{" "}
+            <span className="text-orange-600 dark:text-orange-400">{command}</span>
+          </code>
+          <div className="flex items-center gap-2 ml-2 shrink-0">
+            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <Loader2Icon className="size-3" />
+              Running (PID: {pid})
+            </span>
+            <CopyButton text={command} />
+          </div>
+        </div>
+        <div className="px-3 py-2 space-y-1">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span className="text-emerald-600">✓</span>
+            <span>{message}</span>
+          </div>
+          <div className="text-muted-foreground/60 text-xs">
+            Log: {logFile}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const hasError = error || (exitCode !== null && exitCode !== 0);
   const hasOutput = stdout.length > 0;

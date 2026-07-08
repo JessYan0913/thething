@@ -160,7 +160,32 @@ export const ToolOutput = ({
   toolInput,
   ...props
 }: ToolOutputProps) => {
+  // No output yet: render input-based placeholder for known tools
   if (!(output || errorText)) {
+    // bash 工具：无输出时渲染命令 + loading 状态
+    if (toolType === 'tool-bash' && toolInput && typeof toolInput === 'object') {
+      const input = toolInput as Record<string, unknown>;
+      const command = String(input.command ?? '');
+      return (
+        <div className={cn("rounded-md border overflow-hidden bg-card font-mono text-xs", className)} {...props}>
+          <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b">
+            <code className="flex-1 truncate">
+              <span className="text-blue-600 dark:text-blue-400">$</span>{" "}
+              <span className="text-orange-600 dark:text-orange-400">{command}</span>
+            </code>
+            <div className="flex items-center gap-2 ml-2 shrink-0">
+              <span className="flex items-center gap-1 text-blue-500">
+                <Loader2Icon className="size-3 animate-spin" />
+                Running
+              </span>
+            </div>
+          </div>
+          <div className="px-3 py-3 text-muted-foreground italic">
+            Waiting for output...
+          </div>
+        </div>
+      );
+    }
     return null;
   }
 

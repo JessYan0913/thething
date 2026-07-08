@@ -1,9 +1,9 @@
 /**
  * POST /api/chat/[chatId]/stop
- * 停止聊天流 - 显式停止流式响应
+ * 停止聊天流 - 显式停止流式响应，同时中止服务端执行
  */
 
-import { getStreamManager } from '@/lib/stream-manager';
+import { getStreamManager, abortChat } from '@/lib/stream-manager';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -21,6 +21,9 @@ export async function POST(
     if (existing === true) {
       await streamManager.stopStream(chatId);
     }
+
+    // 中止服务端的 LLM 调用和 bash 进程
+    abortChat(chatId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
