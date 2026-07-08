@@ -78,18 +78,6 @@ const loadResource = async (app: MCPAppMetadata): Promise<MCPAppResource> => {
   return response.json() as Promise<MCPAppResource>;
 };
 
-// MCP Apps 处理器
-const handlers: MCPAppBridgeHandlers = {
-  callTool: (params) =>
-    fetch('/api/mcp-app-host', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'call-tool', ...params }),
-    }).then(response => response.json()),
-  openLink: (params) => {
-    window.open(params.url, '_blank', 'noopener,noreferrer');
-  },
-};
-
 const TODO_TOOL_TYPES = new Set([
   'tool-todo_create',
   'tool-todo_update',
@@ -768,6 +756,29 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       }
     },
   });
+
+  // MCP Apps 处理器（需要在组件内定义以访问 sendMessage）
+  const handlers: MCPAppBridgeHandlers = useMemo(() => ({
+    callTool: (params) =>
+      fetch('/api/mcp-app-host', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'call-tool', ...params }),
+      }).then(response => response.json()),
+    openLink: (params) => {
+      window.open(params.url, '_blank', 'noopener,noreferrer');
+    },
+    sendMessage: (params: any) => {
+      // 将 MCP App 发来的消息转发给 agent，触发 agent 回复
+      const content = params?.content
+        ?.filter((c: { type: string }) => c.type === 'text')
+        .map((c: { text?: string }) => c.text)
+        .join('\n') ?? '';
+      if (content) {
+        sendMessage({ text: content });
+      }
+      return Promise.resolve({});
+    },
+  }), [sendMessage]);
 
   useEffect(() => {
     messagesRef.current = messages;

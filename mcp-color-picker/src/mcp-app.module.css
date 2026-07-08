@@ -190,6 +190,29 @@
   word-break: break-all;
 }
 
+/* Confirm button */
+.confirmButton {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: var(--border-radius-md);
+  border: none;
+  background: var(--color-accent, #2563eb);
+  color: var(--color-text-on-accent, #ffffff);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.confirmButton:hover {
+  filter: brightness(1.1);
+}
+
+.confirmButton:active {
+  transform: scale(0.98);
+}
+
 /* Copy toast */
 .toast {
   position: fixed;

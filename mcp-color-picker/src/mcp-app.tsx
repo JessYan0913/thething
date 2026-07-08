@@ -251,6 +251,16 @@ function ColorPickerInner({ app, hostContext }: ColorPickerInnerProps) {
   const hslaStr = `hsla(${hslH}, ${hslS}%, ${hslL}%, ${alpha.toFixed(2)})`;
   const hsvStr = `hsv(${Math.round(hue)}, ${Math.round(sat * 100)}%, ${Math.round(val * 100)}%)`;
 
+  // 向 agent 发送选中的颜色，触发 agent 回复
+  const confirmColor = useCallback(() => {
+    const colorSummary = `用户选择了颜色 ${hexAlpha} (RGB: ${r},${g},${b} | HSL: ${hslH},${hslS}%,${hslL}% | Alpha: ${Math.round(alpha * 100)}%)`;
+    app.sendMessage({
+      role: "user",
+      content: [{ type: "text", text: colorSummary }],
+    });
+    showToast(`已发送: ${hexAlpha}`);
+  }, [hexAlpha, r, g, b, hslH, hslS, hslL, alpha, app, showToast]);
+
   return (
     <main
       className={styles.main}
@@ -355,6 +365,10 @@ function ColorPickerInner({ app, hostContext }: ColorPickerInnerProps) {
           </div>
         </div>
       </div>
+
+      <button className={styles.confirmButton} onClick={confirmColor}>
+        ✓ 确认选择并发送给 Agent
+      </button>
 
       <div className={`${styles.toast} ${toastVisible ? styles.toastVisible : ""}`}>
         {toastMsg}
