@@ -98,6 +98,15 @@ export interface ConversationMeta {
 
   /** Whether this is a new conversation */
   isNewConversation: boolean;
+
+  /**
+   * 会话来源：'user' (本地 Web) | 'connector' (飞书/企微等) | 'cron' (定时任务)
+   * 用于告诉 Agent 当前会话类型，避免在本地会话中调用 connector 工具
+   */
+  sessionSource?: string;
+
+  /** 当 sessionSource 为 'connector' 时，具体的 connector ID（如 'feishu'） */
+  sessionSourceId?: string;
 }
 
 /**

@@ -159,6 +159,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       messageCount: messages.length,
       isNewConversation: options.conversationMeta.isNewConversation,
       conversationStartTime: options.conversationMeta.conversationStartTime ?? Date.now(),
+      sessionSource: options.conversationMeta.sessionSource,
+      sessionSourceId: options.conversationMeta.sessionSourceId,
     } : undefined,
     mcpServerTools,
     // 合并 agent 定义的 instructions 和传入的 customInstructions

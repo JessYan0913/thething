@@ -205,6 +205,10 @@ export interface CreateAgentOptions {
     isNewConversation: boolean;
     /** 对话开始时间戳 */
     conversationStartTime?: number;
+    /** 会话来源：'user' (本地 Web) | 'connector' (飞书/企微等) | 'cron' (定时任务) */
+    sessionSource?: string;
+    /** 当 sessionSource 为 'connector' 时，具体的 connector ID（如 'feishu'） */
+    sessionSourceId?: string;
   };
 }
 

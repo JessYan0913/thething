@@ -24,6 +24,8 @@ export interface BuildInstructionsOptions {
     messageCount: number
     isNewConversation: boolean
     conversationStartTime: number
+    sessionSource?: string
+    sessionSourceId?: string
   }
   /** 自定义指令（如 Agent 定义的 instructions），追加到系统提示词末尾 */
   customInstructions?: string

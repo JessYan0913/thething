@@ -476,6 +476,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     const { agent, sessionState, adjustedMessages, model, dispose, mcpRegistry } = await this.createAgentInstance(
       conversationId,
       uiMessagesForSave,
+      event.connectorId,
     )
 
     const initialModelMessages = await convertToModelMessages(
@@ -542,6 +543,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     const { agent, sessionState, model, dispose, mcpRegistry } = await this.createAgentInstance(
       conversationId,
       uiMessagesForSave,
+      event.connectorId,
     )
 
     return this.runAgentLoop(
@@ -908,9 +910,17 @@ export class AgentInboundHandler implements InboundEventHandler {
   // Helpers
   // ============================================================
 
-  private async createAgentInstance(conversationId: string, messages: UIMessage[]) {
+  private async createAgentInstance(
+    conversationId: string,
+    messages: UIMessage[],
+    connectorId?: string,
+  ) {
     const modelConfig = this.config.modelConfig
     if (!modelConfig) throw new Error('[AgentInboundHandler] modelConfig is required')
+
+    // 确定会话来源
+    const sessionSource = connectorId === '__cron__' ? 'cron' : 'connector'
+    const sessionSourceId = connectorId
 
     return this.config.createAgent({
       context: this.config.context,
@@ -926,6 +936,8 @@ export class AgentInboundHandler implements InboundEventHandler {
       conversationMeta: {
         isNewConversation: messages.length <= 1,
         conversationStartTime: Date.now(),
+        sessionSource,
+        sessionSourceId,
       },
       modules: {
         mcps: this.config.modules?.mcps ?? true,

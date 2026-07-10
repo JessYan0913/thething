@@ -13,6 +13,16 @@ export function createSessionGuidanceSection(
 ): SystemPromptSection {
   const parts: string[] = [];
 
+  // 会话来源：只陈述事实，不指导行为
+  const source = meta.sessionSource ?? 'user';
+  const sourceId = meta.sessionSourceId;
+  const sourceLabel = source === 'connector'
+    ? `connector:${sourceId ?? 'unknown'}`
+    : source === 'cron'
+      ? 'cron'
+      : 'local';
+  parts.push(`会话来源：${sourceLabel}`);
+
   // Add conversation context
   if (meta.isNewConversation) {
     parts.push('这是一个新的对话。请花些时间了解用户的需求。');

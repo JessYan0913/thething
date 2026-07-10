@@ -144,6 +144,12 @@ export async function POST(request: Request) {
       customInstructions: finalInstructions,
       approvalMode,
       agentRunStore: store.agentRunStore,
+      conversationMeta: {
+        isNewConversation: isFirstMessage,
+        conversationStartTime: conversation?.createdAt ? new Date(conversation.createdAt).getTime() : Date.now(),
+        sessionSource: conversation?.source ?? 'user',
+        sessionSourceId: conversation?.sourceId ?? undefined,
+      },
     });
 
     console.log(`[Chat API] createAgent done: ${Date.now() - startTime}ms`);
