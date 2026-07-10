@@ -112,8 +112,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { agentType } = body;
 
-    if (!agentType || !body.description) {
-      return NextResponse.json({ error: 'Missing required fields: agentType, description' }, { status: 400 });
+    if (!agentType || !body.instructions) {
+      return NextResponse.json({ error: 'Missing required fields: agentType, instructions' }, { status: 400 });
     }
 
     const agentsDir = await ensureAgentsDir();
@@ -155,12 +155,6 @@ export async function PUT(request: Request) {
       await fs.access(filePath);
     } catch {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    }
-
-    try {
-      await fs.access(filePath);
-    } catch {
-      return NextResponse.json({ error: 'Agent file not found' }, { status: 404 });
     }
 
     const def = buildAgentDefinitionFromPayload(body, 'project', agentType);

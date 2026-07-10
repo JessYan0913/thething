@@ -149,12 +149,11 @@ function AgentEditor({
       const data = {
         agentType: autoId,
         displayName: autoDisplayName || undefined,
-        description: instructions.slice(0, 200),
         instructions,
         model,
         tools: selectedTools,
         connectors: useConnectors,
-        skills: useSkills ? [] : [],
+        skills: useSkills,
         mcp: useMcp,
         permission,
       }
