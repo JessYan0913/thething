@@ -4,16 +4,12 @@ import {
   BotIcon, RefreshCwIcon, SearchIcon, SparklesIcon,
   PlusIcon, PencilIcon, TrashIcon,
   ExternalLinkIcon, MoreVerticalIcon,
-  ArrowLeftIcon, SaveIcon,
-  ChevronDownIcon, ChevronRightIcon,
+  ArrowLeftIcon, SaveIcon, CheckIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
 import {
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
 } from "@/components/ui/tooltip"
@@ -51,10 +47,47 @@ const sourceColors: Record<string, string> = {
 }
 
 // ============================================================
+// 工具定义
+// ============================================================
+
+const TOOL_GROUPS = [
+  {
+    label: "文件",
+    tools: [
+      { id: "read_file", label: "读取" },
+      { id: "write_file", label: "写入" },
+      { id: "edit_file", label: "编辑" },
+    ],
+  },
+  {
+    label: "搜索",
+    tools: [
+      { id: "grep", label: "内容搜索" },
+      { id: "glob", label: "文件匹配" },
+    ],
+  },
+  {
+    label: "系统",
+    tools: [
+      { id: "bash", label: "终端" },
+      { id: "web_fetch", label: "网页" },
+    ],
+  },
+  {
+    label: "工作流",
+    tools: [
+      { id: "cron", label: "定时" },
+      { id: "agent", label: "子代理" },
+    ],
+  },
+]
+
+const ALL_TOOLS = TOOL_GROUPS.flatMap((g) => g.tools)
+
+// ============================================================
 // 工具函数
 // ============================================================
 
-/** 从描述生成 kebab-case ID */
 function generateId(desc: string): string {
   return desc
     .toLowerCase()
@@ -63,7 +96,6 @@ function generateId(desc: string): string {
     .slice(0, 32) || "my-agent"
 }
 
-/** 从描述智能提炼显示名称 */
 function generateDisplayName(desc: string): string {
   if (!desc.trim()) return "我的代理"
   const patterns = [
@@ -81,7 +113,20 @@ function generateDisplayName(desc: string): string {
   return desc.slice(0, 8) + "助手"
 }
 
-/** 根据描述自动生成系统指令 */
+/** 从描述推断推荐工具 */
+function inferToolsFromDescription(desc: string): string[] {
+  const lower = desc.toLowerCase()
+  const tools: string[] = []
+  if (/文件|读取|写入|代码|file|read|write/.test(lower)) tools.push("read_file", "write_file")
+  if (/编辑|修改|替换|search|replace/.test(lower)) tools.push("edit_file")
+  if (/搜索|查找|grep|search/.test(lower)) tools.push("grep", "glob")
+  if (/终端|命令|shell|执行|脚本/.test(lower)) tools.push("bash")
+  if (/网页|网站|url|http|fetch|抓取/.test(lower)) tools.push("web_fetch")
+  if (/定时|提醒|cron|调度/.test(lower)) tools.push("cron")
+  if (/研究|调研|深入/.test(lower)) tools.push("agent")
+  return tools
+}
+
 function generateInstructions(desc: string): string {
   if (!desc.trim()) return ""
   return `你是一个智能助手，核心任务是：${desc}
@@ -93,8 +138,12 @@ function generateInstructions(desc: string): string {
 - 涉及敏感操作（删除、发送等）时需确认`
 }
 
+function toggleArrayItem(arr: string[], item: string): string[] {
+  return arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item]
+}
+
 // ============================================================
-// AgentEditor — 极简编辑器
+// AgentEditor — 核心三件事：描述、工具、系统提示
 // ============================================================
 
 function AgentEditor({
@@ -111,8 +160,7 @@ function AgentEditor({
   const [description, setDescription] = useState(agent.description ?? "")
   const [displayName, setDisplayName] = useState(agent.displayName ?? "")
   const [agentType, setAgentType] = useState(agent.agentType ?? "")
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [model, setModel] = useState(agent.model ?? "inherit")
+  const [selectedTools, setSelectedTools] = useState<string[]>(agent.tools ?? [])
   const [instructions, setInstructions] = useState(agent.instructions ?? "")
   const [instructionsEdited, setInstructionsEdited] = useState(!!agent.instructions)
   const [saving, setSaving] = useState(false)
@@ -125,6 +173,9 @@ function AgentEditor({
   const autoInstructions = useMemo(() => generateInstructions(description), [description])
   const effectiveInstructions = instructionsEdited ? instructions : autoInstructions
 
+  // 根据描述推荐工具（仅首次输入时推荐，用户手动选过之后不再覆盖）
+  const inferredTools = useMemo(() => inferToolsFromDescription(description), [description])
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -132,7 +183,7 @@ function AgentEditor({
         agentType: autoId,
         displayName: autoDisplayName || undefined,
         description,
-        model,
+        tools: selectedTools,
         instructions: effectiveInstructions,
       }
       const url = isEdit
@@ -175,91 +226,119 @@ function AgentEditor({
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
         <div className="flex justify-center p-6">
-          <div className="w-full max-w-lg space-y-5">
+          <div className="w-full max-w-lg space-y-6">
 
-            {/* 描述 — 核心输入 */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">代理想帮你做什么？</p>
+            {/* ═══ 1. 描述 ═══ */}
+            <section className="space-y-2">
+              <p className="text-sm font-medium">做什么</p>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="比如：帮我监控 GitHub 上的 PR，有新评论时通知我"
-                rows={3}
+                rows={2}
                 className="text-sm resize-none"
               />
-            </div>
+              {description.trim() && !isEdit && (
+                <p className="text-xs text-muted-foreground">
+                  ID: <span className="font-mono">{autoId}</span>
+                </p>
+              )}
+            </section>
 
-            {/* 名称 — 自动生成，可编辑 */}
+            {/* 名称（内联） */}
             {description.trim() && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">名称</p>
-                <div className="flex items-center gap-3">
-                  <Input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder={autoDisplayName}
-                    className="text-sm"
-                  />
-                  {!isEdit && (
-                    <p className="text-xs text-muted-foreground whitespace-nowrap">
-                      ID: <span className="font-mono">{autoId}</span>
-                    </p>
-                  )}
-                </div>
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-muted-foreground shrink-0">名称</p>
+                <Input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder={autoDisplayName}
+                  className="h-8 text-sm"
+                />
               </div>
             )}
 
-            {/* 高级设置 — 折叠 */}
+            {/* ═══ 2. 工具 ═══ */}
             {description.trim() && (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  onClick={() => setShowAdvanced((v) => !v)}
-                >
-                  {showAdvanced ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
-                  <span>高级设置</span>
-                  {!showAdvanced && (
-                    <span className="text-xs text-muted-foreground/50">默认已经很合理</span>
-                  )}
-                </button>
+              <section className="space-y-3">
+                <p className="text-sm font-medium">工具</p>
 
-                {showAdvanced && (
-                  <div className="rounded-lg border p-4 space-y-4">
-                    {/* 模型 */}
-                    <div className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground">模型</p>
-                      <Select value={model} onValueChange={setModel}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="inherit">继承当前设置</SelectItem>
-                          <SelectItem value="fast">快速（更快，更便宜）</SelectItem>
-                          <SelectItem value="smart">智能（更准，更贵）</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* 系统指令 */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-muted-foreground">系统指令</p>
-                        {!instructionsEdited && (
-                          <span className="text-xs text-primary/60">自动生成</span>
-                        )}
-                      </div>
-                      <Textarea
-                        value={effectiveInstructions}
-                        onChange={(e) => {
-                          setInstructions(e.target.value)
-                          setInstructionsEdited(true)
-                        }}
-                        rows={5}
-                        className="text-xs font-mono resize-y"
-                      />
-                    </div>
+                {/* 推荐工具 */}
+                {inferredTools.length > 0 && selectedTools.length === 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground">推荐：</span>
+                    {inferredTools.map((t) => {
+                      const tool = ALL_TOOLS.find((at) => at.id === t)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-primary/40 text-primary/70 hover:border-primary hover:text-primary cursor-pointer transition-colors"
+                          onClick={() => setSelectedTools((prev) => toggleArrayItem(prev, t))}
+                        >
+                          {tool?.label ?? t}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
-              </div>
+
+                {/* 工具分类 */}
+                <div className="space-y-3">
+                  {TOOL_GROUPS.map((group) => (
+                    <div key={group.label} className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground/60">{group.label}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {group.tools.map((tool) => {
+                          const selected = selectedTools.includes(tool.id)
+                          return (
+                            <button
+                              key={tool.id}
+                              type="button"
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs border transition-all cursor-pointer ${
+                                selected
+                                  ? "border-primary bg-primary/10 text-primary font-medium"
+                                  : "border-border text-muted-foreground hover:border-primary/50"
+                              }`}
+                              onClick={() => setSelectedTools((prev) => toggleArrayItem(prev, tool.id))}
+                            >
+                              {selected && <CheckIcon className="size-3" />}
+                              {tool.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* ═══ 3. 系统提示 ═══ */}
+            {description.trim() && (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">系统提示</p>
+                  {!instructionsEdited && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary/60 hover:text-primary cursor-pointer transition-colors"
+                      onClick={() => setInstructionsEdited(true)}
+                    >
+                      自定义
+                    </button>
+                  )}
+                </div>
+                <Textarea
+                  value={effectiveInstructions}
+                  onChange={(e) => {
+                    setInstructions(e.target.value)
+                    setInstructionsEdited(true)
+                  }}
+                  rows={6}
+                  className="text-xs font-mono resize-y"
+                />
+              </section>
             )}
           </div>
         </div>
@@ -269,7 +348,7 @@ function AgentEditor({
 }
 
 // ============================================================
-// AgentCard — 列表卡片（简化版）
+// AgentCard — 列表卡片
 // ============================================================
 
 function AgentCard({
@@ -311,16 +390,31 @@ function AgentCard({
               >
                 {enabled ? "已启用" : "已禁用"}
               </Badge>
-              <Badge
-                variant="secondary"
-                className={`text-xs ${sourceColors[agent.source] ?? ""}`}
-              >
+              <Badge variant="secondary" className={`text-xs ${sourceColors[agent.source] ?? ""}`}>
                 {sourceLabels[agent.source] ?? agent.source}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground line-clamp-2">
               {agent.description}
             </p>
+            {/* 工具标签 */}
+            {agent.tools && agent.tools.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap pt-1">
+                {agent.tools.slice(0, 6).map((t) => {
+                  const tool = ALL_TOOLS.find((at) => at.id === t)
+                  return (
+                    <Badge key={t} variant="secondary" className="text-[10px] font-normal">
+                      {tool?.label ?? t}
+                    </Badge>
+                  )
+                })}
+                {agent.tools.length > 6 && (
+                  <Badge variant="secondary" className="text-[10px] font-normal">
+                    +{agent.tools.length - 6}
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -490,7 +584,6 @@ export default function AgentsSettings() {
 
   const deleteTarget = confirmDelete ? agents.find((a) => a.agentType === confirmDelete) : null
 
-  // 编辑器视图
   if (editorAgent) {
     return (
       <AgentEditor
