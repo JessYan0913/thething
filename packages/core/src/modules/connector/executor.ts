@@ -180,7 +180,7 @@ export class ConnectorToolExecutor {
 
       case 'bearer':
         return {
-          Authorization: `Bearer ${credentials.bearer_token || auth.config.bearer_token || ''}`,
+          Authorization: `Bearer ${credentials.bearer_token || auth.config.token || ''}`,
         }
 
       case 'custom':

@@ -32,7 +32,6 @@ describe('resolve-agent-config helpers', () => {
     expect(result).toEqual({
       skills: true,
       mcps: true,
-      memory: true,
       connectors: true,
       permissions: true,
       compaction: true,
@@ -46,7 +45,7 @@ describe('resolve-agent-config helpers', () => {
     });
     expect(result.skills).toBe(false);
     expect(result.mcps).toBe(false);
-    expect(result.memory).toBe(true);
+    expect(result.connectors).toBe(true);
   });
 
   it('resolveAgentCompactionConfig returns behavior defaults', () => {

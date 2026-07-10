@@ -89,6 +89,18 @@ export interface AuthConfig {
 }
 
 /**
+ * JSON Schema 属性定义
+ */
+export interface SchemaProperty {
+  type: string
+  description?: string
+  enum?: string[]
+  default?: unknown
+  items?: { type?: string }
+  properties?: Record<string, unknown>
+}
+
+/**
  * 工具定义
  */
 export interface ToolDefinition {
@@ -96,7 +108,12 @@ export interface ToolDefinition {
   description: string
   executor: 'http' | 'mock' | 'sql' | 'script'
   executor_config: HttpExecutorConfig | MockExecutorConfig | SqlExecutorConfig | ScriptExecutorConfig
-  input_schema?: Record<string, unknown>
+  input_schema?: {
+    type?: string
+    properties?: Record<string, SchemaProperty>
+    required?: string[]
+    additionalProperties?: boolean
+  }
   output_schema?: Record<string, unknown>
   /** 超时时间（毫秒），默认 10000ms */
   timeout_ms?: number

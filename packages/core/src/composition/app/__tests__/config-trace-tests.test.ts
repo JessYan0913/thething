@@ -33,6 +33,7 @@ function createMockContext(behaviorOverrides?: Record<string, unknown>) {
         connectorInbound: {} as any,
         cronScheduler: null,
         cronStore: null,
+        tasksDir: '/tmp/test-tasks',
         dispose: vi.fn(),
     },
     layout,
@@ -102,7 +103,7 @@ describe('traceResolvedAgentConfig', () => {
 
   it('tracks sessionOptions.modelAliases and toolOutputConfig under the new names', () => {
     const context = createMockContext({
-      modelAliases: { fast: 'fast-x', smart: 'smart-x', default: 'default-x' },
+      modelAliases: { fast: { model: 'fast-x' }, smart: { model: 'smart-x' }, default: { model: 'default-x' } },
       toolOutput: {
         maxResultSizeChars: 12_000,
         maxToolResultTokens: 5_000,

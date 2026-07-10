@@ -19,7 +19,7 @@ import { createLanguageModel } from '../../../services/model';
 // ============================================================
 
 describe('1. Alias keywords resolve to real model IDs', () => {
-  const customAliases = { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o' };
+  const customAliases = { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o' } };
 
   it('resolves "fast" to provided alias', () => {
     expect(resolveModelAlias('fast', customAliases)).toBe('gpt-4o-mini');
@@ -34,14 +34,14 @@ describe('1. Alias keywords resolve to real model IDs', () => {
   });
 
   it('resolves custom aliases when provided', () => {
-    const aliases = { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o-mini' };
+    const aliases = { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o-mini' } };
     expect(resolveModelAlias('fast', aliases)).toBe('gpt-4o-mini');
     expect(resolveModelAlias('smart', aliases)).toBe('gpt-4o');
     expect(resolveModelAlias('default', aliases)).toBe('gpt-4o-mini');
   });
 
   it('returns empty string for missing aliases', () => {
-    const aliases = { fast: 'gpt-4o-mini', smart: '', default: '' };
+    const aliases = { fast: { model: 'gpt-4o-mini' }, smart: { model: '' }, default: { model: '' } };
     expect(resolveModelAlias('fast', aliases)).toBe('gpt-4o-mini');
     expect(resolveModelAlias('smart', aliases)).toBe('');
     expect(resolveModelAlias('default', aliases)).toBe('');
@@ -62,7 +62,7 @@ describe('2. All model selection points use unified alias resolution', () => {
 
   it('BehaviorConfig.modelAliases uses provided values', () => {
     const behavior = buildBehaviorConfig({
-      modelAliases: { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o' },
+      modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o' } },
     });
     expect(behavior.modelAliases.fast).toBe('gpt-4o-mini');
     expect(behavior.modelAliases.smart).toBe('gpt-4o');
@@ -71,7 +71,7 @@ describe('2. All model selection points use unified alias resolution', () => {
 
   it('custom modelAliases override defaults in BehaviorConfig', () => {
     const behavior = buildBehaviorConfig({
-      modelAliases: { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o-mini' },
+      modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o-mini' } },
     });
     expect(behavior.modelAliases.fast).toBe('gpt-4o-mini');
     expect(behavior.modelAliases.smart).toBe('gpt-4o');
@@ -84,7 +84,7 @@ describe('2. All model selection points use unified alias resolution', () => {
       { id: 'gpt-4o', name: 'GPT-4o', costMultiplier: 1.0, capabilityTier: 3 },
       { id: 'gpt-4o-mini-2', name: 'GPT-4o Mini Default', costMultiplier: 0.1, capabilityTier: 1 },
     ];
-    const customAliases = { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o-mini-2' };
+    const customAliases = { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o-mini-2' } };
 
     it('resolves "fast" alias via ModelSwapper.checkUserIntent', () => {
       const swapper = new ModelSwapper({
@@ -189,7 +189,7 @@ describe('3. Unknown aliases do not produce silent wrong mappings', () => {
     const swapper = new ModelSwapper({
       availableModels: models,
       currentModel: 'gpt-4o',
-      modelAliases: { fast: 'other-model', smart: 'another-model', default: 'third-model' },
+      modelAliases: { fast: { model: 'other-model' }, smart: { model: 'another-model' }, default: { model: 'third-model' } },
     });
     // "fast" resolves to 'other-model' but that model isn't in availableModels
     const result = swapper.checkUserIntent(

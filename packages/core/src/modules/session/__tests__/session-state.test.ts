@@ -60,9 +60,15 @@ function createUsage(options: {
     inputTokens: options.inputTokens ?? 0,
     outputTokens: options.outputTokens ?? 0,
     totalTokens: (options.inputTokens ?? 0) + (options.outputTokens ?? 0),
-    cachedInputTokens: options.inputTokenDetails.cacheReadTokens ?? 0,
-    inputTokenDetails: {},
-    outputTokenDetails: {},
+    inputTokenDetails: {
+      noCacheTokens: (options.inputTokens ?? 0) - (options.cachedInputTokens ?? 0),
+      cacheReadTokens: options.cachedInputTokens ?? 0,
+      cacheWriteTokens: 0,
+    },
+    outputTokenDetails: {
+      textTokens: options.outputTokens ?? 0,
+      reasoningTokens: 0,
+    },
   } as LanguageModelUsage;
 }
 

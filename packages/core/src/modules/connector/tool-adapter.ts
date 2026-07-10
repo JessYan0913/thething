@@ -29,6 +29,7 @@ export interface ConnectorToolOptions {
  * 公共函数，供多处复用
  */
 export function buildZodSchemaFromToolDefinition(toolDef: ToolDefinition): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  if (!toolDef.input_schema?.properties) return z.object({})
   const properties: Record<string, z.ZodTypeAny> = {}
   const required: string[] = toolDef.input_schema.required || []
 

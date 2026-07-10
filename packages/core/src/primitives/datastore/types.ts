@@ -14,10 +14,18 @@ import type { UIMessage } from 'ai';
 // ============================================================================
 
 /**
+ * run() 返回结果
+ */
+export interface RunResult {
+  changes: number
+  lastInsertRowid: number | bigint
+}
+
+/**
  * Statement 对象接口 - prepared statement
  */
 export interface SqliteStatement {
-  run(...params: unknown[]): SqliteStatement;
+  run(...params: unknown[]): RunResult;
   get(...params: unknown[]): Record<string, unknown> | undefined;
   all(...params: unknown[]): Record<string, unknown>[] | undefined[];
   iterate(...params: unknown[]): IterableIterator<Record<string, unknown> | undefined>;

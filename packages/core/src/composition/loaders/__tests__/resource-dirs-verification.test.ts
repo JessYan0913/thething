@@ -20,7 +20,6 @@ import {
   loadMcpServers,
   loadConnectors,
   loadPermissions,
-  loadMemory,
 } from '../index';
 
 // ============================================================
@@ -103,13 +102,6 @@ async function createPermissionsJson(dir: string, ruleId: string, toolName: stri
   return filePath;
 }
 
-async function createMemoryMd(dir: string, content: string): Promise<string> {
-  await mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, 'MEMORY.md');
-  await writeFile(filePath, content, 'utf-8');
-  return filePath;
-}
-
 // ============================================================
 // Test Suite: Verification Criteria 1 - layout.resources affects paths
 // ============================================================
@@ -175,15 +167,6 @@ describe('resource-dirs verification', () => {
       expect(result.some(p => p.id === 'allow-read')).toBe(true);
       expect(result.some(p => p.filePath?.includes('custom-permissions'))).toBe(true);
     });
-
-    it('memory: loads from explicit dirs only', async () => {
-      const customDir = path.join(testRoot, 'custom-memory');
-      await createMemoryMd(customDir, 'custom memory content');
-
-      const result = await loadMemory({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [customDir] });
-      expect(result.some(m => m.content === 'custom memory content')).toBe(true);
-      expect(result.some(m => m.filePath?.includes('custom-memory'))).toBe(true);
-    });
   });
 
   // ---- Criterion 2: loadAll() with resourceDirs doesn't fall back ----
@@ -202,7 +185,7 @@ describe('resource-dirs verification', () => {
           mcps: [],
           connectors: [],
           permissions: [],
-          memory: [],
+          wiki: [],
         },
       });
 
@@ -211,7 +194,6 @@ describe('resource-dirs verification', () => {
       expect(loaded.mcps).toEqual([]);
       expect(loaded.connectors).toEqual([]);
       expect(loaded.permissions).toEqual([]);
-      expect(loaded.memory).toEqual([]);
     });
 
     it('custom dirs only - no fallback to project/user defaults', async () => {
@@ -227,7 +209,7 @@ describe('resource-dirs verification', () => {
           mcps: [],
           connectors: [],
           permissions: [],
-          memory: [],
+          wiki: [],
         },
       });
 
@@ -294,16 +276,6 @@ describe('resource-dirs verification', () => {
       expect(rule).toBeDefined();
       expect(rule!.filePath).toBe(filePath);
     });
-
-    it('memory filePath points to actual MEMORY.md', async () => {
-      const memDir = path.join(testRoot, 'mem-dir');
-      const filePath = await createMemoryMd(memDir, 'memory path tracking');
-
-      const result = await loadMemory({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething'), dirs: [memDir] });
-      const mem = result.find(m => m.content === 'memory path tracking');
-      expect(mem).toBeDefined();
-      expect(mem!.filePath).toBe(filePath);
-    });
   });
 
   // ---- Criterion 4: Default behavior stays compatible ----
@@ -336,11 +308,6 @@ describe('resource-dirs verification', () => {
       expect(Array.isArray(result)).toBe(true);
     });
 
-    it('loadMemory without dirs falls back to project dir', async () => {
-      const result = await loadMemory({ cwd: testRoot, configDir: path.join(os.homedir(), '.thething') });
-      expect(Array.isArray(result)).toBe(true);
-    });
-
     it('loadAll without resourceDirs uses defaults', async () => {
       const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'), cwd: testRoot });
       expect(Array.isArray(loaded.skills)).toBe(true);
@@ -348,7 +315,6 @@ describe('resource-dirs verification', () => {
       expect(Array.isArray(loaded.mcps)).toBe(true);
       expect(Array.isArray(loaded.connectors)).toBe(true);
       expect(Array.isArray(loaded.permissions)).toBe(true);
-      expect(Array.isArray(loaded.memory)).toBe(true);
     });
   });
 
@@ -376,14 +342,12 @@ describe('resource-dirs verification', () => {
       const mcpDir = path.join(testRoot, 'r-mcps');
       const connDir = path.join(testRoot, 'r-conns');
       const permDir = path.join(testRoot, 'r-perms');
-      const memDir = path.join(testRoot, 'r-mem');
 
       await mkdir(skillDir, { recursive: true });
       await mkdir(agentDir, { recursive: true });
       await mkdir(mcpDir, { recursive: true });
       await mkdir(connDir, { recursive: true });
       await mkdir(permDir, { recursive: true });
-      await createMemoryMd(memDir, 'distributed memory');
 
       await createSkillFile(skillDir, 'dist-skill', 'Distributed skill');
       await createAgentFile(agentDir, 'dist-agent', 'Distributed agent');
@@ -399,7 +363,7 @@ describe('resource-dirs verification', () => {
           mcps: [mcpDir],
           connectors: [connDir],
           permissions: [permDir],
-          memory: [memDir],
+          wiki: [],
         },
       });
 
@@ -408,7 +372,6 @@ describe('resource-dirs verification', () => {
       expect(loaded.mcps.some(m => m.name === 'dist-mcp')).toBe(true);
       expect(loaded.connectors.some(c => c.id === 'dist-conn')).toBe(true);
       expect(loaded.permissions.some(p => p.id === 'dist-rule')).toBe(true);
-      expect(loaded.memory.some(m => m.content === 'distributed memory')).toBe(true);
 
       // sourcePath/filePath reflects the custom dirs
       expect(loaded.skills.find(s => s.name === 'dist-skill')!.sourcePath).toContain('r-skills');
@@ -416,7 +379,6 @@ describe('resource-dirs verification', () => {
       expect(loaded.mcps.find(m => m.name === 'dist-mcp')!.sourcePath).toContain('r-mcps');
       expect(loaded.connectors.find(c => c.id === 'dist-conn')!.sourcePath).toContain('r-conns');
       expect(loaded.permissions.find(p => p.id === 'dist-rule')!.filePath).toContain('r-perms');
-      expect(loaded.memory.find(m => m.content === 'distributed memory')!.filePath).toContain('r-mem');
     });
   });
 });

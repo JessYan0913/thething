@@ -98,9 +98,11 @@ export class SQLiteInboundInbox implements InboundInbox {
     `).all() as Array<{ status: string; count: number }>
 
     const stats: InboundInboxStats = {
+      total: 0,
       pending: 0,
       processing: 0,
       completed: 0,
+      failed: 0,
       dead: 0,
     }
 
@@ -110,6 +112,8 @@ export class SQLiteInboundInbox implements InboundInbox {
         stats[status] = row.count
       }
     }
+
+    stats.total = stats.pending + stats.processing + stats.completed + stats.failed + (stats.dead ?? 0)
 
     return stats
   }

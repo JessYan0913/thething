@@ -135,6 +135,7 @@ describe('InMemoryCronJobStore', () => {
       name: 'Test',
       schedule: '0 * * * *',
       prompt: 'Do something',
+      enabled: true,
     });
     expect(job.id).toBeDefined();
     expect(job.name).toBe('Test');
@@ -150,6 +151,7 @@ describe('InMemoryCronJobStore', () => {
       name: 'Fixed ID',
       schedule: '*/5 * * * *',
       prompt: 'Fixed ID task',
+      enabled: true,
     });
     expect(job.id).toBe('my-id');
     expect(store.getById('my-id')).not.toBeNull();
@@ -190,9 +192,9 @@ describe('InMemoryCronJobStore', () => {
   });
 
   it('deletes by metadata', () => {
-    store.create({ id: 'a', name: 'A', schedule: '0 * * * *', prompt: '', metadata: { source: 'file' } });
-    store.create({ id: 'b', name: 'B', schedule: '0 * * * *', prompt: '', metadata: { source: 'sqlite' } });
-    store.create({ id: 'c', name: 'C', schedule: '0 * * * *', prompt: '', metadata: { source: 'file' } });
+    store.create({ id: 'a', name: 'A', schedule: '0 * * * *', prompt: '', metadata: { source: 'file' }, enabled: true });
+    store.create({ id: 'b', name: 'B', schedule: '0 * * * *', prompt: '', metadata: { source: 'sqlite' }, enabled: true });
+    store.create({ id: 'c', name: 'C', schedule: '0 * * * *', prompt: '', metadata: { source: 'file' }, enabled: true });
 
     expect(store.listAll()).toHaveLength(3);
     const removed = store.deleteByMetadata('source', 'file');
@@ -202,7 +204,7 @@ describe('InMemoryCronJobStore', () => {
   });
 
   it('writes and reads execution history', () => {
-    store.create({ id: 'hist-test', name: 'History', schedule: '* * * * *', prompt: '' });
+    store.create({ id: 'hist-test', name: 'History', schedule: '* * * * *', prompt: '', enabled: true });
 
     const exec1 = store.logExecution({
       jobId: 'hist-test', status: 'completed',
@@ -227,7 +229,7 @@ describe('InMemoryCronJobStore', () => {
   });
 
   it('updates a job', () => {
-    store.create({ id: 'upd', name: 'Original', schedule: '0 * * * *', prompt: 'original prompt' });
+    store.create({ id: 'upd', name: 'Original', schedule: '0 * * * *', prompt: 'original prompt', enabled: true });
     store.update('upd', { name: 'Updated', prompt: 'new prompt' });
 
     const job = store.getById('upd')!;
@@ -236,7 +238,7 @@ describe('InMemoryCronJobStore', () => {
   });
 
   it('deletes a job', () => {
-    store.create({ id: 'del', name: 'Delete Me', schedule: '0 * * * *', prompt: '' });
+    store.create({ id: 'del', name: 'Delete Me', schedule: '0 * * * *', prompt: '', enabled: true });
     expect(store.getById('del')).not.toBeNull();
     expect(store.delete('del')).toBe(true);
     expect(store.getById('del')).toBeNull();
@@ -244,7 +246,7 @@ describe('InMemoryCronJobStore', () => {
   });
 
   it('recalculates nextRunAt on schedule update', () => {
-    store.create({ id: 'sched', name: 'Schedule', schedule: '0 0 * * *', prompt: '' });
+    store.create({ id: 'sched', name: 'Schedule', schedule: '0 0 * * *', prompt: '', enabled: true });
     const before = store.getById('sched')!;
     const oldNextRun = before.nextRunAt;
 

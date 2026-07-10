@@ -38,7 +38,7 @@ async function resolveUserPath(): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync(shell, ['-l', '-c', 'echo "$PATH"'], {
       timeout: 10_000,
-      env: process.env as Record<string, string>,
+      env: process.env as NodeJS.ProcessEnv,
     });
 
     const resolved = stdout.trim();
@@ -73,7 +73,7 @@ async function resolveCommand(command: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync(shell, ['-l', '-c', `which ${command}`], {
       timeout: 5_000,
-      env: process.env as Record<string, string>,
+      env: process.env as NodeJS.ProcessEnv,
     });
 
     const fullPath = stdout.trim();

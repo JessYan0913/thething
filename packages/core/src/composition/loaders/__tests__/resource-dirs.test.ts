@@ -5,17 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { loadAll } from '../index';
 
 describe('resource-aware loaders', () => {
-  it('loads skills, agents, permissions, and memory from explicit resource dirs', async () => {
+  it('loads skills, agents, and permissions from explicit resource dirs', async () => {
     const root = path.join(os.tmpdir(), `thething-resources-${Date.now()}`);
     const skillsDir = path.join(root, 'custom-skills');
     const agentDir = path.join(root, 'custom-agents');
     const permissionsDir = path.join(root, 'custom-permissions');
-    const memoryDir = path.join(root, 'custom-memory');
 
     await mkdir(path.join(skillsDir, 'custom-skill'), { recursive: true });
     await mkdir(agentDir, { recursive: true });
     await mkdir(permissionsDir, { recursive: true });
-    await mkdir(memoryDir, { recursive: true });
 
     await writeFile(
       path.join(skillsDir, 'custom-skill', 'SKILL.md'),
@@ -52,7 +50,6 @@ describe('resource-aware loaders', () => {
       }),
       'utf-8',
     );
-    await writeFile(path.join(memoryDir, 'MEMORY.md'), 'custom memory', 'utf-8');
 
     const loaded = await loadAll({
       cwd: root,
@@ -63,13 +60,12 @@ describe('resource-aware loaders', () => {
         mcps: [],
         connectors: [],
         permissions: [permissionsDir],
-        memory: [memoryDir],
+        wiki: [],
       },
     });
 
     expect(loaded.skills.map((s) => s.name)).toContain('custom-skill');
     expect(loaded.agents.map((a) => a.agentType)).toContain('custom-agent');
     expect(loaded.permissions.map((p) => p.id)).toContain('allow-read');
-    expect(loaded.memory.map((m) => m.content)).toContain('custom memory');
   });
 });

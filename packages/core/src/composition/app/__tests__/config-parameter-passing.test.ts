@@ -64,6 +64,7 @@ function createMockContext(behaviorOverrides?: Parameters<typeof buildBehaviorCo
       connectorInbound: {} as any,
       cronScheduler: null,
       cronStore: null,
+      tasksDir: '/tmp/test-tasks',
       dispose: vi.fn(),
     },
     layout,
@@ -103,7 +104,7 @@ describe('config parameter passing', () => {
       layout,
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 10_000, messageBudget: 50_000 },
-      modelAliases: { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o-mini' },
+      modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o-mini' } },
       availableModels: [
         { id: 'custom-1', name: 'Custom 1', costMultiplier: 0.5, capabilityTier: 1 },
       ],
@@ -129,7 +130,7 @@ describe('config parameter passing', () => {
         maxToolResultsPerMessageChars: 24_000,
         previewSizeChars: 800,
       },
-      modelAliases: { fast: 'fast-x', smart: 'smart-x', default: 'default-x' },
+      modelAliases: { fast: { model: 'fast-x' }, smart: { model: 'smart-x' }, default: { model: 'default-x' } },
     });
 
     const resolved = resolveAgentConfig({
@@ -182,9 +183,9 @@ describe('config parameter passing', () => {
   it('resolves model aliases from explicit aliases', () => {
     expect(resolveModelAlias('fast')).toBe('');
     expect(resolveModelAlias('smart', {
-      fast: 'gpt-4o-mini',
-      smart: 'gpt-4o',
-      default: 'gpt-4o-mini',
+      fast: { model: 'gpt-4o-mini' },
+      smart: { model: 'gpt-4o' },
+      default: { model: 'gpt-4o-mini' },
     })).toBe('gpt-4o');
   });
 });
