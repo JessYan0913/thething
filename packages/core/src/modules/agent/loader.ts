@@ -38,6 +38,7 @@ function buildAgentDefinitionFromData(
     connectors: mergedData.connectors as boolean | undefined,
     skills: mergedData.skills as boolean | undefined,
     mcp: mergedData.mcp as boolean | undefined,
+    permission: mergedData.permission as 'smart' | 'auto-review' | 'full-trust' | undefined,
     metadata: mergedData.metadata as Record<string, unknown> | undefined,
     source,
     filePath,
@@ -265,6 +266,7 @@ export function serializeAgentMarkdown(
       connectors: def.connectors ?? true,
       skills: def.skills ?? true,
       mcp: def.mcp ?? true,
+      permission: def.permission,
       source: def.source ?? 'user',
     };
   } else {
@@ -277,6 +279,7 @@ export function serializeAgentMarkdown(
       connectors: def.connectors ?? true,
       skills: def.skills ?? true,
       mcp: def.mcp ?? true,
+      permission: def.permission,
       source: def.source ?? 'user',
       metadata: def.metadata ?? {},
     };

@@ -46,6 +46,9 @@ export const AgentFrontmatterSchema = z.object({
   skills: z.boolean().optional().describe('是否可用技能'),
   mcp: z.boolean().optional().describe('是否可用 MCP 服务'),
 
+  // 权限
+  permission: z.enum(['smart', 'auto-review', 'full-trust']).optional().describe('权限模式'),
+
   // 来源
   source: z.enum(['builtin', 'user', 'project', 'plugin']).optional().describe('来源'),
 
@@ -93,6 +96,9 @@ export interface AgentDefinition {
 
   /** 是否可用 MCP 服务 */
   mcp?: boolean;
+
+  /** 权限模式 */
+  permission?: 'smart' | 'auto-review' | 'full-trust';
 
   /** 来源 */
   source: AgentSource;

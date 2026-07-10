@@ -28,6 +28,7 @@ interface AgentView {
   connectors?: boolean
   skills?: boolean
   mcp?: boolean
+  permission?: string
   source: string
   filePath?: string
   metadata?: Record<string, unknown>
@@ -133,6 +134,7 @@ function AgentEditor({
   const [useConnectors, setUseConnectors] = useState(agent.connectors ?? true)
   const [useSkills, setUseSkills] = useState(agent.skills !== undefined ? agent.skills!.length > 0 : true)
   const [useMcp, setUseMcp] = useState(agent.mcp ?? true)
+  const [permission, setPermission] = useState(agent.permission ?? 'smart')
   const [saving, setSaving] = useState(false)
 
   const autoId = useMemo(() => isEdit ? agentType : generateId(instructions), [instructions, agentType, isEdit])
@@ -154,6 +156,7 @@ function AgentEditor({
         connectors: useConnectors,
         skills: useSkills ? [] : [],
         mcp: useMcp,
+        permission,
       }
       const url = isEdit
         ? `/api/agents?agentType=${encodeURIComponent(agent.agentType!)}`
@@ -230,8 +233,8 @@ function AgentEditor({
 
           {/* ═══ 基础配置 ═══ */}
           <section className="space-y-5">
-            {/* 名称 + 模型 */}
-            <div className="grid grid-cols-2 gap-5">
+            {/* 名称 + 模型 + 权限 */}
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">名称</p>
                 <Input
@@ -254,6 +257,17 @@ function AgentEditor({
                     <SelectItem value="inherit">继承当前设置</SelectItem>
                     <SelectItem value="fast">快速（更快，更便宜）</SelectItem>
                     <SelectItem value="smart">智能（更准，更贵）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">权限</p>
+                <Select value={permission} onValueChange={setPermission}>
+                  <SelectTrigger className="h-10 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="smart">智能（需确认）</SelectItem>
+                    <SelectItem value="auto-review">自动审核</SelectItem>
+                    <SelectItem value="full-trust">完全信任</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

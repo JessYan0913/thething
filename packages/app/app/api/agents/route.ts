@@ -20,6 +20,7 @@ function buildAgentDefinitionFromPayload(
     connectors: (body.connectors as boolean) ?? true,
     skills: (body.skills as boolean) ?? true,
     mcp: (body.mcp as boolean) ?? true,
+    permission: body.permission as 'smart' | 'auto-review' | 'full-trust' | undefined,
     source: source as 'builtin' | 'user' | 'project' | 'plugin',
     metadata: (body.metadata as Record<string, unknown>) ?? {},
   };
@@ -68,6 +69,7 @@ export async function GET(request: Request) {
         connectors: agent.connectors ?? true,
         skills: agent.skills ?? true,
         mcp: agent.mcp ?? true,
+        permission: agent.permission,
         source: agent.source,
         filePath: agent.filePath,
         metadata: agent.metadata ?? {},
