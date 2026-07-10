@@ -148,20 +148,27 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const agentsDir = await ensureAgentsDir();
-    const filePath = path.join(agentsDir, `${agentType}.md`);
 
-    try {
-      await fs.access(filePath);
-    } catch {
+    // 从磁盘加载 agent 以获取实际文件路径（支持子目录和平面两种格式）
+    const rt = await getServerRuntime();
+    const diskAgents = await loadAgents({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.agents,
+    });
+    const existing = diskAgents.find((a) => a.agentType === agentType);
+    if (!existing?.filePath) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
+    const filePath = existing.filePath;
     const def = buildAgentDefinitionFromPayload(body, 'project', agentType);
 
     if (body.agentType && body.agentType !== agentType) {
+      // 重命名：删除旧文件，写入新路径
       await fs.unlink(filePath);
-      const newPath = path.join(path.dirname(filePath), `${body.agentType}.md`);
+      const dir = path.dirname(filePath);
+      const newPath = path.join(dir, `${body.agentType}.md`);
       await fs.writeFile(newPath, serializeAgentMarkdown(def), 'utf-8');
     } else {
       await fs.writeFile(filePath, serializeAgentMarkdown(def), 'utf-8');
@@ -250,16 +257,19 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing agentType query parameter' }, { status: 400 });
     }
 
-    const agentsDir = await ensureAgentsDir();
-    const filePath = path.join(agentsDir, `${agentType}.md`);
-
-    try {
-      await fs.access(filePath);
-    } catch {
+    // 从磁盘加载 agent 以获取实际文件路径
+    const rt = await getServerRuntime();
+    const diskAgents = await loadAgents({
+      configDir: rt.layout.configDir,
+      cwd: process.cwd(),
+      dirs: rt.layout.resources.agents,
+    });
+    const existing = diskAgents.find((a) => a.agentType === agentType);
+    if (!existing?.filePath) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    await fs.unlink(filePath);
+    await fs.unlink(existing.filePath);
     await reloadServerContext();
     return NextResponse.json({ success: true });
   } catch (error) {
