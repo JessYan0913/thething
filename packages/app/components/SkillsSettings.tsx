@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  WrenchIcon, RefreshCwIcon, FolderIcon, LayersIcon,
+  WrenchIcon, RefreshCwIcon, FolderIcon,
   PlusIcon, MoreVerticalIcon,
   Trash2Icon, SearchIcon, SparklesIcon,
   ExternalLinkIcon,
@@ -317,11 +317,6 @@ function SkillCard({
           <span className="truncate" title={skill.sourcePath}>
             {skill.sourcePath}
           </span>
-        </div>
-        <span className="text-muted-foreground/40">|</span>
-        <div className="flex items-center gap-1">
-          <LayersIcon className="size-3" />
-          <span>{skill.allowedTools.length} 个工具</span>
         </div>
         <span className="text-muted-foreground/40">|</span>
         <Badge variant="outline" className="text-xs">

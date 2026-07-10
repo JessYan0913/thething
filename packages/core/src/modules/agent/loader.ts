@@ -2,6 +2,8 @@
 // Agents Loader - 基于 MultiSourceConfigLoader
 // ============================================================
 
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { parseFrontmatterFile, parseFrontmatterContent, parseToolsList, ParseError } from '../../primitives/parser';
 import { createMultiSourceLoader } from '../../services/scanner/multi-source-loader';
 import type { AgentDefinition, AgentSource } from './types';
@@ -125,13 +127,27 @@ const agentsLoader = createMultiSourceLoader<AgentDefinition>({
 });
 
 /**
- * 判断一个目录路径是否为 .agents 协议目录
- * .agents 协议使用子目录结构（<name>/agent.md）
- * .thething 使用平面文件（<name>.md）
+ * 检测目录是否使用子目录结构（<name>/agent.md 而非 <name>.md）
+ * 通过检查是否存在包含 agent.md 的子目录来判断
  */
-function isDotAgentsDir(dir: string): boolean {
-  // 检查路径中是否包含 /.agents/ 作为目录组件
-  return dir.includes('/.agents/');
+async function isSubdirectoryAgentDir(dir: string): Promise<boolean> {
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        const agentMd = path.join(dir, entry.name, 'agent.md');
+        try {
+          await fs.access(agentMd);
+          return true;
+        } catch {
+          // agent.md 不存在，继续检查其他子目录
+        }
+      }
+    }
+  } catch {
+    // 目录不存在或无法读取
+  }
+  return false;
 }
 
 // ============================================================
@@ -193,33 +209,41 @@ export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefi
     });
   }
 
-  // 分离 .agents 和 .thething 目录，各自使用对应的扫描模式
-  const thethingDirs = dirs.filter(d => !isDotAgentsDir(d));
-  const dotAgentsDirs = dirs.filter(d => isDotAgentsDir(d));
+  // 按目录结构分离：子目录格式（<name>/agent.md）vs 平面格式（<name>.md）
+  const subDirs: string[] = [];
+  const flatDirs: string[] = [];
+
+  for (const dir of dirs) {
+    if (await isSubdirectoryAgentDir(dir)) {
+      subDirs.push(dir);
+    } else {
+      flatDirs.push(dir);
+    }
+  }
 
   const results: AgentDefinition[] = [];
 
-  if (thethingDirs.length > 0) {
+  if (flatDirs.length > 0) {
     const flatItems = await agentsLoader.load({
       cwd: options?.cwd,
       configDir: options?.configDir,
       homeDir: options?.homeDir,
-      dirs: thethingDirs,
+      dirs: flatDirs,
     });
     results.push(...flatItems);
   }
 
-  if (dotAgentsDirs.length > 0) {
+  if (subDirs.length > 0) {
     const configDirItems = await agentsDotAgentsLoader.load({
       cwd: options?.cwd,
       configDir: options?.configDir,
       homeDir: options?.homeDir,
-      dirs: dotAgentsDirs,
+      dirs: subDirs,
     });
     results.push(...configDirItems);
   }
 
-  // 按 agentType 去重（.agents 覆盖 .thething）
+  // 按 agentType 去重
   const merged = new Map<string, AgentDefinition>();
   for (const item of results) {
     merged.set(item.agentType, item);
