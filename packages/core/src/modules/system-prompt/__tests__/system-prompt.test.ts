@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { SystemPromptSection, UserPreferences, ConversationMeta } from '../types';
+import type { SystemPromptSection, ConversationMeta } from '../types';
 import { buildSimpleSystemPrompt, buildTitleGenerationPrompt, getAvailableSections } from '../builder';
 
 // ============================================================
@@ -45,26 +45,6 @@ describe('system-prompt', () => {
       });
     });
 
-    describe('UserPreferences', () => {
-      it('should have optional fields', () => {
-        const prefs: UserPreferences = {
-          language: 'zh-CN',
-          domain: 'software',
-          responseStyle: 'concise',
-          customSystemPrompt: 'Be helpful',
-        };
-        expect(prefs.language).toBeDefined();
-        expect(prefs.domain).toBeDefined();
-        expect(prefs.responseStyle).toBeDefined();
-      });
-
-      it('should work with minimal prefs', () => {
-        const prefs: UserPreferences = {};
-        expect(prefs.language).toBeUndefined();
-        expect(prefs.responseStyle).toBeUndefined();
-      });
-    });
-
     describe('ConversationMeta', () => {
       it('should have required fields', () => {
         const meta: ConversationMeta = {
@@ -88,7 +68,7 @@ describe('system-prompt', () => {
 
       it('should contain identity section', () => {
         const prompt = buildSimpleSystemPrompt();
-        expect(prompt).toContain('Aura');
+        expect(prompt).toContain('TheThing');
       });
 
       it('should contain capabilities section', () => {

@@ -5,7 +5,7 @@ import type { AgentIdentity, SystemPromptSection } from '../types';
 // ============================================================================
 
 const IDENTITY: AgentIdentity = {
-  name: 'Aura',
+  name: 'TheThing',
   role: '智能助手',
   traits: [
     '知识渊博',
@@ -22,8 +22,21 @@ const IDENTITY: AgentIdentity = {
 /**
  * Creates the identity section for the system prompt.
  * This is the core "who am I" section that defines the agent's fundamental identity.
+ *
+ * @param soulContent - 如果提供了 SOUL.md 的内容，直接使用；否则用默认身份
  */
-export function createIdentitySection(): SystemPromptSection {
+export function createIdentitySection(soulContent?: string | null): SystemPromptSection {
+  // 如果有 SOUL.md 内容，直接使用
+  if (soulContent) {
+    return {
+      name: 'identity',
+      content: soulContent,
+      cacheStrategy: 'session', // SOUL.md 可能被用户修改
+      priority: 1,
+    };
+  }
+
+  // Fallback: 使用硬编码的默认身份
   const traits = IDENTITY.traits ?? [];
   const traitsText = traits.length > 0
     ? `\n性格特点：${traits.join('、')}`
@@ -41,7 +54,7 @@ export function createIdentitySection(): SystemPromptSection {
   return {
     name: 'identity',
     content,
-    cacheStrategy: 'static', // Identity never changes
+    cacheStrategy: 'static',
     priority: 1,
   };
 }

@@ -13,7 +13,6 @@
 //   - capabilities.ts: What the agent can do
 //   - rules.ts: Behavioral rules
 //   - tools.ts: Tool registry and descriptions
-//   - user-preferences.ts: User-specific settings
 //   - project-context.ts: THING.md multi-level merging
 //   - session.ts: Dynamic per-conversation content
 //
@@ -32,7 +31,6 @@ export type {
   SystemPromptSection,
   BuildSystemPromptOptions,
   BuiltSystemPrompt,
-  UserPreferences,
   ConversationMeta,
   AgentIdentity,
 } from "./types";
@@ -62,13 +60,7 @@ export {
 } from "./sections/capabilities";
 export {
   createRulesSection,
-  createLanguageRulesSection,
 } from "./sections/rules";
-export {
-  createUserPreferencesSection,
-  createResponseStyleSection,
-  RESPONSE_STYLES,
-} from "./sections/user-preferences";
 export {
   createProjectContextSection,
   loadProjectContext,

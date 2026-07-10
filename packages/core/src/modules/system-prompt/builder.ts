@@ -6,14 +6,7 @@ import type {
 
 import { createIdentitySection } from "./sections/identity";
 import { createCapabilitiesSection } from "./sections/capabilities";
-import {
-  createRulesSection,
-  createLanguageRulesSection,
-} from "./sections/rules";
-import {
-  createUserPreferencesSection,
-  createResponseStyleSection,
-} from "./sections/user-preferences";
+import { createRulesSection } from "./sections/rules";
 import {
   createSessionGuidanceSection,
   createFirstMessageGuidance,
@@ -31,7 +24,6 @@ import { formatSkillsWithinBudget } from '../skills/budget-formatter';
 const DEFAULT_OPTIONS: BuildSystemPromptOptions = {
   override: null,
   customInstructions: null,
-  userPreferences: null,
   includeProjectContext: true,
   conversationMeta: null,
   skills: undefined,
@@ -82,36 +74,6 @@ const STATIC_SECTION_FACTORIES: SectionFactory[] = [
  * 改造说明：使用传入的数据而非 cwd
  */
 const SESSION_SECTION_FACTORIES: SectionFactory[] = [
-  {
-    name: "language-rules",
-    create: (options) =>
-      createLanguageRulesSection(options.userPreferences?.language),
-    cacheStrategy: "session",
-  },
-  {
-    name: "response-style",
-    create: (options) =>
-      options.userPreferences?.responseStyle
-        ? createResponseStyleSection(
-            options.userPreferences.responseStyle as
-              | "concise"
-              | "detailed"
-              | "balanced",
-          )
-        : {
-            name: "response-style",
-            content: null,
-            cacheStrategy: "session" as const,
-            priority: 15,
-          },
-    cacheStrategy: "session",
-  },
-  {
-    name: "user-preferences",
-    create: (options) =>
-      createUserPreferencesSection(options.userPreferences ?? null),
-    cacheStrategy: "session",
-  },
   {
     name: "project-context",
     create: (options) => {
@@ -294,6 +256,9 @@ export async function buildSystemPrompt(
   // Collect all sections
   const allSections: SystemPromptSection[] = [];
 
+  // Load SOUL.md for identity section
+  const soulContent = await loadSoulMd();
+
   // Add static sections (synchronous)
   for (const factory of STATIC_SECTION_FACTORIES) {
     // Skip sections that are explicitly excluded
@@ -301,7 +266,10 @@ export async function buildSystemPrompt(
       continue;
     }
 
-    const section = factory.create(opts) as SystemPromptSection;
+    // Identity section gets SOUL.md content if available
+    const section = factory.name === 'identity'
+      ? createIdentitySection(soulContent)
+      : factory.create(opts) as SystemPromptSection;
     if (section.content) {
       allSections.push(section);
     }
@@ -364,6 +332,22 @@ export async function buildSystemPrompt(
       priority: 200,
     };
     allSections.push(customSection);
+  }
+
+  // SOUL.md 引导：如果灵魂文件不存在，引导 Agent 主动创建
+  if (!soulContent) {
+    const soulGuideSection: SystemPromptSection = {
+      name: "soul-guide",
+      content: `【灵魂文件引导】
+你的灵魂文件（~/.thething/SOUL.md）尚未创建。这个文件定义了你的名字、性格和说话风格。
+如果这是你与用户的第一次对话，请主动询问用户：
+"你想给我设定什么样的灵魂？比如名字、性格特点、说话风格等，告诉我，我来保存。"
+用户描述后，请使用 write_to_file 工具将内容写入 ~/.thething/SOUL.md。
+如果用户跳过或拒绝，不要重复询问。`,
+      cacheStrategy: "session",
+      priority: 201,
+    };
+    allSections.push(soulGuideSection);
   }
 
   // Filter out null content and combine
@@ -455,6 +439,28 @@ async function loadDotAgentsSystemPromptMd(cwd?: string): Promise<string | null>
   }
 
   return null;
+}
+
+/**
+ * Load the ~/.thething/SOUL.md file (Agent 灵魂定义).
+ * 如果文件存在，返回其内容；不存在返回 null。
+ */
+async function loadSoulMd(): Promise<string | null> {
+  const _path = 'path';
+  const _fs = 'fs/promises';
+  try {
+    const { default: fs } = await import(/* webpackIgnore: true */ _fs);
+    const { default: path } = await import(/* webpackIgnore: true */ _path);
+
+    const homeDir = process.env.HOME || '';
+    const soulPath = path.join(homeDir, '.thething', 'SOUL.md');
+
+    const content = await fs.readFile(soulPath, 'utf-8');
+    const trimmed = content.trim();
+    return trimmed || null;
+  } catch {
+    return null;
+  }
 }
 
 // ============================================================================

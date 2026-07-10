@@ -58,7 +58,6 @@ export interface BuildSystemPromptOptions {
   // 保留原有选项
   override?: string | null;
   customInstructions?: string | null;
-  userPreferences?: UserPreferences | null;
   includeProjectContext?: boolean;
   conversationMeta?: ConversationMeta | null;
   wikiContext?: {
@@ -67,23 +66,6 @@ export interface BuildSystemPromptOptions {
 
   /** Sections to exclude from the system prompt (e.g., ['identity'] for custom agents) */
   excludeSections?: string[];
-}
-
-/**
- * User preferences that influence agent behavior.
- */
-export interface UserPreferences {
-  /** Preferred language for responses */
-  language?: string;
-
-  /** User's professional domain */
-  domain?: string;
-
-  /** Preferred response style */
-  responseStyle?: 'concise' | 'detailed' | 'balanced';
-
-  /** Custom system prompt additions from user */
-  customSystemPrompt?: string;
 }
 
 /**

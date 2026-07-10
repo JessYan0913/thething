@@ -44,26 +44,3 @@ export function createRulesSection(): SystemPromptSection {
     priority: 3,
   };
 }
-
-// ============================================================================
-// Language-specific rules
-// ============================================================================
-
-/**
- * Creates language-specific behavioral rules.
- */
-export function createLanguageRulesSection(language: string = '中文'): SystemPromptSection {
-  const content = `【语言规范】
-
-- 使用 ${language} 进行回答
-- 技术术语在首次出现时提供解释
-- 保持语言风格一致，避免中英文混杂
-- 适当使用格式化（列表、粗体等）提高可读性`;
-
-  return {
-    name: 'language-rules',
-    content,
-    cacheStrategy: 'static',
-    priority: 4,
-  };
-}
