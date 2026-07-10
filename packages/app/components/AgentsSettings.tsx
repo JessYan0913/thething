@@ -5,11 +5,16 @@ import {
   PlusIcon, PencilIcon, TrashIcon,
   ExternalLinkIcon, MoreVerticalIcon,
   ArrowLeftIcon, SaveIcon, CheckIcon,
+  WrenchIcon, PlugIcon, BookOpenIcon, ServerIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 import {
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
 } from "@/components/ui/tooltip"
@@ -30,6 +35,8 @@ interface AgentView {
   filePath?: string
   metadata?: Record<string, unknown>
   instructions?: string
+  connectors?: boolean
+  mcp?: boolean
 }
 
 const sourceLabels: Record<string, string> = {
@@ -96,46 +103,13 @@ function generateId(desc: string): string {
     .slice(0, 32) || "my-agent"
 }
 
-function generateDisplayName(desc: string): string {
-  if (!desc.trim()) return "我的代理"
-  const patterns = [
-    /(?:帮我|帮忙|能够|可以)?(.{2,10}?)(?:的|助手|代理|机器人)/,
-    /(?:帮我|帮忙)?(.{2,12})/,
-  ]
-  for (const p of patterns) {
-    const m = desc.match(p)
-    if (m?.[1]) {
-      const core = m[1].trim()
-      if (core.length <= 8) return `${core}助手`
-      return `${core.slice(0, 8)}…`
-    }
-  }
-  return desc.slice(0, 8) + "助手"
-}
-
-/** 从描述推断推荐工具 */
-function inferToolsFromDescription(desc: string): string[] {
-  const lower = desc.toLowerCase()
-  const tools: string[] = []
-  if (/文件|读取|写入|代码|file|read|write/.test(lower)) tools.push("read_file", "write_file")
-  if (/编辑|修改|替换|search|replace/.test(lower)) tools.push("edit_file")
-  if (/搜索|查找|grep|search/.test(lower)) tools.push("grep", "glob")
-  if (/终端|命令|shell|执行|脚本/.test(lower)) tools.push("bash")
-  if (/网页|网站|url|http|fetch|抓取/.test(lower)) tools.push("web_fetch")
-  if (/定时|提醒|cron|调度/.test(lower)) tools.push("cron")
-  if (/研究|调研|深入/.test(lower)) tools.push("agent")
-  return tools
-}
-
-function generateInstructions(desc: string): string {
-  if (!desc.trim()) return ""
-  return `你是一个智能助手，核心任务是：${desc}
-
-行为规则：
-- 专注于完成上述任务，不要偏离主题
-- 遇到不确定的情况，先确认再执行
-- 保持简洁高效的沟通风格
-- 涉及敏感操作（删除、发送等）时需确认`
+function generateDisplayName(instructions: string): string {
+  if (!instructions.trim()) return "我的代理"
+  // 取第一行非空文本作为名称
+  const firstLine = instructions.split("\n").find((l) => l.trim()) ?? instructions
+  const cleaned = firstLine.replace(/^#+\s*/, "").trim()
+  if (cleaned.length <= 12) return cleaned
+  return cleaned.slice(0, 12) + "…"
 }
 
 function toggleArrayItem(arr: string[], item: string): string[] {
@@ -143,7 +117,7 @@ function toggleArrayItem(arr: string[], item: string): string[] {
 }
 
 // ============================================================
-// AgentEditor — 核心三件事：描述、工具、系统提示
+// AgentEditor — 系统提示为核心
 // ============================================================
 
 function AgentEditor({
@@ -157,24 +131,21 @@ function AgentEditor({
 }) {
   const isEdit = !!agent.agentType
 
-  const [description, setDescription] = useState(agent.description ?? "")
+  const [instructions, setInstructions] = useState(agent.instructions ?? "")
   const [displayName, setDisplayName] = useState(agent.displayName ?? "")
   const [agentType, setAgentType] = useState(agent.agentType ?? "")
+  const [model, setModel] = useState(agent.model ?? "inherit")
   const [selectedTools, setSelectedTools] = useState<string[]>(agent.tools ?? [])
-  const [instructions, setInstructions] = useState(agent.instructions ?? "")
-  const [instructionsEdited, setInstructionsEdited] = useState(!!agent.instructions)
+  const [useConnectors, setUseConnectors] = useState(agent.connectors ?? true)
+  const [useSkills, setUseSkills] = useState(agent.skills !== undefined ? agent.skills!.length > 0 : true)
+  const [useMcp, setUseMcp] = useState(agent.mcp ?? true)
   const [saving, setSaving] = useState(false)
 
-  const autoId = useMemo(() => isEdit ? agentType : generateId(description), [description, agentType, isEdit])
+  const autoId = useMemo(() => isEdit ? agentType : generateId(instructions), [instructions, agentType, isEdit])
   const autoDisplayName = useMemo(
-    () => isEdit ? (displayName || agent.displayName) : generateDisplayName(description),
-    [description, displayName, isEdit, agent.displayName],
+    () => isEdit ? (displayName || agent.displayName) : generateDisplayName(instructions),
+    [instructions, displayName, isEdit, agent.displayName],
   )
-  const autoInstructions = useMemo(() => generateInstructions(description), [description])
-  const effectiveInstructions = instructionsEdited ? instructions : autoInstructions
-
-  // 根据描述推荐工具（仅首次输入时推荐，用户手动选过之后不再覆盖）
-  const inferredTools = useMemo(() => inferToolsFromDescription(description), [description])
 
   const handleSave = async () => {
     setSaving(true)
@@ -182,9 +153,13 @@ function AgentEditor({
       const data = {
         agentType: autoId,
         displayName: autoDisplayName || undefined,
-        description,
+        description: instructions.slice(0, 200),
+        instructions,
+        model,
         tools: selectedTools,
-        instructions: effectiveInstructions,
+        connectors: useConnectors,
+        skills: useSkills ? [] : [],
+        mcp: useMcp,
       }
       const url = isEdit
         ? `/api/agents?agentType=${encodeURIComponent(agent.agentType!)}`
@@ -204,143 +179,159 @@ function AgentEditor({
     }
   }
 
+  const hasInstructions = instructions.trim().length > 0
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b shrink-0">
+      <div className="flex items-center justify-between px-8 py-4 border-b shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeftIcon className="size-4" />
           </Button>
           <BotIcon className="size-5 shrink-0" />
-          <h1 className="text-sm font-semibold">
+          <h1 className="text-base font-semibold">
             {isEdit ? "编辑代理" : "创建代理"}
           </h1>
+          {isEdit && (
+            <Badge variant="secondary" className="text-xs font-mono">{agent.agentType}</Badge>
+          )}
         </div>
-        <Button size="sm" onClick={handleSave} disabled={saving || !description.trim()}>
-          <SaveIcon className="size-3.5 mr-1" />
+        <Button size="sm" onClick={handleSave} disabled={saving || !hasInstructions}>
+          <SaveIcon className="size-3.5 mr-1.5" />
           {saving ? "保存中..." : "保存"}
         </Button>
       </div>
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="flex justify-center p-6">
-          <div className="w-full max-w-lg space-y-6">
+        <div className="max-w-2xl mx-auto px-8 py-8 space-y-8">
 
-            {/* ═══ 1. 描述 ═══ */}
-            <section className="space-y-2">
-              <p className="text-sm font-medium">做什么</p>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="比如：帮我监控 GitHub 上的 PR，有新评论时通知我"
-                rows={2}
-                className="text-sm resize-none"
-              />
-              {description.trim() && !isEdit && (
-                <p className="text-xs text-muted-foreground">
-                  ID: <span className="font-mono">{autoId}</span>
+          {/* ═══ 系统提示 — 核心，最大最突出 ═══ */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">系统提示</p>
+              {!isEdit && (
+                <p className="text-xs text-muted-foreground/50">
+                  告诉它你是谁、要做什么、怎么做
                 </p>
               )}
-            </section>
+            </div>
+            <Textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder={`你是一个智能助手。
 
-            {/* 名称（内联） */}
-            {description.trim() && (
-              <div className="flex items-center gap-3">
-                <p className="text-sm text-muted-foreground shrink-0">名称</p>
+你的核心职责是：
+- 帮我处理 xxx
+- 当出现 yyy 时，执行 zzz
+
+行为规则：
+- 保持简洁高效
+- 遇到不确定的情况，先确认再执行`}
+              rows={14}
+              className="text-sm leading-relaxed resize-y min-h-50"
+            />
+          </section>
+
+          {/* ═══ 基础配置 ═══ */}
+          <section className="space-y-5">
+            {/* 名称 + 模型 */}
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">名称</p>
                 <Input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder={autoDisplayName}
-                  className="h-8 text-sm"
+                  className="h-10 text-sm"
                 />
-              </div>
-            )}
-
-            {/* ═══ 2. 工具 ═══ */}
-            {description.trim() && (
-              <section className="space-y-3">
-                <p className="text-sm font-medium">工具</p>
-
-                {/* 推荐工具 */}
-                {inferredTools.length > 0 && selectedTools.length === 0 && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-muted-foreground">推荐：</span>
-                    {inferredTools.map((t) => {
-                      const tool = ALL_TOOLS.find((at) => at.id === t)
-                      return (
-                        <button
-                          key={t}
-                          type="button"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-primary/40 text-primary/70 hover:border-primary hover:text-primary cursor-pointer transition-colors"
-                          onClick={() => setSelectedTools((prev) => toggleArrayItem(prev, t))}
-                        >
-                          {tool?.label ?? t}
-                        </button>
-                      )
-                    })}
-                  </div>
+                {!isEdit && hasInstructions && (
+                  <p className="text-xs text-muted-foreground/50">
+                    ID: <span className="font-mono">{autoId}</span>
+                  </p>
                 )}
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">模型智力</p>
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger className="h-10 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inherit">继承当前设置</SelectItem>
+                    <SelectItem value="fast">快速（更快，更便宜）</SelectItem>
+                    <SelectItem value="smart">智能（更准，更贵）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-                {/* 工具分类 */}
-                <div className="space-y-3">
-                  {TOOL_GROUPS.map((group) => (
-                    <div key={group.label} className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground/60">{group.label}</p>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {group.tools.map((tool) => {
-                          const selected = selectedTools.includes(tool.id)
-                          return (
-                            <button
-                              key={tool.id}
-                              type="button"
-                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs border transition-all cursor-pointer ${
-                                selected
-                                  ? "border-primary bg-primary/10 text-primary font-medium"
-                                  : "border-border text-muted-foreground hover:border-primary/50"
-                              }`}
-                              onClick={() => setSelectedTools((prev) => toggleArrayItem(prev, tool.id))}
-                            >
-                              {selected && <CheckIcon className="size-3" />}
-                              {tool.label}
-                            </button>
-                          )
-                        })}
-                      </div>
+            {/* 系统工具 */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <WrenchIcon className="size-4 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">系统工具</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {TOOL_GROUPS.map((group) =>
+                  group.tools.map((tool) => {
+                    const selected = selectedTools.includes(tool.id)
+                    return (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm border transition-all cursor-pointer ${
+                          selected
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border text-muted-foreground hover:border-primary/50"
+                        }`}
+                        onClick={() => setSelectedTools((prev) => toggleArrayItem(prev, tool.id))}
+                      >
+                        {selected && <CheckIcon className="size-3.5" />}
+                        {tool.label}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* 能力开关 */}
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">能力</p>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between py-3 border-b">
+                  <div className="flex items-center gap-3">
+                    <PlugIcon className="size-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm">连接器</p>
+                      <p className="text-xs text-muted-foreground/60">飞书、微信等外部服务</p>
                     </div>
-                  ))}
+                  </div>
+                  <Switch checked={useConnectors} onCheckedChange={setUseConnectors} />
                 </div>
-              </section>
-            )}
-
-            {/* ═══ 3. 系统提示 ═══ */}
-            {description.trim() && (
-              <section className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">系统提示</p>
-                  {!instructionsEdited && (
-                    <button
-                      type="button"
-                      className="text-xs text-primary/60 hover:text-primary cursor-pointer transition-colors"
-                      onClick={() => setInstructionsEdited(true)}
-                    >
-                      自定义
-                    </button>
-                  )}
+                <div className="flex items-center justify-between py-3 border-b">
+                  <div className="flex items-center gap-3">
+                    <BookOpenIcon className="size-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm">技能</p>
+                      <p className="text-xs text-muted-foreground/60">预定义的专业能力包</p>
+                    </div>
+                  </div>
+                  <Switch checked={useSkills} onCheckedChange={setUseSkills} />
                 </div>
-                <Textarea
-                  value={effectiveInstructions}
-                  onChange={(e) => {
-                    setInstructions(e.target.value)
-                    setInstructionsEdited(true)
-                  }}
-                  rows={6}
-                  className="text-xs font-mono resize-y"
-                />
-              </section>
-            )}
-          </div>
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <ServerIcon className="size-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm">MCP 服务</p>
+                      <p className="text-xs text-muted-foreground/60">外部工具服务器</p>
+                    </div>
+                  </div>
+                  <Switch checked={useMcp} onCheckedChange={setUseMcp} />
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -397,7 +388,6 @@ function AgentCard({
             <p className="text-xs text-muted-foreground line-clamp-2">
               {agent.description}
             </p>
-            {/* 工具标签 */}
             {agent.tools && agent.tools.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap pt-1">
                 {agent.tools.slice(0, 6).map((t) => {
@@ -418,7 +408,6 @@ function AgentCard({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="relative shrink-0 flex items-center gap-2">
           <TooltipProvider>
             <Tooltip>
