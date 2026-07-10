@@ -95,6 +95,7 @@ export async function GET(request: Request) {
       connectors: agent.connectors,
       skills: agent.skills,
       mcp: agent.mcp,
+      permission: agent.permission,
       source: agent.source,
       filePath: agent.filePath,
       metadata: { ...(agent.metadata ?? {}), ...(persistedMeta[agent.agentType] ?? {}) },
