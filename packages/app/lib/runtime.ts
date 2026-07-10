@@ -58,8 +58,7 @@ export async function saveTheThingRC(config: { dataDir?: string }): Promise<void
 
 /**
  * 获取当前模型配置。
- * 完全遵循 Dot Agents 协议：仅从 .agents/models.json 读取。
- * 无需环境变量覆盖——配置即文件。
+ * 从 ~/.thething/models.json 读取（通过 ~/.agents → ~/.thething symlink 兼容协议工具）。
  */
 export function getModelConfig(): { apiKey: string; baseURL: string; modelName?: string } {
   return {
@@ -81,8 +80,9 @@ const projectContextCache: Map<string, AppContext> = new Map();
 async function initializeRuntime(): Promise<CoreRuntime> {
   const envSnapshot: Record<string, string | undefined> = { ...process.env };
 
-  // Dot Agents 协议：配置目录固定为 ~/.agents/
-  const configDir = path.join(os.homedir(), '.agents');
+  // TheThing 统一数据目录：~/.thething
+  // 通过 ~/.agents → ~/.thething symlink 兼容 Dot Agents Protocol 和 Agent Skills 生态
+  const configDir = path.join(os.homedir(), '.thething');
 
   // 运行时数据目录（TheThing 产品数据）：
   // 1. ~/.thethingrc 中 dataDir 指针（用户配置）
@@ -92,10 +92,10 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     ? thethingRC.dataDir.replace(/^~/, os.homedir())
     : path.join(os.homedir(), '.thething');
 
-  // 从 .agents/models.json 读取协议配置
+  // 从 ~/.thething/models.json 读取配置
   let bootConfig = loadGlobalConfig(configDir);
 
-  // 迁移兼容：如果 .agents/models.json 不存在，尝试旧的 .thething/config.json
+  // 迁移兼容：如果 models.json 不存在，尝试旧的 config.json
   if (!bootConfig) {
     const legacyPath = path.join(os.homedir(), '.thething', 'config.json');
     try {
@@ -222,7 +222,7 @@ export async function getServerContext(): Promise<AppContext> {
 
 /**
  * 获取项目特定的 AppContext（带缓存）。
- * 为项目目录创建独立的 layout，加载该目录下的 .agents/ 资源。
+ * 为项目目录创建独立的 layout，加载该目录下的资源。
  */
 export async function getProjectContext(projectId: string, projectPath: string): Promise<AppContext> {
   const defaultCtx = await getServerContext();

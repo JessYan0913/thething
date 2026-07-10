@@ -209,7 +209,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 6. Cron Scheduler（创建但不启动，启动在应用层绑定 Agent handler 之后）
   let cronStore: CronJobStore | null = null;
   let cronScheduler: CronScheduler | null = null;
-  const userTasksDir = path.join(os.homedir(), '.agents', 'tasks');
+  const userTasksDir = path.join(os.homedir(), '.thething', 'tasks');
   if (connectorRuntime.inbound) {
     cronStore = new SQLiteCronJobStore({ dataDir: layout.dataDir });
     cronScheduler = new CronScheduler({
@@ -217,12 +217,12 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
       inbox: connectorRuntime.inbound.inbox,
     });
 
-    // 从 .agents/tasks/<name>/task.md 同步任务定义
+    // 从 ~/.thething/tasks/<name>/task.md 同步任务定义
     const { loadTasksFromFiles } = await import('../modules/cron/task-loader');
     await loadTasksFromFiles({
       store: cronStore,
       userDir: userTasksDir,
-      projectDir: path.join(layout.resourceRoot, '.agents', 'tasks'),
+      projectDir: path.join(layout.resourceRoot, layout.configDirName, 'tasks'),
     });
   }
 

@@ -360,8 +360,8 @@ export async function buildSystemPrompt(
     .map((s) => s.content)
     .join("\n\n");
 
-  // Append .agents/system-prompt.md 内容（Dot Agents 协议）
-  const systemPromptMd = await loadDotAgentsSystemPromptMd(opts.cwd);
+  // Append ~/.thething/system-prompt.md 内容
+  const systemPromptMd = await loadCustomSystemPromptMd(opts.cwd);
   const finalPrompt = systemPromptMd ? `${prompt}\n\n${systemPromptMd}` : prompt;
 
   const finalSections = allSections.filter((s) => s.content !== null);
@@ -397,14 +397,15 @@ export function buildTitleGenerationPrompt(): string {
 }
 
 // ============================================================================
-// Dot Agents Protocol: system-prompt.md support
+// Custom system-prompt.md support
 // ============================================================================
 
 /**
- * Load the .agents/system-prompt.md file (Dot Agents 协议标准).
- * 先检查项目级（cwd/.agents/system-prompt.md），再检查用户级（~/.agents/system-prompt.md）。
+ * Load the system-prompt.md file.
+ * 先检查项目级（cwd/.thething/system-prompt.md），再检查用户级（~/.thething/system-prompt.md）。
+ * 通过 ~/.agents → ~/.thething symlink 兼容 Agent Skills 生态工具。
  */
-async function loadDotAgentsSystemPromptMd(cwd?: string): Promise<string | null> {
+async function loadCustomSystemPromptMd(cwd?: string): Promise<string | null> {
   const _path = 'path';
   const _fs = 'fs/promises';
   try {
@@ -416,8 +417,8 @@ async function loadDotAgentsSystemPromptMd(cwd?: string): Promise<string | null>
 
     // 检查路径：项目级优先，用户级次之
     const candidates = [
-      path.join(resolvedCwd, '.agents', 'system-prompt.md'),
-      path.join(homeDir, '.agents', 'system-prompt.md'),
+      path.join(resolvedCwd, '.thething', 'system-prompt.md'),
+      path.join(homeDir, '.thething', 'system-prompt.md'),
     ];
 
     for (const filePath of candidates) {
