@@ -11,18 +11,11 @@ export function resolveToolsForAgent(
   definition: AgentDefinition,
   context: AgentExecutionContext,
 ): string[] | undefined {
-  const { tools, disallowedTools } = definition;
+  const { tools } = definition;
 
-  // 如果没有定义 tools，则可以使用所有工具（但需要过滤 disallowedTools）
+  // 如果没有定义 tools，则可以使用所有工具
   if (!tools?.length) {
-    // 如果也没有 disallowedTools，则使用所有工具
-    if (!disallowedTools?.length) {
-      return undefined;
-    }
-
-    // 过滤掉 disallowedTools
-    const availableToolNames = Object.keys(context.parentTools);
-    return availableToolNames.filter((name) => !disallowedTools.includes(name));
+    return undefined;
   }
 
   // 如果定义了 tools，按白名单过滤
@@ -30,24 +23,11 @@ export function resolveToolsForAgent(
 
   // 如果 tools 包含 '*'，表示所有工具
   if (tools.includes('*')) {
-    if (!disallowedTools?.length) {
-      return undefined;
-    }
-    return availableToolNames.filter((name) => !disallowedTools.includes(name));
+    return undefined;
   }
 
   // 按 tools 白名单过滤
-  const filtered = availableToolNames.filter((name) => {
-    // 检查白名单
-    if (!tools.includes(name)) {
-      return false;
-    }
-    // 检查黑名单
-    if (disallowedTools?.includes(name)) {
-      return false;
-    }
-    return true;
-  });
+  const filtered = availableToolNames.filter((name) => tools.includes(name));
 
   return filtered.length > 0 ? filtered : undefined;
 }

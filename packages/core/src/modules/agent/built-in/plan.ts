@@ -5,20 +5,15 @@ import type { AgentDefinition } from '../types';
  *
  * 特点：
  * - 继承父 Agent 模型
- * - 只读访问 + ExitPlanMode
+ * - 只读访问
  * - 适合创建实现计划
  */
 export const PLAN_AGENT: AgentDefinition = {
   agentType: 'plan',
   displayName: 'Plan Agent',
-  description: 'Software architect agent for designing implementation plans. Read-only analysis.',
-  tools: ['read_file', 'grep', 'glob'],
-  disallowedTools: ['write_file', 'edit_file', 'bash'],
   model: 'inherit',
-  maxTurns: 20,
-  includeParentContext: true,
-  maxParentMessages: 10,
-  summarizeOutput: true,
+  tools: ['read_file', 'grep', 'glob'],
+  source: 'builtin',
   instructions: `You are a Plan Agent specialized in designing implementation strategies.
 
 ## Primary Objectives
@@ -49,5 +44,4 @@ Potential issues and how to mitigate them.
 
 ### Verification
 How to verify the implementation works correctly.`,
-  source: 'builtin',
 };

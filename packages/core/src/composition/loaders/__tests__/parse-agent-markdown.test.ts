@@ -19,10 +19,8 @@ It should do X, Y, Z.
     const agent = parseAgentMarkdown(mdContent, 'user');
 
     expect(agent.agentType).toBe('test-agent');
-    expect(agent.description).toBe('A test agent for verification');
     expect(agent.tools).toEqual(['read', 'write']);
     expect(agent.model).toBe('smart');
-    expect(agent.maxTurns).toBe(30);
     expect(agent.instructions).toBe('This is the agent instructions.\nIt should do X, Y, Z.');
     expect(agent.source).toBe('user');
   });
@@ -60,10 +58,7 @@ Basic instructions.
 
     expect(agent.agentType).toBe('minimal-agent');
     expect(agent.model).toBe('inherit');
-    expect(agent.maxTurns).toBe(20);
     expect(agent.tools).toBeUndefined();
-    expect(agent.includeParentContext).toBe(false);
-    expect(agent.summarizeOutput).toBe(true);
   });
 
   it('should throw ParseError for invalid frontmatter', () => {

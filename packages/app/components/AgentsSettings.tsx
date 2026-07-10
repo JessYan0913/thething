@@ -21,22 +21,16 @@ import {
 
 interface AgentView {
   agentType: string
-  description: string
   displayName?: string
-  tools?: string[]
+  instructions?: string
   model?: string
-  effort?: string
-  maxTurns?: number
-  permissionMode?: string
-  background?: boolean
-  memory?: string
-  skills?: string[]
+  tools?: string[]
+  connectors?: boolean
+  skills?: boolean
+  mcp?: boolean
   source: string
   filePath?: string
   metadata?: Record<string, unknown>
-  instructions?: string
-  connectors?: boolean
-  mcp?: boolean
 }
 
 const sourceLabels: Record<string, string> = {
@@ -386,7 +380,7 @@ function AgentCard({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground line-clamp-2">
-              {agent.description}
+              {agent.instructions?.split('\n')[0]?.slice(0, 120) ?? ''}
             </p>
             {agent.tools && agent.tools.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap pt-1">

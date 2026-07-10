@@ -224,29 +224,19 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     wikiBaseDir,
   })
 
-  // 如果 Agent 定义了工具限制，过滤工具集
+  // 如果 Agent 定义了工具白名单，过滤工具集
   let filteredTools = tools
-  if (selectedAgentDef) {
+  if (selectedAgentDef?.tools?.length) {
     const allowedTools = selectedAgentDef.tools
-    const disallowedTools = selectedAgentDef.disallowedTools
 
-    if (allowedTools && allowedTools.length > 0) {
-      // 支持 '*' 通配符，表示允许所有工具
-      if (allowedTools.includes('*')) {
-        logger.debug('AgentCreate', `Tools: wildcard '*' allows all tools`)
-      } else {
-        filteredTools = Object.fromEntries(
-          Object.entries(tools).filter(([name]) => allowedTools.includes(name)),
-        )
-        logger.debug('AgentCreate', `Tools filtered by allowlist: ${Object.keys(filteredTools).join(', ')}`)
-      }
-    }
-
-    if (disallowedTools && disallowedTools.length > 0) {
+    // 支持 '*' 通配符，表示允许所有工具
+    if (allowedTools.includes('*')) {
+      logger.debug('AgentCreate', `Tools: wildcard '*' allows all tools`)
+    } else {
       filteredTools = Object.fromEntries(
-        Object.entries(filteredTools).filter(([name]) => !disallowedTools.includes(name)),
+        Object.entries(tools).filter(([name]) => allowedTools.includes(name)),
       )
-      logger.debug('AgentCreate', `Tools filtered by blocklist: ${Object.keys(filteredTools).join(', ')}`)
+      logger.debug('AgentCreate', `Tools filtered by allowlist: ${Object.keys(filteredTools).join(', ')}`)
     }
   }
 

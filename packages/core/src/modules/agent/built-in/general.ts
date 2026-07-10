@@ -1,22 +1,18 @@
 import type { AgentDefinition } from '../types';
 
 /**
- * General-purpose Agent - 通用任务处理
+ * General-purpose Agent - 通用代理
  *
  * 特点：
- * - 继承父 Agent 模型
- * - 可使用所有工具
- * - 默认回退选项
+ * - 全工具访问权限
+ * - 作为复杂任务的默认回退
  */
 export const GENERAL_AGENT: AgentDefinition = {
   agentType: 'general-purpose',
-  displayName: 'General-purpose Agent',
-  description: 'General-purpose agent with full tool access. Default fallback for complex tasks.',
-  tools: ['*'],
+  displayName: 'General Agent',
   model: 'inherit',
-  maxTurns: 20,
-  includeParentContext: false,
-  summarizeOutput: true,
+  tools: ['read_file', 'write_file', 'edit_file', 'grep', 'glob', 'bash', 'web_fetch'],
+  source: 'builtin',
   instructions: `You are a General-purpose agent. Given a task, use the available tools to complete it.
 
 ## Guidelines
@@ -34,5 +30,4 @@ Specific results with evidence.
 
 ### Limitations
 What couldn't be done and why.`,
-  source: 'builtin',
 };

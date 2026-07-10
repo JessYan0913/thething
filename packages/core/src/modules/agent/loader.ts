@@ -32,29 +32,13 @@ function buildAgentDefinitionFromData(
   return {
     agentType: extractAgentType(mergedData as { name?: string; agentType?: string; displayName?: string }, filePath),
     displayName: mergedData.displayName as string | undefined,
-    description: mergedData.description as string,
-    tools: parseToolsList(mergedData.tools as string[] | undefined),
-    disallowedTools: parseToolsList(mergedData.disallowedTools as string[] | undefined),
-    model: (mergedData.model as string) ?? 'inherit',
-    effort: mergedData.effort as 'low' | 'medium' | 'high' | number | undefined,
-    maxTurns: (mergedData.maxTurns as number) ?? 20,
-    permissionMode: mergedData.permissionMode as 'acceptEdits' | 'plan' | 'bypassPermissions' | undefined,
-    background: mergedData.background as boolean | undefined,
-    initialPrompt: mergedData.initialPrompt as string | undefined,
-    isolation: mergedData.isolation as 'worktree' | undefined,
-    memory: mergedData.memory as 'user' | 'project' | 'local' | undefined,
-    skills: parseToolsList(mergedData.skills as string[] | undefined),
     instructions: body,
-    includeParentContext: (mergedData.includeParentContext as boolean) ?? false,
-    maxParentMessages: mergedData.maxParentMessages as number | undefined,
-    summarizeOutput: (mergedData.summarizeOutput as boolean) ?? true,
-    metadata: {
-      ...(mergedData.metadata as Record<string, unknown> | undefined),
-      // Dot Agents 协议字段，原生存储
-      ...(mergedData.role ? { role: mergedData.role } : {}),
-      ...(mergedData.enabled !== undefined ? { enabled: mergedData.enabled } : {}),
-      ...(mergedData['connection-type'] ? { 'connection-type': mergedData['connection-type'] } : {}),
-    } as Record<string, unknown> | undefined,
+    model: mergedData.model as 'inherit' | 'fast' | 'smart' | string | undefined,
+    tools: parseToolsList(mergedData.tools as string[] | undefined),
+    connectors: mergedData.connectors as boolean | undefined,
+    skills: mergedData.skills as boolean | undefined,
+    mcp: mergedData.mcp as boolean | undefined,
+    metadata: mergedData.metadata as Record<string, unknown> | undefined,
     source,
     filePath,
   };
@@ -73,13 +57,6 @@ function mergeAgentConfig(
   const modelConfig = configJson.modelConfig as Record<string, unknown> | undefined;
   if (modelConfig?.mcpToolsProviderId && !data.model) {
     result.model = modelConfig.mcpToolsProviderId;
-  }
-
-  // connection → isolation/background
-  const connection = configJson.connection as Record<string, unknown> | undefined;
-  if (connection?.type === 'stdio') {
-    result.connectionType = 'stdio';
-    result.isolation = 'worktree';
   }
 
   return result;
@@ -279,43 +256,27 @@ export function serializeAgentMarkdown(
   let frontmatter: Record<string, unknown>;
 
   if (format === 'dotagents') {
-    // Dot Agents 协议标准格式
+    // Dot Agents 协议兼容格式
     frontmatter = {
       id: def.agentType,
       name: def.displayName ?? def.agentType,
-      description: def.description,
-      role: 'delegation-target',
-      enabled: true,
-      'connection-type': 'internal',
-      // 以下为 TheThing 扩展字段（保持兼容）
       model: def.model ?? 'inherit',
-      effort: def.effort,
-      maxTurns: def.maxTurns ?? 20,
       tools: def.tools ?? [],
-      skills: def.skills ?? [],
-      includeParentContext: def.includeParentContext ?? false,
-      summarizeOutput: def.summarizeOutput ?? true,
+      connectors: def.connectors ?? true,
+      skills: def.skills ?? true,
+      mcp: def.mcp ?? true,
+      source: def.source ?? 'user',
     };
   } else {
     // TheThing 原生格式
     frontmatter = {
       agentType: def.agentType,
       displayName: def.displayName,
-      description: def.description,
-      tools: def.tools ?? [],
-      disallowedTools: def.disallowedTools ?? [],
       model: def.model ?? 'inherit',
-      effort: def.effort,
-      maxTurns: def.maxTurns ?? 20,
-      permissionMode: def.permissionMode,
-      background: def.background ?? false,
-      initialPrompt: def.initialPrompt,
-      isolation: def.isolation,
-      memory: def.memory,
-      skills: def.skills ?? [],
-      includeParentContext: def.includeParentContext ?? false,
-      maxParentMessages: def.maxParentMessages,
-      summarizeOutput: def.summarizeOutput ?? true,
+      tools: def.tools ?? [],
+      connectors: def.connectors ?? true,
+      skills: def.skills ?? true,
+      mcp: def.mcp ?? true,
       source: def.source ?? 'user',
       metadata: def.metadata ?? {},
     };

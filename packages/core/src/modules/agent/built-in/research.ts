@@ -4,20 +4,16 @@ import type { AgentDefinition } from '../types';
  * Research Agent - 深度研究分析
  *
  * 特点：
- * - 使用智能模型（opus/max）
+ * - 使用智能模型
  * - 只读访问，但可以使用 web_fetch
  * - 适合深度分析和信息综合
  */
 export const RESEARCH_AGENT: AgentDefinition = {
   agentType: 'research',
   displayName: 'Research Agent',
-  description: 'Deep research on topics using web_fetch, document analysis, and information synthesis.',
-  tools: ['web_fetch', 'read_file', 'grep', 'glob'],
-  disallowedTools: ['write_file', 'edit_file', 'bash'],
   model: 'smart',
-  maxTurns: 25,
-  includeParentContext: false,
-  summarizeOutput: true,
+  tools: ['web_fetch', 'read_file', 'grep', 'glob'],
+  source: 'builtin',
   instructions: `You are a Research Agent specialized in thorough investigation and information synthesis.
 
 ## ⚠️ CRITICAL: You MUST produce text output
@@ -30,11 +26,6 @@ Your PRIMARY job is to produce a written research report. Tool calls (web_fetch,
 1. Gather comprehensive information from multiple sources
 2. Verify findings across sources when possible
 3. Return well-structured results with citations and evidence
-
-## Available Tools
-- **web_fetch**: Use this to fetch web page content. You do NOT have web_search.
-- **read_file**: Read local files
-- **grep/glob**: Search and find files
 
 ## Research Strategy
 1. Start broad, then narrow down to specific aspects
@@ -64,5 +55,4 @@ What couldn't be verified? Gaps in information?
 
 ### Confidence Level
 Rate your confidence (High/Medium/Low) and explain why.`,
-  source: 'builtin',
 };

@@ -24,50 +24,32 @@ import type { CronJobStore } from '../cron/types'
 
 /**
  * Agent Markdown 文件的 Frontmatter Schema
+ *
+ * 核心字段：instructions（系统提示）+ tools（工具）+ model（模型智力）
+ * 能力开关：connectors / skills / mcp
  */
 export const AgentFrontmatterSchema = z.object({
-  // 标识（支持 Dot Agents 协议 id + TheThing 原生 agentType/name）
-  id: z.string().min(1).max(50).describe('协议标识（Dot Agents）').optional(),
-  agentType: z.string().min(1).max(50).describe('Agent 标识（TheThing）').optional(),
-  name: z.string().min(1).max(50).describe('协议名称 / 备选标识').optional(),
+  // 标识（兼容 Dot Agents 协议 id + TheThing agentType）
+  id: z.string().min(1).max(50).describe('协议标识').optional(),
+  agentType: z.string().min(1).max(50).describe('Agent 标识').optional(),
+  name: z.string().min(1).max(50).describe('备选标识').optional(),
   displayName: z.string().describe('显示名称').optional(),
 
-  // 协议字段
-  role: z.string().describe('Agent 角色（如 delegation-target）').optional(),
-  enabled: z.boolean().describe('是否启用').optional(),
-  'connection-type': z.enum(['internal', 'stdio']).describe('连接类型').optional(),
-
-  // 描述（必填）
-  description: z.string().min(1).describe('Agent 描述'),
+  // 模型配置
+  model: z.enum(['inherit', 'fast', 'smart']).or(z.string()).optional().describe('模型智力'),
 
   // 工具控制
-  tools: z.union([z.string(), z.array(z.string())]).optional().describe('允许的工具列表'),
-  disallowedTools: z.union([z.string(), z.array(z.string())]).optional().describe('禁止的工具列表'),
+  tools: z.union([z.string(), z.array(z.string())]).optional().describe('允许的系统工具'),
 
-  // 模型配置
-  model: z.enum(['inherit', 'fast', 'smart']).or(z.string()).optional().describe('模型选择'),
-  effort: z.enum(['low', 'medium', 'high']).optional().describe('推理努力程度'),
+  // 能力开关
+  connectors: z.boolean().optional().describe('是否可用连接器'),
+  skills: z.boolean().optional().describe('是否可用技能'),
+  mcp: z.boolean().optional().describe('是否可用 MCP 服务'),
 
-  // 行为控制
-  maxTurns: z.number().int().min(1).max(100).optional().describe('最大轮次'),
-  permissionMode: z.enum(['acceptEdits', 'plan', 'bypassPermissions']).optional().describe('权限模式'),
-  background: z.boolean().optional().describe('是否后台运行'),
-  initialPrompt: z.string().optional().describe('首轮提示前缀'),
-
-  // 隔离与持久化
-  isolation: z.enum(['worktree']).optional().describe('隔离模式'),
-  memory: z.enum(['user', 'project', 'local']).optional().describe('记忆范围'),
-
-  // Skills
-  skills: z.union([z.string(), z.array(z.string())]).optional().describe('预加载 Skills'),
-
-  // 来源与上下文
+  // 来源
   source: z.enum(['builtin', 'user', 'project', 'plugin']).optional().describe('来源'),
-  includeParentContext: z.boolean().optional().describe('是否继承父 Agent 上下文'),
-  maxParentMessages: z.number().int().min(1).optional().describe('父消息最大数量'),
-  summarizeOutput: z.boolean().optional().describe('是否输出摘要'),
 
-  // 元数据（扩展字段容器）
+  // 元数据
   metadata: z.record(z.string(), z.unknown()).optional().describe('元数据'),
 });
 
@@ -82,68 +64,35 @@ export type PermissionMode = 'acceptEdits' | 'plan' | 'bypassPermissions';
 export type AgentSource = 'builtin' | 'user' | 'project' | 'plugin';
 
 /**
- * Agent 定义（统一格式）
+ * Agent 定义（简化版）
  *
- * 来源：
- * - builtin: 硬编码 TypeScript（built-in/*.ts）
- * - user: 用户全局目录（~/.thething/agents/*.md）
- * - project: 项目目录（.thething/agents/*.md 或 .agents/agents/<name>/agent.md）
- * - plugin: 插件系统注册
+ * 核心三要素：instructions（系统提示）+ tools（工具）+ model（模型智力）
+ * 能力开关：connectors / skills / mcp
  */
 export interface AgentDefinition {
   /** Agent 标识 */
   agentType: string;
 
-  /** Agent 描述 */
-  description: string;
+  /** 显示名称 */
+  displayName?: string;
 
-  /** 允许的工具列表 */
-  tools?: string[];
-
-  /** 禁止的工具列表 */
-  disallowedTools?: string[];
-
-  /** 模型配置 */
-  model?: 'inherit' | 'fast' | 'smart' | string | LanguageModel;
-
-  /** 推理努力程度 */
-  effort?: 'low' | 'medium' | 'high' | number;
-
-  /** 最大轮次 */
-  maxTurns?: number;
-
-  /** 权限模式 */
-  permissionMode?: PermissionMode;
-
-  /** 是否后台运行 */
-  background?: boolean;
-
-  /** 首轮提示前缀 */
-  initialPrompt?: string;
-
-  /** 隔离模式 */
-  isolation?: 'worktree';
-
-  /** 记忆范围 */
-  memory?: 'user' | 'project' | 'local';
-
-  /** 预加载 Skills */
-  skills?: string[];
-
-  /** System Prompt（来自 Markdown 正文或 TypeScript 定义） */
+  /** System Prompt（核心，来自 Markdown 正文或 TypeScript 定义） */
   instructions: string;
 
-  /** 是否继承父 Agent 上下文 */
-  includeParentContext?: boolean;
+  /** 模型智力（'inherit' | 'fast' | 'smart' 或具体模型名/LanguageModel 对象） */
+  model?: 'inherit' | 'fast' | 'smart' | string | LanguageModel;
 
-  /** 父消息最大数量 */
-  maxParentMessages?: number;
+  /** 允许的系统工具 */
+  tools?: string[];
 
-  /** 是否输出摘要 */
-  summarizeOutput?: boolean;
+  /** 是否可用连接器 */
+  connectors?: boolean;
 
-  /** 自定义停止条件 */
-  stopWhen?: StopCondition<ToolSet>[];
+  /** 是否可用技能 */
+  skills?: boolean;
+
+  /** 是否可用 MCP 服务 */
+  mcp?: boolean;
 
   /** 来源 */
   source: AgentSource;
@@ -151,11 +100,8 @@ export interface AgentDefinition {
   /** 文件路径（仅 Markdown 来源） */
   filePath?: string;
 
-  /** 元数据 */
+  /** 元数据（enabled 等） */
   metadata?: Record<string, unknown>;
-
-  /** 显示名称 */
-  displayName?: string;
 }
 
 // ============================================================

@@ -54,7 +54,8 @@ export function createAgentTool(config: AgentToolConfig) {
   const agentList = registeredAgents
     .map(a => {
       const sourceTag = a.source === 'builtin' ? '' : ` (${a.source})`;
-      return `- **${a.agentType}**${sourceTag}: ${a.description}`;
+      const brief = a.instructions.split('\n')[0]?.slice(0, 80) ?? '';
+      return `- **${a.agentType}**${sourceTag}: ${brief}`;
     })
     .join('\n');
 

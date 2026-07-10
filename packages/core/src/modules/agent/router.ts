@@ -9,7 +9,6 @@ import { logger } from '../../primitives/logger';
 
 const BLOCKED_AGENT: AgentDefinition = {
   agentType: 'blocked',
-  description: 'Agent execution blocked',
   instructions: 'Agent execution blocked: maximum recursion depth exceeded.',
   source: 'builtin',
 };
@@ -20,13 +19,9 @@ const BLOCKED_AGENT: AgentDefinition = {
 
 const GENERAL_PURPOSE_FALLBACK: AgentDefinition = {
   agentType: 'general-purpose',
-  displayName: 'General-purpose Agent',
-  description: 'General-purpose agent with full tool access. Default fallback.',
-  tools: ['*'],
+  displayName: 'General Agent',
+  tools: ['read_file', 'write_file', 'edit_file', 'grep', 'glob', 'bash', 'web_fetch'],
   model: 'inherit',
-  maxTurns: 20,
-  includeParentContext: false,
-  summarizeOutput: true,
   instructions: `You are a General-purpose agent. Given a task, use the available tools to complete it.
 
 ## Guidelines

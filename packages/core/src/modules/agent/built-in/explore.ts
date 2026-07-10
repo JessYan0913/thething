@@ -4,20 +4,16 @@ import type { AgentDefinition } from '../types';
  * Explore Agent - 快速代码库探索
  *
  * 特点：
- * - 使用快速模型（haiku/turbo）
+ * - 使用快速模型
  * - 只读访问，不能修改文件
  * - 适合快速定位信息
  */
 export const EXPLORE_AGENT: AgentDefinition = {
   agentType: 'explore',
   displayName: 'Explore Agent',
-  description: 'Quick exploration to find information. Read-only access with fast model.',
-  tools: ['read_file', 'grep', 'glob'],
-  disallowedTools: ['write_file', 'edit_file', 'bash', 'web_fetch'],
   model: 'fast',
-  maxTurns: 15,
-  includeParentContext: false,
-  summarizeOutput: true,
+  tools: ['read_file', 'grep', 'glob'],
+  source: 'builtin',
   instructions: `You are an Explore Agent specialized in quickly locating and understanding information.
 
 ## Primary Objectives
@@ -40,5 +36,4 @@ List specific items found with locations.
 
 ### Recommendations
 Should the parent agent delegate to Research Agent for deeper analysis?`,
-  source: 'builtin',
 };

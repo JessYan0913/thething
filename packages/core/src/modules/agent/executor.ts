@@ -63,11 +63,8 @@ export async function executeRoutedAgent(
     // 3. 构建 System Prompt
     const instructions = buildSubAgentPrompt(definition, context);
 
-    // 4. 解析 maxTurns 和 stopWhen
-    const maxTurns = definition.maxTurns ?? 20;
-    const stopWhen = definition.stopWhen ?? [isStepCount(maxTurns)];
-
-    // 5. 创建 ToolLoopAgent
+    // 4. 创建 ToolLoopAgent（默认 20 轮）
+    const stopWhen = [isStepCount(20)];
     const subAgent = new ToolLoopAgent({
       model,
       instructions,
@@ -76,10 +73,8 @@ export async function executeRoutedAgent(
       stopWhen,
     });
 
-    // 6. 构建初始 Prompt
-    const initialPrompt = definition.includeParentContext
-      ? buildContextPrompt(context, task)
-      : task;
+    // 5. 执行任务
+    const initialPrompt = task;
 
     // 7. 更新任务状态
     if (todoStore && todoId) {
@@ -148,9 +143,8 @@ export async function executeRoutedAgent(
         }
       : undefined;
 
-    // 11. 强制摘要：当 summarizeOutput=true 但 agent 没有产出文本时，
-    //     追加一次无工具的 LLM 调用，让它基于已有上下文写总结
-    if (!textContent && stepsExecuted > 0 && definition.summarizeOutput !== false) {
+    // 10. 强制摘要：当 agent 没有产出文本时，追加一次无工具的 LLM 调用写总结
+    if (!textContent && stepsExecuted > 0) {
       try {
         // 将工具结果格式化为上下文，让摘要 agent 能看到收集到的数据
         const toolContext = toolResults

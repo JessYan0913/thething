@@ -17,18 +17,13 @@ export function buildSubAgentPrompt(
   if (definition.tools?.length) {
     prompt += `\n\n## Available Tools\nYou can use: ${definition.tools.join(', ')}`;
   }
-  if (definition.disallowedTools?.length) {
-    prompt += `\n\n## Restricted Tools\nYou must NOT use: ${definition.disallowedTools.join(', ')}`;
-  }
 
   // 添加输出指导
-  if (definition.summarizeOutput !== false) {
-    prompt += `\n\n## Output Guidelines
+  prompt += `\n\n## Output Guidelines
 - Be concise and focused on actionable results
 - State findings and conclusions directly with supporting evidence
 - The parent agent knows the task context — no need to re-explain
 - If more details are needed, the parent agent will ask follow-up questions`;
-  }
 
   return prompt;
 }

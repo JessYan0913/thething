@@ -41,7 +41,6 @@ describe('subagents/model-resolver', () => {
       it('should return parent model when model is not specified', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test agent',
           instructions: 'Test instructions',
           source: 'builtin',
         };
@@ -55,7 +54,6 @@ describe('subagents/model-resolver', () => {
       it('should return parent model when model is "inherit"', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'inherit',
           source: 'builtin',
@@ -73,7 +71,6 @@ describe('subagents/model-resolver', () => {
         const customModel = createMockModel('custom-model');
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: customModel,
           source: 'builtin',
@@ -90,7 +87,6 @@ describe('subagents/model-resolver', () => {
       it('should resolve "fast" to fast model via provider', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'fast',
           source: 'builtin',
@@ -105,7 +101,6 @@ describe('subagents/model-resolver', () => {
       it('should resolve "smart" to smart model via provider', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'smart',
           source: 'builtin',
@@ -120,7 +115,6 @@ describe('subagents/model-resolver', () => {
       it('should resolve shortcuts from BehaviorConfig model aliases when provided', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'fast',
           source: 'builtin',
@@ -141,7 +135,6 @@ describe('subagents/model-resolver', () => {
       it('should resolve "default" alias from BehaviorConfig model aliases', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'default',
           source: 'builtin',
@@ -164,7 +157,6 @@ describe('subagents/model-resolver', () => {
       it('should resolve specific model name via provider', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'claude-3-opus',
           source: 'builtin',
@@ -181,7 +173,6 @@ describe('subagents/model-resolver', () => {
       it('should fallback to parent model when provider is missing for "fast"', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'fast',
           source: 'builtin',
@@ -196,7 +187,6 @@ describe('subagents/model-resolver', () => {
       it('should fallback to parent model when provider is missing for "smart"', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'smart',
           source: 'builtin',
@@ -211,7 +201,6 @@ describe('subagents/model-resolver', () => {
       it('should fallback to parent model when provider is missing for specific model', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'some-model',
           source: 'builtin',
@@ -229,7 +218,6 @@ describe('subagents/model-resolver', () => {
         const customModel = createMockModel('explicit-model');
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: customModel,
           source: 'builtin',
@@ -245,7 +233,6 @@ describe('subagents/model-resolver', () => {
       it('should use provider for "fast" even when parent model exists', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
-          description: 'Test',
           instructions: 'Test',
           model: 'fast',
           source: 'builtin',
