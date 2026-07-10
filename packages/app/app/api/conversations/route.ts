@@ -27,7 +27,16 @@ export async function GET(request: Request) {
       conversations = conversations.filter((c) => c.sourceId === sourceId);
     }
 
-    return NextResponse.json({ conversations });
+    // Enrich with agent run status (running/paused_approval)
+    const conversationsWithStatus = conversations.map((c) => {
+      const run = rt.dataStore.agentRunStore.getRun(c.id);
+      return {
+        ...c,
+        runStatus: run?.status ?? null,
+      };
+    });
+
+    return NextResponse.json({ conversations: conversationsWithStatus });
   } catch (error) {
     console.error('[Conversations API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 });

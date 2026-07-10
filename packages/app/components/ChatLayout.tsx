@@ -198,6 +198,32 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     loadData();
   }, []);
 
+  // Poll for running conversation status (every 2s)
+  // Polls when: a conversation is active AND either:
+  //   - any conversation has runStatus running/paused_approval, OR
+  //   - there is an active conversation (user might be typing / waiting for response)
+  useEffect(() => {
+    // Only poll when a conversation is active (user is in a chat)
+    if (!activeConversationId) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const url = activeProjectId
+          ? `/api/conversations?projectId=${encodeURIComponent(activeProjectId)}`
+          : "/api/conversations";
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          setConversations(data.conversations || []);
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [activeConversationId, activeProjectId]);
+
   // Sync activeConversationId when URL param changes
   useEffect(() => {
     if (urlConversationId && urlConversationId !== activeConversationId) {

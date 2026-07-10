@@ -36,6 +36,7 @@ import {
   MoreHorizontalIcon,
   FolderIcon,
   FolderOpenIcon,
+  Loader2Icon,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -233,6 +234,7 @@ export interface ConversationItem {
   projectId: string | null;
   createdAt: string;
   updatedAt: string;
+  runStatus?: 'running' | 'paused_approval' | 'completed' | 'failed' | null;
 }
 
 export interface ProjectItem {
@@ -640,7 +642,11 @@ const ConversationItem = ({
           />
         ) : (
           <>
-            <MessageSquareIcon className="size-4 shrink-0" />
+            {conversation.runStatus === 'running' || conversation.runStatus === 'paused_approval' ? (
+              <Loader2Icon className="size-4 shrink-0 animate-spin text-primary" />
+            ) : (
+              <MessageSquareIcon className="size-4 shrink-0" />
+            )}
             <span className="truncate flex-1 min-w-0">{conversation.title}</span>
           </>
         )}
