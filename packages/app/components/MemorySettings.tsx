@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import dynamic from "next/dynamic"
 import {
   SearchIcon, TrashIcon, PlusIcon, RefreshCwIcon, BrainIcon,
   UserIcon, BotIcon, FolderIcon, GlobeIcon, BoxIcon,
@@ -8,6 +9,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+
+const WikiGraph = dynamic(() => import("./WikiGraph"), { ssr: false })
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, DialogDescription,
@@ -161,6 +164,7 @@ export default function MemorySettings() {
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<WikiPageView | null>(null)
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list")
 
   // 创建对话框
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -279,6 +283,35 @@ export default function MemorySettings() {
             ))}
           </SelectContent>
         </Select>
+        <div className="flex items-center border rounded-md overflow-hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "size-8 rounded-r-none",
+              viewMode === "list"
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setViewMode("list")}
+          >
+            <ListIcon className="size-4" />
+          </Button>
+          <div className="w-px h-4 bg-border" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "size-8 rounded-l-none",
+              viewMode === "graph"
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setViewMode("graph")}
+          >
+            <NetworkIcon className="size-4" />
+          </Button>
+        </div>
         <Button variant="ghost" size="sm" onClick={loadPages} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
@@ -292,6 +325,16 @@ export default function MemorySettings() {
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...
+          </div>
+        ) : viewMode === "graph" ? (
+          <div className="relative h-full min-h-125 -mx-6 -my-4">
+            <WikiGraph
+              onSelectPage={(filename) =>
+                router.push(`/settings/wiki/${encodeURIComponent(filename)}`)
+              }
+              categoryFilter={categoryFilter}
+              searchQuery={search}
+            />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-12 text-muted-foreground">
