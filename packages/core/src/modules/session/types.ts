@@ -112,6 +112,8 @@ export interface SessionState {
   fallbackModels?: LanguageModelV3[];
   /** DataStore 引用（用于 Layer 3 摘要持久化） */
   dataStore?: DataStore;
+  /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
+  consecutiveReasoningOnlySteps: number;
 
   /** 压缩消息 */
   compact(messages: UIMessage[]): Promise<CompactionResult>;

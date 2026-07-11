@@ -105,6 +105,7 @@ export function createSessionState(
     loadedSkills: new Map<string, Skill>(),
     contentReplacementState: createContentReplacementState(),
     pendingCompactIds: [],
+    consecutiveReasoningOnlySteps: 0,
     compactionConfig: compactionCfg,
     compactModel: undefined,
     fallbackModels: undefined,

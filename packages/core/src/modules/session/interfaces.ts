@@ -146,4 +146,6 @@ export interface PipelineContext {
   model: string;
   conversationId: string;
   layout: ResolvedLayout;
+  /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
+  consecutiveReasoningOnlySteps: number;
 }

@@ -1,4 +1,4 @@
-import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool } from 'ai';
+import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
 import type { PipelineContext } from '../session/interfaces';
 import { enforceToolResultBudget } from '../budget/message-budget';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
@@ -10,6 +10,19 @@ function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
     logger.debug('Pipeline', args.map(a => String(a)).join(' '));
   }
+}
+
+/** 连续纯推理步数阈值，超过此值注入提示强制行动 */
+const REASONING_LOOP_THRESHOLD = 3;
+
+/**
+ * 检测单步是否为纯推理（只有 reasoning，没有工具调用和文本输出）
+ */
+function isReasoningOnlyStep(step: StepResult<any, any>): boolean {
+  const hasToolCall = step.toolCalls.length > 0 || step.dynamicToolCalls.length > 0;
+  const hasText = step.text.trim().length > 0;
+  const hasReasoning = step.reasoning.length > 0;
+  return hasReasoning && !hasToolCall && !hasText;
 }
 
 export interface AgentPipelineConfig {
@@ -52,6 +65,27 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         debugLog(debugEnabled, `[Agent] Denial threshold exceeded, injecting warning message`);
         return {
           messages: [...messages, injectMsg as ModelMessageType],
+        } as PrepareStepResult<TOOLS>;
+      }
+    }
+
+    // 推理循环检测：连续纯推理无工具调用时注入提示
+    if (steps.length > 0) {
+      const lastStep = steps[steps.length - 1];
+      if (isReasoningOnlyStep(lastStep)) {
+        sessionState.consecutiveReasoningOnlySteps++;
+      } else {
+        sessionState.consecutiveReasoningOnlySteps = 0;
+      }
+
+      if (sessionState.consecutiveReasoningOnlySteps >= REASONING_LOOP_THRESHOLD) {
+        debugLog(debugEnabled, `[Agent] Reasoning loop detected: ${sessionState.consecutiveReasoningOnlySteps} consecutive reasoning-only steps`);
+        sessionState.consecutiveReasoningOnlySteps = 0;
+        return {
+          messages: [...messages, {
+            role: 'user',
+            content: '你已经连续多次推理但没有采取行动。请立即调用工具执行操作，或者如果不确定，请调用 ask_user_question 询问用户。',
+          } as ModelMessageType],
         } as PrepareStepResult<TOOLS>;
       }
     }
