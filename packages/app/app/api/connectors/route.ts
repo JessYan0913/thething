@@ -7,8 +7,11 @@ import yaml from 'js-yaml';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
     // 直接从磁盘读取，不依赖 context 缓存
     const rt = await getServerRuntime();
     const diskConnectors = await loadConnectors({
@@ -16,7 +19,8 @@ export async function GET() {
       cwd: process.cwd(),
       dirs: rt.layout.resources.connectors,
     });
-    const connectors = diskConnectors.map((conn) => ({
+
+    const mapConnector = (conn: typeof diskConnectors[number]) => ({
       id: conn.id,
       name: conn.name,
       version: conn.version,
@@ -36,8 +40,17 @@ export async function GET() {
       })) ?? [],
       toolCount: conn.tools?.length ?? 0,
       sourcePath: conn.sourcePath,
-    }));
+    });
 
+    if (id) {
+      const conn = diskConnectors.find((c) => c.id === id);
+      if (!conn) {
+        return NextResponse.json({ error: 'Connector not found' }, { status: 404 });
+      }
+      return NextResponse.json(mapConnector(conn));
+    }
+
+    const connectors = diskConnectors.map(mapConnector);
     return NextResponse.json({ connectors });
   } catch (error) {
     console.error('[Connectors API] GET error:', error);

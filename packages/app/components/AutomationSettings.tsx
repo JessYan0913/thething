@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   TimerIcon, RefreshCwIcon, PlusIcon,
@@ -8,7 +9,7 @@ import {
   PlayIcon, PauseIcon, AlertCircleIcon,
   ZapIcon, HistoryIcon, StopCircleIcon, SearchIcon,
   ChevronDownIcon, ChevronRightIcon,
-  ClockIcon,
+  ClockIcon, MoreVerticalIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,6 +48,7 @@ export default function AutomationSettings() {
   const [editingJob, setEditingJob] = useState<CronJob | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const router = useRouter()
   const [scheduleExpanded, setScheduleExpanded] = useState(false)
 
   const [formName, setFormName] = useState("")
@@ -80,18 +82,6 @@ export default function AutomationSettings() {
     setFormAgentType("")
     setFormEnabled(false)
     setScheduleExpanded(false)
-    setFormError(null)
-    setDialogOpen(true)
-  }
-
-  const openEdit = (job: CronJob) => {
-    setEditingJob(job)
-    setFormName(job.name)
-    setFormSchedule(job.schedule)
-    setFormPrompt(job.prompt)
-    setFormAgentType(job.agentType ?? "")
-    setFormEnabled(job.enabled)
-    setScheduleExpanded(!!job.schedule)
     setFormError(null)
     setDialogOpen(true)
   }
@@ -142,6 +132,15 @@ export default function AutomationSettings() {
         }
       }
       setDialogOpen(false)
+      if (!editingJob) {
+        // 新建后跳转到详情页
+        const data = await res.json().catch(() => ({}))
+        const newId = data.job?.id
+        if (newId) {
+          router.push(`/settings/automation/${newId}`)
+          return
+        }
+      }
       loadJobs()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "操作失败")
@@ -233,18 +232,40 @@ export default function AutomationSettings() {
               <JobCard
                 key={job.id}
                 job={job}
-                onEdit={() => openEdit(job)}
+                onEdit={() => router.push(`/settings/automation/${job.id}`)}
                 onTrigger={() => handleTrigger(job)}
                 onToggle={() => handleToggle(job)}
                 onDelete={() => handleDelete(job.id)}
-                confirmDelete={confirmDelete === job.id}
-                onConfirmDelete={() => setConfirmDelete(job.id)}
-                onCancelDelete={() => setConfirmDelete(null)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmDelete(null)}>
+          <div
+            className="bg-background rounded-lg border shadow-lg max-w-sm w-full mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">确认删除</h3>
+              <p className="text-sm text-muted-foreground">
+                确定要删除任务 &ldquo;{jobs.find(j => j.id === confirmDelete)?.name}&rdquo; 吗？此操作无法撤销。
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setConfirmDelete(null)}>
+                取消
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => handleDelete(confirmDelete)}>
+                确认删除
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
@@ -397,24 +418,56 @@ export default function AutomationSettings() {
   )
 }
 
+function JobMenu({ onDelete }: { onDelete: () => void }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <div className="relative shrink-0">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        onClick={(e) => {
+          e.stopPropagation()
+          setMenuOpen(!menuOpen)
+        }}
+      >
+        <MoreVerticalIcon className="size-4" />
+      </Button>
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+          <div className="absolute right-0 top-8 z-50 w-36 rounded-md border bg-popover shadow-md">
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 cursor-pointer rounded-md"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen(false)
+                onDelete()
+              }}
+            >
+              <TrashIcon className="size-3.5" />
+              删除
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function JobCard({
   job,
   onEdit,
   onTrigger,
   onToggle,
   onDelete,
-  confirmDelete,
-  onConfirmDelete,
-  onCancelDelete,
 }: {
   job: CronJob
   onEdit: () => void
   onTrigger: () => void
   onToggle: () => void
   onDelete: () => void
-  confirmDelete: boolean
-  onConfirmDelete: () => void
-  onCancelDelete: () => void
 }) {
   const scheduled = hasSchedule(job)
 
@@ -498,35 +551,8 @@ function JobCard({
               </Button>
             )}
 
-            {confirmDelete ? (
-              <div className="flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={e => { e.stopPropagation(); onDelete() }}
-                >
-                  <CheckIcon className="size-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={e => { e.stopPropagation(); onCancelDelete() }}
-                >
-                  <XIcon className="size-3" />
-                </Button>
-              </div>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={e => { e.stopPropagation(); onConfirmDelete() }}
-              >
-                <TrashIcon className="size-3" />
-              </Button>
-            )}
+            {/* 3-dot menu */}
+            <JobMenu onDelete={onDelete} />
           </div>
         </div>
 

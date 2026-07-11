@@ -15,7 +15,7 @@ export default function AgentEditPage() {
     <AgentEditor
       agentType={isCreate ? undefined : agentType}
       onBack={() => router.push('/settings/agents')}
-      onSaved={() => router.push('/settings/agents')}
+      onSaved={() => {}}
     />
   );
 }

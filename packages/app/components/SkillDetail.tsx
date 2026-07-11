@@ -12,6 +12,7 @@ import {
 import { nanoid } from "nanoid"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { SkillFileTree } from "@/components/SkillFileTree"
 import { SkillFilePreview } from "@/components/SkillFilePreview"
 import { useSkillFiles } from "@/hooks/use-skill-files"
@@ -103,48 +104,32 @@ export default function SkillDetail({
     )
   }
 
+  const menuItems: MenuItem[] = [
+    {
+      label: "刷新",
+      icon: <RefreshCwIcon className="size-3.5" />,
+      onClick: refreshFiles,
+    },
+  ]
+
   // ── 渲染 ──────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* 头部 */}
-      <div className="shrink-0 border-b">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleBack}
-              className="shrink-0"
-            >
-              <ArrowLeftIcon className="size-4 mr-1" />
-              返回
-            </Button>
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 shrink-0">
-                <WrenchIcon className="size-4 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base font-semibold truncate">
-                    {skill?.name ?? folderName}
-                  </h1>
-                  {skill && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs shrink-0"
-                    >
-                      {skill.source}
-                    </Badge>
-                  )}
-                </div>
-                {skill && (
-                  <p className="text-xs text-muted-foreground truncate">
-                    {skill.description}
-                  </p>
-                )}
-              </div>
-            </div>
+      <DetailPageHeader
+        onBack={handleBack}
+        icon={
+          <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10">
+            <WrenchIcon className="size-4 text-primary" />
           </div>
+        }
+        title={skill?.name ?? folderName ?? ""}
+        badges={skill ? (
+          <Badge variant="outline" className="text-xs shrink-0">
+            {skill.source}
+          </Badge>
+        ) : undefined}
+        menuItems={menuItems}
+        extraButtons={
           <Button
             size="sm"
             variant="outline"
@@ -154,8 +139,8 @@ export default function SkillDetail({
             <SparklesIcon className="mr-1 size-4" />
             AI 编辑
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* 主体 */}
       <div className="flex-1 min-h-0 overflow-hidden flex">

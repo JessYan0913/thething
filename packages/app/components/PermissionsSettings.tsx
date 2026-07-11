@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ShieldIcon, RefreshCwIcon, PlusIcon, TrashIcon, CheckIcon, XIcon, AlertCircleIcon, PencilIcon, SearchIcon } from "lucide-react"
+import { ShieldIcon, RefreshCwIcon, PlusIcon, TrashIcon, MoreVerticalIcon, PencilIcon, SearchIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -55,6 +55,101 @@ const toolLabels: Record<string, string> = Object.fromEntries(
   builtinTools.map(t => [t.name, t.label])
 )
 
+// ============================================================
+// RuleCard — 卡片组件
+// ============================================================
+
+function RuleCard({
+  rule,
+  onDelete,
+  onEdit,
+}: {
+  rule: RuleView
+  onDelete: () => void
+  onEdit: () => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <div className="rounded-lg border p-4 transition-colors hover:border-accent/50 hover:bg-accent/20 relative">
+      <div className="flex items-start justify-between gap-4 min-w-0">
+        <button
+          onClick={onEdit}
+          className="flex items-start gap-3 min-w-0 flex-1 text-left cursor-pointer"
+        >
+          <ShieldIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <Badge className={`text-xs border-0 ${behaviorColors[rule.behavior]}`}>
+                {behaviorLabels[rule.behavior]}
+              </Badge>
+              <span className="font-medium text-sm font-mono">
+                {toolLabels[rule.toolName] || rule.toolName}
+              </span>
+              {rule.source && (
+                <Badge variant="outline" className="text-xs">{rule.source}</Badge>
+              )}
+            </div>
+            {rule.pattern && (
+              <p className="text-xs text-muted-foreground font-mono">
+                模式: {rule.pattern}
+              </p>
+            )}
+          </div>
+        </button>
+
+        {/* Actions menu */}
+        <div className="relative shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen(!menuOpen)
+            }}
+          >
+            <MoreVerticalIcon className="size-4" />
+          </Button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-8 z-50 w-36 rounded-md border bg-popover shadow-md">
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer rounded-md"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    onEdit()
+                  }}
+                >
+                  <PencilIcon className="size-3.5" />
+                  编辑
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 cursor-pointer rounded-md"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    onDelete()
+                  }}
+                >
+                  <TrashIcon className="size-3.5" />
+                  删除
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// PermissionsSettings — 主组件
+// ============================================================
+
 export default function PermissionsSettings() {
   const [rules, setRules] = useState<RuleView[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -71,6 +166,9 @@ export default function PermissionsSettings() {
   const [editPattern, setEditPattern] = useState("")
   const [editBehavior, setEditBehavior] = useState<"allow" | "ask" | "deny">("ask")
   const [editError, setEditError] = useState("")
+
+  // 删除确认
+  const [confirmDelete, setConfirmDelete] = useState<RuleView | null>(null)
 
   const loadRules = useCallback(async () => {
     setIsLoading(true)
@@ -126,6 +224,7 @@ export default function PermissionsSettings() {
         setRules((prev) => prev.filter((r) => r.id !== id))
       }
     } catch { /* ignore */ }
+    setConfirmDelete(null)
   }, [])
 
   // 打开编辑对话框
@@ -261,7 +360,6 @@ export default function PermissionsSettings() {
 
             {addError && (
               <div className="flex items-center gap-2 text-sm text-destructive">
-                <AlertCircleIcon className="size-4" />
                 {addError}
               </div>
             )}
@@ -338,7 +436,6 @@ export default function PermissionsSettings() {
 
             {editError && (
               <div className="flex items-center gap-2 text-sm text-destructive">
-                <AlertCircleIcon className="size-4" />
                 {editError}
               </div>
             )}
@@ -355,81 +452,62 @@ export default function PermissionsSettings() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmDelete(null)}>
+          <div
+            className="bg-background rounded-lg border shadow-lg max-w-sm w-full mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">确认删除</h3>
+              <p className="text-sm text-muted-foreground">
+                确定要删除权限规则 &ldquo;{toolLabels[confirmDelete.toolName] || confirmDelete.toolName}&rdquo; 吗？此操作无法撤销。
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setConfirmDelete(null)}>
+                取消
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => handleDeleteRule(confirmDelete.id)}>
+                确认删除
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...
           </div>
-        ) : rules.length === 0 ? (
+        ) : filteredRules.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-12 text-muted-foreground">
             <ShieldIcon className="size-12 opacity-20" />
             <div className="text-center max-w-md space-y-1">
               <p className="text-sm font-medium">
-                {search ? "没有匹配的规则" : "暂无权限规则"}
+                {rules.length === 0 ? "暂无权限规则" : "没有匹配的规则"}
               </p>
-              <p className="text-xs">
-                添加规则来控制 AI 代理对工具和资源的访问权限
-              </p>
+              {rules.length === 0 && (
+                <p className="text-xs">
+                  添加规则来控制 AI 代理对工具和资源的访问权限
+                </p>
+              )}
             </div>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
             {filteredRules.map((rule) => (
-              <RuleRow
+              <RuleCard
                 key={rule.id}
                 rule={rule}
-                onDelete={() => handleDeleteRule(rule.id)}
+                onDelete={() => setConfirmDelete(rule)}
                 onEdit={() => openEditDialog(rule)}
               />
             ))}
           </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function RuleRow({ rule, onDelete, onEdit }: { rule: RuleView; onDelete: () => void; onEdit: () => void }) {
-  const [confirmDelete, setConfirmDelete] = useState(false)
-
-  return (
-    <div className="rounded-lg border px-4 py-3 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <Badge className={`text-xs border-0 ${behaviorColors[rule.behavior]}`}>
-          {behaviorLabels[rule.behavior]}
-        </Badge>
-        <span className="text-sm font-mono font-medium">
-          {toolLabels[rule.toolName] || rule.toolName}
-        </span>
-        {rule.pattern && (
-          <span className="text-xs text-muted-foreground font-mono truncate max-w-48">
-            {rule.pattern}
-          </span>
-        )}
-        {rule.source && (
-          <Badge variant="outline" className="text-xs">{rule.source}</Badge>
-        )}
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        {confirmDelete ? (
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete}>
-              <CheckIcon className="size-3" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
-              <XIcon className="size-3" />
-            </Button>
-          </div>
-        ) : (
-          <>
-            <Button variant="ghost" size="sm" onClick={onEdit}>
-              <PencilIcon className="size-3" />
-            </Button>
-            <Button variant="ghost" size="sm" className="hover:text-destructive" onClick={() => setConfirmDelete(true)}>
-              <TrashIcon className="size-3" />
-            </Button>
-          </>
         )}
       </div>
     </div>
