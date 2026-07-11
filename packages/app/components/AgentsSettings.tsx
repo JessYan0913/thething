@@ -2,16 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   BotIcon, RefreshCwIcon, SearchIcon, SparklesIcon,
-  PlusIcon, PencilIcon, TrashIcon,
-  ExternalLinkIcon, MoreVerticalIcon,
-  CheckIcon,
+  PlusIcon, TrashIcon, MoreVerticalIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
-} from "@/components/ui/tooltip"
 
 interface AgentView {
   agentType: string
@@ -86,16 +81,12 @@ const ALL_TOOLS = TOOL_GROUPS.flatMap((g) => g.tools)
 
 function AgentCard({
   agent,
-  onEdit,
+  onClick,
   onDelete,
-  onToggleEnabled,
-  onOpenWorkbench,
 }: {
   agent: AgentView
-  onEdit: () => void
+  onClick: () => void
   onDelete: () => void
-  onToggleEnabled: (enabled: boolean) => void
-  onOpenWorkbench: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const enabled = agent.metadata?.enabled !== false
@@ -106,12 +97,15 @@ function AgentCard({
         ? "hover:border-accent/50 hover:bg-accent/20"
         : "opacity-60 border-dashed"
     }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
+      <div className="flex items-start justify-between gap-4 min-w-0">
+        <button
+          onClick={onClick}
+          className="flex items-start gap-3 min-w-0 flex-1 text-left cursor-pointer"
+        >
           <BotIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="font-medium text-sm truncate">
                 {agent.displayName ?? agent.agentType}
               </span>
               <Badge
@@ -148,43 +142,10 @@ function AgentCard({
               </div>
             )}
           </div>
-        </div>
+        </button>
 
-        <div className="relative shrink-0 flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={enabled}
-                  disabled={agent.source === "builtin"}
-                  onClick={() => onToggleEnabled(!enabled)}
-                  className={`
-                    relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent
-                    transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-                    focus-visible:ring-offset-2 focus-visible:ring-offset-background
-                    disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer
-                    ${enabled ? "bg-primary" : "bg-input"}
-                  `}
-                >
-                  <span
-                    className={`
-                      pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0
-                      transition-transform
-                      ${enabled ? "translate-x-5" : "translate-x-1"}
-                    `}
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {agent.source === "builtin"
-                  ? "内置代理无法禁用"
-                  : enabled ? "点击禁用" : "点击启用"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
+        {/* Actions menu */}
+        <div className="relative shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -199,29 +160,7 @@ function AgentCard({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-8 z-50 w-40 rounded-md border bg-popover shadow-md">
-                <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer rounded-md"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setMenuOpen(false)
-                    onEdit()
-                  }}
-                >
-                  <PencilIcon className="size-3.5" />
-                  编辑
-                </button>
-                <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer rounded-md"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setMenuOpen(false)
-                    onOpenWorkbench()
-                  }}
-                >
-                  <ExternalLinkIcon className="size-3.5" />
-                  工作台
-                </button>
+              <div className="absolute right-0 top-8 z-50 w-36 rounded-md border bg-popover shadow-md">
                 {agent.source !== "builtin" && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 cursor-pointer rounded-md"
@@ -271,28 +210,6 @@ export default function AgentsSettings() {
   }, [])
 
   useEffect(() => { loadAgents() }, [loadAgents])
-
-  const handleToggleEnabled = useCallback(async (agentType: string, enabled: boolean) => {
-    setAgents((prev) => prev.map((a) =>
-      a.agentType === agentType
-        ? { ...a, metadata: { ...a.metadata, enabled } }
-        : a,
-    ))
-    try {
-      const res = await fetch(`/api/agents?agentType=${encodeURIComponent(agentType)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ metadata: { enabled } }),
-      })
-      if (!res.ok) throw new Error("Failed to toggle agent")
-    } catch {
-      setAgents((prev) => prev.map((a) =>
-        a.agentType === agentType
-          ? { ...a, metadata: { ...a.metadata, enabled: !enabled } }
-          : a,
-      ))
-    }
-  }, [])
 
   const handleDelete = useCallback(async (agentType: string) => {
     const res = await fetch(`/api/agents?agentType=${encodeURIComponent(agentType)}`, { method: "DELETE" })
@@ -361,15 +278,13 @@ export default function AgentsSettings() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
             {filteredAgents.map((agent) => (
               <AgentCard
                 key={agent.agentType}
                 agent={agent}
-                onEdit={() => router.push(`/settings/agents/${agent.agentType}`)}
+                onClick={() => router.push(`/settings/agents/${agent.agentType}`)}
                 onDelete={() => setConfirmDelete(agent.agentType)}
-                onToggleEnabled={(v) => handleToggleEnabled(agent.agentType, v)}
-                onOpenWorkbench={() => router.push(`/workbench/agent/${agent.agentType}`)}
               />
             ))}
           </div>

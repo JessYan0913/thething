@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import {
   BotIcon, SaveIcon, ArrowLeftIcon, CheckIcon,
   WrenchIcon, PlugIcon, BookOpenIcon, ServerIcon,
+  TrashIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -122,6 +123,9 @@ export default function AgentEditor({
   const [useMcp, setUseMcp] = useState(true)
   const [permission, setPermission] = useState("smart")
   const [saving, setSaving] = useState(false)
+  const [enabled, setEnabled] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // agent 数据加载后初始化表单
   useEffect(() => {
@@ -135,6 +139,7 @@ export default function AgentEditor({
       setUseSkills(agent.skills ?? true)
       setUseMcp(agent.mcp ?? true)
       setPermission(agent.permission ?? "smart")
+      setEnabled(agent.metadata?.enabled !== false)
     }
   }, [loading, agent])
 
@@ -180,6 +185,38 @@ export default function AgentEditor({
 
   const hasInstructions = instructions.trim().length > 0
 
+  const handleToggleEnabled = async () => {
+    if (!isEdit) return
+    const newEnabled = !enabled
+    setEnabled(newEnabled)
+    try {
+      const res = await fetch(`/api/agents?agentType=${encodeURIComponent(agentType!)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: { enabled: newEnabled } }),
+      })
+      if (!res.ok) throw new Error("Failed to toggle")
+    } catch {
+      setEnabled(!newEnabled)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!isEdit) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/agents?agentType=${encodeURIComponent(agentType!)}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        onBack()
+      }
+    } finally {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -204,10 +241,47 @@ export default function AgentEditor({
             <Badge variant="secondary" className="text-xs font-mono">{agentType}</Badge>
           )}
         </div>
-        <Button size="sm" onClick={handleSave} disabled={saving || !hasInstructions}>
-          <SaveIcon className="size-3.5 mr-1.5" />
-          {saving ? "保存中..." : "保存"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {isEdit && agent.source !== "builtin" && (
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-xs text-muted-foreground">{enabled ? "已启用" : "已禁用"}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={enabled}
+                onClick={handleToggleEnabled}
+                className={`
+                  relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent
+                  transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                  focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer
+                  ${enabled ? "bg-primary" : "bg-input"}
+                `}
+              >
+                <span
+                  className={`
+                    pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0
+                    transition-transform
+                    ${enabled ? "translate-x-5" : "translate-x-1"}
+                  `}
+                />
+              </button>
+            </div>
+          )}
+          {isEdit && agent.source !== "builtin" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <TrashIcon className="size-4" />
+            </Button>
+          )}
+          <Button size="sm" onClick={handleSave} disabled={saving || !hasInstructions}>
+            <SaveIcon className="size-3.5 mr-1.5" />
+            {saving ? "保存中..." : "保存"}
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -351,6 +425,31 @@ export default function AgentEditor({
           </section>
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !deleting && setShowDeleteConfirm(false)}>
+          <div
+            className="bg-background rounded-lg border shadow-lg max-w-sm w-full mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">确认删除</h3>
+              <p className="text-sm text-muted-foreground">
+                确定要删除代理 &ldquo;{autoDisplayName}&rdquo; 吗？此操作无法撤销。
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>
+                取消
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>
+                {deleting ? "删除中..." : "确认删除"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
