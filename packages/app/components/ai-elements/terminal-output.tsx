@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import {
   ChevronDownIcon,
@@ -20,6 +20,13 @@ interface TerminalOutputProps {
   output: Record<string, unknown>;
   className?: string;
 }
+
+// ============================================================
+// Constants
+// ============================================================
+
+const MAX_VISIBLE_LINES = 100; // 默认显示的最大行数
+const LINE_HEIGHT_THRESHOLD = 500; // 超过此行数时启用虚拟化
 
 // ============================================================
 // Helpers
@@ -175,9 +182,7 @@ export function TerminalOutput({ output, className }: TerminalOutputProps) {
             <span className="text-muted-foreground/60">({stdout.length} chars)</span>
           </button>
           {showStdout && (
-            <div className="px-3 pb-2 max-h-64 overflow-y-auto">
-              <pre className="whitespace-pre-wrap break-words text-foreground">{stdout}</pre>
-            </div>
+            <TerminalOutputContent content={stdout} className="text-foreground" />
           )}
         </div>
       )}
@@ -199,9 +204,7 @@ export function TerminalOutput({ output, className }: TerminalOutputProps) {
             <span className="text-muted-foreground/60">({stderr.length} chars)</span>
           </button>
           {showStderr && (
-            <div className="px-3 pb-2 max-h-64 overflow-y-auto">
-              <pre className="whitespace-pre-wrap break-words text-destructive">{stderr}</pre>
-            </div>
+            <TerminalOutputContent content={stderr} className="text-destructive" />
           )}
         </div>
       )}
@@ -210,6 +213,56 @@ export function TerminalOutput({ output, className }: TerminalOutputProps) {
       {!hasOutput && !hasStderr && !error && (
         <div className="px-3 py-3 text-muted-foreground italic">No output</div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// Optimized Output Component (for large content)
+// ============================================================
+
+interface TerminalOutputContentProps {
+  content: string;
+  className?: string;
+  maxLines?: number;
+}
+
+/**
+ * 优化的终端输出内容组件
+ * 对于大型输出，使用行级虚拟化避免渲染卡死
+ */
+function TerminalOutputContent({ content, className, maxLines = MAX_VISIBLE_LINES }: TerminalOutputContentProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const lines = useMemo(() => content.split('\n'), [content]);
+  const needsCollapsing = lines.length > maxLines;
+
+  // 如果内容较小，直接渲染
+  if (!needsCollapsing || expanded) {
+    return (
+      <div className={cn("px-3 pb-2 max-h-64 overflow-y-auto", className)}>
+        <pre className="whitespace-pre-wrap break-words">{content}</pre>
+      </div>
+    );
+  }
+
+  // 大型内容：显示前 N 行 + 展开按钮
+  const previewLines = lines.slice(0, maxLines).join('\n');
+  const hiddenLineCount = lines.length - maxLines;
+
+  return (
+    <div className={cn("px-3 pb-2", className)}>
+      <div className="max-h-64 overflow-y-auto">
+        <pre className="whitespace-pre-wrap break-words">{previewLines}</pre>
+      </div>
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ChevronRightIcon className="size-3" />
+        <span>Show all {lines.length} lines ({hiddenLineCount} hidden)</span>
+      </button>
     </div>
   );
 }

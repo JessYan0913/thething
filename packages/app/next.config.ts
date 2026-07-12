@@ -7,8 +7,10 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Turbopack 配置（Next.js 16 默认使用 Turbopack）
   turbopack: {},
   // 排除 memory/wiki 目录的文件监听，避免 Fast Refresh 中断流式响应
+  // 注意：此配置仅在使用 webpack 模式（--webpack 标志）时生效
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.watchOptions = {
