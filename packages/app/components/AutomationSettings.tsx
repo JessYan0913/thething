@@ -108,8 +108,9 @@ export default function AutomationSettings() {
       // 有 schedule 时才允许启用
       if (schedule) body.enabled = formEnabled
 
+      let res: Response
       if (editingJob) {
-        const res = await fetch(`/api/cron/${editingJob.id}`, {
+        res = await fetch(`/api/cron/${editingJob.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -120,7 +121,7 @@ export default function AutomationSettings() {
           return
         }
       } else {
-        const res = await fetch("/api/cron", {
+        res = await fetch("/api/cron", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -134,7 +135,7 @@ export default function AutomationSettings() {
       setDialogOpen(false)
       if (!editingJob) {
         // 新建后跳转到详情页
-        const data = await res.json().catch(() => ({}))
+        const data = await res!.json().catch(() => ({}))
         const newId = data.job?.id
         if (newId) {
           router.push(`/settings/automation/${newId}`)

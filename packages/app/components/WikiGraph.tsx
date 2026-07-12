@@ -225,13 +225,6 @@ export default function WikiGraph({
     [requestRedraw],
   )
 
-  const handleNodeDoubleClick = useCallback(
-    (node: CustomNode) => {
-      onSelectPage?.(node.id)
-    },
-    [onSelectPage],
-  )
-
   const handleBackgroundClick = useCallback(() => {
     selectedNodeRef.current = null
     setSelectedUI(null)
@@ -406,7 +399,6 @@ export default function WikiGraph({
           linkPointerAreaPaint={noop}
           nodePointerAreaPaint={nodePointerAreaPaint}
           onNodeClick={handleNodeClick}
-          onNodeDoubleClick={handleNodeDoubleClick}
           onNodeHover={handleNodeHover}
           onBackgroundClick={handleBackgroundClick}
           cooldownTicks={100}

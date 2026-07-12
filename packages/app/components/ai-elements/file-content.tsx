@@ -155,8 +155,8 @@ export function FileContent({ output, className }: FileContentProps) {
         <div className="px-3 py-2 border-t bg-muted/30 text-xs text-muted-foreground">
           {truncationInfo.reason === "lines" && (
             <span>
-              File has {truncationInfo.originalLines} lines, showing first{" "}
-              {truncationInfo.shownLines} lines.
+              File has {truncationInfo.originalLines as number} lines, showing first{" "}
+              {truncationInfo.shownLines as number} lines.
               {hasMore && nextOffset !== undefined && (
                 <span className="ml-2 text-blue-600 dark:text-blue-400">
                   Use offset={nextOffset} to continue.
