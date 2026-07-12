@@ -57,6 +57,7 @@ export interface CompletedMessage {
 export interface CommandResult {
   type: 'handled' | 'exit' | 'unknown'
   output?: string
+  shouldQuery?: boolean
 }
 
 export type StreamPart =

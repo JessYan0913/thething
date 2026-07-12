@@ -14,6 +14,7 @@ import type { ResolvedLayout } from '../../services/config/layout';
 import type { PermissionRule } from '../../modules/permissions/types';
 import type { PricingResolver } from '../../services/model/pricing';
 import type { TodoStore } from '../todos/types';
+import type { GoalState } from '../../modules/goal/types';
 
 /**
  * Session 状态选项
@@ -114,6 +115,9 @@ export interface SessionState {
   dataStore?: DataStore;
   /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
   consecutiveReasoningOnlySteps: number;
+
+  /** 当前活跃目标（null 表示无目标） */
+  goalState: GoalState | null;
 
   /** 压缩消息 */
   compact(messages: UIMessage[]): Promise<CompactionResult>;

@@ -5,6 +5,7 @@ import { estimateFullRequest, type FullRequestEstimation } from '../compaction/t
 import { getModelContextLimit } from '../../services/model';
 import { logger } from '../../primitives/logger';
 import { estimateTaskComplexity } from '../session/task-complexity';
+import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -66,6 +67,27 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         return {
           messages: [...messages, injectMsg as ModelMessageType],
         } as PrepareStepResult<TOOLS>;
+      }
+    }
+
+    // Goal 持续驱动检查
+    if (sessionState.goalState && shouldContinue(sessionState.goalState)) {
+      // 更新 token 使用量
+      if (lastStep?.usage) {
+        sessionState.goalState = updateTokens(
+          sessionState.goalState,
+          (lastStep.usage.inputTokens ?? 0) + (lastStep.usage.outputTokens ?? 0),
+        );
+      }
+
+      // 检查是否达到最大轮次
+      sessionState.goalState = checkMaxTurns(sessionState.goalState);
+
+      // 如果目标仍然活跃，注入 continuation prompt
+      if (shouldContinue(sessionState.goalState)) {
+        const continuationPrompt = buildContinuationPrompt(sessionState.goalState);
+        debugLog(debugEnabled, `[Agent] Goal active, injecting continuation prompt`);
+        messages = [...messages, { role: 'user', content: continuationPrompt } as ModelMessageType];
       }
     }
 

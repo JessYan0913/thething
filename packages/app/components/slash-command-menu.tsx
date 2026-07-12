@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 
 export interface SlashCommandItem {
   id: string;
-  type: 'agent' | 'model' | 'mode' | 'skill';
+  type: 'agent' | 'model' | 'mode' | 'skill' | 'goal';
   label: string;
   description?: string;
 }
@@ -23,6 +23,7 @@ const TYPE_META: Record<string, { label: string; icon: typeof Bot }> = {
   model: { label: 'Models', icon: Cpu },
   mode: { label: 'Approval Mode', icon: Shield },
   skill: { label: 'Skills', icon: Wrench },
+  goal: { label: 'Goal', icon: Sparkles },
 };
 
 export function SlashCommandMenu({ items, selectedIndex, onSelect, onHover }: SlashCommandMenuProps) {

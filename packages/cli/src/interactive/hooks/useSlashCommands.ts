@@ -2,12 +2,15 @@ import { useCallback, useMemo } from 'react'
 import chalk from 'chalk'
 import type { UseConversationResult } from './useConversation.js'
 import type { CommandResult } from '../lib/types.js'
+import type { GoalState } from '@the-thing/core'
 
 interface SlashCommandOptions {
   conversation: UseConversationResult
   setModel: (model: string) => void
   currentModel: string
   onExit: () => void
+  goalState: GoalState | null
+  setGoalState: (goal: GoalState | null) => void
 }
 
 interface CommandDef {
@@ -27,6 +30,12 @@ const COMMANDS: CommandDef[] = [
   { name: '/delete', description: 'Delete conversation (/delete <n|id>)' },
   { name: '/new', description: 'Start new conversation' },
   { name: '/history', description: 'Show recent messages' },
+  { name: '/goal', description: 'Set/view goal (/goal <objective>)' },
+  { name: '/goal pause', description: 'Pause active goal' },
+  { name: '/goal resume', description: 'Resume paused goal' },
+  { name: '/goal continue', description: 'Continue after max turns' },
+  { name: '/goal complete', description: 'Mark goal as complete' },
+  { name: '/goal clear', description: 'Clear active goal' },
 ]
 
 function formatRelativeTime(dateStr: string): string {
@@ -41,7 +50,7 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export function useSlashCommands(opts: SlashCommandOptions) {
-  const { conversation, setModel, currentModel, onExit } = opts
+  const { conversation, setModel, currentModel, onExit, goalState, setGoalState } = opts
   let lastConversationList: ReturnType<typeof conversation.listConversations> = []
 
   const handleCommand = useCallback(async (input: string): Promise<CommandResult> => {
@@ -157,6 +166,96 @@ export function useSlashCommands(opts: SlashCommandOptions) {
           return `  ${role}: ${text}`
         })
         return { type: 'handled', output: lines.join('\n') }
+      }
+
+      case '/goal': {
+        const goalArgs = args.trim().toLowerCase()
+
+        // /goal 或 /goal status
+        if (!goalArgs || goalArgs === 'status') {
+          if (!goalState) {
+            return { type: 'handled', output: chalk.dim('No active goal. Set one with /goal <objective>.') }
+          }
+          const statusColor = goalState.status === 'active' ? chalk.green
+            : goalState.status === 'paused' ? chalk.yellow
+            : goalState.status === 'complete' ? chalk.blue
+            : chalk.red
+          const lines = [
+            `Goal: ${goalState.objective}`,
+            `Status: ${statusColor(goalState.status)}`,
+            `Turns: ${goalState.turnsExecuted}`,
+            `Tokens: ${goalState.tokensUsed}`,
+          ]
+          if (goalState.status === 'max_turns') {
+            lines.push(chalk.dim(`Hint: Run /goal continue to reset and continue.`))
+          }
+          return { type: 'handled', output: lines.join('\n') }
+        }
+
+        // /goal clear
+        if (goalArgs === 'clear') {
+          if (!goalState) {
+            return { type: 'handled', output: chalk.dim('No active goal to clear.') }
+          }
+          setGoalState(null)
+          return { type: 'handled', output: chalk.dim('Goal cleared.') }
+        }
+
+        // /goal pause
+        if (goalArgs === 'pause') {
+          if (!goalState || goalState.status !== 'active') {
+            return { type: 'handled', output: chalk.dim('No active goal to pause.') }
+          }
+          setGoalState({ ...goalState, status: 'paused', updatedAt: Date.now() })
+          return { type: 'handled', output: chalk.dim('Goal paused.') }
+        }
+
+        // /goal resume
+        if (goalArgs === 'resume') {
+          if (!goalState || goalState.status !== 'paused') {
+            return { type: 'handled', output: chalk.dim('No paused goal to resume.') }
+          }
+          setGoalState({ ...goalState, status: 'active', updatedAt: Date.now() })
+          return { type: 'handled', output: chalk.dim('Goal resumed.'), shouldQuery: true }
+        }
+
+        // /goal continue
+        if (goalArgs === 'continue') {
+          if (!goalState || goalState.status !== 'max_turns') {
+            return { type: 'handled', output: chalk.dim('Current goal is not in max-turns state.') }
+          }
+          setGoalState({ ...goalState, status: 'active', turnsExecuted: 0, updatedAt: Date.now() })
+          return { type: 'handled', output: chalk.dim('Goal continuation counter reset. Continuing...'), shouldQuery: true }
+        }
+
+        // /goal complete
+        if (goalArgs === 'complete') {
+          if (!goalState) {
+            return { type: 'handled', output: chalk.dim('No active goal to complete.') }
+          }
+          setGoalState({ ...goalState, status: 'complete', updatedAt: Date.now() })
+          return { type: 'handled', output: chalk.dim('Goal marked complete.') }
+        }
+
+        // /goal <objective> - 设置新目标
+        const objective = args.trim()
+        if (objective.length > 4000) {
+          return { type: 'handled', output: chalk.red(`Goal too long (${objective.length} chars; limit 4000).`) }
+        }
+
+        const newGoal: GoalState = {
+          id: crypto.randomUUID(),
+          objective,
+          status: 'active',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          turnsExecuted: 1,
+          tokensUsed: 0,
+          tokenBudget: null,
+          blockedCount: 0,
+        }
+        setGoalState(newGoal)
+        return { type: 'handled', output: chalk.green('Goal set.'), shouldQuery: true }
       }
 
       default:

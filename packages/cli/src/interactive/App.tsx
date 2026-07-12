@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Text, useApp, useInput } from 'ink'
 import { nanoid } from 'nanoid'
 import type { UIMessage } from 'ai'
-import type { CoreRuntime, AppContext, DataStore } from '@the-thing/core'
+import type { CoreRuntime, AppContext, DataStore, GoalState } from '@the-thing/core'
 import { generateConversationTitle } from '@the-thing/core'
 import { useAgentStream } from './hooks/useAgentStream.js'
 import { useConversation } from './hooks/useConversation.js'
@@ -50,6 +50,7 @@ export function App({
   const [modelName, setModelName] = useState(initialModel)
   const [completedItems, setCompletedItems] = useState<CompletedMessage[]>([])
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [goalState, setGoalState] = useState<GoalState | null>(null)
   const sessionApprovedScopes = useRef(new Set<string>())
   const isFirstTurn = useRef(true)
 
@@ -67,6 +68,8 @@ export function App({
     onExit: () => {
       runtime.dispose().then(() => exit())
     },
+    goalState,
+    setGoalState,
   })
 
   const handleSubmit = useCallback((text: string) => {
@@ -120,6 +123,29 @@ export function App({
             if (title) conversation.setConversationTitle(title)
           }).catch(() => {})
         }
+
+        // Goal 自动继续：如果目标活跃，自动触发下一轮
+        if (goalState && goalState.status === 'active') {
+          // 增加轮次计数
+          setGoalState(prev => prev ? {
+            ...prev,
+            turnsExecuted: prev.turnsExecuted + 1,
+            updatedAt: Date.now(),
+          } : null)
+
+          // 发送 continuation prompt
+          const continuationMsg: UIMessage = {
+            id: nanoid(),
+            role: 'user',
+            parts: [{ type: 'text', text: `[Goal continuation] Continue working towards the goal.` }],
+          }
+          const newMessages = [...stream.finishedMessages, continuationMsg]
+          conversation.setMessages(newMessages)
+          // 延迟启动，让 UI 先更新
+          setTimeout(() => {
+            stream.startStream(newMessages)
+          }, 100)
+        }
       }
 
       stream.reset()
@@ -129,7 +155,7 @@ export function App({
       setErrorMsg(stream.state.error || 'Unknown error')
       stream.reset()
     }
-  }, [stream.state.phase])
+  }, [stream.state.phase, goalState])
 
   useInput((_input, key) => {
     if (key.ctrl && _input === 'c') {

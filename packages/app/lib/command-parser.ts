@@ -12,7 +12,7 @@ export type CommandResult =
 const FRONTEND_COMMANDS = ['agent', 'model', 'mode'];
 
 // AI 命令列表（发送给 AI 处理）
-const AI_COMMANDS = ['skill'];
+const AI_COMMANDS = ['skill', 'goal'];
 
 /**
  * 解析用户输入的命令
@@ -66,6 +66,8 @@ export function getCommandDisplayName(command: string): string {
       return 'Mode';
     case 'skill':
       return 'Skill';
+    case 'goal':
+      return 'Goal';
     default:
       return command;
   }
@@ -84,6 +86,8 @@ export function getCommandArgsHint(command: string): string {
       return 'Approval mode (e.g., smart, auto-review, full-trust)';
     case 'skill':
       return 'Skill name and prompt';
+    case 'goal':
+      return 'Goal objective (e.g., /goal implement feature X)';
     default:
       return '';
   }

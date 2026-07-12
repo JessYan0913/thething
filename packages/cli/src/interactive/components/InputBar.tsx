@@ -5,7 +5,7 @@ import chalk from 'chalk'
 
 interface Props {
   onSubmit: (text: string) => void
-  onCommand: (cmd: string) => Promise<{ type: string; output?: string }>
+  onCommand: (cmd: string) => Promise<{ type: string; output?: string; shouldQuery?: boolean }>
   disabled?: boolean
   currentModel: string
   conversationTitle?: string | null
@@ -44,6 +44,10 @@ export function InputBar({ onSubmit, onCommand, disabled, currentModel, conversa
       const result = await onCommand(trimmed)
       if (result.output) {
         setCommandOutput(result.output)
+      }
+      // 如果命令需要触发查询，发送一个空消息来触发 agent
+      if (result.shouldQuery) {
+        onSubmit('')
       }
       return
     }

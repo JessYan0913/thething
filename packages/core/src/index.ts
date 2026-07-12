@@ -166,6 +166,45 @@ export { parseFrontmatterFile, parseYamlFile, parseJsonFile, updateVariablesInYa
 export { createSessionState } from './modules/session';
 export type { SessionState, SessionStateOptions } from './modules/session';
 
+// Goal Module
+export {
+  setGoal,
+  clearGoal,
+  pauseGoal,
+  resumeGoal,
+  completeGoal,
+  incrementTurns,
+  updateTokens,
+  recordBlocked,
+  continueFromMaxTurns,
+  checkMaxTurns,
+  shouldContinue,
+  formatGoalStatusLabel,
+  formatGoalElapsed,
+  getActiveElapsedMs,
+  truncateForDisplay,
+  persistGoal,
+  loadGoal,
+  clearGoalStorage,
+  buildContinuationPrompt,
+  buildBudgetLimitPrompt,
+  buildObjectiveUpdatedPrompt,
+  buildGoalContextBlock,
+  buildMaxTurnsPrompt,
+  MAX_GOAL_TURNS,
+  BLOCKED_CONSECUTIVE_THRESHOLD,
+  MAX_OBJECTIVE_CHARS,
+  MAX_DISPLAY_CHARS,
+} from './modules/goal';
+export type {
+  GoalState,
+  GoalStatus,
+  GoalCreateInput,
+  GoalUpdateInput,
+  GoalToolInput,
+  GoalToolOutput,
+} from './modules/goal';
+
 // Compaction
 export {
   compactBeforeStep,

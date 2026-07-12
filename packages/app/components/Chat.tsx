@@ -449,6 +449,17 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       });
     }
 
+    // Goal commands
+    items.push(
+      { id: 'goal:set', type: 'goal', label: '/goal', description: 'Set a goal for the agent to work towards' },
+      { id: 'goal:status', type: 'goal', label: '/goal status', description: 'View current goal status' },
+      { id: 'goal:pause', type: 'goal', label: '/goal pause', description: 'Pause auto-continuation' },
+      { id: 'goal:resume', type: 'goal', label: '/goal resume', description: 'Resume from paused state' },
+      { id: 'goal:continue', type: 'goal', label: '/goal continue', description: 'Continue after max turns' },
+      { id: 'goal:complete', type: 'goal', label: '/goal complete', description: 'Mark goal as complete' },
+      { id: 'goal:clear', type: 'goal', label: '/goal clear', description: 'Clear active goal' },
+    );
+
     return items;
   }, [slashCommandAgents, slashCommandModels, slashCommandSkills]);
 
@@ -505,6 +516,18 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           break;
         case 'skill':
           if (textarea) { textarea.value = `/skill ${item.label} `; textarea.focus(); }
+          break;
+        case 'goal':
+          // For goal commands, set the textarea to the command
+          if (textarea) {
+            const goalId = item.id.replace('goal:', '');
+            if (goalId === 'set') {
+              textarea.value = '/goal ';
+            } else {
+              textarea.value = `/goal ${goalId} `;
+            }
+            textarea.focus();
+          }
           break;
       }
 

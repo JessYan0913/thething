@@ -16,6 +16,7 @@ import type { TodoStore } from '../../primitives/datastore/types';
 import type { PermissionRule } from '../../modules/permissions/types';
 import type { Skill } from '../../modules/skills/types';
 import type { ModelMessage } from 'ai';
+import type { GoalState } from '../../modules/goal/types';
 
 // ============================================================
 // 1. TokenBudget - 上下文窗口预算（compaction/pipeline 消费）
@@ -148,4 +149,6 @@ export interface PipelineContext {
   layout: ResolvedLayout;
   /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
   consecutiveReasoningOnlySteps: number;
+  /** 当前活跃目标（null 表示无目标） */
+  goalState: GoalState | null;
 }
