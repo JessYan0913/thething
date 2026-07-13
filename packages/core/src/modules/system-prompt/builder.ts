@@ -7,6 +7,8 @@ import type {
 import { createIdentitySection } from "./sections/identity";
 import { createCapabilitiesSection } from "./sections/capabilities";
 import { createRulesSection } from "./sections/rules";
+import { createActionsSection } from "./sections/actions";
+import { createErrorHandlingSection } from "./sections/error-handling";
 import {
   createSessionGuidanceSection,
   createFirstMessageGuidance,
@@ -67,6 +69,16 @@ const STATIC_SECTION_FACTORIES: SectionFactory[] = [
     create: () => createRulesSection(),
     cacheStrategy: "static",
   },
+  {
+    name: "actions",
+    create: () => createActionsSection(),
+    cacheStrategy: "static",
+  },
+  {
+    name: "error-handling",
+    create: () => createErrorHandlingSection(),
+    cacheStrategy: "static",
+  },
 ];
 
 /**
@@ -109,8 +121,8 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
         : '';
 
       const content = listing
-        ? `## Available Skills\n\n${listing}\n\n---\n\n### How to Use Skills\n\nIf any skill above matches the user's request, invoke it by calling the \`skill\` tool with the exact skill name. The full instructions will be loaded for you.\n\n**Matching rule:** If the user's intent aligns with a skill's description, invoke it **before** generating any other response. Do not mention a skill without invoking it.\n\n**No match?** If no listed skill applies, proceed with your usual capabilities.`
-        : `## Skills\n\nNo additional skills are currently available. You can proceed with your usual capabilities.`;
+        ? `## 技能\n\n${listing}\n\n如果有技能匹配用户需求，使用该技能。否则，按正常方式处理。`
+        : `## 技能\n\n暂无可用技能。按正常方式处理。`;
 
       return {
         name: "skill-matching",
@@ -126,17 +138,12 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     create: (options) => {
       const serverList = options.mcpServerTools
       const listBlock = serverList
-        ? `\nAvailable servers and tools:\n${serverList}\n`
+        ? `\n${serverList}\n`
         : ''
 
       return {
         name: "mcp-tools",
-        content: `## MCP Tools
-
-MCP (Model Context Protocol) provides access to external services.${listBlock}
-Each MCP tool is registered as a native tool with the \`mcp__serverName__toolName\` naming convention.
-
-**Matching principle:** If the user's intent requires real-time, domain-specific, or external data, MCP tools may be relevant.`,
+        content: `## MCP 工具\n\nMCP 提供对外部服务的访问。${listBlock}\n当用户需求涉及外部数据或服务时，可使用相关 MCP 工具。`,
         cacheStrategy: "session" as const,
         priority: 31,
       }
@@ -171,36 +178,19 @@ Each MCP tool is registered as a native tool with the \`mcp__serverName__toolNam
 
 /**
  * Dynamic section factories - content may change every message.
+ * 合并为单一 session section，减少冗余。
  */
 const DYNAMIC_SECTION_FACTORIES: SectionFactory[] = [
   {
-    name: "system-context",
-    create: (options) => createSystemContextSection(options.cwd),
-    cacheStrategy: "dynamic",
-  },
-  {
-    name: "session-guidance",
+    name: "session",
     create: (options) =>
       options.conversationMeta
         ? createSessionGuidanceSection(options.conversationMeta)
         : {
-            name: "session-guidance",
+            name: "session",
             content: null,
             cacheStrategy: "dynamic" as const,
             priority: 100,
-          },
-    cacheStrategy: "dynamic",
-  },
-  {
-    name: "first-message-guidance",
-    create: (options) =>
-      options.conversationMeta?.isNewConversation
-        ? createFirstMessageGuidance()
-        : {
-            name: "first-message-guidance",
-            content: null,
-            cacheStrategy: "dynamic" as const,
-            priority: 99,
           },
     cacheStrategy: "dynamic",
   },
@@ -334,16 +324,14 @@ export async function buildSystemPrompt(
     allSections.push(customSection);
   }
 
-  // SOUL.md 引导：如果灵魂文件不存在，引导 Agent 主动创建
+  // SOUL.md 引导：如果灵魂文件不存在，引导 Agent 在合适时机询问
   if (!soulContent) {
     const soulGuideSection: SystemPromptSection = {
       name: "soul-guide",
-      content: `【灵魂文件引导】
+      content: `【灵魂文件】
 你的灵魂文件（~/.thething/SOUL.md）尚未创建。这个文件定义了你的名字、性格和说话风格。
-如果这是你与用户的第一次对话，请主动询问用户：
-"你想给我设定什么样的灵魂？比如名字、性格特点、说话风格等，告诉我，我来保存。"
-用户描述后，请使用 write_to_file 工具将内容写入 ~/.thething/SOUL.md。
-如果用户跳过或拒绝，不要重复询问。`,
+在合适的时机，你可以询问用户是否想设定这些。用户描述后，保存到该文件。
+如果用户跳过，尊重他们的选择。`,
       cacheStrategy: "session",
       priority: 201,
     };

@@ -6,14 +6,21 @@ import type { SystemPromptSection, ConversationMeta } from '../types';
 
 /**
  * Creates session-level guidance section.
- * This content is dynamic and changes per conversation/session.
+ * 合并环境信息、会话指导、新对话指导为一个section，减少冗余。
  */
 export function createSessionGuidanceSection(
   meta: ConversationMeta
 ): SystemPromptSection {
   const parts: string[] = [];
 
-  // 会话来源：只陈述事实，不指导行为
+  // 环境信息
+  const now = new Date();
+  const iso = now.toISOString();
+  const dateStr = iso.slice(0, 10);
+  const timeStr = iso.slice(11, 16);
+  parts.push(`当前时间：${dateStr} ${timeStr} (UTC)`);
+
+  // 会话来源
   const source = meta.sessionSource ?? 'user';
   const sourceId = meta.sessionSourceId;
   const sourceLabel = source === 'connector'
@@ -23,38 +30,37 @@ export function createSessionGuidanceSection(
       : 'local';
   parts.push(`会话来源：${sourceLabel}`);
 
-  // Add conversation context
+  // 对话上下文
   if (meta.isNewConversation) {
-    parts.push('这是一个新的对话。请花些时间了解用户的需求。');
+    parts.push('这是一个新对话。');
   } else {
-    parts.push(`这是对话中的第 ${meta.messageCount + 1} 条消息。请基于之前的上下文继续对话。`);
+    parts.push(`这是第 ${meta.messageCount + 1} 条消息。`);
   }
 
-  const content = `【会话指导】\n\n${parts.join('\n')}`;
+  const content = `【会话信息】\n\n${parts.join('\n')}`;
 
   return {
-    name: 'session-guidance',
+    name: 'session',
     content,
-    cacheStrategy: 'dynamic', // Changes every message
-    priority: 100, // Highest priority number = comes last
+    cacheStrategy: 'dynamic',
+    priority: 51,
   };
 }
 
 /**
  * Creates a system context section with current date/time and working directory.
- * Always injected so the model always knows what time it is and where to run commands.
+ * 保留此函数以备需要单独使用时调用。
  */
 export function createSystemContextSection(cwd?: string): SystemPromptSection {
   const now = new Date();
-  const iso = now.toISOString(); // Always UTC, e.g. "2026-04-07T12:02:00.000Z"
-  const dateStr = iso.slice(0, 10);  // YYYY-MM-DD
-  const timeStr = iso.slice(11, 16); // HH:mm
+  const iso = now.toISOString();
+  const dateStr = iso.slice(0, 10);
+  const timeStr = iso.slice(11, 16);
 
   const parts: string[] = [
     `当前日期时间：${dateStr} ${timeStr} (UTC)`,
   ];
 
-  // 添加工作目录信息（关键：让 Agent 知道正确的执行路径）
   if (cwd) {
     parts.push(`Primary working directory: ${cwd}`);
     parts.push(`IMPORTANT: Run all bash commands from this directory. Do NOT use /home/sandbox or other Linux paths.`);
@@ -65,13 +71,14 @@ export function createSystemContextSection(cwd?: string): SystemPromptSection {
   return {
     name: 'system-context',
     content,
-    cacheStrategy: 'dynamic', // Changes per request
-    priority: 51, // Just after dynamic boundary (50), before project-context (60)
+    cacheStrategy: 'dynamic',
+    priority: 51,
   };
 }
 
 /**
  * Creates a session guidance for first message in a conversation.
+ * 保留此函数以备需要单独使用时调用。
  */
 export function createFirstMessageGuidance(): SystemPromptSection {
   const content = `【新对话指导】
@@ -96,23 +103,17 @@ export function createFirstMessageGuidance(): SystemPromptSection {
 
 /**
  * Boundary marker separating static sections from dynamic sections.
- * This is inspired by Claude Code's SYSTEM_PROMPT_DYNAMIC_BOUNDARY.
- *
- * When the API/provider supports prompt caching, content before this
- * boundary can be cached globally, while content after must be
- * recalculated per session/conversation.
  */
 export const DYNAMIC_BOUNDARY = '__DYNAMIC_CONTENT_BOUNDARY__';
 
 /**
  * Creates the dynamic boundary marker section.
- * This allows providers with caching support to identify cacheable content.
  */
 export function createDynamicBoundarySection(): SystemPromptSection {
   return {
     name: 'dynamic-boundary',
     content: DYNAMIC_BOUNDARY,
     cacheStrategy: 'dynamic',
-    priority: 50, // Middle priority - splits static and dynamic
+    priority: 50,
   };
 }
