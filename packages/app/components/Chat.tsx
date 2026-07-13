@@ -55,11 +55,9 @@ import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useChatPreferences } from '@/hooks/useChatPreferences';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
-const SELECTED_MODEL_KEY = 'chat_selected_model';
-const SELECTED_AGENT_KEY = 'chat_selected_agent';
-const SELECTED_APPROVAL_MODE_KEY = 'chat_approval_mode';
 
 // MCP Apps 资源加载函数
 const loadResource = async (app: MCPAppMetadata): Promise<MCPAppResource> => {
@@ -334,42 +332,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     mediaType?: string;
   } | null>(null);
 
-  // 模型和 Agent 选择状态（持久化到 localStorage）
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(SELECTED_MODEL_KEY) || 'default';
-    }
-    return 'default';
-  });
-  const [selectedAgent, setSelectedAgent] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(SELECTED_AGENT_KEY) || 'auto';
-    }
-    return 'auto';
-  });
-
-  const handleModelChange = useCallback((value: string) => {
-    setSelectedModel(value);
-    localStorage.setItem(SELECTED_MODEL_KEY, value);
-  }, []);
-
-  const handleAgentChange = useCallback((value: string) => {
-    setSelectedAgent(value);
-    localStorage.setItem(SELECTED_AGENT_KEY, value);
-  }, []);
-
-  // 审批模式选择状态
-  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem(SELECTED_APPROVAL_MODE_KEY) as ApprovalMode | null) || 'smart';
-    }
-    return 'smart';
-  });
-
-  const handleApprovalModeChange = useCallback((value: string) => {
-    setApprovalMode(value as ApprovalMode);
-    localStorage.setItem(SELECTED_APPROVAL_MODE_KEY, value);
-  }, []);
+  // 模型、Agent、审批模式选择状态（持久化到 ~/.thething/preferences.json + localStorage）
+  const {
+    selectedModel,
+    selectedAgent,
+    approvalMode,
+    handleModelChange,
+    handleAgentChange,
+    handleApprovalModeChange,
+  } = useChatPreferences();
 
   // ── Slash Command Menu ──────────────
   const [slashCommandOpen, setSlashCommandOpen] = useState(false);
@@ -689,7 +660,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               if (sessionApprovedScopesRef.current.has(scope) && !autoApprovedIdsRef.current.has(approvalId)) {
                 autoApprovedIdsRef.current.add(approvalId);
                 pendingAutoApprovalRef.current = true;
-                addToolApprovalResponse({ id: approvalId, approved: true });
+                addToolApprovalResponse({ id: approvalId, approved: true }).catch(err => console.error('[Chat] Auto-approve error:', err));
               } else {
                 pendingApprovals.push({
                   approvalId,
@@ -864,10 +835,13 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       sessionApprovedScopesRef.current.add(scope);
     }
 
+    // 立即从审批列表中移除该项
+    setApprovalRequests(prev => prev.filter(r => r.approvalId !== approvalId));
+
     addToolApprovalResponse({
       id: approvalId,
       approved: true,
-    });
+    }).catch(err => console.error('[Chat] addToolApprovalResponse error:', err));
 
     // 持久化规则（跨会话生效）
     if (options?.alwaysAllow && request) {
@@ -877,6 +851,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 处理批量审批批准
   const handleApproveAll = useCallback((requests: ApprovalRequest[], options?: { alwaysAllow?: boolean }) => {
+    // 立即清空审批列表
+    setApprovalRequests([]);
+
     for (const req of requests) {
       // 记录 session scope
       const scope = computeApprovalScope(req.toolName, req.toolInput);
@@ -885,7 +862,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       addToolApprovalResponse({
         id: req.approvalId,
         approved: true,
-      });
+      }).catch(err => console.error('[Chat] addToolApprovalResponse error:', err));
 
       if (options?.alwaysAllow) {
         saveAlwaysAllowRule(req.toolName, req.toolInput);
@@ -895,17 +872,17 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 处理审批拒绝（单个）
   const handleDeny = useCallback((approvalId: string, reason?: string) => {
+    setApprovalRequests(prev => prev.filter(r => r.approvalId !== approvalId));
     addToolApprovalResponse({
       id: approvalId,
       approved: false,
       reason: reason,
     });
-
-    // 不立即从列表移除
   }, [addToolApprovalResponse]);
 
   // 处理批量审批拒绝
   const handleDenyAll = useCallback((requests: ApprovalRequest[], reason?: string) => {
+    setApprovalRequests([]);
     for (const req of requests) {
       addToolApprovalResponse({
         id: req.approvalId,
@@ -913,8 +890,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         reason: reason,
       });
     }
-
-    // 不立即清空
   }, [addToolApprovalResponse]);
 
   // 停止 Agent 时清理未完成的 todo，避免 orphaned in_progress 状态
@@ -1615,7 +1590,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               />
             )}
 
-            {inputCard}
+            {!questionPanel && approvalRequests.length === 0 && inputCard}
           </div>
         </div>
       )}

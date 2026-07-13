@@ -18,7 +18,7 @@ import {
 } from "@/components/ai-elements/prompt-input"
 import { useChatContext } from "./ChatLayout"
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from "@/components/chat-selectors"
-import type { ApprovalMode } from "@/components/chat-selectors"
+import { useChatPreferences } from '@/hooks/useChatPreferences'
 
 function AttachmentPreview() {
   const { files, remove } = usePromptInputAttachments()
@@ -58,49 +58,20 @@ function AttachmentPreview() {
   )
 }
 
-const SELECTED_MODEL_KEY = 'chat_selected_model'
-const SELECTED_AGENT_KEY = 'chat_selected_agent'
-const SELECTED_APPROVAL_MODE_KEY = 'chat_approval_mode'
-
 export default function ChatHome() {
   const { t } = useTranslation('chat')
   const { handleCreateConversation } = useChatContext()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(SELECTED_MODEL_KEY) || 'default'
-    }
-    return 'default'
-  })
-  const [selectedAgent, setSelectedAgent] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(SELECTED_AGENT_KEY) || 'auto'
-    }
-    return 'auto'
-  })
-
-  const handleModelChange = useCallback((value: string) => {
-    setSelectedModel(value)
-    localStorage.setItem(SELECTED_MODEL_KEY, value)
-  }, [])
-
-  const handleAgentChange = useCallback((value: string) => {
-    setSelectedAgent(value)
-    localStorage.setItem(SELECTED_AGENT_KEY, value)
-  }, [])
-
-  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem(SELECTED_APPROVAL_MODE_KEY) as ApprovalMode | null) || 'smart'
-    }
-    return 'smart'
-  })
-
-  const handleApprovalModeChange = useCallback((value: string) => {
-    setApprovalMode(value as ApprovalMode)
-    localStorage.setItem(SELECTED_APPROVAL_MODE_KEY, value)
-  }, [])
+  // 模型、Agent、审批模式选择状态（持久化到 ~/.thething/preferences.json + localStorage）
+  const {
+    selectedModel,
+    selectedAgent,
+    approvalMode,
+    handleModelChange,
+    handleAgentChange,
+    handleApprovalModeChange,
+  } = useChatPreferences()
 
   const handleSubmit = useCallback(
     async ({ text }: PromptInputMessage) => {
