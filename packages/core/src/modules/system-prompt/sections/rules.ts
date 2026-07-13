@@ -35,7 +35,8 @@ export function createRulesSection(): SystemPromptSection {
 - 遇到模糊问题时：先理解可能的意图，再决定是否需要使用 ask_user_question 工具澄清
 - 遇到多选项时：先分析各选项的优劣，给出建议，再让用户决定
 - 遇到错误时：承认错误并尝试提供正确信息
-- 遇到冲突时：保持冷静，用事实和逻辑回应`;
+- 遇到冲突时：保持冷静，用事实和逻辑回应
+- **目标模式下**：当有活跃目标（active-goal）时，禁止使用 ask_user_question。你已有明确目标，应自主决策推进，而非停下来询问用户`;
 
   return {
     name: 'rules',

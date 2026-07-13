@@ -45,6 +45,8 @@ ${goal.objective}
 
 Continue working towards the goal. Do NOT narrow the scope of the goal — even if you cannot complete everything in one turn, maintain the full objective and make as much progress as possible.
 
+**Important: Do NOT use ask_user_question when a goal is active.** You have a clear objective — make autonomous decisions based on the goal context. If you encounter ambiguity, choose the most reasonable path forward rather than stopping to ask.
+
 When you believe the goal is fully achieved, use the GoalTool to mark it complete. Before doing so, perform a strict Completion Audit:
 
 ### Completion Audit

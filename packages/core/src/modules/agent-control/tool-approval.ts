@@ -17,6 +17,7 @@ import type { ToolApprovalStatus } from 'ai';
 import { checkPermissionRules } from '../../modules/permissions';
 import { isCommandDangerous, isCommandSafe } from '../../modules/tools/bash';
 import type { PermissionRule } from '../../modules/permissions/types';
+import type { GoalState } from '../../modules/goal/types';
 import { hasReviewerDenial } from './reviewer-feedback';
 
 // ============================================================
@@ -50,6 +51,8 @@ export interface ApprovalRuntimeContext extends Record<string, unknown> {
   approvalMode: string;
   /** auto-review 模式下的审批 Agent（由 create.ts 注入） */
   reviewer?: (toolName: string, input: unknown, messages: unknown[]) => Promise<ToolApprovalStatus>;
+  /** 当前目标状态（有目标时，Agent 应自主决策而非询问用户） */
+  goalState?: GoalState | null;
 }
 
 // ============================================================
@@ -165,6 +168,11 @@ export async function catchAllApproval(options: {
   if (ctx.approvalMode === 'full-trust') {
     if (TOOLS_WITH_APPROVAL.has(toolName)) return 'approved';
     return undefined;
+  }
+
+  // 'auto-review' + 有目标：ask_user_question 自动放行（Agent 应自主决策）
+  if (toolName === 'ask_user_question' && ctx.approvalMode === 'auto-review' && ctx.goalState) {
+    return 'approved';
   }
 
   // 'smart' / 'auto-review': 使用相同的上下文感知审批逻辑

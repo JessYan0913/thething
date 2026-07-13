@@ -352,6 +352,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     denialTracker: sessionState.denialTracker,
     approvalMode: options.approvalMode ?? 'smart',
     reviewer,
+    goalState: sessionState.goalState,
   }
   // ── Checkpoint 回调：跟踪工具调用，每步结束写 checkpoint ──
   const agentRunStore = options.agentRunStore;
