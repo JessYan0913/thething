@@ -208,7 +208,7 @@ export function ApprovalPanel({
   };
 
   return (
-    <div className='shrink-0 bg-background/95 backdrop-blur border-t'>
+    <div className='shrink-0 bg-background/95 backdrop-blur'>
       <div className='px-4 py-3'>
         {/* 标题行 */}
         <div className='flex items-center justify-between gap-2 mb-2'>
