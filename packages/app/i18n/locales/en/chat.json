@@ -13,6 +13,8 @@
     "delete": "Delete",
     "deleteConfirm": "Delete conversation \"{{title}}\"?",
     "deleteDescription": "This conversation will be permanently deleted.",
+    "deleteProjectConfirm": "Delete Project?",
+    "deleteProjectDescription": "This will only remove the project from the list. Files on disk will not be affected.",
     "filter": {
       "conversations": "Local Sessions",
       "connectors": "Connectors",

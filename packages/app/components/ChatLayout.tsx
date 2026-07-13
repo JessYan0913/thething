@@ -383,6 +383,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
           const convData = await convRes.json();
           setConversations(convData.conversations || []);
         }
+        // Clear active conversation to show blank chat
+        setActiveConversationId(null);
         return data.project;
       }
     } catch {
@@ -400,7 +402,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
         if (activeProjectId === projectId) {
           setActiveProjectId(null);
-          // Reload all conversations
+          // Clear active conversation and reload all conversations
+          setActiveConversationId(null);
           const convRes = await fetch("/api/conversations");
           if (convRes.ok) {
             const data = await convRes.json();

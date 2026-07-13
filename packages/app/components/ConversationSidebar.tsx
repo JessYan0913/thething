@@ -45,139 +45,21 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 
 // ============================================================================
-// Directory Picker Component
+// Electron API Type
 // ============================================================================
 
-interface DirEntry {
-  name: string;
-  path: string;
-}
-
-interface DirectoryPickerProps {
-  onSelect: (path: string) => void;
-}
-
-function DirectoryPicker({ onSelect }: DirectoryPickerProps) {
-  const [currentDir, setCurrentDir] = useState<string>("");
-  const [parentDir, setParentDir] = useState<string | null>(null);
-  const [entries, setEntries] = useState<DirEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [inputValue, setInputValue] = useState("");
-
-  // Load directory contents
-  const loadDir = useCallback(async (dir: string) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/fs?action=browse&dir=${encodeURIComponent(dir)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCurrentDir(data.current || dir);
-        setParentDir(data.parent);
-        setEntries(data.items || []);
-        setInputValue(data.current || dir);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Load home on mount
-  useEffect(() => {
-    loadDir("");
-  }, [loadDir]);
-
-  const handleNavigate = useCallback((dir: string) => {
-    loadDir(dir);
-  }, [loadDir]);
-
-  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      loadDir(inputValue);
-    }
-  }, [inputValue, loadDir]);
-
-  return (
-    <div className="flex flex-col gap-2">
-      {/* Path input */}
-      <input
-        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="/Users/..."
-      />
-
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
-        {currentDir.split('/').filter(Boolean).map((segment, i, arr) => {
-          const fullPath = '/' + arr.slice(0, i + 1).join('/');
-          return (
-            <span key={fullPath} className="flex items-center gap-1">
-              {i > 0 && <span>/</span>}
-              <button
-                onClick={() => handleNavigate(fullPath)}
-                className="hover:text-foreground hover:underline transition-colors"
-              >
-                {segment}
-              </button>
-            </span>
-          );
-        })}
-      </div>
-
-      {/* Directory list */}
-      <div className="max-h-48 overflow-y-auto rounded-md border bg-background">
-        {isLoading ? (
-          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-            Loading...
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-            No subdirectories
-          </div>
-        ) : (
-          <div className="py-0.5">
-            {parentDir && (
-              <button
-                onClick={() => handleNavigate(parentDir)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-sidebar-accent transition-colors text-left"
-              >
-                <span className="text-muted-foreground">..</span>
-              </button>
-            )}
-            {entries.map((entry) => (
-              <button
-                key={entry.path}
-                onClick={() => handleNavigate(entry.path)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-sidebar-accent transition-colors text-left"
-              >
-                <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{entry.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Select button */}
-      <Button
-        onClick={() => onSelect(currentDir)}
-        disabled={!currentDir}
-        className="w-full"
-      >
-        <FolderOpenIcon className="size-4 mr-1.5" />
-        Select &quot;{currentDir.split('/').filter(Boolean).pop() || currentDir}&quot;
-      </Button>
-    </div>
-  );
+declare global {
+  interface Window {
+    electronAPI?: {
+      selectDirectory: () => Promise<string | null>;
+    };
+    // File System Access API (Chrome/Edge)
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+  }
 }
 
 // ============================================================================
@@ -219,6 +101,59 @@ function groupConversations(conversations: ConversationItem[]): Map<string, Conv
     groups.get(group)!.push(conv);
   }
   return groups;
+}
+
+// ============================================================================
+// Project Name Input (Web fallback when native dialog unavailable)
+// ============================================================================
+
+interface ProjectNameInputProps {
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}
+
+function ProjectNameInput({ onSubmit, onCancel }: ProjectNameInputProps) {
+  const [name, setName] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = () => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      onSubmit(trimmed);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <input
+        ref={inputRef}
+        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSubmit();
+          } else if (e.key === 'Escape') {
+            onCancel();
+          }
+        }}
+        placeholder="Project name"
+      />
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={!name.trim()}>
+          Create
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -339,7 +274,32 @@ export const ConversationSidebar = ({
               </span>
               {onSelectProject && (
                 <button
-                  onClick={() => setShowNewProjectDialog(true)}
+                  onClick={async () => {
+                    try {
+                      if (window.electronAPI) {
+                        // Desktop: use native directory picker
+                        const dirPath = await window.electronAPI.selectDirectory();
+                        if (dirPath && onCreateProject) {
+                          const name = dirPath.split('/').filter(Boolean).pop() || dirPath;
+                          await onCreateProject(name, dirPath);
+                        }
+                      } else if (window.showDirectoryPicker) {
+                        // Web (Chrome/Edge): use File System Access API
+                        const dirHandle = await window.showDirectoryPicker();
+                        if (onCreateProject) {
+                          await onCreateProject(dirHandle.name, dirHandle.name);
+                        }
+                      } else {
+                        // Web (other browsers): fallback to name input dialog
+                        setShowNewProjectDialog(true);
+                      }
+                    } catch (err: unknown) {
+                      // User cancelled or error - do nothing
+                      if (err instanceof Error && err.name !== 'AbortError') {
+                        console.error('Failed to select directory:', err);
+                      }
+                    }
+                  }}
                   className="rounded-md p-0.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
                   title={t('chat:conversation.newProject', 'New Project')}
                 >
@@ -351,7 +311,32 @@ export const ConversationSidebar = ({
               {projects.length === 0 ? (
                 <div className="px-2 py-1.5">
                   <button
-                    onClick={() => setShowNewProjectDialog(true)}
+                    onClick={async () => {
+                      try {
+                        if (window.electronAPI) {
+                          // Desktop: use native directory picker
+                          const dirPath = await window.electronAPI.selectDirectory();
+                          if (dirPath && onCreateProject) {
+                            const name = dirPath.split('/').filter(Boolean).pop() || dirPath;
+                            await onCreateProject(name, dirPath);
+                          }
+                        } else if (window.showDirectoryPicker) {
+                          // Web (Chrome/Edge): use File System Access API
+                          const dirHandle = await window.showDirectoryPicker();
+                          if (onCreateProject) {
+                            await onCreateProject(dirHandle.name, dirHandle.name);
+                          }
+                        } else {
+                          // Web (other browsers): fallback to name input dialog
+                          setShowNewProjectDialog(true);
+                        }
+                      } catch (err: unknown) {
+                        // User cancelled or error - do nothing
+                        if (err instanceof Error && err.name !== 'AbortError') {
+                          console.error('Failed to select directory:', err);
+                        }
+                      }
+                    }}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
                   >
                     <FolderOpenIcon className="size-3.5 shrink-0" />
@@ -510,7 +495,7 @@ export const ConversationSidebar = ({
         </DialogContent>
       </Dialog>
 
-      {/* New project dialog */}
+      {/* New project dialog — web fallback when not in Electron */}
       <Dialog open={showNewProjectDialog} onOpenChange={(open) => {
         if (!open) setShowNewProjectDialog(false);
       }}>
@@ -519,14 +504,14 @@ export const ConversationSidebar = ({
             <DialogTitle>{t('chat:conversation.createProject', 'New Project')}</DialogTitle>
             <DialogDescription>{t('chat:conversation.createProjectDescription', 'Select a working directory. The folder name will be used as the project name.')}</DialogDescription>
           </DialogHeader>
-          <DirectoryPicker
-            onSelect={async (dirPath) => {
+          <ProjectNameInput
+            onSubmit={async (name) => {
               if (onCreateProject) {
-                const name = dirPath.split('/').filter(Boolean).pop() || dirPath;
-                await onCreateProject(name, dirPath);
+                await onCreateProject(name, '');
                 setShowNewProjectDialog(false);
               }
             }}
+            onCancel={() => setShowNewProjectDialog(false)}
           />
         </DialogContent>
       </Dialog>

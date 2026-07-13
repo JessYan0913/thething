@@ -13,6 +13,8 @@
     "delete": "削除",
     "deleteConfirm": "「{{title}}」この会話を削除しますか？",
     "deleteDescription": "この会話は完全に削除されます。",
+    "deleteProjectConfirm": "プロジェクトを削除しますか？",
+    "deleteProjectDescription": "プロジェクトはリストから削除されますが、ディスク上のファイルには影響しません。",
     "filter": {
       "conversations": "ローカルセッション",
       "connectors": "コネクタ",

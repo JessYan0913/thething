@@ -55,6 +55,10 @@ export class SQLiteProjectStore implements ProjectStore {
   }
 
   deleteProject(id: string): void {
+    // First delete all conversations belonging to this project
+    const convStmt = this.db.prepare('DELETE FROM conversations WHERE project_id = ?');
+    convStmt.run(id);
+    // Then delete the project
     const stmt = this.db.prepare('DELETE FROM projects WHERE id = ?');
     stmt.run(id);
   }

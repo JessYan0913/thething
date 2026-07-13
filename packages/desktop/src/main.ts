@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, dialog, ipcMain } from 'electron';
 import { spawn, spawnSync, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
@@ -59,6 +59,19 @@ function logToFile(message: string): void {
   } catch {
     // ignore
   }
+}
+
+// ---------------------------------------------------------------------------
+// IPC Handlers
+// ---------------------------------------------------------------------------
+
+function setupIpcHandlers(): void {
+  ipcMain.handle('dialog:showOpenDialog', async (_event, options) => {
+    if (!mainWindow) {
+      return { canceled: true, filePaths: [] };
+    }
+    return dialog.showOpenDialog(mainWindow, options);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -400,6 +413,7 @@ function showError(message: string): void {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
+  setupIpcHandlers();
   mainWindow = createWindow();
   createTray();
 
