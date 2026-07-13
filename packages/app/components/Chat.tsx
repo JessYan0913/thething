@@ -1073,15 +1073,21 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       if (isNewConversation) {
         try {
           const newId = nanoid();
+          // 从当前 URL 提取项目 ID（如果在项目视图中）
+          const currentPath = window.location.pathname;
+          const projectMatch = currentPath.match(/\/chat\/p\/([^/]+)/);
+          const projectId = projectMatch ? projectMatch[1] : undefined;
+
           const res = await fetch('/api/conversations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: newId }),
+            body: JSON.stringify({ id: newId, projectId }),
           });
           if (res.ok) {
             setConversationId(newId);
-            // 导航到新对话 URL（不触发重新加载）
-            router.replace(`/chat/user/${newId}?msg=${encodeURIComponent(text)}`);
+            // 导航到新对话 URL（保持项目上下文）
+            const basePath = projectId ? `/chat/p/${projectId}` : '/chat';
+            router.replace(`${basePath}/user/${newId}?msg=${encodeURIComponent(text)}`);
             return; // 等待 conversationId 更新后会自动发送
           }
         } catch {

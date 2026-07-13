@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { nanoid } from "nanoid";
-import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
@@ -114,7 +114,7 @@ export function useChatContext(): ChatContextValue {
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const params = useParams<{ source?: string; chatId?: string }>();
+  const params = useParams<{ source?: string; projectId?: string; chatId?: string }>();
   const urlSearchParams = useSearchParams();
   const urlConversationId = params?.chatId ?? null;
 
@@ -122,15 +122,16 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
-  // Project state
+  // Project state - now derived from URL
   const [projects, setProjects] = useState<ProjectItem[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const activeProjectId = params?.projectId ?? null;
 
-  // Source filter from URL: /chat/[source]?sid=subId
+  // Source filter from URL: /chat/p/[projectId]/[source]?sid=subId
   // /chat → 'user'
+  // /chat/p/[projectId] → 'user' (with project context)
   // /chat/connector → 'connector'
   // /chat/connector?sid=feishu → 'connector:feishu'
-  // /chat/connector/{chatId}?sid=feishu → 'connector:feishu'
+  // /chat/p/[projectId]/connector?sid=feishu → 'connector:feishu'
   const sourceFilter = (() => {
     if (!params.source) return 'user';
     const sid = urlSearchParams.get('sid');
@@ -142,31 +143,21 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const [connectors, setConnectors] = useState<{ id: string; name: string }[]>([]);
   const [cronJobs, setCronJobs] = useState<{ id: string; name: string }[]>([]);
 
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    urlConversationId
-  );
+  const activeConversationId = urlConversationId;
 
   // Derive active conversation title
   const activeConversation = conversations.find(c => c.id === activeConversationId);
   const activeConversationTitle = activeConversation?.title;
 
-  // Ref to prevent double-initialization
-  const initializedRef = useRef(false);
-
-  // Load conversations, connectors, cron jobs, and projects on mount
+  // Load connectors, cron jobs, and projects on mount
   useEffect(() => {
     async function loadData() {
       try {
-        const [convRes, connRes, cronRes, projRes] = await Promise.all([
-          fetch("/api/conversations"),
+        const [connRes, cronRes, projRes] = await Promise.all([
           fetch("/api/connectors"),
           fetch("/api/cron"),
           fetch("/api/projects"),
         ]);
-        if (convRes.ok) {
-          const data = await convRes.json();
-          setConversations(data.conversations || []);
-        }
         if (connRes.ok) {
           const data = await connRes.json();
           setConnectors(
@@ -198,14 +189,31 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     loadData();
   }, []);
 
+  // Load conversations when activeProjectId changes
+  useEffect(() => {
+    async function loadConversations() {
+      try {
+        const url = activeProjectId
+          ? `/api/conversations?projectId=${encodeURIComponent(activeProjectId)}`
+          : "/api/conversations";
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          setConversations(data.conversations || []);
+        }
+      } catch {
+        // Failed to load conversations
+      }
+    }
+    loadConversations();
+  }, [activeProjectId]);
+
   // Poll for running conversation status (every 2s)
   // Polls when: a conversation is active AND either:
   //   - any conversation has runStatus running/paused_approval, OR
   //   - there is an active conversation (user might be typing / waiting for response)
   useEffect(() => {
-    // Only poll when a conversation is active (user is in a chat)
-    if (!activeConversationId) return;
-
+    // Always poll for status updates (even without active conversation)
     const timer = setInterval(async () => {
       try {
         const url = activeProjectId
@@ -222,34 +230,34 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [activeConversationId, activeProjectId]);
-
-  // Sync activeConversationId when URL param changes
-  useEffect(() => {
-    if (urlConversationId && urlConversationId !== activeConversationId) {
-      setActiveConversationId(urlConversationId);
-    }
-  }, [urlConversationId]);
+  }, [activeProjectId]);
 
   // ============================================================================
   // Conversation management handlers
   // ============================================================================
 
+  // Build base path for navigation (includes project context if present)
+  const getBasePath = useCallback(() => {
+    return activeProjectId ? `/chat/p/${activeProjectId}` : '/chat';
+  }, [activeProjectId]);
+
   const switchToConversation = useCallback(
     (id: string) => {
-      setActiveConversationId(id);
       // Find the conversation's source from loaded list
       const conv = conversations.find(c => c.id === id);
       const source = conv?.source || 'user';
       const encodedId = encodeURIComponent(id);
       // Preserve sub-filter (sid) when navigating from a filtered list view
       const sid = sourceFilter.includes(':') ? sourceFilter.split(':').slice(1).join(':') : null;
+
+      // Build URL with project context if present
+      const basePath = getBasePath();
       const url = sid
-        ? `/chat/${source}/${encodedId}?sid=${encodeURIComponent(sid)}`
-        : `/chat/${source}/${encodedId}`;
+        ? `${basePath}/${source}/${encodedId}?sid=${encodeURIComponent(sid)}`
+        : `${basePath}/${source}/${encodedId}`;
       router.push(url);
     },
-    [router, conversations, sourceFilter]
+    [router, conversations, sourceFilter, getBasePath]
   );
 
   const handleSelectConversation = useCallback(
@@ -271,16 +279,16 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
       if (res.ok) {
         const data = await res.json();
         setConversations((prev) => [data.conversation, ...prev]);
-        setActiveConversationId(newId);
+        const basePath = getBasePath();
         const url = options?.initialMessage
-          ? `/chat/user/${newId}?msg=${encodeURIComponent(options.initialMessage)}`
-          : `/chat/user/${newId}`;
+          ? `${basePath}/user/${newId}?msg=${encodeURIComponent(options.initialMessage)}`
+          : `${basePath}/user/${newId}`;
         router.push(url);
       }
     } catch {
       // Failed to create
     }
-  }, [router, activeProjectId]);
+  }, [router, activeProjectId, getBasePath]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
@@ -296,9 +304,9 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             if (remaining.length > 0) {
               switchToConversation(remaining[0].id);
             } else {
-              // No conversations left, go to base /chat
-              setActiveConversationId(null);
-              router.push("/chat");
+              // No conversations left, go to base path
+              const basePath = getBasePath();
+              router.push(basePath);
             }
           }
         }
@@ -306,7 +314,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
         // Failed to delete
       }
     },
-    [activeConversationId, conversations, switchToConversation, router]
+    [activeConversationId, conversations, switchToConversation, router, getBasePath]
   );
 
   const handleRenameConversation = useCallback(
@@ -350,21 +358,13 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   // ============================================================================
 
   const handleSelectProject = useCallback(async (projectId: string | null) => {
-    setActiveProjectId(projectId);
-    // Reload conversations for the selected project
-    try {
-      const url = projectId
-        ? `/api/conversations?projectId=${encodeURIComponent(projectId)}`
-        : "/api/conversations";
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setConversations(data.conversations || []);
-      }
-    } catch {
-      // Failed to load conversations
+    // Navigate to project view (or base /chat for "All Projects")
+    if (projectId) {
+      router.push(`/chat/p/${projectId}`);
+    } else {
+      router.push('/chat');
     }
-  }, []);
+  }, [router]);
 
   const handleCreateProject = useCallback(async (name: string, path: string) => {
     try {
@@ -376,22 +376,15 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
       if (res.ok) {
         const data = await res.json();
         setProjects((prev) => [data.project, ...prev]);
-        // Auto-select the new project and load its conversations
-        setActiveProjectId(data.project.id);
-        const convRes = await fetch(`/api/conversations?projectId=${encodeURIComponent(data.project.id)}`);
-        if (convRes.ok) {
-          const convData = await convRes.json();
-          setConversations(convData.conversations || []);
-        }
-        // Clear active conversation to show blank chat
-        setActiveConversationId(null);
+        // Navigate to the new project view
+        router.push(`/chat/p/${data.project.id}`);
         return data.project;
       }
     } catch {
       // Failed to create
     }
     return null;
-  }, []);
+  }, [router]);
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
     try {
@@ -400,38 +393,33 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
       });
       if (res.ok) {
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
+        // If deleted project was active, navigate to base /chat
         if (activeProjectId === projectId) {
-          setActiveProjectId(null);
-          // Clear active conversation and reload all conversations
-          setActiveConversationId(null);
-          const convRes = await fetch("/api/conversations");
-          if (convRes.ok) {
-            const data = await convRes.json();
-            setConversations(data.conversations || []);
-          }
+          router.push('/chat');
         }
       }
     } catch {
       // Failed to delete
     }
-  }, [activeProjectId]);
+  }, [activeProjectId, router]);
 
   // ============================================================================
   // Source filter
   // ============================================================================
 
-  // Handle filter change — navigate to new path
+  // Handle filter change — navigate to new path (with project context if present)
   const handleFilterChange = useCallback((value: string) => {
+    const basePath = getBasePath();
     if (value === 'user') {
-      router.push('/chat');
+      router.push(basePath);
     } else if (value.startsWith('connector:')) {
       const sid = value.slice('connector:'.length);
-      router.push(sid ? `/chat/connector?sid=${encodeURIComponent(sid)}` : '/chat/connector');
+      router.push(sid ? `${basePath}/connector?sid=${encodeURIComponent(sid)}` : `${basePath}/connector`);
     } else if (value.startsWith('cron:')) {
       const sid = value.slice('cron:'.length);
-      router.push(sid ? `/chat/cron?sid=${encodeURIComponent(sid)}` : '/chat/cron');
+      router.push(sid ? `${basePath}/cron?sid=${encodeURIComponent(sid)}` : `${basePath}/cron`);
     }
-  }, [router]);
+  }, [router, getBasePath]);
 
   const filterOptions = useMemo<FilterOption[]>(() => {
     const options: FilterOption[] = [{ value: "user", label: "chat:conversation.filter.conversations" }];
