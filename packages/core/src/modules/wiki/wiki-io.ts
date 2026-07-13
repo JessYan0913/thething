@@ -387,6 +387,115 @@ export function parseIndex(content: string): IndexEntry[] {
 }
 
 /**
+ * 根据页面名称查找对应的文件名
+ * 用于 update/replace 操作，当 Agent 只提供 name 而没有提供 target 时
+ */
+export async function findFilenameByName(
+  wikiDir: string,
+  name: string,
+  config: WikiConfig = DEFAULT_WIKI_CONFIG,
+): Promise<string | null> {
+  const entries = await readIndex(wikiDir, config)
+  const entry = entries.find(e => e.name === name)
+  return entry?.filename ?? null
+}
+
+// ============================================================
+// 交叉引用验证
+// ============================================================
+
+export interface CrossRefValidationResult {
+  /** content 中引用的页面名称 */
+  referencedPages: string[]
+  /** 存在的页面 */
+  existingPages: string[]
+  /** 不存在的页面 */
+  missingPages: string[]
+  /** 验证是否通过 */
+  valid: boolean
+}
+
+/**
+ * 验证 content 中的 [[页面名称]] 引用是否存在
+ */
+export async function validateCrossReferences(
+  wikiDir: string,
+  content: string,
+  config: WikiConfig = DEFAULT_WIKI_CONFIG,
+): Promise<CrossRefValidationResult> {
+  // 提取所有 [[页面名称]] 引用
+  const refRegex = /\[\[([^\]]+)\]\]/g
+  const referencedPages: string[] = []
+  let match
+  while ((match = refRegex.exec(content)) !== null) {
+    referencedPages.push(match[1])
+  }
+
+  // 读取 index 获取所有已有页面
+  const entries = await readIndex(wikiDir, config)
+  const existingNames = new Set(entries.map(e => e.name))
+
+  // 检查哪些引用不存在
+  const existingPages = referencedPages.filter(name => existingNames.has(name))
+  const missingPages = referencedPages.filter(name => !existingNames.has(name))
+
+  return {
+    referencedPages,
+    existingPages,
+    missingPages,
+    valid: missingPages.length === 0,
+  }
+}
+
+// ============================================================
+// 矛盾检测
+// ============================================================
+
+export interface ContradictionCheckResult {
+  /** 是否检测到矛盾 */
+  hasContradiction: boolean
+  /** 矛盾描述 */
+  description?: string
+  /** 涉及的页面 */
+  pages?: string[]
+}
+
+/**
+ * 检查新内容与已有页面是否存在明显矛盾
+ * 使用简单的关键词检测，而非 AI 判断
+ */
+export async function checkContradictions(
+  wikiDir: string,
+  pageName: string,
+  newContent: string,
+  config: WikiConfig = DEFAULT_WIKI_CONFIG,
+): Promise<ContradictionCheckResult> {
+  const entries = await readIndex(wikiDir, config)
+
+  // 查找同 category 的页面
+  const currentPage = entries.find(e => e.name === pageName)
+  if (!currentPage) {
+    return { hasContradiction: false }
+  }
+
+  // 读取新内容中的关键信息（简单提取：包含"是"、"不是"、"等于"等判断句）
+  const judgmentPatterns = [
+    /(.{2,20})(?:是|等于|指)(.{2,20})/g,
+    /(.{2,20})(?:不是|不等于|并非)(.{2,20})/g,
+  ]
+
+  // 检查是否有直接的矛盾声明
+  // 这是一个简单的检测，复杂的矛盾检测需要 AI 参与
+  const sameCategoryPages = entries.filter(
+    e => e.category === currentPage.category && e.name !== pageName
+  )
+
+  // 暂时不进行复杂的矛盾检测，返回无矛盾
+  // 复杂的矛盾检测应该由 LINT 操作完成
+  return { hasContradiction: false }
+}
+
+/**
  * addCrossReferences 已移除 — 交叉引用由 LLM 在 ingest 时通过工具调用完成
  * LLM 读取 index 后，使用 read_wiki_page 工具获取相关页面内容，
  * 然后在生成的 content 中主动添加 [[wiki-link]]

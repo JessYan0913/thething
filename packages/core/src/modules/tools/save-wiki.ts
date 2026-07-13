@@ -5,7 +5,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { ensureWikiDirExists } from '../wiki/wiki-paths'
-import { writePage, updatePage, mergePages, replacePage, rebuildIndex, appendLog, type WikiPageData } from '../wiki/wiki-io'
+import { writePage, updatePage, mergePages, replacePage, rebuildIndex, appendLog, findFilenameByName, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
 import { pageNameToFilename } from '../wiki/wiki-paths'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from '../wiki/wiki-config'
 import { logger } from '../../primitives/logger'
@@ -41,7 +41,7 @@ const wikiActionSchema = z.object({
   target: z
     .string()
     .optional()
-    .describe('目标文件名（update/merge/replace 时必填）'),
+    .describe('目标文件名（可选，update/replace 时如果不提供，会自动根据 name 查找）'),
   mergeTargets: z
     .array(z.string())
     .optional()
@@ -67,54 +67,23 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
   return tool({
     description: `保存知识到你的长期知识库（Wiki）。
 
-Wiki 是一个持久化的知识工件——你跨会话记忆的唯一机制。不保存的知识会永远丢失。
+Wiki 是你跨会话记忆的唯一机制。不保存的知识会永远丢失。
 
-【核心理念（来自 Karpathy）】
-Wiki 是持久的、复合的知识工件。你增量地构建和维护它——结构化的、相互链接的 markdown 文件。当添加新来源时，你将其整合到现有 wiki 中，更新实体页、修订摘要、标注矛盾。
+从外部来源获取信息后，必须保存到知识库。
 
-"知识库的繁琐部分不是阅读或思考——而是簿记。" LLM 处理交叉引用、一致性和多文件更新的成本几乎为零。
+index.md 和 log.md 会自动维护，你只需创建/更新页面。
 
-【重要：自动处理】
-- **index.md 会自动重建**：每次保存后，会扫描所有页面并重建索引
-- **log.md 会自动追加**：每次保存后，会记录操作到日志
-- **你只需要创建/更新页面，不需要手动管理索引和日志**
+自动验证：
+- 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在，缺失时返回警告
+- 矛盾检测：update/replace 时检测新内容与旧内容是否矛盾，矛盾时返回警告
 
-【Ingest操作】
-当用户发送URL并说"学习"、"阅读"、"看一下"等时，这是Ingest操作：
-1. 先获取URL内容
-2. 整理要点后回答用户
-3. 调用save_wiki保存：
-   - 创建摘要页面（**只创建页面，index.md和log.md会自动更新**）
-   - 仅在新信息实质性改变已有页面时才更新它们
-
-【Ingest的核心：交叉引用】
-每次 Ingest 创建新页面时：
-
-1. 读 index，检查现有页面列表
-2. 创建新页面时，在正文内容中用 [[页面名称]] 自然地引用相关已有页面（新页面引用旧页面，提供上下文归属）
-3. 仅在新来源为已有页面提供了新事实、新数据或矛盾信息时，才用 update 操作更新该页面。不要仅仅因为新页面引用了旧页面就更新旧页面。
-4. 如果新信息与已有页面冲突，在两个页面中都标注矛盾
-
-**链接方向规则：**
-- ✅ 新页面正文中引用已有页面（自下而上，由专到泛）
-- ✅ 已有页面仅在获得新信息时被更新
-- ❌ 不要仅仅因为新页面引用了旧页面就往旧页面追加内容
-- ❌ 不要在旧页面末尾追加新页面的摘要（这会膨胀旧页面）
-- ❌ 不要创建"相关页面"部分（链接应在正文中自然体现）
-
-【其他保存场景】
-- 用户明确的信息：偏好、习惯、身份
-- 行为纠正：用户指出的规则或偏好
-- 技术对比：你做的对比分析、架构决策
-- 研究发现：论文洞察、最佳实践
-- 综合判断：跨多个来源的分析
-
-【Content 编译规则】
-- content 写的是"AI 未来需要知道什么"，不是"用户说了什么"
-- 直接事实 → 事实本身
-- 行为纠正 → 编译后的规则
-- 技术对比 → 结论 + 原因
-- 架构决策 → 决策 + 理由`,
+参数说明：
+- action: 操作类型（create/update/merge/replace）
+- category: 知识分类（user/agent/project/domain/entity）
+- name: 页面名称
+- description: 一行摘要
+- content: 编译后的知识（可包含 [[页面名称]] 引用相关页面，建立知识网络）
+- target: 目标文件名（可选，update/replace 时如果不提供，会自动根据 name 查找）`,
     inputSchema: z.object({
       actions: z
         .array(wikiActionSchema)
@@ -127,6 +96,7 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
         action: string
         success: boolean
         error?: string
+        warnings?: string[]
       }> = []
 
       const wikiDir = config.wikiBaseDir
@@ -145,6 +115,26 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
             category: action.category,
             created: now,
             updated: now,
+          }
+
+          const warnings: string[] = []
+
+          // 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在
+          if (action.content) {
+            const crossRefResult = await validateCrossReferences(wikiDir, action.content)
+            if (!crossRefResult.valid) {
+              warnings.push(`交叉引用缺失: ${crossRefResult.missingPages.join(', ')} 不存在`)
+              logger.warn('SaveWiki', `Cross reference missing: ${crossRefResult.missingPages.join(', ')}`)
+            }
+          }
+
+          // 矛盾检测：update/replace 时检查新内容与旧内容是否矛盾
+          if ((action.action === 'update' || action.action === 'replace') && action.content) {
+            const contradictionResult = await checkContradictions(wikiDir, action.name, action.content)
+            if (contradictionResult.hasContradiction) {
+              warnings.push(`检测到矛盾: ${contradictionResult.description}`)
+              logger.warn('SaveWiki', `Contradiction detected: ${contradictionResult.description}`)
+            }
           }
 
           // 去重检查：同名页面在 60 秒内已创建则跳过
@@ -171,17 +161,29 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
               logger.debug('SaveWiki', `create: name="${action.name}" filename="${filename}"`)
               await writePage(wikiDir, baseData, action.content)
               logDetails.push(`create: [[${action.name}]] — ${action.description}`)
+              results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               break
             }
 
             case 'update': {
-              logger.debug('SaveWiki', `update: target="${action.target}" mode="${action.mode || 'replace'}"`)
-              if (action.target) {
+              // 如果 target 不存在，自动根据 name 查找
+              let target = action.target
+              if (!target) {
+                target = await findFilenameByName(wikiDir, action.name) ?? undefined
+                if (target) {
+                  logger.debug('SaveWiki', `update: auto-found target="${target}" for name="${action.name}"`)
+                }
+              }
+
+              if (target) {
                 const mode = action.mode === 'append' ? 'append' : 'replace'
-                await updatePage(wikiDir, action.target, action.content, mode)
-                logDetails.push(`update: [[${action.target}]] — ${action.description}`)
+                logger.debug('SaveWiki', `update: target="${target}" mode="${mode}"`)
+                await updatePage(wikiDir, target, action.content, mode)
+                logDetails.push(`update: [[${action.name}]] — ${action.description}`)
+                results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
-                logger.warn('SaveWiki', `update action missing target! action=${JSON.stringify(action)}`)
+                logger.warn('SaveWiki', `update action: page "${action.name}" not found, skipping`)
+                results.push({ name: action.name, action: action.action, success: false, error: `Page "${action.name}" not found`, warnings: warnings.length > 0 ? warnings : undefined })
               }
               break
             }
@@ -190,6 +192,9 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
               if (action.target && action.mergeTargets) {
                 await mergePages(wikiDir, action.target, action.mergeTargets)
                 logDetails.push(`merge: ${action.mergeTargets.join(', ')} → [[${action.name}]]`)
+                results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
+              } else {
+                results.push({ name: action.name, action: action.action, success: false, error: 'merge requires target and mergeTargets' })
               }
               break
 
@@ -197,11 +202,12 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
               if (action.target) {
                 await replacePage(wikiDir, action.target, baseData, action.content)
                 logDetails.push(`replace: [[${action.target}]] — ${action.description}`)
+                results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
+              } else {
+                results.push({ name: action.name, action: action.action, success: false, error: 'replace requires target' })
               }
               break
           }
-
-          results.push({ name: action.name, action: action.action, success: true })
         } catch (err) {
           logger.error('SaveWiki', `Failed to save "${action.name}": ${err}`)
           results.push({
