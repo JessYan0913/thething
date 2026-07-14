@@ -150,6 +150,7 @@ export type ToolOutputProps = ComponentProps<"div"> & {
   errorText: ToolPart["errorText"];
   toolType?: string;
   toolInput?: unknown;
+  onPreview?: (file: { path: string; content: string; language?: string }) => void;
 };
 
 export const ToolOutput = ({
@@ -158,6 +159,7 @@ export const ToolOutput = ({
   errorText,
   toolType,
   toolInput,
+  onPreview,
   ...props
 }: ToolOutputProps) => {
   // No output yet: render input-based placeholder for known tools
@@ -266,6 +268,7 @@ export const ToolOutput = ({
         <WriteFileResult
           output={output as Record<string, unknown>}
           input={toolInput as Record<string, unknown> | undefined}
+          onPreview={onPreview}
         />
       </div>
     );

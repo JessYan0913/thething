@@ -47,7 +47,9 @@ export function WriteFileResult({ output, input, onPreview }: WriteFileResultPro
   const langLabel = language ? LANGUAGE_LABELS[language] ?? language : "File";
 
   const handlePreview = () => {
-    // Preview is handled by the parent component
+    if (onPreview) {
+      onPreview({ path: filePath, content: (output.content as string) ?? "", language });
+    }
   };
 
   const handleDownload = (e: React.MouseEvent) => {

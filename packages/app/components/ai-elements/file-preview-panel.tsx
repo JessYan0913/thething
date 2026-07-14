@@ -95,6 +95,11 @@ export function FilePreviewPanel({
   const [error, setError] = useState<string | null>(null);
   const [detectedLang, setDetectedLang] = useState<string | undefined>(language);
 
+  // 当 initialContent 变化时同步更新
+  useEffect(() => {
+    setContent(initialContent);
+  }, [initialContent]);
+
   // 检测文件类型
   const fileType: FileType = detectFileType(filePath, mediaType);
   const isMediaFile = fileType === "image" || fileType === "pdf" || fileType === "office" || fileType === "html";
@@ -108,6 +113,12 @@ export function FilePreviewPanel({
 
     // 如果是 data URL 或 blob URL，不需要从文件系统加载
     if (isDataOrBlobUrl) {
+      setIsLoading(false);
+      return;
+    }
+
+    // 如果已有内容（如工具输出），不需要从文件系统加载
+    if (initialContent) {
       setIsLoading(false);
       return;
     }
@@ -252,6 +263,7 @@ export function FilePreviewPanel({
               content={content}
               language={displayLang}
               readOnly={true}
+              diffMode={displayLang === "diff"}
             />
           </div>
         )}

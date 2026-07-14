@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useMemo } from "react";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, Decoration } from "@codemirror/view";
+import { EditorState, StateField, RangeSetBuilder } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -24,6 +24,8 @@ interface CodeEditorProps {
   language?: string;
   readOnly?: boolean;
   className?: string;
+  /** 启用 diff 高亮模式 */
+  diffMode?: boolean;
 }
 
 const LANGUAGE_EXTENSIONS: Record<string, () => any> = {
@@ -37,6 +39,75 @@ const LANGUAGE_EXTENSIONS: Record<string, () => any> = {
   css: () => css(),
   yaml: () => yaml(),
 };
+
+// ============================================================
+// Diff 高亮扩展 - 使用 StateField 实现
+// ============================================================
+
+const addedLineMark = Decoration.line({
+  attributes: { class: "cm-diff-added" },
+});
+
+const removedLineMark = Decoration.line({
+  attributes: { class: "cm-diff-removed" },
+});
+
+const hunkHeaderMark = Decoration.line({
+  attributes: { class: "cm-diff-hunk" },
+});
+
+const diffHighlightField = StateField.define({
+  create(state) {
+    return buildDiffDecorations(state.doc);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged) {
+      return buildDiffDecorations(tr.state.doc);
+    }
+    return decorations;
+  },
+  provide(f) {
+    return EditorView.decorations.from(f);
+  },
+});
+
+function buildDiffDecorations(doc: { line(n: number): { from: number; to: number; text: string }; lines: number }) {
+  const builder = new RangeSetBuilder<Decoration>();
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    let decoration: Decoration | null = null;
+
+    if (line.text.startsWith("+") && !line.text.startsWith("+++")) {
+      decoration = addedLineMark;
+    } else if (line.text.startsWith("-") && !line.text.startsWith("---")) {
+      decoration = removedLineMark;
+    } else if (line.text.startsWith("@@")) {
+      decoration = hunkHeaderMark;
+    }
+
+    if (decoration) {
+      // Line decorations 使用 point range (from === to)
+      builder.add(line.from, line.from, decoration);
+    }
+  }
+
+  return builder.finish();
+}
+
+// Diff 高亮主题（深色）
+const diffDarkTheme = EditorView.theme({
+  ".cm-diff-added": { backgroundColor: "rgba(34, 197, 94, 0.15)" },
+  ".cm-diff-removed": { backgroundColor: "rgba(239, 68, 68, 0.15)" },
+  ".cm-diff-hunk": { backgroundColor: "rgba(99, 102, 241, 0.15)" },
+});
+
+// Diff 高亮主题（浅色）
+const diffLightTheme = EditorView.theme({
+  ".cm-diff-added": { backgroundColor: "rgba(34, 197, 94, 0.2)" },
+  ".cm-diff-removed": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
+  ".cm-diff-hunk": { backgroundColor: "rgba(99, 102, 241, 0.2)" },
+});
 
 // 浅色主题自定义样式
 const lightTheme = EditorView.theme({
@@ -100,6 +171,7 @@ export function CodeEditor({
   language = "text",
   readOnly = true,
   className,
+  diffMode = false,
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -107,7 +179,7 @@ export function CodeEditor({
   const isDark = theme === "dark";
 
   // 获取语言扩展
-  const langFactory = LANGUAGE_EXTENSIONS[language];
+  const langFactory = language === "diff" ? undefined : LANGUAGE_EXTENSIONS[language];
   const langExtensions = useMemo(() => langFactory ? [langFactory()] : [], [langFactory]);
 
   useEffect(() => {
@@ -115,6 +187,12 @@ export function CodeEditor({
 
     // 根据主题选择主题扩展
     const themeExtension = isDark ? oneDark : lightTheme;
+
+    // Diff 模式扩展
+    const diffExtensions = diffMode ? [
+      diffHighlightField,
+      isDark ? diffDarkTheme : diffLightTheme,
+    ] : [];
 
     // 创建编辑器状态
     const state = EditorState.create({
@@ -149,6 +227,9 @@ export function CodeEditor({
         // 语言
         ...langExtensions,
 
+        // Diff 高亮
+        ...diffExtensions,
+
         // 只读模式
         readOnly ? EditorState.readOnly.of(true) : [],
         readOnly ? EditorView.editable.of(false) : [],
@@ -170,7 +251,7 @@ export function CodeEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [content, langExtensions, readOnly, isDark]);
+  }, [content, langExtensions, readOnly, isDark, diffMode]);
 
   return (
     <div

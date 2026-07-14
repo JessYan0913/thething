@@ -32,10 +32,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
 import { TodoPanel } from '@/components/chat-todo-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
-import { ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { Shimmer } from '@/components/ai-elements/shimmer';
-import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
-import { WriteFileResult } from '@/components/ai-elements/write-file-result';
 import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
@@ -44,7 +41,7 @@ import { useChat, experimental_MCPAppRenderer as MCPAppRenderer, type MCPAppMeta
 import type { MCPAppResource } from '@the-thing/core';
 import type { CSSProperties } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, ChevronDownIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -331,6 +328,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     fileUrl?: string;
     mediaType?: string;
   } | null>(null);
+  const [previewedToolKey, setPreviewedToolKey] = useState<string | null>(null);
 
   // 模型、Agent、审批模式选择状态（持久化到 ~/.thething/preferences.json + localStorage）
   const {
@@ -1417,70 +1415,133 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const toolTitle = toolInfo?.title;
                           const ToolIcon = toolInfo?.icon || SearchIcon;
 
-                          // write_file 完成后：简洁渲染，不显示折叠面板和参数
-                          if (toolPart.type === 'tool-write_file' && toolPart.state === 'output-available' && toolPart.output) {
-                            return (
-                              <WriteFileResult
-                                key={`${message.id}-${index}`}
-                                output={toolPart.output as Record<string, unknown>}
-                                input={toolPart.input as Record<string, unknown> | undefined}
-                                onPreview={(file: { path: string; content: string; language?: string }) => setPreviewFile(file)}
-                              />
-                            );
-                          }
+                          const isComplete = toolPart.state === 'output-available';
+                          const isError = toolPart.state === 'output-error';
+                          const isDenied = toolPart.state === 'output-denied';
+                          const isRunning = toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && toolPart.state !== 'output-denied' && toolPart.state !== 'approval-responded' && toolPart.state !== 'approval-requested';
+
+                          // 格式化工具输出用于预览面板
+                          const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean } | null => {
+                            if (!isComplete || !toolPart.output) return null;
+                            const out = toolPart.output as Record<string, unknown>;
+                            const toolName = toolPart.type.replace('tool-', '');
+
+                            // 文件工具：返回文件路径和语言
+                            if (toolName === 'write_file' || toolName === 'read_file') {
+                              return {
+                                content: '', // 内容稍后通过 API 加载
+                                language: out.language as string | undefined,
+                                title: (out.path as string) ?? 'file',
+                                needFetch: true, // 标记需要从 API 获取内容
+                              };
+                            }
+                            // edit_file：返回 diff 内容
+                            if (toolName === 'edit_file') {
+                              return {
+                                content: (out.diff as string) ?? JSON.stringify(out, null, 2),
+                                language: 'diff',
+                                title: (out.path as string) ?? 'file',
+                              };
+                            }
+                            // bash 工具：格式化输出
+                            if (toolName === 'bash') {
+                              const command = (out.command as string) ?? '';
+                              const stdout = (out.stdout as string) ?? '';
+                              const stderr = (out.stderr as string) ?? '';
+                              const exitCode = out.exitCode as number | undefined;
+                              const parts: string[] = [];
+                              if (command) parts.push(`$ ${command}`);
+                              if (stdout) parts.push(stdout);
+                              if (stderr) parts.push(`STDERR:\n${stderr}`);
+                              if (exitCode !== undefined) parts.push(`Exit code: ${exitCode}`);
+                              return { content: parts.join('\n\n'), title: 'bash' };
+                            }
+                            // grep 工具
+                            if (toolName === 'grep') {
+                              return {
+                                content: typeof out === 'string' ? out : JSON.stringify(out, null, 2),
+                                title: 'grep',
+                              };
+                            }
+                            // glob 工具
+                            if (toolName === 'glob') {
+                              return {
+                                content: typeof out === 'string' ? out : JSON.stringify(out, null, 2),
+                                title: 'glob',
+                              };
+                            }
+                            // 其他工具：JSON 输出
+                            return {
+                              content: JSON.stringify(out, null, 2),
+                              language: 'json',
+                              title: toolName,
+                            };
+                          };
+
+                          const previewData = formatToolOutput();
+                          const toolKey = `${message.id}-${index}`;
+                          const isPreviewed = previewedToolKey === toolKey;
 
                           return (
-                            <Task
-                              key={`${message.id}-${index}`}
-                              defaultOpen={toolPart.state === 'output-error' || toolPart.state === 'output-denied'}
+                            <div
+                              key={toolKey}
+                              className={`flex items-center gap-2 text-sm transition-colors ${
+                                isComplete && previewData
+                                  ? `cursor-pointer ${isPreviewed ? 'text-foreground bg-accent/50' : 'text-muted-foreground hover:text-foreground'}`
+                                  : 'text-muted-foreground'
+                              }`}
+                              onClick={isComplete && previewData ? async () => {
+                                setPreviewedToolKey(toolKey);
+
+                                // 如果需要从 API 获取内容（write/read 工具）
+                                if (previewData.needFetch) {
+                                  // 先显示空内容和文件路径
+                                  setPreviewFile({
+                                    path: previewData.title,
+                                    content: '',
+                                    language: previewData.language,
+                                  });
+                                  try {
+                                    const res = await fetch(`/api/fs?action=read&path=${encodeURIComponent(previewData.title)}`);
+                                    if (res.ok) {
+                                      const data = await res.json();
+                                      // 去掉行号前缀
+                                      const cleanContent = (data.content ?? '')
+                                        .split('\n')
+                                        .map((line: string) => line.replace(/^\d+:\s/, ''))
+                                        .join('\n');
+                                      setPreviewFile(prev => prev ? { ...prev, content: cleanContent } : null);
+                                    }
+                                  } catch {
+                                    // 加载失败时保持空内容
+                                  }
+                                } else {
+                                  setPreviewFile({
+                                    path: previewData.title,
+                                    content: previewData.content,
+                                    language: previewData.language,
+                                  });
+                                }
+                              } : undefined}
                             >
-                              <TaskTrigger title={toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')} >
-                                <div className="flex w-full cursor-pointer items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground">
-                                  <ToolIcon className="size-4 shrink-0" />
-                                  {toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && toolPart.state !== 'output-denied' && toolPart.state !== 'approval-responded' && status === 'streaming' ? (
-                                    <Shimmer className="text-sm" duration={1.5} spread={1}>{toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}</Shimmer>
-                                  ) : (
-                                    <p className="text-sm">
-                                      {toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}
-                                      {toolPart.state === 'output-denied' && ' (已拒绝)'}
-                                    </p>
-                                  )}
-                                  <ChevronDownIcon className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
-                                </div>
-                              </TaskTrigger>
-                              <TaskContent>
-                                {toolPart.state === 'output-denied' ? (
-                                  <div className="text-sm text-orange-600">
-                                    操作已被用户拒绝
-                                  </div>
-                                ) : isSubAgent ? (
-                                  <SubAgentStream parts={subParts} />
-                                ) : (
-                                  <>
-                                    {/* Tools with custom rendering: skip Parameters */}
-                                    {!(
-                                      toolPart.type === 'tool-edit_file' ||
-                                      toolPart.type === 'tool-read_file' ||
-                                      toolPart.type === 'tool-bash' ||
-                                      toolPart.type === 'tool-grep' ||
-                                      toolPart.type === 'tool-glob' ||
-                                      toolPart.type === 'tool-web_fetch' ||
-                                      toolPart.type === 'tool-save_wiki' ||
-                                      toolPart.type === 'tool-read_wiki_page' ||
-                                      toolPart.type === 'tool-cron'
-                                    ) && (
-                                      <ToolInput input={toolPart.input} />
-                                    )}
-                                    <ToolOutput
-                                      output={toolPart.output}
-                                      errorText={toolPart.errorText}
-                                      toolType={toolPart.type}
-                                      toolInput={toolPart.input}
-                                    />
-                                  </>
-                                )}
-                              </TaskContent>
-                            </Task>
+                              {isComplete ? (
+                                <ToolIcon className="size-4 shrink-0" />
+                              ) : isError ? (
+                                <XIcon className="size-4 shrink-0 text-red-500" />
+                              ) : isDenied ? (
+                                <XIcon className="size-4 shrink-0 text-orange-500" />
+                              ) : (
+                                <Loader2Icon className="size-4 shrink-0 animate-spin text-blue-500" />
+                              )}
+                              {isRunning ? (
+                                <Shimmer className="text-sm" duration={1.5} spread={1}>{toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}</Shimmer>
+                              ) : (
+                                <span className={`truncate ${isError ? 'text-red-600' : isDenied ? 'text-orange-600' : ''}`}>
+                                  {toolTitle ?? toolPart.type.replace('tool-', '').replace(/_/g, ' ')}
+                                </span>
+                              )}
+                              {isDenied && <span className="text-xs text-orange-500 ml-auto">(已拒绝)</span>}
+                            </div>
                           );
                         }
 
@@ -1605,7 +1666,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       {previewFile && (
         <FilePreviewPanel
           open={!!previewFile}
-          onOpenChange={(open: boolean) => !open && setPreviewFile(null)}
+          onOpenChange={(open: boolean) => { if (!open) { setPreviewFile(null); setPreviewedToolKey(null); } }}
           filePath={previewFile.path}
           content={previewFile.content}
           language={previewFile.language}
