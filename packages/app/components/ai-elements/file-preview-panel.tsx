@@ -9,6 +9,7 @@ import {
   CheckIcon,
   XIcon,
   Loader2Icon,
+  FolderOpenIcon,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { CodeEditor } from "./code-editor";
@@ -229,6 +230,22 @@ export function FilePreviewPanel({
             ) : (
               <CopyIcon className="size-3.5" />
             )}
+          </Button>
+          {/* 在 Finder 中打开 */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 h-7"
+            onClick={async () => {
+              try {
+                await fetch(`/api/fs?action=open&path=${encodeURIComponent(filePath)}`);
+              } catch (err) {
+                console.error('打开文件位置失败:', err);
+              }
+            }}
+            title="在 Finder 中查看"
+          >
+            <FolderOpenIcon className="size-3.5 text-muted-foreground" />
           </Button>
           {/* 关闭按钮 */}
           <Button

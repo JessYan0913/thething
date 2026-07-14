@@ -47,8 +47,7 @@ import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components
 import type { ApprovalMode } from '@/components/chat-selectors';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
-import { linkifyFilePaths, decodePreviewPath } from '@/lib/linkify-file-paths';
-import { detectFileType } from '@/lib/file-type';
+import { linkifyFilePaths } from '@/lib/linkify-file-paths';
 
 import { TShapeBlink } from '@/components/TShapeBlink';
 import { useRouter } from 'next/navigation';
@@ -1254,25 +1253,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   ? message.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
                   : '';
 
-                // 从 tool-glob 部分提取已知文件路径，用于解析 Agent 回复中的纯文件名
-                const knownFiles: Record<string, string> = {};
-                for (const part of message.parts) {
-                  if (part.type === 'tool-glob') {
-                    const tp = part as { output?: unknown; state?: string };
-                    if (tp.state === 'output-available' && tp.output) {
-                      try {
-                        const data = typeof tp.output === 'string' ? JSON.parse(tp.output) : tp.output;
-                        if (data?.files && Array.isArray(data.files)) {
-                          for (const file of data.files) {
-                            const basename = (file as string).split('/').pop();
-                            if (basename) knownFiles[basename] = file as string;
-                          }
-                        }
-                      } catch { /* skip unparseable */ }
-                    }
-                  }
-                }
-
                 return (
                   <Message from={message.role} key={message.id}>
                     {message.role === 'user' && isEditing ? (
@@ -1343,34 +1323,30 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                         )}
                         {message.parts.map((part, index) => {
                           if (part.type === 'text') {
-                            // 预处理文件路径，转换为 https://preview.local/ 链接
-                            //（使用 https:// 协议而非自定义协议，因为 Streamdown 的 rehype-sanitize
-                            //  只允许标准协议，自定义协议会被剥离 href）
-                            const processedText = linkifyFilePaths(part.text, projectPath, knownFiles);
+                            // 预处理文件路径，转换为 /api/preview?path= 链接
+                            //（前端拦截点击打开预览面板，直接访问则在 Finder 中打开）
+                            const processedText = linkifyFilePaths(part.text, projectPath);
                             return (
                               <MessageResponse
                                 key={`${message.id}-${index}`}
                                 components={{
                                   a: ({ href, children, ...rest }: any) => {
-                                    const filePath = href ? decodePreviewPath(href) : null;
-                                    if (filePath) {
-                                      const fileType = detectFileType(filePath);
-                                      if (fileType !== 'unknown' && fileType !== 'text' && fileType !== 'code') {
-                                        return (
-                                          <span
-                                            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={() => setPreviewFile({ path: filePath, content: '' })}
-                                            onKeyDown={(e) => e.key === 'Enter' && setPreviewFile({ path: filePath, content: '' })}
-                                          >
-                                            <FileTextIcon className="size-3.5" />
-                                            {children}
-                                          </span>
-                                        );
-                                      }
+                                    if (href?.startsWith('/api/preview?path=')) {
+                                      const filePath = decodeURIComponent(href.slice('/api/preview?path='.length));
+                                      return (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() => setPreviewFile({ path: filePath, content: '' })}
+                                          onKeyDown={(e) => e.key === 'Enter' && setPreviewFile({ path: filePath, content: '' })}
+                                        >
+                                          <FileTextIcon className="size-3.5" />
+                                          {children}
+                                        </span>
+                                      );
                                     }
-                                    // 非 preview 链接或文件类型不可预览，渲染为普通 a 标签
+                                    // 非预览链接，渲染为普通 a 标签
                                     return <a href={href} {...rest}>{children}</a>;
                                   },
                                 }}
