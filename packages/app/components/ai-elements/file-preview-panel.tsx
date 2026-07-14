@@ -119,6 +119,7 @@ export function FilePreviewPanel({
 
     // 如果已有内容（如工具输出），不需要从文件系统加载
     if (initialContent) {
+      setError(null);
       setIsLoading(false);
       return;
     }

@@ -82,9 +82,15 @@ const TODO_TOOL_TYPES = new Set([
   'tool-todo_delete',
 ]);
 
-function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null): { title: string; icon: React.ComponentType<{ className?: string }> } | undefined {
+function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null, toolName?: string): { title: string; icon: React.ComponentType<{ className?: string }> } | undefined {
   const toolType = type.replace('tool-', '');
   const i = input ?? {};
+
+  // 动态工具（MCP 等）：使用 toolName 字段，将 __ 转为 : 提升可读性
+  if (type === 'dynamic-tool' && toolName) {
+    const displayName = toolName.replace(/__/g, ':');
+    return { title: displayName, icon: WrenchIcon };
+  }
 
   switch (toolType) {
     case 'write_file':
@@ -1411,7 +1417,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             : [];
 
                           const isSubAgent = subParts.length > 0;
-                          const toolInfo = getToolTitleAndIcon(toolPart.type, toolPart.input as Record<string, unknown>);
+                          const isDynamicTool = part.type === 'dynamic-tool';
+                          const toolInfo = getToolTitleAndIcon(toolPart.type, toolPart.input as Record<string, unknown>, isDynamicTool ? (toolPart as DynamicToolUIPart).toolName : undefined);
                           const toolTitle = toolInfo?.title;
                           const ToolIcon = toolInfo?.icon || SearchIcon;
 
@@ -1424,15 +1431,42 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean } | null => {
                             if (!isComplete || !toolPart.output) return null;
                             const out = toolPart.output as Record<string, unknown>;
-                            const toolName = toolPart.type.replace('tool-', '');
+                            // 动态工具使用 toolName 字段，静态工具从 type 推导
+                            const toolName = isDynamicTool
+                              ? ((toolPart as DynamicToolUIPart).toolName ?? 'tool')
+                              : toolPart.type.replace('tool-', '');
 
-                            // 文件工具：返回文件路径和语言
-                            if (toolName === 'write_file' || toolName === 'read_file') {
+                            // write_file 工具：需要从 API 加载最新内容
+                            if (toolName === 'write_file') {
                               return {
                                 content: '', // 内容稍后通过 API 加载
                                 language: out.language as string | undefined,
                                 title: (out.path as string) ?? 'file',
-                                needFetch: true, // 标记需要从 API 获取内容
+                                needFetch: true,
+                              };
+                            }
+                            // read_file 工具：工具已返回内容，清理代码围栏、行号和截断提示
+                            if (toolName === 'read_file') {
+                              let content = (out.content as string) ?? '';
+                              // 先去掉截断提示行（在代码围栏外面）
+                              const lines = content.split('\n');
+                              const cleanedLines = lines
+                                .filter((line: string) => !/^\[Showing lines|^\[Use offset|^\[.*more lines in file|^\[Note:/.test(line.trim()));
+                              content = cleanedLines.join('\n');
+                              // 去掉 markdown 代码围栏（```language ... ```）
+                              const fenceMatch = content.match(/^```\w*\n([\s\S]*?)\n```$/);
+                              if (fenceMatch) {
+                                content = fenceMatch[1];
+                              }
+                              // 去掉行号前缀（如 "1: ", "2: "）
+                              content = content
+                                .split('\n')
+                                .map((line: string) => line.replace(/^\d+:\s/, ''))
+                                .join('\n');
+                              return {
+                                content,
+                                language: out.language as string | undefined,
+                                title: (out.path as string) ?? 'file',
                               };
                             }
                             // edit_file：返回 diff 内容
@@ -1456,19 +1490,193 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               if (exitCode !== undefined) parts.push(`Exit code: ${exitCode}`);
                               return { content: parts.join('\n\n'), title: 'bash' };
                             }
-                            // grep 工具
+                            // grep 工具：格式化搜索结果
                             if (toolName === 'grep') {
-                              return {
-                                content: typeof out === 'string' ? out : JSON.stringify(out, null, 2),
-                                title: 'grep',
-                              };
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                // 有 formattedOutput（带 context）直接使用
+                                if (parsed.formattedOutput) {
+                                  content = parsed.formattedOutput;
+                                } else if (Array.isArray(parsed.matches)) {
+                                  if (parsed.matches.length > 0) {
+                                    // 按文件分组显示
+                                    const byFile = new Map<string, Array<{ line: number; content: string }>>();
+                                    for (const m of parsed.matches) {
+                                      const file = m.file ?? 'unknown';
+                                      if (!byFile.has(file)) byFile.set(file, []);
+                                      byFile.get(file)!.push({ line: m.line, content: m.content });
+                                    }
+                                    const parts: string[] = [];
+                                    for (const [file, matches] of byFile) {
+                                      parts.push(`--- ${file} ---`);
+                                      for (const m of matches) {
+                                        parts.push(`${m.line}: ${m.content}`);
+                                      }
+                                      parts.push('');
+                                    }
+                                    content = parts.join('\n').trim();
+                                  } else {
+                                    // 空结果
+                                    const pattern = parsed.pattern ?? '';
+                                    content = pattern ? `No matches found for "${pattern}"` : 'No matches found';
+                                    if (parsed.searchPath) content += `\nSearch path: ${parsed.searchPath}`;
+                                  }
+                                }
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'grep' };
                             }
-                            // glob 工具
+                            // glob 工具：格式化文件列表
                             if (toolName === 'glob') {
-                              return {
-                                content: typeof out === 'string' ? out : JSON.stringify(out, null, 2),
-                                title: 'glob',
-                              };
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                if (Array.isArray(parsed.files)) {
+                                  const lines: string[] = [];
+                                  if (parsed.pattern) lines.push(`Pattern: ${parsed.pattern}`);
+                                  if (parsed.searchDir) lines.push(`Search: ${parsed.searchDir}`);
+                                  if (lines.length > 0) lines.push('');
+                                  for (const f of parsed.files) {
+                                    lines.push(f);
+                                  }
+                                  if (parsed.truncated) {
+                                    lines.push('');
+                                    lines.push(`... and ${parsed.totalCount - parsed.count} more files`);
+                                  }
+                                  content = lines.join('\n');
+                                }
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'glob' };
+                            }
+                            // skill 工具：使用已格式化的技能输出
+                            if (toolName === 'skill') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                // _skillOutput 是格式化好的技能内容
+                                if (parsed._skillOutput) {
+                                  content = parsed._skillOutput;
+                                } else if (!parsed.success && parsed.error) {
+                                  content = `Error: ${parsed.error}`;
+                                } else if (parsed.skillName) {
+                                  content = `Skill: ${parsed.skillName}`;
+                                  if (parsed.allowedTools?.length) content += `\nTools: ${parsed.allowedTools.join(', ')}`;
+                                }
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'skill' };
+                            }
+                            // web_fetch 工具：格式化网页抓取结果
+                            if (toolName === 'web_fetch') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                const parts: string[] = [];
+                                if (parsed.url) parts.push(`URL: ${parsed.url}`);
+                                if (parsed.title) parts.push(`Title: ${parsed.title}`);
+                                if (!parsed.success && parsed.error) {
+                                  parts.push(`Error: ${parsed.error}`);
+                                } else if (parsed.content) {
+                                  parts.push('');
+                                  parts.push(parsed.content);
+                                  if (parsed.truncated) parts.push(`\n[Truncated from ${parsed.originalLength} chars]`);
+                                }
+                                content = parts.join('\n');
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'web_fetch' };
+                            }
+                            // save_wiki 工具：格式化知识库保存结果
+                            if (toolName === 'save_wiki') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                const parts: string[] = [];
+                                if (parsed.results && Array.isArray(parsed.results)) {
+                                  for (const r of parsed.results) {
+                                    const icon = r.success ? '✓' : '✗';
+                                    parts.push(`${icon} [${r.action}] ${r.name}${r.error ? ` — ${r.error}` : ''}`);
+                                  }
+                                  parts.push('');
+                                  parts.push(`Saved: ${parsed.saved ?? 0}  Skipped: ${parsed.skipped ?? 0}  Failed: ${parsed.failed ?? 0}`);
+                                } else if (parsed.message) {
+                                  parts.push(parsed.message);
+                                }
+                                content = parts.join('\n');
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'wiki' };
+                            }
+                            // read_wiki_page 工具：格式化知识库读取结果
+                            if (toolName === 'read_wiki_page') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                if (!parsed.found) {
+                                  content = parsed.message || 'Page not found';
+                                } else {
+                                  const parts: string[] = [];
+                                  parts.push(`Page: ${parsed.name ?? ''}`);
+                                  if (parsed.category) parts.push(`Category: ${parsed.category}`);
+                                  if (parsed.description) parts.push(`Description: ${parsed.description}`);
+                                  if (parsed.content) {
+                                    parts.push('');
+                                    parts.push(parsed.content);
+                                  }
+                                  content = parts.join('\n');
+                                }
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'wiki' };
+                            }
+                            // cron 工具：格式化定时任务结果
+                            if (toolName === 'cron') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                const parts: string[] = [];
+                                if (parsed.error) {
+                                  parts.push(`Error: ${parsed.error}`);
+                                } else if (parsed.jobs && Array.isArray(parsed.jobs)) {
+                                  // 任务列表
+                                  for (const job of parsed.jobs) {
+                                    const status = job.enabled ? '●' : '○';
+                                    parts.push(`${status} ${job.name}`);
+                                    parts.push(`  Schedule: ${job.schedule}`);
+                                    if (job.prompt) parts.push(`  Prompt: ${job.prompt}`);
+                                    parts.push('');
+                                  }
+                                  parts.push(`Total: ${parsed.total ?? parsed.jobs.length} job(s)`);
+                                } else if (parsed.job) {
+                                  // 单个任务详情
+                                  const j = parsed.job;
+                                  parts.push(`Name: ${j.name}  [${j.enabled ? 'enabled' : 'disabled'}]`);
+                                  parts.push(`Schedule: ${j.schedule}`);
+                                  if (j.prompt) parts.push(`Prompt: ${j.prompt}`);
+                                  if (parsed.recentExecutions?.length > 0) {
+                                    parts.push('');
+                                    parts.push('Recent executions:');
+                                    for (const e of parsed.recentExecutions) {
+                                      const icon = e.status === 'success' ? '✓' : '✗';
+                                      parts.push(`  ${icon} ${e.triggeredAt}${e.duration ? ` (${e.duration})` : ''}${e.error ? ` — ${e.error}` : ''}`);
+                                    }
+                                  }
+                                } else if (parsed.message) {
+                                  parts.push(parsed.message);
+                                }
+                                content = parts.join('\n');
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'cron' };
                             }
                             // 其他工具：JSON 输出
                             return {
