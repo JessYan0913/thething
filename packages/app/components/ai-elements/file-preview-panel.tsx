@@ -15,7 +15,7 @@ import { CodeEditor } from "./code-editor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ImagePreview } from "./file-preview/image-preview";
-import { OfficePreview } from "./file-preview/office-preview";
+import { DocumentViewer } from "./file-preview/document-viewer";
 import { HTMLPreview } from "./file-preview/html-preview";
 import { detectFileType, type FileType } from "@/lib/file-type";
 
@@ -257,7 +257,7 @@ export function FilePreviewPanel({
         ) : fileType === "pdf" ? (
           <PDFPreview src={previewUrl} filename={fileName} />
         ) : fileType === "office" ? (
-          <OfficePreview src={previewUrl} filename={fileName} mediaType={mediaType} />
+          <DocumentViewer src={previewUrl} filename={fileName} mediaType={mediaType} showHeader={false} />
         ) : fileType === "html" ? (
           <HTMLPreview src={previewUrl} filename={fileName} />
         ) : viewMode === "preview" && displayLang === "markdown" ? (

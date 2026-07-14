@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import { FileLink } from "@/components/ui/file-link"
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select"
@@ -289,11 +290,28 @@ export default function WikiDetail({
                 hr: () => (
                   <hr className="my-6 border-t" />
                 ),
-                a: ({ href, children }) => (
-                  <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                    {children}
-                  </a>
-                ),
+                a: ({ href, children }) => {
+                  // 检测是否是文件路径
+                  const isFilePath = href && (
+                    href.startsWith('/') ||
+                    href.startsWith('file://') ||
+                    href.match(/\.\w+$/)
+                  )
+
+                  if (isFilePath) {
+                    return (
+                      <FileLink href={href}>
+                        {children}
+                      </FileLink>
+                    )
+                  }
+
+                  return (
+                    <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                      {children}
+                    </a>
+                  )
+                },
                 strong: ({ children }) => (
                   <strong className="font-bold">{children}</strong>
                 ),

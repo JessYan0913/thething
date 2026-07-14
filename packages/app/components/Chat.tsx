@@ -47,6 +47,9 @@ import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components
 import type { ApprovalMode } from '@/components/chat-selectors';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
+import { linkifyFilePaths, decodePreviewPath } from '@/lib/linkify-file-paths';
+import { detectFileType } from '@/lib/file-type';
+
 import { TShapeBlink } from '@/components/TShapeBlink';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
@@ -1319,7 +1322,41 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                         )}
                         {message.parts.map((part, index) => {
                           if (part.type === 'text') {
-                            return <MessageResponse key={`${message.id}-${index}`}>{part.text}</MessageResponse>;
+                            // 预处理文件路径，转换为 https://preview.local/ 链接
+                            //（使用 https:// 协议而非自定义协议，因为 Streamdown 的 rehype-sanitize
+                            //  只允许标准协议，自定义协议会被剥离 href）
+                            const processedText = linkifyFilePaths(part.text);
+                            return (
+                              <MessageResponse
+                                key={`${message.id}-${index}`}
+                                components={{
+                                  a: ({ href, children, ...rest }: any) => {
+                                    const filePath = href ? decodePreviewPath(href) : null;
+                                    if (filePath) {
+                                      const fileType = detectFileType(filePath);
+                                      if (fileType !== 'unknown' && fileType !== 'text' && fileType !== 'code') {
+                                        return (
+                                          <span
+                                            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => setPreviewFile({ path: filePath, content: '' })}
+                                            onKeyDown={(e) => e.key === 'Enter' && setPreviewFile({ path: filePath, content: '' })}
+                                          >
+                                            <FileTextIcon className="size-3.5" />
+                                            {children}
+                                          </span>
+                                        );
+                                      }
+                                    }
+                                    // 非 preview 链接或文件类型不可预览，渲染为普通 a 标签
+                                    return <a href={href} {...rest}>{children}</a>;
+                                  },
+                                }}
+                              >
+                                {processedText}
+                              </MessageResponse>
+                            );
                           }
 
                           if (part.type === 'file') {
@@ -1428,7 +1465,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const isRunning = toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && toolPart.state !== 'output-denied' && toolPart.state !== 'approval-responded' && toolPart.state !== 'approval-requested';
 
                           // 格式化工具输出用于预览面板
-                          const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean; binaryType?: string } | null => {
+                          const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean } | null => {
                             if (!isComplete || !toolPart.output) return null;
                             const out = toolPart.output as Record<string, unknown>;
                             // 动态工具使用 toolName 字段，静态工具从 type 推导
@@ -1438,25 +1475,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                             // write_file 工具：需要从 API 加载最新内容
                             if (toolName === 'write_file') {
-                              const filePath = (out.path as string) ?? 'file';
-                              // 检测二进制文件类型
-                              const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-                              const binaryExtensions: Record<string, string> = {
-                                doc: 'office', docx: 'office',
-                                xls: 'office', xlsx: 'office',
-                                ppt: 'office', pptx: 'office',
-                                odt: 'office', ods: 'office', odp: 'office',
-                                pdf: 'pdf',
-                                png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', bmp: 'image',
-                                html: 'html', htm: 'html',
-                              };
-                              const binaryType = binaryExtensions[ext];
                               return {
-                                content: '',
+                                content: '', // 内容稍后通过 API 加载
                                 language: out.language as string | undefined,
-                                title: filePath,
-                                needFetch: !binaryType,  // 二进制文件不需要预加载文本内容
-                                binaryType,
+                                title: (out.path as string) ?? 'file',
+                                needFetch: true,
                               };
                             }
                             // read_file 工具：工具已返回内容，清理代码围栏、行号和截断提示
@@ -1737,13 +1760,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                   } catch {
                                     // 加载失败时保持空内容
                                   }
-                                } else if (previewData.binaryType) {
-                                  // 二进制文件：直接打开预览面板，由 FilePreviewPanel 负责加载
-                                  setPreviewFile({
-                                    path: previewData.title,
-                                    content: '',
-                                    language: previewData.language,
-                                  });
                                 } else {
                                   setPreviewFile({
                                     path: previewData.title,
@@ -1770,16 +1786,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                 </span>
                               )}
                               {isDenied && <span className="text-xs text-orange-500 ml-auto">(已拒绝)</span>}
-                              {isComplete && previewData?.binaryType && !isPreviewed && (
-                                <span className="ml-auto text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                  点击预览
-                                </span>
-                              )}
-                              {isPreviewed && previewData?.binaryType && (
-                                <span className="ml-auto text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                  预览中
-                                </span>
-                              )}
                             </div>
                           );
                         }

@@ -25,6 +25,7 @@
     "@codemirror/state": "^6",
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6",
+    "@js-preview/excel": "^1.7.14",
     "@larksuiteoapi/node-sdk": "^1.66.0",
     "@lezer/highlight": "^1.2.3",
     "@radix-ui/react-checkbox": "^1.3.2",
@@ -46,6 +47,7 @@
     "@streamdown/mermaid": "^1.0.2",
     "@the-thing/core": "workspace:*",
     "@the-thing/resumable-stream": "workspace:*",
+    "@types/dompurify": "^3.2.0",
     "@types/js-yaml": "^4.0.9",
     "ai": "^7.0.7",
     "ai-elements": "^1.9.0",
@@ -53,6 +55,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "dompurify": "^3.4.12",
     "i18next": "^26.0.8",
     "i18next-browser-languagedetector": "^8.2.1",
     "js-yaml": "^4.1.0",
@@ -65,6 +68,7 @@
     "next": "16.2.7",
     "next-themes": "^0.4.6",
     "pdfjs-dist": "^6.0.227",
+    "pptx-preview": "^1.0.7",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -86,10 +90,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
     "tailwindcss": "^4",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

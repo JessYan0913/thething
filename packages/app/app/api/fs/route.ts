@@ -2,7 +2,11 @@ import { getServerRuntime } from '@/lib/runtime';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { NextResponse } from 'next/server';
+
+const execAsync = promisify(exec);
 
 export const runtime = 'nodejs';
 
@@ -183,6 +187,35 @@ export async function GET(request: Request) {
         parent: resolvedDir === '/' ? null : path.dirname(resolvedDir),
         items,
       });
+    }
+
+    if (action === 'open') {
+      const fileParam = searchParams.get('path');
+      if (!fileParam) {
+        return NextResponse.json({ error: 'Missing path query parameter' }, { status: 400 });
+      }
+
+      const expandedFile = expandTilde(fileParam);
+      const resolvedFile = path.resolve(expandedFile);
+
+      try {
+        await fs.access(resolvedFile);
+      } catch {
+        return NextResponse.json({ error: 'File not found' }, { status: 404 });
+      }
+
+      // 在 macOS 上使用 open 命令在 Finder 中打开
+      if (process.platform === 'darwin') {
+        await execAsync(`open -R "${resolvedFile}"`);
+      } else if (process.platform === 'win32') {
+        // Windows: 使用 explorer 选中文件
+        await execAsync(`explorer /select,"${resolvedFile}"`);
+      } else {
+        // Linux: 打开文件所在的目录
+        await execAsync(`xdg-open "${path.dirname(resolvedFile)}"`);
+      }
+
+      return NextResponse.json({ success: true, path: resolvedFile });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
