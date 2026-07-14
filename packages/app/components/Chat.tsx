@@ -291,9 +291,11 @@ export interface ChatProps {
   extraBody?: Record<string, unknown>;
   initialMessage?: string;
   showAgentSelector?: boolean;
+  /** 项目根目录绝对路径，用于将 Agent 返回的相对路径补全为绝对路径 */
+  projectPath?: string;
 }
 
-export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true }: ChatProps) {
+export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath }: ChatProps) {
   const { t } = useTranslation('chat');
   const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(propConversationId ?? null);
@@ -1252,6 +1254,25 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   ? message.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
                   : '';
 
+                // 从 tool-glob 部分提取已知文件路径，用于解析 Agent 回复中的纯文件名
+                const knownFiles: Record<string, string> = {};
+                for (const part of message.parts) {
+                  if (part.type === 'tool-glob') {
+                    const tp = part as { output?: unknown; state?: string };
+                    if (tp.state === 'output-available' && tp.output) {
+                      try {
+                        const data = typeof tp.output === 'string' ? JSON.parse(tp.output) : tp.output;
+                        if (data?.files && Array.isArray(data.files)) {
+                          for (const file of data.files) {
+                            const basename = (file as string).split('/').pop();
+                            if (basename) knownFiles[basename] = file as string;
+                          }
+                        }
+                      } catch { /* skip unparseable */ }
+                    }
+                  }
+                }
+
                 return (
                   <Message from={message.role} key={message.id}>
                     {message.role === 'user' && isEditing ? (
@@ -1325,7 +1346,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             // 预处理文件路径，转换为 https://preview.local/ 链接
                             //（使用 https:// 协议而非自定义协议，因为 Streamdown 的 rehype-sanitize
                             //  只允许标准协议，自定义协议会被剥离 href）
-                            const processedText = linkifyFilePaths(part.text);
+                            const processedText = linkifyFilePaths(part.text, projectPath, knownFiles);
                             return (
                               <MessageResponse
                                 key={`${message.id}-${index}`}

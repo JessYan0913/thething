@@ -263,10 +263,10 @@ export const ConversationSidebar = ({
       </SidebarHeader>
 
       {/* Conversation List - hidden when collapsed */}
-      <SidebarContent>
-        {/* Project Area */}
+      <SidebarContent className="overflow-hidden! p-0!">
+        {/* Project Area — fixed height, independent scroll */}
         {activeFilter === 'user' && (
-          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroup className="group-data-[collapsible=icon]:hidden overflow-y-auto shrink-0 max-h-[40vh]">
             <SidebarGroupLabel className="flex items-center justify-between pr-1">
               <span className="flex items-center gap-1.5">
                 <FolderIcon className="size-3" />
@@ -400,8 +400,8 @@ export const ConversationSidebar = ({
           </SidebarGroup>
         )}
 
-        {/* Conversations */}
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+        {/* Conversations — remaining space, independent scroll */}
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden flex-1 overflow-y-auto min-h-0">
           <SidebarGroupContent>
             {isLoading ? (
               <div className="space-y-1 px-2 py-2">
