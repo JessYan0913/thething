@@ -100,6 +100,12 @@ export function FilePreviewPanel({
     setContent(initialContent);
   }, [initialContent]);
 
+  // 当 language prop 变化时，重置视图模式和检测到的语言
+  useEffect(() => {
+    setViewMode(language === "markdown" ? "preview" : "code");
+    setDetectedLang(language);
+  }, [language]);
+
   // 检测文件类型
   const fileType: FileType = detectFileType(filePath, mediaType);
   const isMediaFile = fileType === "image" || fileType === "pdf" || fileType === "office" || fileType === "html";
