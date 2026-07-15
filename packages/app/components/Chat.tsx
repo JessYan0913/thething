@@ -37,8 +37,9 @@ import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
-import { useChat, experimental_MCPAppRenderer as MCPAppRenderer, type MCPAppMetadata, type MCPAppBridgeHandlers } from '@ai-sdk/react';
-import type { MCPAppResource } from '@the-thing/core';
+import { useChat } from '@ai-sdk/react';
+import { McpAppView } from '@/components/ai-elements/mcp-app-view';
+import type { MCPAppMetadata, MCPAppResource, MCPAppBridgeHandlers } from '@the-thing/core';
 import type { CSSProperties } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon } from 'lucide-react';
@@ -1403,7 +1404,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               const isMcpApp = appMeta?.mimeType === 'text/html;profile=mcp-app' && typeof appMeta?.resourceUri === 'string';
                               if (isMcpApp) {
                                 return (
-                                  <MCPAppRenderer
+                                  <McpAppView
                                     key={`${message.id}-${index}`}
                                     part={part}
                                     loadResource={loadResource}
@@ -1411,7 +1412,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                     sandbox={{
                                       url: '/mcp-app-sandbox',
                                       className: 'h-80 w-full rounded-lg border',
-                                      style: { border: 0 } as CSSProperties,
+                                      style: { border: 0 } as Record<string, unknown>,
                                     }}
                                     fallback={<div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Loading MCP App...</div>}
                                   />

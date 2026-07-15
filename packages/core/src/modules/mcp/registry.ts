@@ -1,6 +1,7 @@
 import { createMCPClient, mcpAppClientCapabilities, type MCPClient, type MCPTransport } from '@ai-sdk/mcp';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { ToolSet } from 'ai';
+import { isToolVisibilityAppOnly } from '@modelcontextprotocol/ext-apps/app-bridge';
 import type { McpServerConfig, McpClientConnection, McpRegistrySnapshot } from './types';
 import { logger } from '../../primitives/logger';
 
@@ -188,11 +189,7 @@ export class McpRegistry {
 
     for (const [, conn] of this._connections) {
       for (const [name, tool] of Object.entries(conn.tools as ToolSet)) {
-        const visibility = (tool as { _meta?: { ui?: { visibility?: string[] } } })?._meta?.ui?.visibility;
-        const isAppOnly = Array.isArray(visibility)
-          && visibility.includes('app')
-          && !visibility.includes('model');
-        if (isAppOnly) {
+        if (isToolVisibilityAppOnly(tool as Record<string, unknown>)) {
           appVisible[name] = tool;
         } else {
           modelVisible[name] = tool;

@@ -59,13 +59,31 @@ function SettingRow({ icon, title, description, badge, children }: SettingRowPro
 function ThemeSelect() {
   const { t } = useTranslation('settings')
   const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const themeOptions = [
     { value: "light", label: t('general.theme.light'), emoji: "☀️" },
     { value: "dark", label: t('general.theme.dark'), emoji: "🌙" },
     { value: "system", label: t('general.theme.system'), emoji: "💻" },
   ]
   const current = themeOptions.find((o) => o.value === theme) ?? themeOptions[2]
+
+  // Avoid hydration mismatch: server and first client render must match
+  if (!mounted) {
+    return (
+      <div className="relative">
+        <button className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm min-w-[110px] opacity-0">
+          <span>{current.emoji}</span>
+          <span>{current.label}</span>
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="relative">

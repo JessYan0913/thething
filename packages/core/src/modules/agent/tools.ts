@@ -24,6 +24,7 @@ import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
 import { createMcpRegistry, type McpRegistry, wrapMcpToolWithOutputHandler, wrapMcpAppTool } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
+import { isToolVisibilityAppOnly, getToolUiResourceUri } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { LoadToolsConfig } from './types'
 
 export interface LoadedToolsResult {
@@ -151,14 +152,13 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
           if (!connection.tools) continue
           for (const [toolName, toolDef] of Object.entries(connection.tools)) {
             // 跳过 app-only 工具（仅供 iframe 内部调用，不传给 LLM）
-            const visibility = (toolDef as { _meta?: { ui?: { visibility?: string[] } } })?._meta?.ui?.visibility
-            if (Array.isArray(visibility) && visibility.includes('app') && !visibility.includes('model')) {
+            if (isToolVisibilityAppOnly(toolDef as Record<string, unknown>)) {
               continue
             }
             const qualifiedName = `mcp__${serverName}__${toolName}`
             if (!(qualifiedName in tools)) {
               // 检测 MCP App 工具（包含 resourceUri）
-              const resourceUri = (toolDef as { _meta?: { ui?: { resourceUri?: string } } })?._meta?.ui?.resourceUri
+              const resourceUri = getToolUiResourceUri(toolDef as Record<string, unknown>)
 
               const wrapOptions = {
                 sessionId: config.conversationId,

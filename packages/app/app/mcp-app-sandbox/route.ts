@@ -1,4 +1,7 @@
 export async function GET() {
+  // Sandbox proxy iframe — 使用 @modelcontextprotocol/ext-apps 协议
+  // 充当宿主（parent）和 MCP App 视图（inner iframe）之间的 postMessage 中继
+  // 协议常量见: SANDBOX_PROXY_READY_METHOD, SANDBOX_RESOURCE_READY_METHOD
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -13,6 +16,10 @@ export async function GET() {
 <body>
   <div id="root"></div>
   <script>
+    // MCP Apps 协议常量（sync with @modelcontextprotocol/ext-apps）
+    var SANDBOX_PROXY_READY = "ui/notifications/sandbox-proxy-ready";
+    var SANDBOX_RESOURCE_READY = "ui/notifications/sandbox-resource-ready";
+
     (function() {
       var appFrame = null;
 
@@ -26,25 +33,25 @@ export async function GET() {
         }
       }
 
-      // 所有消息统一处理：双向中继
+      // 所有 jsonrpc 2.0 消息统一处理：双向中继
       window.addEventListener('message', function(event) {
         var data = event.data;
         if (!data || data.jsonrpc !== '2.0') return;
 
-        // sandbox-resource-ready（来自父窗口，渲染 app HTML）— 必须优先于转发逻辑
-        if (data.method === 'ui/notifications/sandbox-resource-ready') {
+        // sandbox-resource-ready（来自父窗口，渲染 app HTML）
+        if (data.method === SANDBOX_RESOURCE_READY) {
           var params = data.params || {};
           renderResource(params.html, params.sandbox, params.csp, params.allow);
           return;
         }
 
-        // 来自父窗口 → 转发给 app iframe
+        // 转发非 sandbox 前缀的消息：
+        //   - 父窗口 → app iframe
+        //   - app iframe → 父窗口
         if (event.source === window.parent || event.source == null) {
           postToApp(data);
           return;
         }
-
-        // 来自 app iframe → 转发给父窗口
         if (appFrame && event.source === appFrame.contentWindow) {
           postToParent(data);
           return;
@@ -73,7 +80,7 @@ export async function GET() {
       // 通知父窗口 sandbox 已就绪
       postToParent({
         jsonrpc: '2.0',
-        method: 'ui/notifications/sandbox-proxy-ready',
+        method: SANDBOX_PROXY_READY,
         params: {}
       });
     })();

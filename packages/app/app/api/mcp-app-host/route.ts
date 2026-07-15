@@ -1,5 +1,6 @@
 import { readMCPAppResource, type MCPAppResource } from '@the-thing/core';
 import { getServerContext } from '@/lib/runtime';
+import { RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/app-bridge';
 
 // MCP App 资源缓存（内存中，按 URI 缓存）
 // 解决 MCP 客户端关闭后无法加载资源的问题
@@ -17,6 +18,10 @@ export async function POST(req: Request) {
     }
 
     if (action === 'read-resource') {
+      if (typeof uri !== 'string' || !uri.startsWith('ui://')) {
+        return Response.json({ error: 'Invalid resource URI' }, { status: 400 });
+      }
+
       // 检查缓存
       const cached = resourceCache.get(uri);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -42,6 +47,10 @@ export async function POST(req: Request) {
     }
 
     if (action === 'call-tool') {
+      if (typeof name !== 'string' || !name.trim()) {
+        return Response.json({ error: 'Invalid tool name' }, { status: 400 });
+      }
+
       // 从所有连接中找到该工具
       for (const [, connection] of registry.connections) {
         if (!connection.client) continue;

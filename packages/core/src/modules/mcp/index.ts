@@ -42,6 +42,15 @@ export {
   type MCPAppMetadata,
   type MCPAppSandboxConfig,
   type MCPAppBridgeHandlers,
+  // ext-apps re-exports — 统一入口，避免下游直接依赖 @modelcontextprotocol/ext-apps
+  RESOURCE_MIME_TYPE,
+  RESOURCE_URI_META_KEY,
+  isToolVisibilityAppOnly,
+  isToolVisibilityModelOnly,
+  getToolUiResourceUri,
+  AppBridge,
+  registerAppTool,
+  registerAppResource,
 } from './types';
 
 // Re-export MCP App types and helpers from @ai-sdk/mcp (避免下游直接依赖)
