@@ -7,6 +7,7 @@ import {
   setTokenizerDir,
   tryCountTokensSync,
 } from "./tokenizer";
+import { getToolOutputString } from './message-utils';
 
 // ============================================================
 // 常量
@@ -59,14 +60,29 @@ export async function estimateMessageTokens(message: UIMessage, modelName?: stri
   let tokens = MESSAGE_OVERHEAD_TOKENS;
 
   if (!message.parts || !Array.isArray(message.parts)) {
+    // ModelMessage 格式：content 字段可能是内容数组或字符串
     const content = (message as unknown as Record<string, unknown>).content;
     if (typeof content === 'string') {
       tokens += await estimateTextTokens(content, modelName);
+    } else if (Array.isArray(content)) {
+      // ModelMessage 中的 tool-result 输出也要计入 token
+      const textChunks: string[] = [];
+      for (const item of content) {
+        const c = item as Record<string, unknown>;
+        if (c.type === 'tool-result' && c.output) {
+          const str = getToolOutputString(c.output);
+          if (str) textChunks.push(str);
+        }
+      }
+      if (textChunks.length > 0) {
+        const tokenCounts = await countTokensBatch(textChunks, modelName);
+        tokens += tokenCounts.reduce((sum: number, t: number) => sum + t, 0);
+      }
     }
     return tokens;
   }
 
-  // 提取所有文本内容
+  // 提取所有文本内容（UIMessage 格式）
   const textParts: string[] = [];
   for (const part of message.parts) {
     if (part.type === "text") {
@@ -113,7 +129,23 @@ export async function estimateMessagesTokens(messages: UIMessage[], modelName?: 
 export function extractMessageText(message: UIMessage): string {
   if (!message.parts || !Array.isArray(message.parts)) {
     const content = (message as unknown as Record<string, unknown>).content;
-    return typeof content === 'string' ? content : '';
+    if (typeof content === 'string') return content;
+    // ModelMessage 格式：提取文本和工具结果内容
+    if (Array.isArray(content)) {
+      const textParts: string[] = [];
+      for (const item of content) {
+        if (typeof item === 'string') {
+          textParts.push(item);
+        } else if (item?.type === 'text') {
+          textParts.push(item.text ?? '');
+        } else if (item?.type === 'tool-result') {
+          const str = getToolOutputString(item.output);
+          if (str) textParts.push(`[Tool Result: ${str.slice(0, 200)}]`);
+        }
+      }
+      return textParts.join('\n');
+    }
+    return '';
   }
   return message.parts
     .filter((p) => p.type === "text" || p.type === "reasoning")
@@ -124,21 +156,48 @@ export function extractMessageText(message: UIMessage): string {
 export function hasTextBlocks(message: UIMessage): boolean {
   if (!message.parts || !Array.isArray(message.parts)) {
     const content = (message as unknown as Record<string, unknown>).content;
-    return typeof content === 'string' && content.trim().length > 0;
+    if (typeof content === 'string') return content.trim().length > 0;
+    if (Array.isArray(content)) {
+      return content.some(
+        (c: unknown) =>
+          (typeof c === 'string' && c.trim().length > 0) ||
+          ((c as Record<string, unknown>)?.type === 'text' &&
+            typeof (c as Record<string, unknown>)?.text === 'string' &&
+            ((c as Record<string, unknown>).text as string).trim().length > 0),
+      );
+    }
+    return false;
   }
   return message.parts.some((p) => p.type === "text" && p.text.trim().length > 0);
 }
 
 export function stripImagesFromMessages(messages: UIMessage[]): UIMessage[] {
-  return messages.map((msg) => ({
-    ...msg,
-    parts: (msg.parts || []).map((part) => {
-      if ((part as Record<string, unknown>).type === "file" || (part as Record<string, unknown>).type === "image") {
-        return { type: "text" as const, text: "[image]" };
+  return messages.map((msg) => {
+    // ModelMessage 格式
+    if (!msg.parts || !Array.isArray(msg.parts)) {
+      const content = (msg as unknown as Record<string, unknown>).content;
+      if (Array.isArray(content)) {
+        const newContent = content.map((part: unknown) => {
+          const p = part as Record<string, unknown>;
+          if (p.type === "file" || p.type === "image") {
+            return { type: "text" as const, text: "[image]" };
+          }
+          return part;
+        });
+        return { ...msg, content: newContent } as unknown as UIMessage;
       }
-      return part;
-    }),
-  }));
+      return msg;
+    }
+    return {
+      ...msg,
+      parts: msg.parts.map((part) => {
+        if ((part as Record<string, unknown>).type === "file" || (part as Record<string, unknown>).type === "image") {
+          return { type: "text" as const, text: "[image]" };
+        }
+        return part;
+      }),
+    };
+  });
 }
 
 // ============================================================

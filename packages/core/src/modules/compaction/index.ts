@@ -18,6 +18,7 @@ import { enforceContextWindow } from './context-window';
 import { estimateMessagesTokens } from './token-counter';
 import { getModelContextLimit, getDefaultOutputTokens } from '../../services/model';
 import type { CompactedToolResult } from './types';
+import { getToolOutputString, unwrapOutput } from './message-utils';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -89,35 +90,35 @@ export async function compactBeforeStep(
 function applyPendingCompactions(messages: UIMessage[], ids: string[]): UIMessage[] {
   const idSet = new Set(ids);
   return messages.map((msg) => {
-    if (!msg.parts?.some((p) => p.type === 'dynamic-tool')) return msg;
+    const content = (msg as unknown as Record<string, unknown>).content;
+    if (!Array.isArray(content)) return msg;
 
-    const newParts = msg.parts.map((p) => {
-      if (p.type !== 'dynamic-tool') return p;
+    let modified = false;
+    const newContent = content.map((item: unknown) => {
+      const contentItem = item as Record<string, unknown>;
+      if (contentItem.type !== 'tool-result') return item;
+      const toolCallId = contentItem.toolCallId as string | undefined;
+      if (!toolCallId || !idSet.has(toolCallId)) return item;
+      if (contentItem._compacted === true) return item;
 
-      const part = p as Record<string, unknown>;
-      const toolCallId = part.toolCallId as string | undefined;
-      if (!toolCallId || !idSet.has(toolCallId)) return p;
-
-      const output = part.output;
-      if (!output) return p;
-      if (typeof output === 'object' && (output as CompactedToolResult)._compacted) return p;
-
-      const toolName = (part.toolName ?? part.name) as string ?? 'unknown';
-      const args = part.input ?? part.args;
-      const summary = extractToolMeta(toolName, args, output);
-      const originalSize = JSON.stringify(output).length;
+      const unwrappedResult = unwrapOutput(contentItem.output);
+      const summary = extractToolMeta(
+        (contentItem.toolName as string) ?? 'unknown',
+        null,
+        unwrappedResult,
+      );
+      modified = true;
 
       return {
-        ...part,
-        output: {
-          summary,
-          _compacted: true,
-          _originalSize: originalSize,
-        },
-      } as typeof p;
+        ...contentItem,
+        output: { type: 'text', value: summary },
+        _compacted: true,
+        _originalSize: getToolOutputString(contentItem.output).length,
+      };
     });
 
-    return { ...msg, parts: newParts };
+    if (!modified) return msg;
+    return { ...msg, content: newContent } as unknown as UIMessage;
   });
 }
 

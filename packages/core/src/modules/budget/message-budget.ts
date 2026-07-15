@@ -14,6 +14,7 @@ import {
   type ToolOutputConfig,
 } from './tool-output-manager'
 import { persistToolResult, buildPersistedOutputMessage, formatSize } from './tool-result-storage'
+import { getToolOutputString } from '../compaction/message-utils'
 
 // ============================================================
 // 类型定义
@@ -177,34 +178,32 @@ export async function enforceToolResultBudget(
 // ============================================================
 
 /**
- * 收集消息中的所有工具结果候选
+ * 从消息的 .content 中收集所有 tool-result 候选
+ * 流水线传递的是 ModelMessage 格式，工具结果在 content 数组中
  */
 function collectCandidatesByMessage(messages: UIMessage[]): ToolResultCandidate[] {
   const candidates: ToolResultCandidate[] = []
 
   for (const message of messages) {
-    if (!message.parts || !Array.isArray(message.parts)) {
-      continue
-    }
+    const content = (message as unknown as Record<string, unknown>).content
+    if (!Array.isArray(content)) continue
 
-    for (const part of message.parts) {
-      // 检查是否是 tool_result 类型
-      if (part.type === 'tool-result' || part.type === 'dynamic-tool') {
-        const partData = part as unknown as Record<string, unknown>
-        const toolUseId = (partData.tool_use_id as string) || (partData.toolCallId as string)
-        const content = partData.content || partData.output
+    for (const item of content) {
+      const itemObj = item as Record<string, unknown>
+      if (itemObj.type !== 'tool-result') continue
 
-        if (toolUseId && content) {
-          const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
-          const toolName = (partData.name as string) || extractToolNameFromId(toolUseId)
+      const toolUseId = itemObj.toolCallId as string | undefined
+      const toolName = (itemObj.toolName as string) || extractToolNameFromId(toolUseId || '')
+      const output = itemObj.output
 
-          candidates.push({
-            toolUseId,
-            content: contentStr,
-            size: contentStr.length,
-            toolName,
-          })
-        }
+      if (toolUseId && output) {
+        const contentStr = getToolOutputString(output)
+        candidates.push({
+          toolUseId,
+          content: contentStr,
+          size: contentStr.length,
+          toolName,
+        })
       }
     }
   }
@@ -222,7 +221,7 @@ function extractToolNameFromId(toolUseId: string): string {
 }
 
 /**
- * 应用替换到消息
+ * 替换消息 .content 中的 tool-result output 为预览文本
  */
 function applyReplacements(
   messages: UIMessage[],
@@ -234,32 +233,26 @@ function applyReplacements(
   }
 
   return messages.map((message) => {
-    if (!message.parts || !Array.isArray(message.parts)) {
-      return message
-    }
+    const content = (message as unknown as Record<string, unknown>).content
+    if (!Array.isArray(content)) return message
 
     let modified = false
-    const newParts = message.parts.map((part) => {
-      if (part.type === 'tool-result' || part.type === 'dynamic-tool') {
-        const partData = part as unknown as Record<string, unknown>
-        const toolUseId = (partData.tool_use_id as string) || (partData.toolCallId as string)
+    const newContent = content.map((item: unknown) => {
+      const itemObj = item as Record<string, unknown>
+      if (itemObj.type !== 'tool-result') return item
 
-        if (toolUseId && replacementMap.has(toolUseId)) {
-          modified = true
-          return {
-            ...part,
-            content: replacementMap.get(toolUseId),
-          }
-        }
+      const toolUseId = itemObj.toolCallId as string | undefined
+      if (!toolUseId || !replacementMap.has(toolUseId)) return item
+
+      modified = true
+      return {
+        ...itemObj,
+        output: { type: 'text', value: replacementMap.get(toolUseId) },
       }
-      return part
     })
 
-    if (!modified) {
-      return message
-    }
-
-    return { ...message, parts: newParts }
+    if (!modified) return message
+    return { ...message, content: newContent } as unknown as UIMessage
   })
 }
 
@@ -300,22 +293,22 @@ export function estimateToolResultsTotal(
 // ============================================================
 
 /**
- * 从消息中构建 tool_use_id -> toolName 的映射
+ * 从 assistant 消息的 .content 中构建 toolCallId → toolName 映射
  */
 export function buildToolNameMap(messages: UIMessage[]): Map<string, string> {
   const nameMap = new Map<string, string>()
 
   for (const message of messages) {
-    if (message.role !== 'assistant' || !message.parts) {
-      continue
-    }
+    if (message.role !== 'assistant') continue
 
-    for (const part of message.parts) {
-      if (part.type === 'tool-use' || part.type === 'dynamic-tool') {
-        const partData = part as unknown as Record<string, unknown>
-        const toolCallId = (partData.id as string) || (partData.toolCallId as string)
-        const toolName = (partData.name as string) || (partData.toolName as string)
+    const content = (message as unknown as Record<string, unknown>).content
+    if (!Array.isArray(content)) continue
 
+    for (const item of content) {
+      const itemObj = item as Record<string, unknown>
+      if (itemObj.type === 'tool-call') {
+        const toolCallId = itemObj.toolCallId as string | undefined
+        const toolName = itemObj.toolName as string | undefined
         if (toolCallId && toolName) {
           nameMap.set(toolCallId, toolName)
         }

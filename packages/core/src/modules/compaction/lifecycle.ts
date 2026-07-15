@@ -3,6 +3,9 @@
 // ============================================================
 // 核心创新：每步 API 调用前，自动将旧工具输出替换为结构化元信息。
 // 同步执行，微秒级，不调用 LLM。
+//
+// 流水线传递的是 ModelMessage 格式（AI SDK 内部格式），
+// 工具结果位于 .content 数组中，类型为 tool-result。
 
 import type { UIMessage } from 'ai';
 import {
@@ -11,6 +14,7 @@ import {
   DEFAULT_LIFECYCLE_CONFIG,
   DEFAULT_COMPACTABLE,
 } from './types';
+import { getToolOutputString, unwrapOutput } from './message-utils';
 
 // ============================================================
 // Main Function
@@ -34,20 +38,20 @@ export function manageToolOutputLifecycle(
   let tokensFreed = 0;
 
   const result = messages.map((msg, i) => {
-    // 不是工具结果消息 → 原样保留
-    if (!hasToolParts(msg)) return msg;
+    // 不是 tool-result 消息 → 原样保留
+    if (!hasToolResults(msg)) return msg;
     // 已经全部压缩过 → 跳过
-    if (isAlreadyCompacted(msg)) return msg;
+    if (isAllCompacted(msg)) return msg;
 
     // 判断是否应该压缩这条消息的工具输出
     const shouldCompact =
       i < recentBoundary || // 超出最近 N 轮
-      estimateToolResultSize(msg) > config.largeOutputThreshold; // 或者输出太大
+      totalToolResultSize(msg) > config.largeOutputThreshold; // 或者输出太大
 
     if (!shouldCompact) return msg;
     if (!isToolCompactable(msg, config)) return msg;
 
-    const { compacted, freed } = compressToolResultParts(msg);
+    const { compacted, freed } = compactToolResults(msg);
     tokensFreed += freed;
     return compacted;
   });
@@ -56,49 +60,45 @@ export function manageToolOutputLifecycle(
 }
 
 // ============================================================
-// Tool Part Detection (adapted for dynamic-tool parts)
+// 工具结果检测（直接操作 .content 数组）
 // ============================================================
 
-function hasToolParts(msg: UIMessage): boolean {
-  return msg.parts?.some(
-    (p) => p.type === 'dynamic-tool' || p.type.startsWith('tool-'),
-  ) ?? false;
+/** 消息中是否有 tool-result 项 */
+function hasToolResults(msg: UIMessage): boolean {
+  const content = (msg as unknown as Record<string, unknown>).content;
+  return Array.isArray(content) && content.some((c: unknown) => {
+    const item = c as Record<string, unknown>;
+    return item.type === 'tool-result';
+  });
 }
 
-function isAlreadyCompacted(msg: UIMessage): boolean {
-  return msg.parts?.every((p) => {
-    if (p.type !== 'dynamic-tool') return true;
-    const output = (p as Record<string, unknown>).output;
-    if (!output) return true;
-    if (typeof output === 'object' && (output as CompactedToolResult)._compacted) return true;
-    return false;
-  }) ?? true;
+/** 获取 tool-result 项的数组 */
+function getToolResultItems(msg: UIMessage): Record<string, unknown>[] {
+  const content = (msg as unknown as Record<string, unknown>).content;
+  if (!Array.isArray(content)) return [];
+  return content.filter((c: unknown) => {
+    const item = c as Record<string, unknown>;
+    return item.type === 'tool-result';
+  }) as Record<string, unknown>[];
 }
 
-function estimateToolResultSize(msg: UIMessage): number {
-  let total = 0;
-  for (const p of msg.parts ?? []) {
-    if (p.type === 'dynamic-tool') {
-      const output = (p as Record<string, unknown>).output;
-      if (output && !(typeof output === 'object' && (output as CompactedToolResult)._compacted)) {
-        const str = typeof output === 'string' ? output : JSON.stringify(output);
-        total += str.length; // 返回字符数，与 largeOutputThreshold 比较
-      }
-    }
-  }
-  return total;
+/** 是否所有 tool-result 都已压缩 */
+function isAllCompacted(msg: UIMessage): boolean {
+  const items = getToolResultItems(msg);
+  if (items.length === 0) return true;
+  return items.every((item) => item._compacted === true);
 }
 
+/** 未压缩的 tool-result 输出总字符数 */
+function totalToolResultSize(msg: UIMessage): number {
+  return getToolResultItems(msg)
+    .filter((item) => item._compacted !== true)
+    .reduce((sum, item) => sum + getToolOutputString(item.output).length, 0);
+}
+
+/** 提取工具名称列表 */
 function extractToolNames(msg: UIMessage): string[] {
-  const names: string[] = [];
-  for (const p of msg.parts ?? []) {
-    if (p.type === 'dynamic-tool') {
-      const part = p as Record<string, unknown>;
-      const name = (part.toolName ?? part.name) as string | undefined;
-      if (name) names.push(name);
-    }
-  }
-  return names;
+  return getToolResultItems(msg).map((item) => (item.toolName as string) ?? '');
 }
 
 // ============================================================
@@ -135,42 +135,47 @@ function isToolCompactable(msg: UIMessage, config: LifecycleConfig): boolean {
 // Tool Output Compression
 // ============================================================
 
-function compressToolResultParts(msg: UIMessage): {
+function compactToolResults(msg: UIMessage): {
   compacted: UIMessage;
   freed: number;
 } {
+  const content = (msg as unknown as Record<string, unknown>).content;
+  if (!Array.isArray(content)) return { compacted: msg, freed: 0 };
+
   let freed = 0;
+  const newContent = content.map((item: unknown) => {
+    const contentItem = item as Record<string, unknown>;
+    if (contentItem.type !== 'tool-result') return item;
+    if (contentItem._compacted === true) return item;
 
-  const newParts = msg.parts.map((part) => {
-    if (part.type !== 'dynamic-tool') return part;
-
-    const p = part as Record<string, unknown>;
-    const output = p.output;
-    if (!output) return part;
-    if (typeof output === 'object' && (output as CompactedToolResult)._compacted) return part;
-
-    const resultStr = typeof output === 'string' ? output : JSON.stringify(output);
+    const resultStr = getToolOutputString(contentItem.output);
     const originalSize = resultStr.length;
 
-    // 小输出不值得压缩（压缩后的元信息可能和原文一样长）
-    if (originalSize < 200) return part;
+    // 小输出不值得压缩
+    if (originalSize < 200) return item;
 
-    const toolName = (p.toolName ?? p.name) as string | undefined ?? 'unknown';
-    const args = p.input ?? p.args;
-    const summary = extractToolMeta(toolName, args, output);
+    // 解包 ToolResultOutput 格式，确保 extractors 拿到实际值
+    const unwrappedResult = unwrapOutput(contentItem.output);
+    const summary = extractToolMeta(
+      (contentItem.toolName as string) ?? 'unknown',
+      null,
+      unwrappedResult,
+    );
     freed += Math.max(0, Math.floor(originalSize / 3.5) - Math.floor(summary.length / 3.5));
 
+    // 保持 ToolResultOutput 结构 { type, value }，附加 _compacted 标记
     return {
-      ...part,
-      output: {
-        summary,
-        _compacted: true,
-        _originalSize: originalSize,
-      },
-    } as typeof part;
+      ...contentItem,
+      output: { type: 'text', value: summary },
+      _compacted: true,
+      _originalSize: originalSize,
+    };
   });
 
-  return { compacted: { ...msg, parts: newParts }, freed };
+  return {
+    compacted: { ...msg, content: newContent } as unknown as UIMessage,
+    freed,
+  };
 }
 
 // ============================================================
