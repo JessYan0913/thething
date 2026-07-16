@@ -543,6 +543,13 @@ console.log(`MCP App resource loaded in ${loadTime}ms`);
 - [Model Context Protocol 规范](https://modelcontextprotocol.io)
 - [AI SDK GitHub 仓库](https://github.com/vercel/ai)
 
+## 差距分析
+
+> 当前实现的详细差距审计，请参见 [MCP Apps 实现差距分析](mcp-apps-gap-analysis.md)。
+
+该文档基于官方 MCP Apps 规范 (SEP-1865) 对当前实现进行了完整性审查，发现了 15 项差距，其中 **3 项致命差距**直接导致了 MCP App 渲染不完整的问题。
+
 ## 更新日志
 
+- **2026-07-15**：补充差距分析文档引用，详见 [mcp-apps-gap-analysis.md](mcp-apps-gap-analysis.md)
 - **2026-07-07**：初始版本，包含完整的实现方案和安全建议

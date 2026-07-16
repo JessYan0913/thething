@@ -192,6 +192,11 @@ export interface MCPAppBridgeHandlers {
   openLink: (params: { url: string }) => void;
   /** 将 App view 发来的消息转发给 agent */
   sendMessage?: (params: { content?: Array<{ type: string; text?: string }> }) => Promise<unknown>;
+  /** 接收 MCP App 的上下文更新，供后续 agent turn 使用 */
+  updateModelContext?: (params: {
+    content?: Array<{ type: string; text?: string }>;
+    structuredContent?: Record<string, unknown>;
+  }) => Promise<unknown>;
 }
 
 /**

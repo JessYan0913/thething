@@ -1,5 +1,5 @@
 import { readMCPAppResource, type MCPAppResource } from '@the-thing/core';
-import { getServerContext } from '@/lib/runtime';
+import { getServerContext, waitForMcpReady } from '@/lib/runtime';
 import { RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/app-bridge';
 
 // MCP App 资源缓存（内存中，按 URI 缓存）
@@ -11,6 +11,8 @@ export async function POST(req: Request) {
   try {
     const { uri, action, name, arguments: toolArguments } = await req.json();
     const context = await getServerContext();
+    // 等待 MCP 连接就绪，避免在 async connectAll() 完成前访问空 registry
+    await waitForMcpReady();
     const registry = context.mcpRegistry;
 
     if (!registry) {
