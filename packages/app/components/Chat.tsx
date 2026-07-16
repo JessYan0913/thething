@@ -52,6 +52,9 @@ import type { ApprovalMode } from '@/components/chat-selectors';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
 import { linkifyFilePaths } from '@/lib/linkify-file-paths';
+import { McpWidget } from '@/components/mcp-widget';
+import { McpAppDynamicRenderer } from '@/components/mcp-app-dynamic-renderer';
+import useSWR from 'swr';
 
 import { TShapeBlink } from '@/components/TShapeBlink';
 import { useRouter } from 'next/navigation';
@@ -1560,6 +1563,49 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                 );
                               }
                             }
+
+                          // 动态检测 MCP App：对于 dynamic-tool 类型，如果 toolMetadata 不包含 app 信息，
+                          // 则从 MCP 服务器动态获取 _meta.ui 来判断是否为 MCP App
+                          if (part.type === 'dynamic-tool') {
+                            const dynamicToolPart = part as DynamicToolUIPart;
+                            const fullToolName = dynamicToolPart.toolName || '';
+
+                            // 提取服务器名称（从 mcp__serverName__toolName 格式）
+                            const extractServerName = (name: string): string | null => {
+                              if (!name.startsWith('mcp__')) return null;
+                              const parts = name.split('__');
+                              return parts.length >= 3 ? parts[1] : null;
+                            };
+
+                            const serverName = extractServerName(fullToolName);
+
+                            // 如果是 MCP 工具且没有 toolMetadata.app，尝试动态渲染
+                            if (serverName) {
+                              const toolMeta = part.toolMetadata as Record<string, unknown> | undefined;
+                              const hasAppMeta = toolMeta?.app != null;
+
+                              if (!hasAppMeta) {
+                                // 使用动态渲染器
+                                const renderer = (
+                                  <McpAppDynamicRenderer
+                                    key={`${message.id}-${index}`}
+                                    messageId={message.id}
+                                    partIndex={index}
+                                    toolPart={toolPart}
+                                    toolName={fullToolName}
+                                    serverName={serverName}
+                                    onSendMessage={(text) => {
+                                      append({ role: 'user', parts: [{ type: 'text', text }] });
+                                    }}
+                                  />
+                                );
+
+                                // 如果动态渲染器返回 null，继续正常渲染
+                                // 否则使用 MCP App Widget
+                                if (renderer) return renderer;
+                              }
+                            }
+                          }
 
                           if (TODO_TOOL_TYPES.has(toolPart.type)) {
                             return null;
