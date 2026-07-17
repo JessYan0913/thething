@@ -361,6 +361,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const sessionApprovedScopesRef = useRef(new Set<string>());
   const autoApprovedIdsRef = useRef(new Set<string>());
 
+  // 来自 SQLite 挂起状态的审批 ID（后台 connector 暂停后恢复的场景）
+  // 这些审批不能使用 addToolApprovalResponse（需要活跃 stream），
+  // 必须通过 /api/chat/suspended-approval-response REST 端点处理。
+  const backgroundApprovalIdsRef = useRef(new Set<string>());
+
   // 问题收集面板状态（用于 ask_user_question）
   const [questionPanel, setQuestionPanel] = useState<{
     isOpen: boolean;
@@ -846,8 +851,38 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }
   }, [addToolApprovalResponse, questionPanel]);
 
+  // ── 调用后台挂起审批恢复 API ──
+  const handleSuspendedApproval = useCallback(async (approved: boolean) => {
+    if (!conversationId) return;
+    const apiEndpoint = '/api/chat/suspended-approval-response';
+    try {
+      const res = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId, approved }),
+      });
+      const data = await res.json();
+      if (data.success && data.messages) {
+        setMessages(data.messages as UIMessage[]);
+      }
+      return data;
+    } catch (err) {
+      console.error('[Chat] Suspended approval API error:', err);
+      return { success: false };
+    }
+  }, [conversationId, setMessages]);
+
   // 处理审批批准（单个）
   const handleApprove = useCallback((approvalId: string, options?: { alwaysAllow?: boolean }) => {
+    // 后台挂起的审批不能使用 addToolApprovalResponse（需要活跃 stream）
+    if (backgroundApprovalIdsRef.current.has(approvalId)) {
+      // 清空审批列表，调用恢复 API
+      setApprovalRequests([]);
+      backgroundApprovalIdsRef.current.clear();
+      handleSuspendedApproval(true);
+      return;
+    }
+
     // 记录 session scope — 本次对话内同类操作自动放行
     const request = approvalRequests.find(r => r.approvalId === approvalId);
     if (request) {
@@ -867,10 +902,19 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     if (options?.alwaysAllow && request) {
       saveAlwaysAllowRule(request.toolName, request.toolInput);
     }
-  }, [addToolApprovalResponse, approvalRequests]);
+  }, [addToolApprovalResponse, approvalRequests, handleSuspendedApproval]);
 
   // 处理批量审批批准
   const handleApproveAll = useCallback((requests: ApprovalRequest[], options?: { alwaysAllow?: boolean }) => {
+    // 检查是否为后台挂起审批
+    const hasBackground = requests.some(r => backgroundApprovalIdsRef.current.has(r.approvalId));
+    if (hasBackground) {
+      setApprovalRequests([]);
+      backgroundApprovalIdsRef.current.clear();
+      handleSuspendedApproval(true);
+      return;
+    }
+
     // 立即清空审批列表
     setApprovalRequests([]);
 
@@ -888,20 +932,37 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         saveAlwaysAllowRule(req.toolName, req.toolInput);
       }
     }
-  }, [addToolApprovalResponse]);
+  }, [addToolApprovalResponse, handleSuspendedApproval]);
 
   // 处理审批拒绝（单个）
   const handleDeny = useCallback((approvalId: string, reason?: string) => {
+    // 后台挂起的审批
+    if (backgroundApprovalIdsRef.current.has(approvalId)) {
+      setApprovalRequests([]);
+      backgroundApprovalIdsRef.current.clear();
+      handleSuspendedApproval(false);
+      return;
+    }
+
     setApprovalRequests(prev => prev.filter(r => r.approvalId !== approvalId));
     addToolApprovalResponse({
       id: approvalId,
       approved: false,
       reason: reason,
     });
-  }, [addToolApprovalResponse]);
+  }, [addToolApprovalResponse, handleSuspendedApproval]);
 
   // 处理批量审批拒绝
   const handleDenyAll = useCallback((requests: ApprovalRequest[], reason?: string) => {
+    // 检查是否为后台挂起审批
+    const hasBackground = requests.some(r => backgroundApprovalIdsRef.current.has(r.approvalId));
+    if (hasBackground) {
+      setApprovalRequests([]);
+      backgroundApprovalIdsRef.current.clear();
+      handleSuspendedApproval(false);
+      return;
+    }
+
     setApprovalRequests([]);
     for (const req of requests) {
       addToolApprovalResponse({
@@ -910,7 +971,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         reason: reason,
       });
     }
-  }, [addToolApprovalResponse]);
+  }, [addToolApprovalResponse, handleSuspendedApproval]);
 
   // 停止 Agent 时清理未完成的 todo，避免 orphaned in_progress 状态
   const handleStop = useCallback(() => {
@@ -989,28 +1050,32 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   // 恢复待审批状态（跨重启恢复）
   useEffect(() => {
     if (!isInitialLoadDone || !conversationId) return;
-    
+
     let cancelled = false;
-    
+
     async function restorePendingApprovals() {
       try {
         const res = await fetch('/api/chat/pending-approvals');
         if (!res.ok || cancelled) return;
-        
+
         const data = await res.json();
         const pendingForConversation = data.pendingApprovals?.find(
           (p: { conversationId: string }) => p.conversationId === conversationId
         );
-        
+
         if (pendingForConversation && pendingForConversation.approvals?.length > 0 && !cancelled) {
-          console.log(`[Chat] Restored ${pendingForConversation.approvals.length} pending approvals for conversation ${conversationId}`);
+          console.log(`[Chat] Restored ${pendingForConversation.approvals.length} pending approvals from SQLite for conversation ${conversationId}`);
+          // 记录这些审批 ID 为"后台挂起"类型，不能使用 addToolApprovalResponse
+          for (const a of pendingForConversation.approvals) {
+            backgroundApprovalIdsRef.current.add(a.approvalId);
+          }
           setApprovalRequests(pendingForConversation.approvals);
         }
       } catch (error) {
         console.error('[Chat] Failed to restore pending approvals:', error);
       }
     }
-    
+
     restorePendingApprovals();
     return () => {
       cancelled = true;

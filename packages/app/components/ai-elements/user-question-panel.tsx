@@ -7,10 +7,18 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   XIcon,
+  HelpCircleIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface QuestionItem {
   question: string;
@@ -32,248 +40,305 @@ export function UserQuestionPanel({
   onComplete,
   onCancel,
 }: UserQuestionPanelProps) {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
+  const [currentIndex, setCurrentIndex] = React.useState(0);
   const [answers, setAnswers] = React.useState<Record<number, string | string[]>>({});
-  const [customInputs, setCustomInputs] = React.useState<Record<number, string>>({});
-  const [showCustomInput, setShowCustomInput] = React.useState<Set<number>>(new Set());
+  const [customText, setCustomText] = React.useState<Record<number, string>>({});
+  const [showCancelDialog, setShowCancelDialog] = React.useState(false);
 
   if (!isOpen || questions.length === 0) return null;
 
-  const currentQuestion = questions[currentQuestionIndex];
-  const totalQuestions = questions.length;
-  const isFirstQuestion = currentQuestionIndex === 0;
-  const isLastQuestion = currentQuestionIndex === totalQuestions - 1;
+  const current = questions[currentIndex];
+  const total = questions.length;
+  const isFirst = currentIndex === 0;
+  const isLast = currentIndex === total - 1;
 
-  const isCustomInputVisible = showCustomInput.has(currentQuestionIndex);
-  const currentCustomInput = customInputs[currentQuestionIndex] || '';
+  const isMulti = current.multiSelect === true;
 
-  // 当前问题是否已回答
-  const currentAnswered = answers[currentQuestionIndex] !== undefined || (isCustomInputVisible && currentCustomInput.trim());
+  const currentAnswer = answers[currentIndex];
+  const currentCustom = customText[currentIndex] || '';
+  const hasCustomAnswer = currentAnswer === '__custom__' || (typeof currentAnswer === 'string' && currentAnswer.startsWith('__custom__'));
 
-  // 所有问题是否都已回答
-  const allAnswered = questions.every((_, idx) =>
-    answers[idx] !== undefined || answers[idx] === 'custom'
-  );
+  const isAnswered = isMulti
+    ? Array.isArray(currentAnswer) && currentAnswer.length > 0
+    : currentAnswer !== undefined &&
+      (currentAnswer !== '__custom__' || currentCustom.trim().length > 0);
 
-  const handleOptionSelect = (optionLabel: string) => {
-    if (currentQuestion.multiSelect) {
-      const current = (answers[currentQuestionIndex] as string[] | undefined) || [];
-      const newSelection = current.includes(optionLabel)
-        ? current.filter(o => o !== optionLabel)
-        : [...current, optionLabel];
-      setAnswers({ ...answers, [currentQuestionIndex]: newSelection });
+  const allAnswered = questions.every((_, i) => {
+    const a = answers[i];
+    if (Array.isArray(a)) return a.length > 0;
+    if (a === '__custom__') return (customText[i] || '').trim().length > 0;
+    if (typeof a === 'string' && a.startsWith('__custom__')) return a.replace('__custom__', '').trim().length > 0;
+    return a !== undefined;
+  });
+
+  /** 对于单选用 isSelectedCircle，多选用 isCheckedBox */
+  const isOptionSelected = (optIdx: number) => {
+    if (isMulti) {
+      return Array.isArray(currentAnswer) && currentAnswer.includes(current.options[optIdx]);
+    }
+    return currentAnswer === current.options[optIdx];
+  };
+
+  const toggleOption = (optIdx: number) => {
+    const label = current.options[optIdx];
+    if (isMulti) {
+      const currentSel = (Array.isArray(currentAnswer) ? currentAnswer : []) as string[];
+      const next = currentSel.includes(label)
+        ? currentSel.filter(o => o !== label)
+        : [...currentSel, label];
+      setAnswers({ ...answers, [currentIndex]: next });
     } else {
-      setAnswers({ ...answers, [currentQuestionIndex]: optionLabel });
-      setShowCustomInput(prev => {
-        const next = new Set(prev);
-        next.delete(currentQuestionIndex);
-        return next;
-      });
-      setCustomInputs(prev => {
-        const next = { ...prev };
-        delete next[currentQuestionIndex];
-        return next;
-      });
+      // Single select: select this option, deselect custom
+      setAnswers({ ...answers, [currentIndex]: label });
+      // Clear custom if it was selected
+      if (hasCustomAnswer) {
+        const newCustom = { ...customText };
+        delete newCustom[currentIndex];
+        setCustomText(newCustom);
+      }
     }
   };
 
-  const handleNext = () => {
-    if (currentAnswered && !isLastQuestion) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+  const selectCustom = () => {
+    if (isMulti) return; // Custom not supported for multi-select
+    setAnswers({ ...answers, [currentIndex]: '__custom__' });
+  };
+
+  const deselectCustom = () => {
+    if (hasCustomAnswer) {
+      const newAnswers = { ...answers };
+      delete newAnswers[currentIndex];
+      setAnswers(newAnswers);
+      const newCustom = { ...customText };
+      delete newCustom[currentIndex];
+      setCustomText(newCustom);
     }
   };
 
-  const handlePrev = () => {
-    if (!isFirstQuestion) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
+  const handleCustomInput = (value: string) => {
+    setCustomText({ ...customText, [currentIndex]: value });
+    if (value.trim()) {
+      setAnswers({ ...answers, [currentIndex]: `__custom__${value}` });
+    } else {
+      // If empty, revert to custom state (input still shows)
+      setAnswers({ ...answers, [currentIndex]: '__custom__' });
     }
+  };
+
+  const goNext = () => {
+    if (isAnswered && !isLast) setCurrentIndex(currentIndex + 1);
+  };
+
+  const goPrev = () => {
+    if (!isFirst) setCurrentIndex(currentIndex - 1);
   };
 
   const handleComplete = () => {
-    // 转换为以 header 为 key 的格式
-    const finalAnswers: Record<string, string | string[]> = {};
-    questions.forEach((q, idx) => {
-      const header = q.header || `question_${idx}`;
-      let answer = answers[idx] || '';
-      if (typeof answer === 'string' && answer.startsWith('__custom__')) {
-        answer = answer.replace(/^__custom__/, '');
+    const final: Record<string, string | string[]> = {};
+    questions.forEach((q, i) => {
+      const key = q.header || `question_${i}`;
+      let val = answers[i];
+      if (typeof val === 'string' && val.startsWith('__custom__')) {
+        val = val.replace(/^__custom__/, '');
       }
-      finalAnswers[header] = answer;
+      final[key] = val || '';
     });
-    onComplete(finalAnswers);
-  };
-
-  // 获取当前选中状态
-  const isSelected = (optionLabel: string) => {
-    if (currentQuestion.multiSelect) {
-      return (answers[currentQuestionIndex] as string[] | undefined)?.includes(optionLabel);
-    }
-    const answer = answers[currentQuestionIndex];
-    if (typeof answer === 'string' && answer.startsWith('__custom__')) return false;
-    return answer === optionLabel;
+    onComplete(final);
   };
 
   return (
-    <div className='shrink-0 bg-background/95 backdrop-blur'>
-      <div className='px-4 py-3'>
-        {/* Question */}
-        <div className='flex items-center justify-between gap-2 mb-3'>
-          <p className='text-sm font-medium'>{currentQuestion.question}</p>
-          <button
-            className='shrink-0 h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors'
-            onClick={onCancel}
-          >
-            <XIcon className='size-3' />
-          </button>
-        </div>
-
-        {/* 选项列表 */}
-        <div className='space-y-1.5 mb-3'>
-            {currentQuestion.options.map((opt, optIdx) => (
-              <label
-                key={optIdx}
-                className={cn(
-                  'flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors',
-                  isSelected(opt)
-                    ? 'bg-accent/60'
-                    : 'hover:bg-accent/30'
-                )}
-              >
-                <Checkbox
-                  className='shrink-0'
-                  checked={isSelected(opt)}
-                  onCheckedChange={() => handleOptionSelect(opt)}
-                />
-                <span className='text-sm font-medium'>{opt}</span>
-              </label>
-            ))}
-
-            {/* 自定义输入 */}
-            <label
-              className={cn(
-                'flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors',
-                isCustomInputVisible || answers[currentQuestionIndex] === 'custom'
-                  ? 'bg-accent/60'
-                  : 'hover:bg-accent/30'
-              )}
+    <>
+      <div className="shrink-0 bg-background/95 backdrop-blur">
+        <div className="px-4 py-3 space-y-3">
+          {/* Header row */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex size-6 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/30 shrink-0">
+                <HelpCircleIcon className="size-3.5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <span className="text-sm font-semibold truncate">问题 {currentIndex + 1}/{total}</span>
+            </div>
+            <button
+              className="size-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent shrink-0"
+              onClick={() => setShowCancelDialog(true)}
+              title="取消"
             >
-              <Checkbox
-                className='shrink-0'
-                checked={isCustomInputVisible || answers[currentQuestionIndex] === 'custom'}
-                onCheckedChange={(checked) => {
-                  if (checked) {
-                    setShowCustomInput(prev => new Set(prev).add(currentQuestionIndex));
-                    if (!currentQuestion.multiSelect) {
-                      setAnswers({ ...answers, [currentQuestionIndex]: 'custom' });
-                    }
-                  } else {
-                    setShowCustomInput(prev => {
-                      const next = new Set(prev);
-                      next.delete(currentQuestionIndex);
-                      return next;
-                    });
-                    setCustomInputs(prev => {
-                      const next = { ...prev };
-                      delete next[currentQuestionIndex];
-                      return next;
-                    });
-                    if (answers[currentQuestionIndex] === 'custom') {
-                      const newAnswers = { ...answers };
-                      delete newAnswers[currentQuestionIndex];
-                      setAnswers(newAnswers);
-                    }
-                  }
-                }}
-              />
-              {isCustomInputVisible ? (
-                <Input
-                  className='h-7 text-sm flex-1'
-                  placeholder='输入自定义答案...'
-                  value={currentCustomInput}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setCustomInputs(prev => ({ ...prev, [currentQuestionIndex]: value }));
-                    if (value.trim()) {
-                      setAnswers({ ...answers, [currentQuestionIndex]: `__custom__${value}` });
-                    } else {
-                      const newAnswers = { ...answers };
-                      delete newAnswers[currentQuestionIndex];
-                      setAnswers(newAnswers);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !currentCustomInput.trim()) {
-                      e.preventDefault();
-                    }
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <span className='text-sm font-medium'>其他答案</span>
-              )}
-            </label>
+              <XIcon className="size-3.5" />
+            </button>
           </div>
 
-        {/* 导航按钮 */}
-        <div className='flex items-center justify-between gap-2'>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-7'
-            onClick={handlePrev}
-            disabled={isFirstQuestion}
-          >
-            <ChevronLeftIcon className='size-4' />
-            上一题
-          </Button>
-
-          {/* 步骤进度 */}
-          <div className='flex items-center gap-1.5'>
-            <div className='flex items-center gap-1'>
-              {questions.map((_, idx) => (
+          {/* Step indicators */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              {questions.map((_, i) => (
                 <div
-                  key={idx}
+                  key={i}
                   className={cn(
-                    'size-1.5 rounded-full transition-colors',
-                    idx === currentQuestionIndex
-                      ? 'bg-blue-500'
-                      : answers[idx] !== undefined
-                        ? 'bg-green-500'
-                        : 'bg-muted-foreground/30'
+                    'h-2 rounded-full transition-all duration-200',
+                    i === currentIndex
+                      ? 'w-5 bg-blue-500'
+                      : answers[i] !== undefined || (answers[i] === '__custom__' && (customText[i] || '').trim())
+                        ? 'w-2 bg-green-400'
+                        : 'w-2 bg-muted-foreground/25',
                   )}
                 />
               ))}
             </div>
-            <span className='text-xs text-muted-foreground ml-1'>
-              {currentQuestionIndex + 1}/{totalQuestions}
+            <span className="text-[11px] text-muted-foreground/60 ml-auto tabular-nums">
+              {currentIndex + 1}/{total}
             </span>
           </div>
 
-          {!isLastQuestion ? (
+          {/* Question */}
+          <p className="text-sm font-medium leading-relaxed">{current.question}</p>
+
+          {/* Options */}
+          <div className="space-y-1">
+            {current.options.map((opt, optIdx) => (
+              <label
+                key={optIdx}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
+                  isOptionSelected(optIdx)
+                    ? isMulti
+                      ? 'bg-accent/70 ring-1 ring-accent'
+                      : 'bg-primary/5 ring-1 ring-primary/20'
+                    : 'hover:bg-accent/30',
+                )}
+              >
+                {/* Radio (single) or Checkbox (multi) indicator */}
+                <span
+                  className={cn(
+                    'flex size-4 shrink-0 items-center justify-center rounded-[2px] border transition-colors',
+                    isOptionSelected(optIdx)
+                      ? isMulti
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-primary bg-primary'
+                      : 'border-muted-foreground/30',
+                    !isMulti && 'rounded-full', // Radio = circle
+                  )}
+                >
+                  {isOptionSelected(optIdx) && (
+                    isMulti ? (
+                      <CheckCircleIcon className="size-3" />
+                    ) : (
+                      <span className="size-1.5 rounded-full bg-primary-foreground" />
+                    )
+                  )}
+                </span>
+                <span className="text-sm">{opt}</span>
+              </label>
+            ))}
+
+            {/* Custom answer (single-select only) */}
+            {!isMulti && (
+              <div className="space-y-1">
+                <label
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
+                    hasCustomAnswer
+                      ? 'bg-primary/5 ring-1 ring-primary/20'
+                      : 'hover:bg-accent/30',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors',
+                      hasCustomAnswer
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/30',
+                    )}
+                    onClick={hasCustomAnswer ? deselectCustom : selectCustom}
+                  >
+                    {hasCustomAnswer && <span className="size-1.5 rounded-full bg-primary-foreground" />}
+                  </span>
+                  <span className="text-sm">其他</span>
+                </label>
+                {hasCustomAnswer && (
+                  <div className="pl-10 pr-3 pb-1">
+                    <Input
+                      className="h-8 text-sm"
+                      placeholder="输入自定义答案..."
+                      value={currentCustom}
+                      onChange={(e) => handleCustomInput(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <div className="flex items-center justify-between gap-2 pt-1">
             <Button
-              variant='ghost'
-              size='sm'
-              className='h-7'
-              onClick={handleNext}
-              disabled={!currentAnswered}
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={goPrev}
+              disabled={isFirst}
             >
-              下一题
-              <ChevronRightIcon className='size-4' />
+              <ChevronLeftIcon className="size-3.5 mr-1" />
+              上一题
             </Button>
-          ) : (
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-7'
-              onClick={handleComplete}
-              disabled={!allAnswered}
-            >
-              <CheckCircleIcon className='size-3 mr-1' />
-              完成提交
-            </Button>
-          )}
+
+            {!isLast ? (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={goNext}
+                disabled={!isAnswered}
+              >
+                下一题
+                <ChevronRightIcon className="size-3.5 ml-1" />
+              </Button>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleComplete}
+                disabled={!allAnswered}
+              >
+                <CheckCircleIcon className="size-3.5 mr-1" />
+                完成提交
+              </Button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Cancel confirmation dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>确认取消？</DialogTitle>
+            <DialogDescription>
+              当前问题的回答将不会被提交，Agent 将收到拒绝回应。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCancelDialog(false)}
+            >
+              继续回答
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setShowCancelDialog(false);
+                onCancel();
+              }}
+            >
+              确认取消
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -800,11 +800,26 @@ export class AgentInboundHandler implements InboundEventHandler {
         // 持久化审批暂停状态（跨重启恢复）
         store.agentRunStore.pauseForApproval(conversationId, pendingApprovalRequests[0].approvalId)
 
-        // 将审批询问保存为 assistant 消息（供 Web UI 展示）
+        // 将审批询问保存为 assistant 消息（供 Web UI 展示 + collectPendingApprovals 检测）
+        // 包含文本说明和 tool-approval-request parts，使 Web UI 恢复时能正确显示审批面板
+        const toolApprovalParts = pendingApprovalRequests.map(req => {
+          const toolType = `tool-${req.toolName.replace(/\s+/g, '_').toLowerCase()}`
+          return {
+            type: toolType,
+            toolCallId: req.toolCallId,
+            toolName: req.toolName,
+            input: req.input,
+            state: 'approval-requested' as const,
+            approval: { id: req.approvalId },
+          } as unknown as UIMessage['parts'][number]
+        })
         const approvalAskMsg: UIMessage = {
           id: approvalAskMsgId,
           role: 'assistant',
-          parts: [{ type: 'text', text: approvalAskText }],
+          parts: [
+            { type: 'text', text: approvalAskText },
+            ...toolApprovalParts,
+          ],
         }
         store.messageStore.saveMessages(conversationId, [...uiMessagesForSave, approvalAskMsg])
 

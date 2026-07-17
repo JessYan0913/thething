@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@/lib/utils';
 import {
   CheckCircleIcon,
   TerminalIcon,
@@ -9,12 +8,15 @@ import {
   SearchIcon,
   EditIcon,
   WrenchIcon,
-  XIcon,
-  CheckSquareIcon,
-  SquareIcon,
+  XCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 
 export interface ApprovalRequest {
   approvalId: string;
@@ -32,121 +34,143 @@ interface ApprovalPanelProps {
   onDenyAll: (requests: ApprovalRequest[], reason?: string) => void;
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  bash: '执行命令',
-  write_file: '写入文件',
-  edit_file: '编辑文件',
-  read_file: '读取文件',
-  glob: '搜索文件',
-  grep: '搜索内容',
-  web_fetch: '网络搜索',
-};
-
-const TOOL_CONFIGS: Record<
+const TOOL_META: Record<
   string,
-  { icon: React.ComponentType<{ className?: string }>; label: string }
+  { icon: React.ComponentType<{ className?: string }>; label: string; color: string }
 > = {
-  bash: { icon: TerminalIcon, label: TOOL_LABELS.bash },
-  write_file: { icon: FileIcon, label: TOOL_LABELS.write_file },
-  edit_file: { icon: EditIcon, label: TOOL_LABELS.edit_file },
-  read_file: { icon: FileIcon, label: TOOL_LABELS.read_file },
-  glob: { icon: SearchIcon, label: TOOL_LABELS.glob },
-  grep: { icon: SearchIcon, label: TOOL_LABELS.grep },
-  web_fetch: { icon: SearchIcon, label: TOOL_LABELS.web_fetch },
+  bash:       { icon: TerminalIcon,  label: '命令',    color: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30' },
+  write_file: { icon: FileIcon,      label: '写入文件', color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/30' },
+  edit_file:  { icon: EditIcon,      label: '编辑文件', color: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/30' },
+  read_file:  { icon: FileIcon,      label: '读取文件', color: 'text-sky-600 bg-sky-50 dark:text-sky-400 dark:bg-sky-950/30' },
+  glob:       { icon: SearchIcon,    label: '搜索文件', color: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/30' },
+  grep:       { icon: SearchIcon,    label: '搜索内容', color: 'text-violet-600 bg-violet-50 dark:text-violet-400 dark:bg-violet-950/30' },
+  web_fetch:  { icon: SearchIcon,    label: '网络搜索', color: 'text-cyan-600 bg-cyan-50 dark:text-cyan-400 dark:bg-cyan-950/30' },
 };
 
-function getToolConfig(toolName: string) {
-  const name = toolName.replace('tool-', '').replace(/_/g, ' ');
-  return TOOL_CONFIGS[name] || { icon: WrenchIcon, label: name || '工具调用' };
+function getToolMeta(toolName: string) {
+  const name = toolName.replace('tool-', '').replace(/_/g, ' ').toLowerCase();
+  return TOOL_META[name] || { icon: WrenchIcon, label: name || '工具', color: 'text-gray-600 bg-gray-50 dark:text-gray-400 dark:bg-gray-950/30' };
+}
+
+function getSummary(name: string, toolInput: Record<string, unknown>): string {
+  if (name === 'bash') {
+    return String(toolInput.command || '');
+  }
+  if (name === 'edit_file' || name === 'write_file') {
+    return String(toolInput.filePath || toolInput.path || '');
+  }
+  if (name === 'read_file') {
+    return String(toolInput.file_path || toolInput.filePath || '');
+  }
+  if (name === 'glob' || name === 'grep') {
+    return String(toolInput.pattern || '');
+  }
+  if (toolInput.command) return String(toolInput.command);
+  if (toolInput.filePath) return String(toolInput.filePath);
+  if (toolInput.path) return String(toolInput.path);
+  if (toolInput.query) return String(toolInput.query);
+  if (toolInput.url) return String(toolInput.url);
+  return '';
 }
 
 function getAlwaysAllowLabel(requests: ApprovalRequest[]): string {
   if (requests.length === 0) return '以后自动允许此类操作';
 
-  const toolNames = new Set(requests.map(r => r.toolName.replace('tool-', '').replace(/ /g, '_').toLowerCase()));
+  const toolNames = new Set(
+    requests.map(r => r.toolName.replace('tool-', '').replace(/ /g, '_').toLowerCase()),
+  );
 
-  if (toolNames.size > 1) {
-    return '以后自动允许这些类型的操作';
-  }
+  if (toolNames.size > 1) return '以后自动允许这些类型的操作';
 
   const toolName = [...toolNames][0];
-
   if (toolName === 'bash') {
-    const firstRequest = requests[0];
-    const command = String(firstRequest.toolInput.command || '').trim();
-    const prefix = command.split(' ')[0];
+    const prefix = String(requests[0].toolInput.command || '').trim().split(' ')[0];
     if (prefix) return `以后自动允许 ${prefix} 命令`;
   }
 
-  const toolLabel = TOOL_LABELS[toolName];
-  if (toolLabel) return `以后自动允许${toolLabel}`;
-
-  return '以后自动允许此类操作';
+  return `以后自动允许${getToolMeta(toolName).label}`;
 }
 
-function getSummary(name: string, toolInput: Record<string, unknown>, label: string): string {
-  if (name === 'bash') {
-    const cmd = String(toolInput.command || '');
-    return cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
-  }
-  if (name === 'write file' || name === 'edit file') {
-    return String(toolInput.filePath || '未知文件');
-  }
-  if (name === 'read file') {
-    return String(toolInput.file_path || toolInput.filePath || '未知文件');
-  }
-  if (name === 'glob' || name === 'grep') {
-    return String(toolInput.pattern || '搜索');
-  }
-  return label;
-}
-
-function ApprovalItem({
+function ApprovalItemCard({
   request,
-  isSelected,
-  onToggleSelect,
   onApprove,
   onDeny,
 }: {
   request: ApprovalRequest;
-  isSelected: boolean;
-  onToggleSelect: () => void;
   onApprove: (approvalId: string) => void;
   onDeny: (approvalId: string) => void;
 }) {
-  const config = getToolConfig(request.toolName);
-  const Icon = config.icon;
-  const name = request.toolName.replace('tool-', '').replace(/_/g, ' ');
-  const summary = getSummary(name, request.toolInput, config.label);
+  const [expanded, setExpanded] = React.useState(false);
+  const meta = getToolMeta(request.toolName);
+  const Icon = meta.icon;
+  const name = request.toolName.replace('tool-', '').replace(/_/g, ' ').toLowerCase();
+  const summary = getSummary(name, request.toolInput);
 
   return (
-    <div className='flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors'>
-      <button
-        onClick={onToggleSelect}
-        className='shrink-0 h-5 w-5 flex items-center justify-center'
-      >
-        {isSelected ? (
-          <CheckSquareIcon className='size-4 text-blue-500' />
-        ) : (
-          <SquareIcon className='size-4 text-muted-foreground' />
-        )}
-      </button>
-      <Icon className='size-3.5 shrink-0 text-muted-foreground' />
-      <span className='text-xs text-muted-foreground'>{config.label}:</span>
-      <code className='text-xs font-mono truncate flex-1'>{summary}</code>
-      <div className='shrink-0 flex items-center gap-1'>
-        <button
-          className='h-5 px-1.5 text-xs text-muted-foreground hover:text-red-500 transition-colors'
-          onClick={() => onDeny(request.approvalId)}
-        >
-          <XIcon className='size-3' />
-        </button>
-        <button
-          className='h-5 px-1.5 text-xs text-muted-foreground hover:text-green-500 transition-colors'
-          onClick={() => onApprove(request.approvalId)}
-        >
-          <CheckCircleIcon className='size-3' />
-        </button>
+    <div className="rounded-lg border bg-card transition-colors hover:border-primary/20">
+      {/* Main row */}
+      <div className="flex items-start gap-3 p-3">
+        {/* Tool badge */}
+        <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-md', meta.color)}>
+          <Icon className="size-4" />
+        </div>
+
+        {/* Info */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] uppercase tracking-wider">
+              {meta.label}
+            </Badge>
+          </div>
+          {summary ? (
+            <div className="flex items-start gap-1">
+              <code className="block w-full truncate text-xs font-mono text-foreground/80 leading-relaxed">
+                {summary}
+              </code>
+              {summary.length > 60 && (
+                <button
+                  onClick={() => setExpanded(!expanded)}
+                  className="shrink-0 mt-px text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {expanded
+                    ? <ChevronDownIcon className="size-3" />
+                    : <ChevronRightIcon className="size-3" />
+                  }
+                </button>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">(无参数)</span>
+          )}
+          {/* Expanded detail */}
+          {expanded && summary.length > 60 && (
+            <pre className="mt-2 p-2 rounded bg-muted/50 text-[11px] font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+              {summary}
+            </pre>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="shrink-0 flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-950/20"
+            onClick={() => onDeny(request.approvalId)}
+          >
+            <XCircleIcon className="size-3.5 mr-1" />
+            拒绝
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+            onClick={() => onApprove(request.approvalId)}
+          >
+            <CheckCircleIcon className="size-3.5 mr-1" />
+            批准
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -160,44 +184,9 @@ export function ApprovalPanel({
   onDeny,
   onDenyAll,
 }: ApprovalPanelProps) {
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [alwaysAllow, setAlwaysAllow] = React.useState(false);
 
-  React.useEffect(() => {
-    setSelectedIds(new Set(requests.map(r => r.approvalId)));
-  }, [requests]);
-
-  const toggleSelect = React.useCallback((approvalId: string) => {
-    setSelectedIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(approvalId)) {
-        newSet.delete(approvalId);
-      } else {
-        newSet.add(approvalId);
-      }
-      return newSet;
-    });
-  }, []);
-
-  const selectedRequests = requests.filter(r => selectedIds.has(r.approvalId));
-
   if (!isOpen || requests.length === 0) return null;
-
-  const handleApproveSelected = () => {
-    if (selectedRequests.length === requests.length) {
-      // 全选时批量确认
-      onApproveAll(selectedRequests, { alwaysAllow });
-    } else {
-      // 逐个确认选中的
-      for (const req of selectedRequests) {
-        onApprove(req.approvalId, { alwaysAllow });
-      }
-    }
-  };
-
-  const handleDenyAll = () => {
-    onDenyAll(requests, '用户拒绝所有操作');
-  };
 
   const handleApproveSingle = (approvalId: string) => {
     onApprove(approvalId, { alwaysAllow });
@@ -207,74 +196,85 @@ export function ApprovalPanel({
     onDeny(approvalId, '用户拒绝此操作');
   };
 
+  const handleApproveAll = () => {
+    onApproveAll(requests, { alwaysAllow });
+  };
+
+  const handleDenyAll = () => {
+    onDenyAll(requests, '用户拒绝所有操作');
+  };
+
   return (
-    <div className='shrink-0 bg-background/95 backdrop-blur'>
-      <div className='px-4 py-3'>
-        {/* 标题行 */}
-        <div className='flex items-center justify-between gap-2 mb-2'>
-          <div className='flex items-center gap-2'>
-            <WrenchIcon className='size-4 text-blue-500' />
-            <span className='text-sm font-medium'>
-              待审批操作 ({requests.length})
-            </span>
+    <div className="shrink-0 bg-background/95 backdrop-blur">
+      <div className="px-4 py-3 space-y-3">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex size-6 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+              <WrenchIcon className="size-3.5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <span className="text-sm font-semibold">待审批操作</span>
+            <Badge variant="secondary" className="h-5 px-1.5 text-[11px] font-medium tabular-nums">
+              {requests.length}
+            </Badge>
           </div>
           <button
-            className='shrink-0 h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors'
+            className="size-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent"
             onClick={handleDenyAll}
+            title="全部拒绝"
           >
-            <XIcon className='size-3' />
+            <XCircleIcon className="size-3.5" />
           </button>
         </div>
 
-        {/* 操作列表 */}
-        <div className='max-h-48 overflow-y-auto mb-3 rounded-md bg-muted/30 py-1'>
+        {/* Item list */}
+        <div className="space-y-2 max-h-[320px] overflow-y-auto">
           {requests.map((request) => (
-            <ApprovalItem
+            <ApprovalItemCard
               key={request.approvalId}
               request={request}
-              isSelected={selectedIds.has(request.approvalId)}
-              onToggleSelect={() => toggleSelect(request.approvalId)}
               onApprove={handleApproveSingle}
               onDeny={handleDenySingle}
             />
           ))}
         </div>
 
-        {/* Always allow 复选框 */}
-        <div className='flex items-center gap-2 mb-3'>
-          <Checkbox
-            id='always-allow-batch'
+        {/* Always allow */}
+        <div className="flex items-center gap-2.5">
+          <Switch
+            id="always-allow-batch"
             checked={alwaysAllow}
-            onCheckedChange={(checked) => setAlwaysAllow(checked === true)}
+            onCheckedChange={setAlwaysAllow}
           />
           <label
-            htmlFor='always-allow-batch'
-            className='text-xs text-muted-foreground cursor-pointer select-none'
+            htmlFor="always-allow-batch"
+            className="text-xs text-muted-foreground cursor-pointer select-none leading-tight"
           >
             {getAlwaysAllowLabel(requests)}
           </label>
         </div>
 
-        {/* 批量操作按钮 */}
-        <div className='flex items-center justify-between gap-2'>
+        <Separator />
+
+        {/* Batch actions */}
+        <div className="flex items-center justify-between gap-2">
           <Button
-            variant='ghost'
-            size='sm'
-            className='h-7'
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs text-muted-foreground"
             onClick={handleDenyAll}
           >
-            <XIcon className='size-3 mr-1' />
+            <XCircleIcon className="size-3.5 mr-1" />
             全部拒绝
           </Button>
           <Button
-            variant='ghost'
-            size='sm'
-            className='h-7'
-            onClick={handleApproveSelected}
-            disabled={selectedRequests.length === 0}
+            variant="default"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleApproveAll}
           >
-            <CheckCircleIcon className='size-3 mr-1' />
-            执行选中 ({selectedRequests.length})
+            <CheckCircleIcon className="size-3.5 mr-1" />
+            全部批准
           </Button>
         </div>
       </div>
