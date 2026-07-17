@@ -38,11 +38,6 @@ import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/ap
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
-import { AppRenderer, type AppRendererProps, type AppRendererHandle } from '@mcp-ui/client';
-import type { McpUiResourceCsp, McpUiMessageResult, McpUiOpenLinkResult, McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
-// CallToolResult 从 AppRendererProps 推导，避免在 app 包直接依赖 @modelcontextprotocol/sdk
-type CallToolResult = Awaited<ReturnType<NonNullable<AppRendererProps['onCallTool']>>>;
-import type { MCPAppMetadata, MCPAppResource } from '@the-thing/core';
 import type { CSSProperties } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon } from 'lucide-react';
@@ -52,9 +47,6 @@ import type { ApprovalMode } from '@/components/chat-selectors';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
 import { linkifyFilePaths } from '@/lib/linkify-file-paths';
-import { McpWidget } from '@/components/mcp-widget';
-import { McpAppDynamicRenderer } from '@/components/mcp-app-dynamic-renderer';
-import useSWR from 'swr';
 
 import { TShapeBlink } from '@/components/TShapeBlink';
 import { useRouter } from 'next/navigation';
@@ -64,141 +56,6 @@ import { useTranslation } from 'react-i18next';
 import { useChatPreferences } from '@/hooks/useChatPreferences';
 
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
-
-// MCP Apps 资源加载函数
-const loadResource = async (app: MCPAppMetadata): Promise<MCPAppResource> => {
-  const response = await fetch('/api/mcp-app-host', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      action: 'read-resource', 
-      uri: app.resourceUri 
-    }),
-  });
-  
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Failed to load MCP App resource: ${response.status} ${text}`);
-  }
-  
-  return response.json() as Promise<MCPAppResource>;
-};
-
-// MCP App 宿主信息（模块层常量，避免 AppRenderer 内部 effect 因内联对象重建 bridge 导致死循环）
-const HOST_INFO = { name: 'the-thing', version: '1.0.0' } as const;
-
-// MCP App 宿主上下文构建器 — 生成规范要求的完整 HostContext
-function buildHostContext(theme: string | undefined): McpUiHostContext {
-  return {
-    displayMode: 'inline',
-    theme: (theme === 'dark' ? 'dark' : 'light') as McpUiHostContext['theme'],
-    platform: 'web',
-    locale: navigator.language,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    userAgent: 'the-thing/1.0.0',
-    deviceCapabilities: {
-      hover: matchMedia('(hover: hover)').matches,
-      touch: 'ontouchstart' in window,
-    },
-    safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
-    availableDisplayModes: ['inline'],
-  };
-}
-
-// MCP App 槽位组件：预取资源 HTML 后交给 @mcp-ui/client AppRenderer 渲染。
-// 实现完整的 MCP Apps 规范：
-//  - HostContext: 13 字段全量（主题变量 + deviceCapabilities + safeAreaInsets 等）
-//  - CSP: 从 resource.meta.csp 读取并通过 sandbox.csp 透传给 sandbox proxy
-//  - 双 iframe 异源: 通过 blob URL 实现 origin: null 隔离
-//  - 尺寸管理: ResizeObserver 跟踪容器尺寸变化
-//  - 主题通知: theme 变化时更新 hostContext
-//  - update-model-context: 通过 onMessage 回调保留上下文注入通道
-//  - 流式 input: 通过 toolInput prop 传递，AppRenderer 自动处理 serialized key 追踪
-type McpAppSlotProps = {
-  resourceUri: string;
-  toolName: string;
-  toolInput?: Record<string, unknown>;
-  toolResult?: Record<string, unknown>;
-  loadResource: (app: MCPAppMetadata) => Promise<MCPAppResource>;
-  handlers: Pick<AppRendererProps, 'onCallTool' | 'onOpenLink' | 'onMessage' | 'onError'>;
-  onModelContext?: (data: string) => void;
-};
-
-function McpAppSlot({
-  resourceUri,
-  toolName,
-  toolInput,
-  toolResult,
-  loadResource,
-  handlers,
-  onModelContext,
-}: McpAppSlotProps) {
-  const [resource, setResource] = useState<MCPAppResource | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<AppRendererHandle>(null);
-
-  useEffect(() => {
-    let alive = true;
-    loadResource({ resourceUri, mimeType: 'text/html;profile=mcp-app' })
-      .then(res => { if (alive) setResource(res); })
-      .catch(e => { if (alive) setError(e instanceof Error ? e : new Error(String(e))); });
-    return () => { alive = false; };
-  }, [resourceUri, loadResource]);
-
-  // Hooks 必须在所有条件返回之前调用（React Rules of Hooks）
-  const csp = useMemo(() => (resource?.meta as { csp?: McpUiResourceCsp } | undefined)?.csp, [resource]);
-  const hostContext = useMemo(() => buildHostContext(
-    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') ? 'dark' : 'light' : 'light'
-  ), []);
-  const sandbox = useMemo(() => ({
-    url: new URL('/mcp-app-sandbox', window.location.origin),
-    ...(csp ? { csp } : {}),
-  }), [csp]);
-  const onMessage = useCallback((params: unknown, extra: unknown): ReturnType<NonNullable<AppRendererProps['onMessage']>> => {
-    if (onModelContext) {
-      const p = params as { content?: Array<{ type: string; text?: string }> } | undefined;
-      const text = (p?.content ?? [])
-        .filter((c) => c.type === 'text')
-        .map((c) => c.text)
-        .join('\n');
-      if (text) onModelContext(text);
-    }
-    return (handlers.onMessage!(params as Parameters<NonNullable<AppRendererProps['onMessage']>>[0], extra as any) ?? Promise.resolve({} as McpUiMessageResult));
-  }, [onModelContext, handlers.onMessage]);
-  const onError = useCallback((e: Error) => console.error('[MCP App]', e), []);
-
-  if (error) {
-    return <div className="flex items-center gap-2 p-4 text-sm text-destructive"><span>Error: {error.message}</span></div>;
-  }
-  if (!resource) {
-    return (
-      <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-        <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-        Loading MCP App...
-      </div>
-    );
-  }
-
-  return (
-    <div ref={containerRef} className="h-80 w-full overflow-hidden rounded-lg border">
-      <AppRenderer
-        ref={appRef}
-        toolName={toolName}
-        html={resource.html}
-        sandbox={sandbox}
-        hostInfo={HOST_INFO}
-        hostContext={hostContext}
-        toolInput={toolInput}
-        toolResult={toolResult as CallToolResult}
-        onCallTool={handlers.onCallTool}
-        onOpenLink={handlers.onOpenLink}
-        onMessage={onMessage}
-        onError={onError}
-      />
-    </div>
-  );
-}
 
 const TODO_TOOL_TYPES = new Set([
   'tool-todo_create',

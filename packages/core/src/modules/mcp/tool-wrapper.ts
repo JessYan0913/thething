@@ -6,7 +6,6 @@
 // ============================================================
 
 import type { Tool } from 'ai'
-import { readMCPAppResource, type MCPClient } from '@ai-sdk/mcp'
 import {
   processToolOutput,
 } from '../../modules/budget/tool-output-manager'
@@ -22,16 +21,6 @@ export interface McpToolWrapperOptions {
   contentReplacementState: ContentReplacementState
   /** per-session 工具输出配置（来自 SessionState.toolOutputConfig） */
   toolOutputConfig?: ToolOutputConfig
-}
-
-/**
- * MCP App 工具包装配置（扩展自 McpToolWrapperOptions）
- */
-export interface McpAppToolWrapperOptions extends McpToolWrapperOptions {
-  /** MCP App 资源 URI（ui:// scheme） */
-  resourceUri: string
-  /** MCP 客户端实例（用于预加载资源） */
-  client: MCPClient
 }
 
 /**
@@ -101,68 +90,6 @@ export function wrapMcpToolsWithOutputHandler(
   }
 
   return wrapped
-}
-
-/**
- * 包装 MCP App 工具，添加输出处理和资源预加载
- *
- * MCP App 工具需要在调用后预加载 UI 资源，避免 MCP 客户端关闭后无法加载。
- * 这是解决 MCP App 资源加载时序问题的关键函数。
- */
-export function wrapMcpAppTool(
-  tool: Tool,
-  toolName: string,
-  options: McpAppToolWrapperOptions
-): Tool {
-  const originalExecute = tool.execute
-
-  if (!originalExecute) {
-    return tool
-  }
-
-  // 创建包装后的工具
-  return {
-    ...tool,
-    execute: async (input: unknown, execOptions?: any) => {
-      // 1. 调用原始工具
-      const result = await originalExecute(input, execOptions)
-
-      // 2. 预加载 MCP App 资源（后台执行，不阻塞返回）
-      //    这确保在 MCP 客户端关闭前，资源已经被缓存
-      readMCPAppResource({
-        client: options.client,
-        uri: options.resourceUri,
-      }).then(() => {
-        logger.debug('MCP App', `Pre-loaded resource: ${options.resourceUri}`)
-      }).catch((err) => {
-        logger.warn('MCP App', `Pre-load resource failed for ${options.resourceUri}: ${err.message}`)
-      })
-
-      // 3. 处理输出（与普通 MCP 工具相同）
-      const textContent = extractMcpText(result)
-      if (textContent === null) {
-        return result
-      }
-
-      const toolUseId = `mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      const processed = await processToolOutput(
-        textContent,
-        toolName,
-        toolUseId,
-        {
-          sessionId: options.sessionId,
-          dataDir: options.dataDir,
-          state: options.contentReplacementState,
-          config: options.toolOutputConfig,
-        }
-      )
-
-      return {
-        content: [{ type: 'text', text: processed.content }],
-        isError: (result as any)?.isError ?? false,
-      }
-    },
-  }
 }
 
 /**
