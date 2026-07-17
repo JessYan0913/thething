@@ -1119,7 +1119,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
       setMessages(messages.slice(0, lastUserMessageIndex));
 
-      sendMessage(userMessageToResend);
+      // Create a new message with a new ID to avoid duplicate keys
+      sendMessage({
+        ...userMessageToResend,
+        id: nanoid(),
+      });
     },
     [messages, setMessages, sendMessage],
   );
@@ -1150,6 +1154,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     // 更新被编辑消息的文本内容
     const updatedMessage = {
       ...originalMessage,
+      id: nanoid(), // Generate new ID to avoid duplicate keys
       parts: originalMessage.parts.map(p =>
         p.type === 'text' ? { ...p, text: editingText } : p
       ),
@@ -1158,7 +1163,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     // 设置截断后的消息 + 更新后的消息
     setMessages([...truncated, updatedMessage]);
 
-    // 发送 — 相同 ID 触发后端 re-send 截断逻辑
+    // 发送 — 使用新 ID 避免重复
     sendMessage(updatedMessage);
 
     setEditingMessageId(null);
@@ -1389,7 +1394,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
                             const toolPart = part as ToolUIPart;
-                            
+
                             // MCP App 工具渲染：仅当 toolMetadata 包含 app 元数据时渲染
                             if (isToolUIPart(part)) {
                               const toolMeta = part.toolMetadata as Record<string, unknown> | undefined;
@@ -1421,52 +1426,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               }
                             }
 
-                          // 动态检测 MCP App：对于 dynamic-tool 类型，如果 toolMetadata 不包含 app 信息，
-                          // 则从 MCP 服务器动态获取 _meta.ui 来判断是否为 MCP App
-                          if (part.type === 'dynamic-tool') {
-                            const dynamicToolPart = part as DynamicToolUIPart;
-                            const fullToolName = dynamicToolPart.toolName || '';
-
-                            // 提取服务器名称（从 mcp__serverName__toolName 格式）
-                            const extractServerName = (name: string): string | null => {
-                              if (!name.startsWith('mcp__')) return null;
-                              const parts = name.split('__');
-                              return parts.length >= 3 ? parts[1] : null;
-                            };
-
-                            const serverName = extractServerName(fullToolName);
-
-                            // 如果是 MCP 工具且没有 toolMetadata.app，尝试动态渲染
-                            if (serverName) {
-                              const toolMeta = part.toolMetadata as Record<string, unknown> | undefined;
-                              const hasAppMeta = toolMeta?.app != null;
-
-                              if (!hasAppMeta) {
-                                // 使用动态渲染器
-                                const renderer = (
-                                  <McpAppDynamicRenderer
-                                    key={`${message.id}-${index}`}
-                                    messageId={message.id}
-                                    partIndex={index}
-                                    toolPart={toolPart}
-                                    toolName={fullToolName}
-                                    serverName={serverName}
-                                    onSendMessage={(text) => {
-                                      append({ role: 'user', parts: [{ type: 'text', text }] });
-                                    }}
-                                  />
-                                );
-
-                                // 如果动态渲染器返回 null，继续正常渲染
-                                // 否则使用 MCP App Widget
-                                if (renderer) return renderer;
-                              }
+                            if (TODO_TOOL_TYPES.has(toolPart.type)) {
+                              return null;
                             }
-                          }
-
-                          if (TODO_TOOL_TYPES.has(toolPart.type)) {
-                            return null;
-                          }
 
                           // 处理 approval-requested 状态 - 显示等待审批的 UI
                           if (toolPart.state === 'approval-requested') {

@@ -71,7 +71,13 @@ export async function POST(request: Request) {
 
     // Resolve project context: if conversation has a project_id, use cached project context
     let context = defaultContext;
-    const conversation = store.conversationStore.getConversation(conversationId);
+    let conversation = store.conversationStore.getConversation(conversationId);
+
+    // Ensure conversation exists (create if it's a new conversation)
+    if (!conversation) {
+      conversation = store.conversationStore.createConversation(conversationId);
+      console.log(`[Chat API] Created new conversation: ${conversationId}`);
+    }
     if (conversation?.projectId) {
       const project = store.projectStore.getProject(conversation.projectId);
       if (project) {
