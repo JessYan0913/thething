@@ -596,7 +596,7 @@ const ConversationItem = ({
   }, [editTitle, conversation.title, onRename]);
 
   const handleEditKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
         e.preventDefault();
         handleSaveEdit();

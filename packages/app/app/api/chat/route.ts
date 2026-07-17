@@ -149,6 +149,7 @@ export async function POST(request: Request) {
       modules: enableConnectors === false ? { connectors: false } : undefined,
       customInstructions: finalInstructions,
       approvalMode,
+      writerRef,
       agentRunStore: store.agentRunStore,
       conversationMeta: {
         isNewConversation: isFirstMessage,
@@ -230,13 +231,14 @@ export async function POST(request: Request) {
     registerAbortController(conversationId, abortController);
 
     // onEnd 回调：流结束时保存消息（成功时保存，失败/0 chunks 时跳过）
-    const onEndHandler = async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+    // 工厂形式：每次 createAgentUIStream 的输入消息数可能不同（context-length 重试会压缩消息），
+    // 切片基准必须与实际传入的消息数一致，否则新增 assistant 消息会被切掉导致不保存。
+    const createOnEnd = (inputMessageCount: number) => async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
       try {
         unregisterAbortController(conversationId);
         store.agentRunStore.completeRun(conversationId);
-        store.agentRunStore.clearChunks(conversationId);
 
-        const newAssistantMessages = completedMessages.slice(llmMessages.length);
+        const newAssistantMessages = completedMessages.slice(inputMessageCount);
         const hasValidNewMessages = newAssistantMessages.some(
           (m) => m.role === 'assistant' && m.parts && m.parts.length > 0,
         );
@@ -293,7 +295,7 @@ export async function POST(request: Request) {
                   uiMessages: finalMessages,
                   abortSignal: abortController.signal,
                   sendReasoning: true,
-                  onEnd: onEndHandler,
+                  onEnd: createOnEnd(finalMessages.length),
                 });
               } catch (streamErr) {
                 // context_length_error：压缩消息后重试
@@ -317,7 +319,7 @@ export async function POST(request: Request) {
                       uiMessages: retryResult.messages,
                       abortSignal: abortController.signal,
                       sendReasoning: true,
-                      onEnd: onEndHandler,
+                      onEnd: createOnEnd(retryResult.messages.length),
                     });
                   } catch (retryErr) {
                     console.error('[Chat API] Reactive retry failed:', retryErr);
@@ -337,8 +339,6 @@ export async function POST(request: Request) {
                   if (done) break;
                   const serialized = JSON.stringify(value);
                   controller.enqueue(serialized);
-                  // 持久化 chunk 用于跨重启恢复
-                  store.agentRunStore.addChunk(conversationId, agentChunkCount, serialized);
                   agentChunkCount++;
                 }
               } catch (agentErr) {
@@ -412,26 +412,3 @@ export async function POST(request: Request) {
   }
 }
 
-// PATCH: Save messages
-export async function PATCH(request: Request) {
-  try {
-    const body = await request.json() as { conversationId: string; messages: UIMessage[] };
-    if (!body.conversationId || !body.messages) {
-      return NextResponse.json({ error: 'Missing conversationId or messages' }, { status: 400 });
-    }
-    // 过滤掉空 parts 的 assistant 消息（流返回 0 chunks 时前端可能产生空消息）
-    const filteredMessages = body.messages.filter((m) => {
-      if (m.role === 'assistant' && (!m.parts || m.parts.length === 0)) {
-        console.warn(`[Chat API PATCH] Filtering out empty assistant message: ${m.id}`);
-        return false;
-      }
-      return true;
-    });
-    const rt = await getServerRuntime();
-    rt.dataStore.messageStore.saveMessages(body.conversationId, filteredMessages);
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('[Chat API] PATCH error:', error);
-    return NextResponse.json({ error: 'Failed to save messages' }, { status: 500 });
-  }
-}

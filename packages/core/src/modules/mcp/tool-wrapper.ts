@@ -67,10 +67,21 @@ export function wrapMcpToolWithOutputHandler(
         }
       )
 
-      return {
-        content: [{ type: 'text', text: processed.content }],
-        isError: (result as any)?.isError ?? false,
-      }
+      // 只替换 text part，保留 structuredContent、image/resource 等非文本内容和扩展字段
+      const obj = result as Record<string, unknown>
+      let replaced = false
+      const newContent = (obj.content as unknown[]).flatMap((part) => {
+        const p = part as Record<string, unknown>
+        if (p?.type === 'text') {
+          // 多个 text part 已被 extractMcpText 合并，处理结果放入第一个位置
+          if (replaced) return []
+          replaced = true
+          return [{ ...p, text: processed.content }]
+        }
+        return [part]
+      })
+
+      return { ...obj, content: newContent }
     },
   }
 }

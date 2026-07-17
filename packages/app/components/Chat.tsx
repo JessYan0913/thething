@@ -39,11 +39,12 @@ import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel'
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties } from 'react';
-import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart } from 'ai';
+import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
+import { McpAppToolPart } from '@/components/mcp-app-tool-part';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
 import { linkifyFilePaths } from '@/lib/linkify-file-paths';
@@ -51,7 +52,7 @@ import { linkifyFilePaths } from '@/lib/linkify-file-paths';
 import { TShapeBlink } from '@/components/TShapeBlink';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatPreferences } from '@/hooks/useChatPreferences';
 
@@ -210,6 +211,72 @@ function AttachmentPreview() {
 export function getStoredConversationId(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(CONVERSATION_ID_KEY);
+}
+
+type PendingQuestionRequest = {
+  approvalId: string;
+  toolCallId: string;
+  questions: Array<{
+    question: string;
+    header: string;
+    options: string[];
+    multiSelect?: boolean;
+  }>;
+};
+
+// 从消息历史中收集待审批请求（消息驱动恢复）：
+// 服务端 onEnd 会把含 approval-requested part 的 assistant 消息持久化，
+// 刷新/重启后据此重建 ApprovalPanel / 问题面板，无需额外的挂起状态存储。
+function collectPendingApprovals(messages: UIMessage[]): {
+  approvals: ApprovalRequest[];
+  question: PendingQuestionRequest | null;
+} {
+  const approvals: ApprovalRequest[] = [];
+  let question: PendingQuestionRequest | null = null;
+
+  const lastMsg = messages.at(-1);
+  if (!lastMsg || lastMsg.role !== 'assistant') return { approvals, question };
+
+  const seenApprovalIds = new Set<string>();
+  for (const part of lastMsg.parts) {
+    const isToolPart = part.type.startsWith('tool-') || part.type === 'dynamic-tool';
+    if (!isToolPart || !('toolCallId' in part)) continue;
+    if ((part as { state?: string }).state !== 'approval-requested') continue;
+
+    const toolPart = part as unknown as {
+      toolCallId: string;
+      toolName?: string;
+      input?: Record<string, unknown>;
+      approval?: { id: string };
+      type: string;
+    };
+    const toolName = toolPart.type.startsWith('tool-')
+      ? toolPart.type.replace('tool-', '').replace(/_/g, ' ')
+      : toolPart.toolName || 'unknown';
+    const approvalId = toolPart.approval?.id;
+    if (!approvalId || seenApprovalIds.has(approvalId)) continue;
+    seenApprovalIds.add(approvalId);
+
+    const toolInput = toolPart.input || {};
+    if (toolName === 'ask user question') {
+      if (!question) {
+        question = {
+          approvalId,
+          toolCallId: toolPart.toolCallId,
+          questions: (toolInput.questions as PendingQuestionRequest['questions']) || [],
+        };
+      }
+    } else {
+      approvals.push({
+        approvalId,
+        toolCallId: toolPart.toolCallId,
+        toolName,
+        toolInput,
+      });
+    }
+  }
+
+  return { approvals, question };
 }
 
 // 跟踪原始 chunk 数量的传输层
@@ -565,7 +632,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const lastProcessedPartCountRef = useRef(0);
   const pendingAutoApprovalRef = useRef(false);
 
-  const { messages, setMessages, sendMessage, status, stop, error, addToolApprovalResponse } = useChat({
+  const { messages, setMessages, sendMessage, regenerate, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId || 'pending',
     transport: transport as any,
     resume: !!conversationId,
@@ -650,7 +717,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               if (sessionApprovedScopesRef.current.has(scope) && !autoApprovedIdsRef.current.has(approvalId)) {
                 autoApprovedIdsRef.current.add(approvalId);
                 pendingAutoApprovalRef.current = true;
-                addToolApprovalResponse({ id: approvalId, approved: true }).catch(err => console.error('[Chat] Auto-approve error:', err));
+                Promise.resolve(addToolApprovalResponse({ id: approvalId, approved: true })).catch((err: unknown) => console.error('[Chat] Auto-approve error:', err));
               } else {
                 pendingApprovals.push({
                   approvalId,
@@ -695,29 +762,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
              lastAssistantMessageIsCompleteWithToolCalls({ messages });
     },
     onFinish: async ({ messages: finishedMessages, isError, isDisconnect }) => {
-      // 流失败/断连时不保存，避免空 assistant 消息污染 store
+      // 消息持久化由服务端流的 onEnd 统一负责（唯一写入权威），前端不再回写
       if (isError || isDisconnect) {
-        console.warn(`[Chat] Stream failed (error=${isError}, disconnect=${isDisconnect}), skipping save`);
+        console.warn(`[Chat] Stream failed (error=${isError}, disconnect=${isDisconnect})`);
         return;
-      }
-
-      const endpoint = apiEndpoint || '/api/chat';
-      try {
-        // 过滤空 assistant 消息（防御性检查）
-        const validMessages = finishedMessages.filter(
-          (m) => !(m.role === 'assistant' && (!m.parts || m.parts.length === 0)),
-        );
-
-        const res = await fetch(endpoint, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId, messages: validMessages }),
-        });
-        if (!res.ok) {
-          console.error('[Chat] Failed to save messages');
-        }
-      } catch (err) {
-        console.error('[Chat] Error saving messages:', err);
       }
 
       onTurnFinish?.();
@@ -762,34 +810,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     },
   });
 
-  // MCP Apps 处理器（需要在组件内定义以访问 sendMessage）
-  // F15: 存储 MCP App 上下文更新的 ref（注：AppRenderer 暂未提供 updateModelContext 通道）
-  const modelContextRef = useRef<string | null>(null);
-
-  const mcpAppHandlers = useMemo<Omit<AppRendererProps, 'client' | 'toolName' | 'sandbox'>>(() => ({
-    onCallTool: (params) =>
-      fetch('/api/mcp-app-host', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'call-tool', ...params }),
-      }).then(response => response.json() as Promise<CallToolResult>),
-    onOpenLink: ({ url }) => {
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return Promise.resolve({} as McpUiOpenLinkResult);
-    },
-    onMessage: (params) => {
-      // 将 MCP App 发来的消息转发给 agent，触发 agent 回复
-      const content = (params?.content ?? [])
-        .filter(c => c.type === 'text')
-        .map(c => c.text)
-        .join('\n');
-      if (content) {
-        sendMessage({ text: content });
-      }
-      return Promise.resolve({} as McpUiMessageResult);
-    },
-    onError: (e) => console.error('[MCP App]', e),
-  }), [sendMessage]);
+  // MCP App 发来的消息转发给 agent，触发 agent 回复
+  const handleMcpAppMessage = useCallback((text: string) => {
+    sendMessage({ text });
+  }, [sendMessage]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -834,10 +858,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     // 立即从审批列表中移除该项
     setApprovalRequests(prev => prev.filter(r => r.approvalId !== approvalId));
 
-    addToolApprovalResponse({
+    Promise.resolve(addToolApprovalResponse({
       id: approvalId,
       approved: true,
-    }).catch(err => console.error('[Chat] addToolApprovalResponse error:', err));
+    })).catch((err: unknown) => console.error('[Chat] addToolApprovalResponse error:', err));
 
     // 持久化规则（跨会话生效）
     if (options?.alwaysAllow && request) {
@@ -855,10 +879,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       const scope = computeApprovalScope(req.toolName, req.toolInput);
       sessionApprovedScopesRef.current.add(scope);
 
-      addToolApprovalResponse({
+      Promise.resolve(addToolApprovalResponse({
         id: req.approvalId,
         approved: true,
-      }).catch(err => console.error('[Chat] addToolApprovalResponse error:', err));
+      })).catch((err: unknown) => console.error('[Chat] addToolApprovalResponse error:', err));
 
       if (options?.alwaysAllow) {
         saveAlwaysAllowRule(req.toolName, req.toolInput);
@@ -921,6 +945,20 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         if (!cancelled && data.messages && data.messages.length > 0) {
           initialMessageCountRef.current = data.messages.length;
           setMessages(data.messages as UIMessage[]);
+
+          // 刷新/重启后从消息历史重建待审批 UI
+          const { approvals, question } = collectPendingApprovals(data.messages as UIMessage[]);
+          if (approvals.length > 0) {
+            setApprovalRequests(approvals);
+          }
+          if (question) {
+            setQuestionPanel(prev => prev?.isOpen ? prev : {
+              isOpen: true,
+              approvalId: question.approvalId,
+              toolCallId: question.toolCallId,
+              questions: question.questions,
+            });
+          }
         } else {
           initialMessageCountRef.current = 0;
         }
@@ -1090,13 +1128,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           // 创建失败
         }
       }
-      // F15: 在发送用户消息前注入 MCP App 上下文
-      let finalText = text;
-      if (modelContextRef.current) {
-        finalText = `[MCP App context: ${modelContextRef.current}]\n\n${text}`;
-        modelContextRef.current = null; // 注入后清空，避免重复
-      }
-      sendMessage({ text: finalText, files: files.length > 0 ? files : undefined });
+      sendMessage({ text, files: files.length > 0 ? files : undefined });
     },
     [sendMessage, handleAgentChange, handleModelChange, handleApprovalModeChange],
   );
@@ -1105,27 +1137,16 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     navigator.clipboard.writeText(content);
   }, []);
 
+  // 使用 SDK 内置 regenerate：保留原用户消息 id 并截断其后所有消息。
+  // 服务端（route.ts）按 message.id 匹配截断点，换新 id 重发会导致
+  // 服务端不截断旧轮次，刷新后历史出现重复消息与错乱。
   const handleRegenerate = useCallback(
-    (messageIndex: number) => {
-      const lastUserMessageIndex = messages.findLastIndex(
-        (m, idx) => m.role === 'user' && idx < messageIndex,
+    (messageId: string) => {
+      Promise.resolve(regenerate({ messageId })).catch((err: unknown) =>
+        console.error('[Chat] Regenerate error:', err),
       );
-
-      if (lastUserMessageIndex === -1) {
-        return;
-      }
-
-      const userMessageToResend = messages[lastUserMessageIndex];
-
-      setMessages(messages.slice(0, lastUserMessageIndex));
-
-      // Create a new message with a new ID to avoid duplicate keys
-      sendMessage({
-        ...userMessageToResend,
-        id: nanoid(),
-      });
     },
-    [messages, setMessages, sendMessage],
+    [regenerate],
   );
 
   const handleEditStart = useCallback((messageId: string, currentText: string, attachments?: Array<{ type: 'file'; mediaType?: string; url: string; filename?: string }>) => {
@@ -1151,19 +1172,18 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     // 截断：保留被编辑消息之前的所有消息
     const truncated = messages.slice(0, messageIndex);
 
-    // 更新被编辑消息的文本内容
+    // 更新被编辑消息的文本内容。保留原 id：服务端按 id 匹配截断点，
+    // 换新 id 会导致旧轮次不被截断、历史错乱
     const updatedMessage = {
       ...originalMessage,
-      id: nanoid(), // Generate new ID to avoid duplicate keys
       parts: originalMessage.parts.map(p =>
         p.type === 'text' ? { ...p, text: editingText } : p
       ),
     };
 
-    // 设置截断后的消息 + 更新后的消息
-    setMessages([...truncated, updatedMessage]);
-
-    // 发送 — 使用新 ID 避免重复
+    // 只保留截断部分；sendMessage 会把消息重新推入列表
+    //（若预先塞入再 sendMessage 会出现同 id 双份，即历史上的 duplicate keys 问题）
+    setMessages(truncated);
     sendMessage(updatedMessage);
 
     setEditingMessageId(null);
@@ -1251,6 +1271,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 const userMessageText = message.role === 'user'
                   ? message.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
                   : '';
+
+                // 同一条消息中相同 (toolName + input) 的 MCP App 只渲染一个 iframe
+                const mcpAppKeys = new Set<string>();
 
                 return (
                   <Message from={message.role} key={message.id}>
@@ -1395,34 +1418,28 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
                             const toolPart = part as ToolUIPart;
 
-                            // MCP App 工具渲染：仅当 toolMetadata 包含 app 元数据时渲染
-                            if (isToolUIPart(part)) {
-                              const toolMeta = part.toolMetadata as Record<string, unknown> | undefined;
-                              const appMeta = toolMeta?.app as Record<string, unknown> | undefined;
-                              const isMcpApp = appMeta?.mimeType === 'text/html;profile=mcp-app' && typeof appMeta?.resourceUri === 'string';
-                              if (isMcpApp) {
-                                const app = appMeta as { resourceUri: string };
-                                const toolName = part.type === 'dynamic-tool'
-                                  ? (part as DynamicToolUIPart).toolName
-                                  : part.type.replace(/^tool-/, '');
-                                const input = (part as { input?: Record<string, unknown> }).input;
-                                const output = (part as { output?: Record<string, unknown> }).output;
-                                // 仅在 input 就绪或 output 就绪时才渲染，避免空数据初始化
-                                if (!input && !output) return null;
-                                return (
-                                  <McpAppSlot
-                                    key={`${message.id}-${index}`}
-                                    resourceUri={app.resourceUri}
-                                    toolName={toolName}
-                                    toolInput={input}
-                                    toolResult={output as McpAppSlotProps['toolResult']}
-                                    loadResource={loadResource}
-                                    handlers={mcpAppHandlers}
-                                    onModelContext={(data) => {
-                                      modelContextRef.current = data;
-                                    }}
-                                  />
-                                );
+                            // MCP App 工具：探测工具 _meta.ui 后渲染交互式 App
+                            //（非 App 的 MCP 工具由 McpAppToolPart 内部返回 null，零影响）
+                            let mcpAppSlot: React.ReactNode = null;
+                            if (part.type === 'dynamic-tool') {
+                              const dynToolName = (part as DynamicToolUIPart).toolName;
+                              const input = (part as { input?: Record<string, unknown> }).input;
+                              const output = (part as { output?: unknown }).output;
+                              // 仅在 input 或 output 就绪时渲染，避免空数据初始化
+                              if (dynToolName?.startsWith('mcp__') && (input || output)) {
+                                const mcpKey = input ? `${dynToolName}|${JSON.stringify(input)}` : dynToolName;
+                                if (!mcpAppKeys.has(mcpKey)) {
+                                  mcpAppKeys.add(mcpKey);
+                                  mcpAppSlot = (
+                                    <McpAppToolPart
+                                      toolName={dynToolName}
+                                      state={toolPart.state}
+                                      input={input}
+                                      output={output}
+                                      onSendMessage={handleMcpAppMessage}
+                                    />
+                                  );
+                                }
                               }
                             }
 
@@ -1459,14 +1476,14 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                           const isSubAgent = subParts.length > 0;
                           const isDynamicTool = part.type === 'dynamic-tool';
-                          const toolInfo = getToolTitleAndIcon(toolPart.type, toolPart.input as Record<string, unknown>, isDynamicTool ? (toolPart as DynamicToolUIPart).toolName : undefined);
+                          const toolInfo = getToolTitleAndIcon(toolPart.type, toolPart.input as Record<string, unknown>, isDynamicTool ? (part as DynamicToolUIPart).toolName : undefined);
                           const toolTitle = toolInfo?.title;
                           const ToolIcon = toolInfo?.icon || SearchIcon;
 
                           const isComplete = toolPart.state === 'output-available';
                           const isError = toolPart.state === 'output-error';
                           const isDenied = toolPart.state === 'output-denied';
-                          const isRunning = toolPart.state !== 'output-available' && toolPart.state !== 'output-error' && toolPart.state !== 'output-denied' && toolPart.state !== 'approval-responded' && toolPart.state !== 'approval-requested';
+                          const isRunning = !['output-available', 'output-error', 'output-denied', 'approval-responded', 'approval-requested'].includes(toolPart.state as string);
 
                           // 格式化工具输出用于预览面板
                           const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean } | null => {
@@ -1474,7 +1491,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             const out = toolPart.output as Record<string, unknown>;
                             // 动态工具使用 toolName 字段，静态工具从 type 推导
                             const toolName = isDynamicTool
-                              ? ((toolPart as DynamicToolUIPart).toolName ?? 'tool')
+                              ? ((part as DynamicToolUIPart).toolName ?? 'tool')
                               : toolPart.type.replace('tool-', '');
 
                             // write_file 工具：需要从 API 加载最新内容
@@ -1732,8 +1749,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const isPreviewed = previewedToolKey === toolKey;
 
                           return (
+                            <Fragment key={toolKey}>
+                            {mcpAppSlot}
                             <div
-                              key={toolKey}
                               className={`flex items-center gap-2 text-sm transition-colors ${
                                 isComplete && previewData
                                   ? `cursor-pointer ${isPreviewed ? 'text-foreground bg-accent/50' : 'text-muted-foreground hover:text-foreground'}`
@@ -1791,6 +1809,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               )}
                               {isDenied && <span className="text-xs text-orange-500 ml-auto">(已拒绝)</span>}
                             </div>
+                            </Fragment>
                           );
                         }
 
@@ -1836,7 +1855,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                         <MessageActions>
                           <MessageAction
                             label="Regenerate"
-                            onClick={() => handleRegenerate(messageIndex)}
+                            onClick={() => handleRegenerate(message.id)}
                             tooltip="Regenerate response"
                           >
                             <RefreshCcwIcon className="size-4" />

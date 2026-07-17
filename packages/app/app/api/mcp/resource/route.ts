@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createMCPClient, type MCPClient } from '@ai-sdk/mcp';
 import { loadAgentContext } from '@/lib/agent-context';
 
 export const runtime = 'nodejs';
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取服务器配置和连接
-    const serverConfig = mcpRegistry.servers.find(s => s.name === serverName);
+    const serverConfig = mcpRegistry.servers.find((s: { name: string }) => s.name === serverName);
     if (!serverConfig) {
       return NextResponse.json(
         { error: `MCP server "${serverName}" not found` },

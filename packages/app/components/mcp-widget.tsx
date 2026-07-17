@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppBridge, PostMessageTransport } from '@modelcontextprotocol/ext-apps/app-bridge';
-import type { McpWidgetProps, WidgetTool } from '@/types/mcp';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { McpWidgetProps } from '@/types/mcp';
 
 /**
  * MCP App Widget 组件
@@ -12,14 +13,8 @@ import type { McpWidgetProps, WidgetTool } from '@/types/mcp';
  * 2. 创建 Blob URL 并在 iframe 中渲染
  * 3. 通过 AppBridge 建立双向通信
  * 4. 代理工具调用到后端 /api/mcp/proxy
- * 5. 支持流式 input（partial vs final）
+ * 5. 支持流式 input（partial vs final）与工具结果下发
  */
-interface WidgetTool {
-  name: string;
-  schema: any;
-  handler: (args: any) => Promise<any>;
-}
-
 export function McpWidget({
   resourceUri,
   serverName,
@@ -27,15 +22,18 @@ export function McpWidget({
   toolInput,
   isFinal,
   toolName,
+  toolResult,
   onSendMessage,
-}: McpWidgetProps) {
+}: McpWidgetProps & { toolResult?: CallToolResult }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
-  const widgetToolsRef = useRef<Map<string, WidgetTool>>(new Map());
   const [html, setHtml] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // View 完成 initialized 握手后才允许 sendToolInput/sendToolResult（规范要求，
+  // 且 ref 变化不触发重渲染，必须用 state 驱动下方两个发送 effect）
+  const [bridgeReady, setBridgeReady] = useState(false);
 
   // 1. 获取 HTML 资源
   useEffect(() => {
@@ -120,18 +118,12 @@ export function McpWidget({
           version: '1.0.0',
         };
 
-        // 能力声明
+        // 能力声明（McpUiHostCapabilities）
         const capabilities = {
-          ui: {
-            resourceUri: true,
-            displayMode: true,
-          },
-          tools: {
-            call: true,
-          },
-          message: {
-            send: true,
-          },
+          openLinks: {},
+          serverTools: {},
+          serverResources: {},
+          message: { text: {} },
         };
 
         // Host 上下文
@@ -152,30 +144,10 @@ export function McpWidget({
 
         bridge = new AppBridge(null, hostInfo, capabilities, { hostContext });
 
-        // 工具调用处理器：路由到 Widget 工具或代理到 MCP Server
+        // 工具调用处理器：代理到 MCP Server
         bridge.oncalltool = async (params: any) => {
           try {
             const { name, arguments: args } = params;
-            console.log('[McpWidget] Tool call request:', name);
-
-            // 检查是否为 Widget 注册的工具
-            const widgetTool = widgetToolsRef.current.get(name);
-
-            if (widgetTool) {
-              // 本地执行 Widget 工具
-              console.log('[McpWidget] Calling widget tool:', name);
-              const result = await widgetTool.handler(args || {});
-              return {
-                content: [
-                  {
-                    type: 'text',
-                    text: typeof result === 'string' ? result : JSON.stringify(result),
-                  },
-                ],
-              };
-            }
-
-            // 代理到 MCP Server
             console.log('[McpWidget] Calling server tool:', name);
             const res = await fetch(`/api/mcp/proxy?server=${serverName}`, {
               method: 'POST',
@@ -204,41 +176,34 @@ export function McpWidget({
 
         // 消息处理器
         if (onSendMessage) {
-          bridge.onmessage = (params: any) => {
+          bridge.onmessage = async (params) => {
             onSendMessage(params);
+            return {};
           };
         }
 
         // 链接打开处理器
-        bridge.onopenlink = (params: any) => {
-          window.open(params.url, '_blank');
+        bridge.onopenlink = async (params) => {
+          window.open(params.url, '_blank', 'noopener,noreferrer');
+          return {};
         };
 
-        // 显示模式请求处理器（可选）
-        bridge.onrequestdisplaymode = async (params: any) => {
-          // 目前只支持 inline 模式
-          return { displayMode: 'inline' };
+        // 显示模式请求处理器：目前只支持 inline 模式
+        bridge.onrequestdisplaymode = async () => {
+          return { mode: 'inline' as const };
         };
 
         // 连接到 iframe
-        const transport = new PostMessageTransport(
-          iframe.contentWindow,
-          iframe.contentWindow
-        );
+        const contentWindow = iframe.contentWindow;
+        if (!contentWindow) {
+          throw new Error('iframe contentWindow unavailable');
+        }
+        const transport = new PostMessageTransport(contentWindow, contentWindow);
+
+        bridge.addEventListener('initialized', () => setBridgeReady(true));
 
         await bridge.connect(transport);
         bridgeRef.current = bridge;
-
-        // 拦截 Widget 的 registerTool 调用，存储工具信息
-        // Widget 内部会调用 app.registerTool() 注册自己的工具
-        const originalRegisterTool = bridge.app.registerTool.bind(bridge.app);
-        bridge.app.registerTool = (name: string, schema: any, handler: any) => {
-          console.log('[McpWidget] Widget registered tool:', name);
-          widgetToolsRef.current.set(name, { name, schema, handler });
-          // 仍然调用原始方法，保持 SDK 状态一致
-          return originalRegisterTool(name, schema, handler);
-        };
-
       } catch (err) {
         console.error('[McpWidget] Bridge initialization error:', err);
         setError(err instanceof Error ? err.message : 'Bridge initialization failed');
@@ -261,14 +226,14 @@ export function McpWidget({
   // 4. 发送工具 input（流式 vs 完成）
   useEffect(() => {
     const bridge = bridgeRef.current;
-    if (!bridge) return;
+    if (!bridge || !bridgeReady) return;
 
     const sendInput = async () => {
       try {
         if (isFinal) {
-          await bridge.sendToolInput(toolInput);
+          await bridge.sendToolInput({ arguments: toolInput });
         } else {
-          await bridge.sendToolInputPartial(toolInput);
+          await bridge.sendToolInputPartial({ arguments: toolInput });
         }
       } catch (err) {
         console.error('[McpWidget] Send input error:', err);
@@ -276,7 +241,17 @@ export function McpWidget({
     };
 
     sendInput();
-  }, [toolInput, isFinal]);
+  }, [toolInput, isFinal, bridgeReady]);
+
+  // 5. 工具执行结果下发（MCP Apps 规范：sendToolResult 必须在 sendToolInput 之后）
+  useEffect(() => {
+    const bridge = bridgeRef.current;
+    if (!bridge || !bridgeReady || !toolResult) return;
+
+    bridge.sendToolResult(toolResult).catch((err) => {
+      console.error('[McpWidget] Send result error:', err);
+    });
+  }, [toolResult, bridgeReady]);
 
   // 渲染
   if (loading) {

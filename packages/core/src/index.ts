@@ -255,11 +255,6 @@ export { serializeAgentMarkdown } from './modules/agent/loader';
 
 // MCP types
 export type { McpServerConfig, McpServerConfigSource } from './modules/mcp/types';
-export type {
-  MCPAppMetadata,
-  MCPAppSandboxConfig,
-  MCPAppBridgeHandlers,
-} from './modules/mcp/types';
 export {
   createMcpRegistry,
   getMcpServerConfigs,
@@ -267,20 +262,7 @@ export {
   addMcpServerConfig,
   updateMcpServerConfig,
   deleteMcpServerConfig,
-  readMCPAppResource,
-  splitMCPAppTools,
-  mcpAppClientCapabilities,
-  // ext-apps SDK re-exports
-  RESOURCE_MIME_TYPE,
-  RESOURCE_URI_META_KEY,
-  isToolVisibilityAppOnly,
-  isToolVisibilityModelOnly,
-  getToolUiResourceUri,
-  AppBridge,
-  registerAppTool,
-  registerAppResource,
 } from './modules/mcp';
-export type { MCPAppResource } from '@ai-sdk/mcp';
 
 // Connector types
 export type { ConnectorFrontmatter } from './modules/connector/loader';
