@@ -34,19 +34,6 @@ export {
 } from './permissions';
 
 // ============================================================
-// AppModule 类型和适配器
-// ============================================================
-
-export type { AppModule, ModuleContext } from './module-types';
-export {
-  createSkillsModule,
-  createAgentsModule,
-  createMcpModule,
-  createConnectorModule,
-  createPermissionsModule,
-} from './modules';
-
-// ============================================================
 // 统一加载
 // ============================================================
 
@@ -57,14 +44,13 @@ import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';
 import type { LoadSkillsOptions, LoadAgentsOptions, LoadMcpsOptions, LoadConnectorsOptions, LoadPermissionsOptions } from './index';
-import type { AppModule, ModuleContext } from './module-types';
 import {
-  createSkillsModule,
-  createAgentsModule,
-  createMcpModule,
-  createConnectorModule,
-  createPermissionsModule,
-} from './modules';
+  loadSkills,
+  loadAgents,
+  loadMcpServers,
+  loadConnectors,
+  loadPermissions,
+} from './index';
 
 export interface LoadAllOptions {
   cwd?: string;
@@ -90,8 +76,6 @@ export interface LoadAllResult {
   mcps: McpServerConfig[];
   connectors: ConnectorFrontmatter[];
   permissions: PermissionRule[];
-  /** 已初始化的模块实例（用于后续 dispose） */
-  moduleInstances: AppModule[];
 }
 
 // 别名，供外部使用
@@ -100,61 +84,61 @@ export type LoadedData = LoadAllResult;
 /**
  * 加载所有配置
  *
- * 内部使用 AppModule 统一生命周期，每个模块独立 init/snapshot。
- * 返回 moduleInstances 供调用者后续 dispose。
+ * 直接调用各 loader，不再通过 AppModule 生命周期包装。
  */
 export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> {
   const cwd = options?.cwd ?? process.cwd();
   const configDir = options?.configDir;
   if (!configDir) throw new Error('loadAll: configDir is required');
 
-  const moduleContext: ModuleContext = {
-    cwd,
-    configDir,
-    homeDir: options?.homeDir ?? process.env.HOME ?? process.cwd(),
-    env: options?.env ?? {},
-    resourceDirs: options?.resourceDirs ?? {
-      skills: [],
-      agents: [],
-      mcps: [],
-      connectors: [],
-      permissions: [],
-      wiki: [],
-    },
-  };
+  const homeDir = options?.homeDir ?? process.env.HOME ?? process.cwd();
+  const resourceDirs = options?.resourceDirs;
 
-  const modules: AppModule[] = [
-    createSkillsModule(options?.skills),
-    createAgentsModule(options?.agents),
-    createMcpModule(options?.mcps),
-    createConnectorModule(options?.connectors),
-    createPermissionsModule(options?.permissions),
-  ];
-
-  await Promise.all(
-    modules.map((mod) => mod.init?.(moduleContext)),
-  );
-
-  const snapshots = await Promise.all(
-    modules.map((mod) => Promise.resolve(mod.snapshot?.())),
-  );
+  const [skills, agents, mcps, connectors, permissions] = await Promise.all([
+    loadSkills({
+      cwd,
+      configDir,
+      homeDir,
+      dirs: resourceDirs?.skills,
+      ...options?.skills,
+    }),
+    loadAgents({
+      cwd,
+      configDir,
+      homeDir,
+      dirs: resourceDirs?.agents,
+      ...options?.agents,
+    }),
+    loadMcpServers({
+      cwd,
+      configDir,
+      homeDir,
+      dirs: resourceDirs?.mcps,
+      ...options?.mcps,
+    }),
+    loadConnectors({
+      cwd,
+      configDir,
+      homeDir,
+      dirs: resourceDirs?.connectors,
+      ...options?.connectors,
+    }),
+    loadPermissions({
+      cwd,
+      configDir,
+      homeDir,
+      dirs: resourceDirs?.permissions,
+      filename: options?.permissions?.filename,
+      ...options?.permissions,
+    }),
+  ]);
 
   return {
     cwd,
-    skills: (snapshots[0] ?? []) as Skill[],
-    agents: (snapshots[1] ?? []) as AgentDefinition[],
-    mcps: (snapshots[2] ?? []) as McpServerConfig[],
-    connectors: (snapshots[3] ?? []) as ConnectorFrontmatter[],
-    permissions: (snapshots[4] ?? []) as PermissionRule[],
-    moduleInstances: modules,
+    skills,
+    agents,
+    mcps,
+    connectors,
+    permissions,
   };
-}
-
-/**
- * 释放所有模块资源
- */
-export async function disposeModules(modules: AppModule[]): Promise<void> {
-  await Promise.all(
-    modules.map((mod) => mod.dispose?.()),
-  );
 }

@@ -202,7 +202,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // Tools
   // ============================================================
-  const { tools, mcpRegistry } = await loadAllTools({
+  const { tools, mcpRegistry, isSharedMcpRegistry } = await loadAllTools({
     conversationId,
     sessionState,
     enableMcp: modules.mcps,
@@ -390,7 +390,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   const dispose = async (_options?: { waitForCompaction?: boolean }): Promise<void> => {
     await sessionState.costTracker.persistToDB()
-    if (mcpRegistry) {
+    // 仅断开非共享的 MCP registry（共享 registry 由 AppContext 管理）
+    if (mcpRegistry && !isSharedMcpRegistry) {
       await mcpRegistry.disconnectAll().catch((e) =>
         logger.warn('AgentHandle.dispose', 'MCP disconnect error:', e),
       )

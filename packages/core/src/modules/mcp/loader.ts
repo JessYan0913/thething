@@ -102,27 +102,47 @@ export interface LoadMcpsOptions {
 }
 
 /**
- * 从 .agents/mcp.json 读取 MCP 服务器配置（Dot Agents 协议的单文件格式）
- * 此文件位于 .agents/ 根目录。
- * 先读取项目级（./.agents/mcp.json），再读取用户级（~/.agents/mcp.json），
- * 项目级覆盖用户级（符合 protocol 的合并顺序：defaults ← ~/.agents ← ./.agents）
+ * 从配置文件读取 MCP 服务器配置。
+ *
+ * 查找优先级（高 → 低）：
+ *   1. {cwd}/{configDirName}/mcp.json  — 项目级配置（最高优先级）
+ *   2. {configDir}/mcp.json             — 用户级主配置
+ *   3. {cwd}/.agents/mcp.json           — Dot Agents 协议项目级兼容
+ *   4. ~/.agents/mcp.json               — Dot Agents 协议用户级兼容
+ *
+ * 后读的配置覆盖先读的（相同 name 时优先级高的覆盖优先级低的）。
  */
-async function loadDotAgentsMcpJson(homeDir?: string, cwd?: string): Promise<McpServerConfig[]> {
-  if (!homeDir && !cwd) return [];
+async function loadDotAgentsMcpJson(
+  options?: { configDir?: string; configDirName?: string; homeDir?: string; cwd?: string }
+): Promise<McpServerConfig[]> {
+  const opts = options ?? {};
+  const homeDir = opts.homeDir;
+  const cwd = opts.cwd;
+  const configDir = opts.configDir;
+  const configDirName = opts.configDirName ?? '.agents';
+
+  if (!homeDir && !cwd && !configDir) return [];
 
   const _path = 'path';
   const _fs = 'fs/promises';
   const { default: fs } = await import(/* webpackIgnore: true */ _fs);
   const { default: path } = await import(/* webpackIgnore: true */ _path);
 
-  const dirsToCheck: string[] = [];
-  if (cwd) dirsToCheck.push(path.join(cwd, '.agents'));
-  if (homeDir) dirsToCheck.push(path.join(homeDir, '.agents'));
+  // mcp.json 候选路径：优先级从低到高（后读覆盖先读）
+  const mcpJsonCandidates: string[] = [];
+
+  // Dot Agents 用户级兼容
+  if (homeDir) mcpJsonCandidates.push(path.join(homeDir, '.agents', 'mcp.json'));
+  // Dot Agents 项目级兼容
+  if (cwd) mcpJsonCandidates.push(path.join(cwd, '.agents', 'mcp.json'));
+  // 用户级主配置（通过 layout configDir）
+  if (configDir) mcpJsonCandidates.push(path.join(configDir, 'mcp.json'));
+  // 项目级主配置
+  if (cwd && configDirName) mcpJsonCandidates.push(path.join(cwd, configDirName, 'mcp.json'));
 
   const merged = new Map<string, McpServerConfig>();
 
-  for (const agentsDir of dirsToCheck) {
-    const mcpJsonPath = path.join(agentsDir, 'mcp.json');
+  for (const mcpJsonPath of mcpJsonCandidates) {
     try {
       const stat = await fs.stat(mcpJsonPath);
       if (!stat.isFile()) continue;
@@ -202,8 +222,14 @@ async function loadDotAgentsMcpJson(homeDir?: string, cwd?: string): Promise<Mcp
 }
 
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
-  // 仅从 .agents/mcp.json 读取（Dot Agents 协议标准，项目级优先）
-  return loadDotAgentsMcpJson(options?.homeDir, options?.cwd);
+  const configDir = options?.configDir;
+  const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() ?? '.agents' : '.agents';
+  return loadDotAgentsMcpJson({
+    configDir: options?.configDir,
+    configDirName,
+    homeDir: options?.homeDir,
+    cwd: options?.cwd,
+  });
 }
 
 /**

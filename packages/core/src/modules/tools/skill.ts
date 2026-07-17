@@ -17,6 +17,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import * as path from 'path';
 import type { Skill } from '../../modules/skills/types';
+import { generateSkillDirTree, readSkillBody } from '../../modules/skills/loader';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -56,8 +57,7 @@ function findSkill(skillName: string, skills: readonly Skill[]): Skill | null {
 /**
  * 格式化技能指令为工具输出
  */
-
-function formatSkillOutput(skill: Skill, args?: string): string {
+function formatSkillOutput(skill: Skill, dirTree: string | undefined, args?: string): string {
   // 替换 $ARGUMENTS 占位符
   let body = skill.body || '';
   if (args && body.includes('$ARGUMENTS')) {
@@ -76,7 +76,7 @@ function formatSkillOutput(skill: Skill, args?: string): string {
   ];
 
   // 添加技能目录树结构
-  if (skill.dirTree) {
+  if (dirTree) {
     // 从 sourcePath 推导技能目录的绝对路径
     const skillDir = skill.sourcePath ? path.dirname(skill.sourcePath) : null;
 
@@ -87,7 +87,7 @@ function formatSkillOutput(skill: Skill, args?: string): string {
       lines.push(`📍 Absolute path: ${skillDir}`);
       lines.push('');
     }
-    lines.push(skill.dirTree);
+    lines.push(dirTree);
     lines.push('─────────────────────────────────────────────────────────────');
     lines.push('');
     lines.push('💡 You can read any file in the directory using the read_file tool.');
@@ -164,7 +164,18 @@ Matching Guide:
         } as SkillToolResult;
       }
 
-      const output = formatSkillOutput(skillData, args);
+      // 两阶段加载：当 body 不存在时从文件读取
+      if (!skillData.body && skillData.sourcePath) {
+        skillData.body = await readSkillBody(skillData.sourcePath);
+      }
+
+      // 按需生成技能目录树（仅当被调用时）
+      let dirTree: string | undefined;
+      if (skillData.sourcePath) {
+        dirTree = await generateSkillDirTree(path.dirname(skillData.sourcePath));
+      }
+
+      const output = formatSkillOutput(skillData, dirTree, args);
 
       logger.debug('SkillTool', `Skill loaded: ${skillData.name} (${skillData.body?.length || 0} chars)`);
       logger.debug('SkillTool', `Allowed tools: ${skillData.allowedTools?.join(', ') || 'none'}`);

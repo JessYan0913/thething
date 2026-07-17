@@ -104,11 +104,19 @@ const agentsLoader = createMultiSourceLoader<AgentDefinition>({
   getMergeKey: (item) => item.agentType,
 });
 
+let _subDirCache: Map<string, boolean> | undefined;
+
 /**
  * 检测目录是否使用子目录结构（<name>/agent.md 而非 <name>.md）
- * 通过检查是否存在包含 agent.md 的子目录来判断
+ * 通过检查是否存在包含 agent.md 的子目录来判断。
+ * 结果缓存在模块级 Map 中，避免每次 reload 重复 I/O。
  */
 async function isSubdirectoryAgentDir(dir: string): Promise<boolean> {
+  // 检查缓存
+  if (_subDirCache?.has(dir)) {
+    return _subDirCache.get(dir)!;
+  }
+
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -116,6 +124,9 @@ async function isSubdirectoryAgentDir(dir: string): Promise<boolean> {
         const agentMd = path.join(dir, entry.name, 'agent.md');
         try {
           await fs.access(agentMd);
+          // 初始化缓存并写入
+          _subDirCache ??= new Map();
+          _subDirCache.set(dir, true);
           return true;
         } catch {
           // agent.md 不存在，继续检查其他子目录
@@ -125,6 +136,9 @@ async function isSubdirectoryAgentDir(dir: string): Promise<boolean> {
   } catch {
     // 目录不存在或无法读取
   }
+  // 初始化缓存并写入 false
+  _subDirCache ??= new Map();
+  _subDirCache.set(dir, false);
   return false;
 }
 
@@ -188,16 +202,16 @@ export async function loadAgents(options?: LoadAgentsOptions): Promise<AgentDefi
   }
 
   // 按目录结构分离：子目录格式（<name>/agent.md）vs 平面格式（<name>.md）
-  const subDirs: string[] = [];
-  const flatDirs: string[] = [];
+  // 使用 Promise.all 并行探测目录结构，减少 I/O 等待时间
+  const dirResults = await Promise.all(
+    dirs.map(async (dir) => ({
+      dir,
+      isSubDir: await isSubdirectoryAgentDir(dir),
+    }))
+  );
 
-  for (const dir of dirs) {
-    if (await isSubdirectoryAgentDir(dir)) {
-      subDirs.push(dir);
-    } else {
-      flatDirs.push(dir);
-    }
-  }
+  const subDirs = dirResults.filter(r => r.isSubDir).map(r => r.dir);
+  const flatDirs = dirResults.filter(r => !r.isSubDir).map(r => r.dir);
 
   const results: AgentDefinition[] = [];
 

@@ -23,6 +23,7 @@ import { buildBehaviorConfig, type BehaviorConfig } from '../services/config/beh
 import { setDebugEnabled, logger } from '../primitives/logger';
 import os from 'os';
 import path from 'path';
+import fs from 'fs/promises';
 
 // ============================================================
 // Tokenizer 配置类型
@@ -174,6 +175,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
   // 初始化日志系统（优先使用显式 debug 参数，其次 fallback 到 env.DEBUG）
   setDebugEnabled(options.debug ?? Boolean(env.DEBUG));
 
+  // 1b. 确保 ~/.agents → ~/.thething symlink 存在（Dot Agents 协议兼容）
+  await ensureDotAgentsSymlink(layout.configDir);
+
   // 2. 构建行为配置
   const behavior = buildBehaviorConfig(options.behavior);
 
@@ -253,6 +257,59 @@ export async function bootstrap(options: BootstrapOptions): Promise<CoreRuntime>
 
 function initTokenizer(_config?: TokenizerConfig): void {
   // 已替换为字符估算，无需初始化
+}
+
+// ============================================================
+// Dot Agents 协议兼容 symlink
+// ============================================================
+
+/**
+ * 确保 ~/.agents → configDir 的 symlink 存在。
+ *
+ * Agent Skills 生态工具（如 `npx agent skill add`）默认读写 ~/.agents/ 目录。
+ * 通过 ~/.agents → ~/.thething symlink，这些工具的操作透明地映射到 TheThing 的数据目录。
+ *
+ * 行为：
+ * - ~/.agents 不存在 → 创建 symlink 指向 configDir
+ * - ~/.agents 已是 symlink 且指向 configDir → 无操作
+ * - ~/.agents 已是 symlink 但指向其他路径 → 打印警告，不覆盖
+ * - ~/.agents 作为普通文件/目录存在 → 打印警告，不覆盖
+ * - 创建失败（如 Windows 无权限） → 静默跳过，不阻塞启动
+ */
+async function ensureDotAgentsSymlink(configDir: string): Promise<void> {
+  const homeDir = os.homedir();
+  const agentsPath = path.join(homeDir, '.agents');
+
+  try {
+    // 检查 ~/.agents 当前状态
+    const stat = await fs.lstat(agentsPath).catch(() => null);
+
+    if (stat === null) {
+      // 不存在 → 创建 symlink
+      await fs.symlink(configDir, agentsPath, 'dir');
+      logger.info('Bootstrap', `Created symlink: ${agentsPath} → ${configDir}`);
+      return;
+    }
+
+    // 已存在且是 symlink
+    if (stat.isSymbolicLink()) {
+      const target = await fs.readlink(agentsPath);
+      if (target === configDir) {
+        // 指向正确，无操作
+        logger.debug('Bootstrap', `Symlink already exists: ${agentsPath} → ${configDir}`);
+      } else {
+        // 指向其他路径，警告但不覆盖
+        logger.warn('Bootstrap', `Symlink ${agentsPath} already points to ${target}, not ${configDir}. Remove it manually to recreate.`);
+      }
+      return;
+    }
+
+    // 已存在但是普通文件或目录，不覆盖
+    logger.warn('Bootstrap', `${agentsPath} already exists and is not a symlink. Agent Skills ecosystem tools may not work correctly.`);
+  } catch (error) {
+    // 创建失败（Windows 无权限等），不阻塞启动
+    logger.debug('Bootstrap', `Failed to create ${agentsPath} symlink: ${(error as Error).message}`);
+  }
 }
 
 // ============================================================

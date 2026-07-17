@@ -16,11 +16,24 @@ import type { McpServerConfig, McpServerConfigSource } from './types';
 // 路径常量
 // ============================================================
 
-function getUserMcpJsonPath(): string {
+/**
+ * 获取用户级 mcp.json 路径。
+ * 优先使用 configDir（新标准位置），fallback 到 .agents（Dot Agents 兼容）。
+ * @param configDir 配置目录（如 ~/.thething），可选
+ */
+function getUserMcpJsonPath(configDir?: string): string {
+  if (configDir) return path.join(configDir, 'mcp.json');
   return path.join(homedir(), '.agents', 'mcp.json');
 }
 
-function getProjectMcpJsonPath(cwd: string): string {
+/**
+ * 获取项目级 mcp.json 路径。
+ * 优先使用 configDirName（新标准），fallback 到 .agents（Dot Agents 兼容）。
+ * @param cwd 项目根目录
+ * @param configDirName 配置目录名（如 .thething），可选
+ */
+function getProjectMcpJsonPath(cwd: string, configDirName?: string): string {
+  if (configDirName) return path.join(cwd, configDirName, 'mcp.json');
   return path.join(cwd, '.agents', 'mcp.json');
 }
 
@@ -137,19 +150,21 @@ async function writeDotAgentsFile(filePath: string, servers: Map<string, McpServ
 /**
  * 获取所有 MCP 服务器配置（通过 Loader，不带来源信息）
  */
-export async function getMcpServerConfigs(cwd?: string, _configDir?: string): Promise<McpServerConfig[]> {
+export async function getMcpServerConfigs(cwd?: string, configDir?: string): Promise<McpServerConfig[]> {
   const { loadMcpServers } = await import('./loader');
-  return loadMcpServers({ cwd, homeDir: homedir() });
+  const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
+  return loadMcpServers({ cwd, homeDir: homedir(), configDir, configDirName });
 }
 
 /**
  * 获取所有 MCP 服务器配置（带来源信息）
  */
-export async function getMcpServerConfigsWithSource(cwd?: string, _configDir?: string): Promise<McpServerConfigSource[]> {
+export async function getMcpServerConfigsWithSource(cwd?: string, configDir?: string): Promise<McpServerConfigSource[]> {
   const effectiveCwd = cwd ?? process.cwd();
+  const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
   const paths: Array<{ source: 'user' | 'project'; filePath: string }> = [
-    { source: 'user', filePath: getUserMcpJsonPath() },
-    { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd) },
+    { source: 'user', filePath: getUserMcpJsonPath(configDir) },
+    { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd, configDirName) },
   ];
 
   const configs: McpServerConfigSource[] = [];
@@ -186,18 +201,19 @@ export async function getMcpServerConfigWithSource(name: string, cwd?: string, c
  *
  * @param config MCP 服务器配置
  * @param cwd 当前工作目录（项目级写入时使用）
- * @param _configDir 已废弃，保留向后兼容
+ * @param configDir 配置目录（如 ~/.thething），可选
  * @param targetDir 目标层级（'user' | 'project'），默认 'user'
  */
 export async function addMcpServerConfig(
   config: McpServerConfig,
   cwd?: string,
-  _configDir?: string,
+  configDir?: string,
   targetDir: 'user' | 'project' = 'user',
 ): Promise<McpServerConfigSource> {
+  const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
   const targetPath = targetDir === 'user'
-    ? getUserMcpJsonPath()
-    : getProjectMcpJsonPath(cwd ?? process.cwd());
+    ? getUserMcpJsonPath(configDir)
+    : getProjectMcpJsonPath(cwd ?? process.cwd(), configDirName);
 
   // 检查是否已存在（跨 user 和 project 检查）
   const existing = await getMcpServerConfig(config.name, cwd);
@@ -222,12 +238,13 @@ export async function updateMcpServerConfig(
   name: string,
   updates: Partial<McpServerConfig>,
   cwd?: string,
-  _configDir?: string,
+  configDir?: string,
 ): Promise<McpServerConfigSource | null> {
   const effectiveCwd = cwd ?? process.cwd();
+  const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
   const paths: Array<{ source: 'user' | 'project'; filePath: string }> = [
-    { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd) },
-    { source: 'user', filePath: getUserMcpJsonPath() },
+    { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd, configDirName) },
+    { source: 'user', filePath: getUserMcpJsonPath(configDir) },
   ];
 
   for (const { source, filePath } of paths) {
@@ -256,11 +273,12 @@ export async function updateMcpServerConfig(
  * 在 .agents/mcp.json 中找到该服务器并删除。
  * 先在项目级查找，再在用户级查找。
  */
-export async function deleteMcpServerConfig(name: string, cwd?: string, _configDir?: string): Promise<boolean> {
+export async function deleteMcpServerConfig(name: string, cwd?: string, configDir?: string): Promise<boolean> {
   const effectiveCwd = cwd ?? process.cwd();
+  const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
   const paths = [
-    getProjectMcpJsonPath(effectiveCwd),
-    getUserMcpJsonPath(),
+    getProjectMcpJsonPath(effectiveCwd, configDirName),
+    getUserMcpJsonPath(configDir),
   ];
 
   for (const filePath of paths) {

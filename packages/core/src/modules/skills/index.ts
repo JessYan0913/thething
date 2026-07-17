@@ -16,6 +16,8 @@ export {
   loadSkillFile,
   scanSkillsDirs,
   getAvailableSkills,
+  generateSkillDirTree,
+  readSkillBody,
   type LoadSkillsOptions,
 } from './loader';
 

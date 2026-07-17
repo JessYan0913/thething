@@ -153,7 +153,7 @@ export function resolveLayout(config: LayoutConfig): ResolvedLayout {
   const defaultResources: ResourceDirs = {
     skills:      [path.join(userDir, 'skills'),      path.join(projectDir, 'skills')],
     agents:      [path.join(userDir, 'agents'),      path.join(projectDir, 'agents')],
-    mcps:        [],  // MCP 仅从 configDir/mcp.json 读取，不扫描子目录
+    mcps:        [],  // MCP 从 configDir/mcp.json 读取，不由 resourceDirs 控制
     connectors:  [path.join(userDir, 'connectors'),  path.join(projectDir, 'connectors')],
     permissions: [path.join(userDir, 'permissions'), path.join(projectDir, 'permissions')],
     wiki:        [path.join(userDir, 'wiki'),        path.join(projectDir, 'wiki')],

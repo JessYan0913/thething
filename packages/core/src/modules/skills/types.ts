@@ -38,7 +38,8 @@ export interface SkillMetadata {
 }
 
 export interface Skill extends SkillMetadata {
-  body: string;
+  /** 技能指令主体。在 bulk load 时为 undefined，通过 skill tool 按需加载 */
+  body?: string;
 }
 
 export interface SkillUsageRecord {

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { resolveHomeDir } from '../../primitives/paths';
-import { loadAll, disposeModules, type LoadAllOptions, type AppModule } from '../loaders';
+import { loadAll, type LoadAllOptions } from '../loaders';
 import type { AppContext, CreateContextOptions, LoadSourceInfo } from './types';
 import { createMcpRegistry } from '../../modules/mcp';
 import { logger } from '../../primitives/logger';
@@ -116,9 +116,6 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   }
 
   // 创建不可变快照
-  // 保存模块实例引用，用于 dispose 时释放资源
-  const moduleInstances = loaded.moduleInstances;
-
   // 创建共享 MCP 注册表（跨请求复用连接，延迟到首次 connectAll 时建立）
   const mcpRegistry = loaded.mcps.length > 0 ? createMcpRegistry(loaded.mcps) : undefined;
 
@@ -135,7 +132,6 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     loadedFrom,
     reload: async (reloadOptions?: { verbose?: boolean; onLoad?: (event: import('./types').LoadEvent) => void }) => {
       if (mcpRegistry) await mcpRegistry.disconnectAll().catch(() => {});
-      await disposeModules(moduleInstances);
       return createContext({
         runtime,
         verbose: reloadOptions?.verbose ?? verbose,
@@ -144,7 +140,6 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     },
     dispose: async () => {
       if (mcpRegistry) await mcpRegistry.disconnectAll().catch(() => {});
-      await disposeModules(moduleInstances);
     },
   };
 

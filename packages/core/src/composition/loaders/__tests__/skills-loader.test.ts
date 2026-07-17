@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { loadSkills } from '../../../modules/skills/loader';
+import { readSkillBody } from '../../../modules/skills/loader';
 
 async function createTempSkillProject(): Promise<{ root: string; skillDir: string }> {
   const root = path.join(os.tmpdir(), `thething-skills-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -69,7 +70,11 @@ describe('Skills Loader Integration', () => {
 
     expect(aiSdkSkill).toBeDefined();
     expect(aiSdkSkill?.description).toContain('AI SDK');
-    expect(aiSdkSkill?.body.length).toBeGreaterThan(20);
+    // 两阶段加载：body 在 bulk load 时为空，通过 readSkillBody 按需读取
+    expect(aiSdkSkill?.body).toBeUndefined();
+    const loadedBody = aiSdkSkill?.sourcePath ? await readSkillBody(aiSdkSkill.sourcePath) : '';
+    expect(loadedBody.length).toBeGreaterThan(20);
+    expect(loadedBody).toContain('Use the AI SDK');
     expect(aiSdkSkill?.sourcePath).toContain('SKILL.md');
   });
 

@@ -28,12 +28,15 @@ import type { LoadToolsConfig } from './types'
 
 export interface LoadedToolsResult {
   tools: Record<string, Tool>
-  mcpRegistry?: McpRegistry
+  mcpRegistry: McpRegistry | undefined
+  /** 标记 registry 是否为 AppContext 共享，用于调用方决定 dispose 行为 */
+  isSharedMcpRegistry: boolean
 }
 
 export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedToolsResult> {
   const tools: Record<string, Tool> = {}
   let mcpRegistry: McpRegistry | undefined
+  let isSharedMcpRegistry = false
   const agentRegistry = new AgentRegistry()
 
   Object.assign(tools, {
@@ -145,6 +148,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         const activeRegistry = sharedRegistry ?? createMcpRegistry(mcpConfigs)
         await activeRegistry.connectAll()
 
+        isSharedMcpRegistry = !!sharedRegistry
+
         // Claude Code 风格：直接注册每个 MCP 工具为独立 tool
         // 命名 mcp__serverName__toolName → 命名空间隔离，防冲突，可路由
         for (const [serverName, connection] of activeRegistry.connections) {
@@ -169,16 +174,15 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
           }
         }
 
+        // 始终返回 activeRegistry，调用方通过 isSharedMcpRegistry 决定 dispose 行为
+        mcpRegistry = activeRegistry
+
         const mcpSnapshot = activeRegistry.snapshot()
         const connected = mcpSnapshot.servers.filter(s => s.connected)
         const failed = mcpSnapshot.servers.filter(s => !s.connected && s.enabled)
         logger.debug('MCP', `${mcpSnapshot.totalTools} MCP tools from ${connected.length} server(s)${sharedRegistry ? ' (reused)' : ''}`)
         if (failed.length > 0) {
           logger.warn('MCP', `Failed servers: ${failed.map(s => `${s.name}(${s.error})`).join(', ')}`)
-        }
-        // 共享 registry 时不返回 mcpRegistry，防止下游 dispose/finalize 断开连接
-        if (!sharedRegistry) {
-          mcpRegistry = activeRegistry
         }
       } else {
         logger.debug('MCP', 'No MCP configs found')
@@ -213,5 +217,5 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     }
   }
 
-  return { tools, mcpRegistry }
+  return { tools, mcpRegistry, isSharedMcpRegistry }
 }

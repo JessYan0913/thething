@@ -9,7 +9,6 @@ import { createMultiSourceLoader } from '../../services/scanner/multi-source-loa
 import type { Skill, SkillLoaderConfig } from './types';
 import { SkillFrontmatterSchema } from './types';
 import type { ConfigSource } from '../../primitives/constants';
-import { BUNDLED_SKILLS } from './bundled';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -27,11 +26,13 @@ interface SkillWithSource extends Skill {
 /**
  * 生成目录树结构（字符串格式）
  *
+ * 仅用于 skill tool 按需生成，不在 loadSkills() 阶段调用。
+ *
  * @param dirPath - 目录路径
  * @param prefix - 前缀（用于递归缩进）
  * @returns 目录树字符串
  */
-async function generateDirTree(dirPath: string, prefix: string = ''): Promise<string> {
+export async function generateSkillDirTree(dirPath: string, prefix: string = ''): Promise<string> {
   const lines: string[] = [];
 
   try {
@@ -71,6 +72,27 @@ async function generateDirTree(dirPath: string, prefix: string = ''): Promise<st
   return lines.join('\n');
 }
 
+/**
+ * 从 skill 源文件重新读取 body（两阶段加载的 phase 2）。
+ * bulk load 时 body 不加载进内存，仅在 skill tool 调用时按需读取。
+ *
+ * @param sourcePath - skill 的 sourcePath（SKILL.md 完整路径）
+ * @returns body 内容（frontmatter 之后的部分），文件不存在时返回空字符串
+ */
+export async function readSkillBody(sourcePath: string): Promise<string> {
+  try {
+    const content = await fs.readFile(sourcePath, 'utf-8');
+    const match = content.match(/^---[\s\S]*?---\n*/);
+    if (match) {
+      return content.slice(match[0].length);
+    }
+    return content;
+  } catch {
+    logger.warn('SkillLoader', `Failed to read skill body: ${sourcePath}`);
+    return '';
+  }
+}
+
 // ============================================================
 // MultiSource Loader
 // ============================================================
@@ -88,10 +110,7 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
     // 协议兼容：id 作为技能标识，fallback 到 name
     const skillName = result.data.id ?? result.data.name;
 
-    // 生成技能目录树结构
-    const skillDir = path.dirname(filePath);
-    const dirTree = await generateDirTree(skillDir);
-
+    // 两阶段加载：bulk load 时不返回 body，仅保留 frontmatter 索引
     return {
       name: skillName,
       description: result.data.description,
@@ -102,9 +121,7 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
       context: result.data.context,
       paths: result.data.paths,
       sourcePath: result.filePath,
-      body: result.body,
       source,
-      dirTree: dirTree || undefined,
     };
   },
   getMergeKey: (item) => item.name,
@@ -143,20 +160,10 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     context: s.context,
     paths: s.paths,
     sourcePath: s.sourcePath,
-    body: s.body,
     source: s.source,
-    dirTree: s.dirTree,
   }));
 
-  // 2. 合并内置 skills（编程式定义，最低优先级）
-  //    同名时文件级 skill 覆盖内置 skill
-  const allSkills = [...BUNDLED_SKILLS, ...fileSkills];
-  const merged = new Map<string, Skill>();
-  for (const skill of allSkills) {
-    merged.set(skill.name, skill);
-  }
-
-  return Array.from(merged.values());
+  return fileSkills;
 }
 
 export async function loadSkillFile(
@@ -164,10 +171,6 @@ export async function loadSkillFile(
   source: 'user' | 'project',
 ): Promise<SkillWithSource> {
   const result = await parseFrontmatterFile(filePath, SkillFrontmatterSchema);
-
-  // 生成技能目录树结构
-  const skillDir = path.dirname(filePath);
-  const dirTree = await generateDirTree(skillDir);
 
   return {
     name: result.data.name,
@@ -181,7 +184,6 @@ export async function loadSkillFile(
     sourcePath: result.filePath,
     body: result.body,
     source,
-    dirTree: dirTree || undefined,
   };
 }
 
@@ -202,7 +204,6 @@ export async function loadSkill(skillPath: string): Promise<Skill> {
     paths: result.paths,
     body: result.body,
     sourcePath: result.sourcePath,
-    dirTree: result.dirTree,
   };
 }
 
