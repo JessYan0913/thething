@@ -113,11 +113,14 @@ export async function enforceContextWindow(
   const summaryMessage: UIMessage = {
     id: `summary-${Date.now()}`,
     role: 'user',
-    parts: [{
+    // 流水线传递的是 ModelMessage (.content) 而非 UIMessage (.parts)。
+    // 用 .content 格式,避免 summaryMessage 在发给模型时被序列化为空消息。
+    // 见 docs/context-compaction-analysis.md #4。
+    content: [{
       type: 'text',
       text: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}`,
     }],
-  };
+  } as unknown as UIMessage;
 
   const result = [summaryMessage, ...newerMessages];
 
@@ -213,28 +216,66 @@ async function callWithFallback(
 // Quality Validation & Template Fallback
 // ============================================================
 
-function validateSummaryQuality(summary: string, messages: UIMessage[]): boolean {
-  if (!summary || summary.length < 10) return false;
+/**
+ * 验证摘要质量 - 语言无关的验证逻辑
+ * 见 docs/context-compaction-analysis.md #3
+ * （导出仅用于测试）
+ */
+export function validateSummaryQuality(summary: string, messages: UIMessage[]): boolean {
+  // 基本长度检查：太短或太长都不可用
+  if (!summary || summary.length < 20) return false;
   if (summary.length > MAX_SUMMARY_LENGTH) {
     logger.warn('ContextWindow', `Summary too long (${summary.length} chars), likely copying content`);
     return false;
   }
 
-  const userMessages = messages.filter((m) => m.role === 'user');
-  if (userMessages.length === 0) return true;
+  // 提取所有对话文本用于对比
+  const allText = messages
+    .map((m) => extractMessageText(m))
+    .join('\n')
+    .trim();
 
-  const lastUserText = extractMessageText(userMessages[userMessages.length - 1]);
-  if (lastUserText.length < 5) return true;
+  if (!allText) return true; // 没有原文可对比，接受摘要
 
-  const summaryLower = summary.toLowerCase();
-  const keyPhrases = lastUserText
-    .substring(0, 30)
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
+  // 非复制检测：摘要不应是原文的简单复制
+  // 计算最长公共子串（LCS）长度占比
+  const lcsLength = longestCommonSubstringLength(summary, allText);
+  const lcsRatio = lcsLength / summary.length;
 
-  const matchCount = keyPhrases.filter((phrase) => summaryLower.includes(phrase)).length;
-  return matchCount >= 1 || summaryLower.includes('topic') || summaryLower.includes('then');
+  // 如果超过 60% 的内容是原文的连续复制，认为是复制而非摘要
+  if (lcsRatio > 0.6) {
+    logger.warn('ContextWindow', `Summary appears to be copied from original (${(lcsRatio * 100).toFixed(1)}% LCS ratio)`);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * 计算两个字符串的最长公共子串长度
+ * 用于检测摘要是否是原文的简单复制
+ */
+function longestCommonSubstringLength(s1: string, s2: string): number {
+  // 对超长文本进行截断，避免 O(n²) 复杂度问题
+  const maxLen = 1000;
+  const a = s1.slice(0, maxLen);
+  const b = s2.slice(0, maxLen * 5); // 原文可能很长
+
+  let maxLength = 0;
+  const matrix: number[][] = Array(a.length + 1)
+    .fill(null)
+    .map(() => Array(b.length + 1).fill(0));
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1] + 1;
+        maxLength = Math.max(maxLength, matrix[i][j]);
+      }
+    }
+  }
+
+  return maxLength;
 }
 
 function generateTemplateSummary(messages: UIMessage[]): string {
