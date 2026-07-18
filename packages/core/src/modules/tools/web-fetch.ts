@@ -77,10 +77,10 @@ export function createWebFetchTool() {
     description: '抓取指定 URL 的网页内容并返回文本。用于获取网页信息、文档、API 响应等。支持 HTTP/HTTPS 协议。返回提取的文本内容，自动过滤 HTML 标签和脚本。',
     inputSchema: z.object({
       url: z.string().url().describe('要抓取的网页 URL'),
-      maxLength: z.number().min(1000).max(100000).optional().default(50000)
-        .describe('返回内容的最大字符数，默认 50000'),
+      maxLength: z.number().min(1000).max(100000).optional().default(20000)
+        .describe('返回内容的最大字符数，默认 20000（与 budget 阈值对齐）'),
     }),
-    execute: async ({ url, maxLength = 50000 }) => {
+    execute: async ({ url, maxLength = 20000 }) => {
       try {
         initGlobalProxy();
         const controller = new AbortController();
@@ -112,6 +112,7 @@ export function createWebFetchTool() {
         // 提取内容
         const title = extractTitle(html);
         let content = extractText(html);
+        const originalLength = content.length;  // 在截断前记录原始长度
 
         // 截断
         let truncated = false;
@@ -127,7 +128,7 @@ export function createWebFetchTool() {
           contentType,
           content,
           truncated,
-          originalLength: content.length,
+          originalLength,
         }, null, 2);
       } catch (error) {
         const message = error instanceof Error ? error.message : '抓取失败';

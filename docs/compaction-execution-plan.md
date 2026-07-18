@@ -13,9 +13,9 @@
 
 | 顺序 | 事项 | 来源 | 主要改动文件 | 工作量 | 状态 |
 |---|---|---|---|---|---|
-| 1 | EXTRACTORS 键名修复 + result 回显字段 + JSON 字符串兼容 | 工具文档 #1/#2(同时消掉主文档 P0 #1) | `compaction/lifecycle.ts` | 小 | ⬜ |
-| 2 | ModelMessage token 统计遗漏(text / tool-call input 未计入) | 主文档 #2 | `compaction/token-counter.ts` | 小 | ⬜ |
-| 3 | 中文摘要验证修复 + 摘要消息格式(.parts vs .content) | 主文档 #3/#4 | `compaction/context-window.ts`、`app/api/chat/route.ts` | 小 | ⬜ |
+| 1 | EXTRACTORS 键名修复 + result 回显字段 + JSON 字符串兼容 | 工具文档 #1/#2(同时消掉主文档 P0 #1) | `compaction/lifecycle.ts` | 小 | ✅ |
+| 2 | ModelMessage token 统计遗漏(text / tool-call input 未计入) | 主文档 #2 | `compaction/token-counter.ts` | 小 | ✅ |
+| 3 | 中文摘要验证修复 + 摘要消息格式(.parts vs .content) | 主文档 #3/#4 | `compaction/context-window.ts`、`app/api/chat/route.ts` | 小 | ✅ |
 | 4 | `web_fetch` 阈值对齐 + originalLength 在截断前记录 | 工具文档 #3 | `tools/web-fetch.ts`、`budget/tool-output-manager.ts` | 小 | ⬜ |
 | 5 | `skill`/`read_wiki_page` 纳入 compactable + 对应 extractor | 工具文档 #5 | `compaction/types.ts`、`compaction/lifecycle.ts` | 小 | ⬜ |
 | 6 | 老化维度从 user 轮数改为 assistant step 计数 | 主文档 A | `compaction/lifecycle.ts` | 中 | ⬜ |
