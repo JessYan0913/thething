@@ -1,5 +1,15 @@
 import type { UIMessage, Tool } from "ai";
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import { getModelCapabilities } from "../../services/model";
+
+/**
+ * 消息是否为 UIMessage(.parts 格式)。ModelMessage 用 .content,无 parts。
+ * 通过后可安全按 UIMessage 访问 message.parts。
+ */
+function hasParts(message: PipelineMessage): message is UIMessage {
+  const parts = (message as unknown as Record<string, unknown>).parts;
+  return Array.isArray(parts);
+}
 import {
   countTokens,
   countTokensBatch,
@@ -56,10 +66,10 @@ export async function estimateTextTokens(text: string, modelName?: string): Prom
  * @param message 消息对象
  * @param modelName 可选的模型名称
  */
-export async function estimateMessageTokens(message: UIMessage, modelName?: string): Promise<number> {
+export async function estimateMessageTokens(message: PipelineMessage, modelName?: string): Promise<number> {
   let tokens = MESSAGE_OVERHEAD_TOKENS;
 
-  if (!message.parts || !Array.isArray(message.parts)) {
+  if (!hasParts(message)) {
     // ModelMessage 格式：content 字段可能是内容数组或字符串
     const content = (message as unknown as Record<string, unknown>).content;
     if (typeof content === 'string') {
@@ -125,7 +135,7 @@ export async function estimateMessageTokens(message: UIMessage, modelName?: stri
  * @param messages 消息数组
  * @param modelName 可选的模型名称
  */
-export async function estimateMessagesTokens(messages: UIMessage[], modelName?: string): Promise<number> {
+export async function estimateMessagesTokens(messages: PipelineMessage[], modelName?: string): Promise<number> {
   const counts = await Promise.all(
     messages.map(msg => estimateMessageTokens(msg, modelName))
   );
@@ -136,8 +146,8 @@ export async function estimateMessagesTokens(messages: UIMessage[], modelName?: 
 // 辅助函数
 // ============================================================
 
-export function extractMessageText(message: UIMessage): string {
-  if (!message.parts || !Array.isArray(message.parts)) {
+export function extractMessageText(message: PipelineMessage): string {
+  if (!hasParts(message)) {
     const content = (message as unknown as Record<string, unknown>).content;
     if (typeof content === 'string') return content;
     // ModelMessage 格式：提取文本和工具结果内容
@@ -163,8 +173,8 @@ export function extractMessageText(message: UIMessage): string {
     .join("\n");
 }
 
-export function hasTextBlocks(message: UIMessage): boolean {
-  if (!message.parts || !Array.isArray(message.parts)) {
+export function hasTextBlocks(message: PipelineMessage): boolean {
+  if (!hasParts(message)) {
     const content = (message as unknown as Record<string, unknown>).content;
     if (typeof content === 'string') return content.trim().length > 0;
     if (Array.isArray(content)) {
@@ -181,10 +191,10 @@ export function hasTextBlocks(message: UIMessage): boolean {
   return message.parts.some((p) => p.type === "text" && p.text.trim().length > 0);
 }
 
-export function stripImagesFromMessages(messages: UIMessage[]): UIMessage[] {
+export function stripImagesFromMessages(messages: PipelineMessage[]): PipelineMessage[] {
   return messages.map((msg) => {
     // ModelMessage 格式
-    if (!msg.parts || !Array.isArray(msg.parts)) {
+    if (!hasParts(msg)) {
       const content = (msg as unknown as Record<string, unknown>).content;
       if (Array.isArray(content)) {
         const newContent = content.map((part: unknown) => {
@@ -194,7 +204,7 @@ export function stripImagesFromMessages(messages: UIMessage[]): UIMessage[] {
           }
           return part;
         });
-        return { ...msg, content: newContent } as unknown as UIMessage;
+        return { ...msg, content: newContent } as PipelineMessage;
       }
       return msg;
     }
@@ -303,7 +313,7 @@ export interface FullRequestEstimation {
  * @param modelName 模型名称（用于选择正确的 tokenizer）
  */
 export async function estimateFullRequest(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string,

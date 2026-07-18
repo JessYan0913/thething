@@ -5,6 +5,7 @@
 // 用 LLM 生成摘要。极少触发。
 
 import { generateText, type UIMessage } from 'ai';
+import type { PipelineMessage } from '../../services/config/compaction-types'
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { type ContextWindowConfig, DEFAULT_CONTEXT_WINDOW_CONFIG } from './types';
@@ -62,7 +63,7 @@ const SUMMARY_MAX_OUTPUT_TOKENS = 3000;
 // ============================================================
 
 export async function enforceContextWindow(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   context: {
     model: LanguageModelV3;
     fallbackModels?: LanguageModelV3[];
@@ -74,7 +75,7 @@ export async function enforceContextWindow(
     instructionsTokens?: number;
     toolsTokens?: number;
   },
-): Promise<{ messages: UIMessage[]; executed: boolean; tokensFreed: number }> {
+): Promise<{ messages: PipelineMessage[]; executed: boolean; tokensFreed: number }> {
   const config = context.config ?? DEFAULT_CONTEXT_WINDOW_CONFIG;
 
   const msgTokens = await estimateMessagesTokens(messages, context.modelName);
@@ -122,7 +123,7 @@ export async function enforceContextWindow(
     context.conversationId, context.dataStore, config, anchorMessageId,
   );
 
-  const summaryMessage: UIMessage = {
+  const summaryMessage: PipelineMessage = {
     id: `summary-${Date.now()}`,
     role: 'user',
     // 流水线传递的是 ModelMessage (.content) 而非 UIMessage (.parts)。
@@ -132,7 +133,7 @@ export async function enforceContextWindow(
       type: 'text',
       text: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}`,
     }],
-  } as unknown as UIMessage;
+  } as PipelineMessage;
 
   const result = [summaryMessage, ...newerMessages];
 
@@ -147,7 +148,7 @@ export async function enforceContextWindow(
 // ============================================================
 
 async function generateSummaryWithFallback(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   model: LanguageModelV3,
   fallbackModels: LanguageModelV3[] | undefined,
   conversationId: string,
@@ -234,7 +235,7 @@ async function callWithFallback(
  * 见 docs/context-compaction-analysis.md #3
  * （导出仅用于测试）
  */
-export function validateSummaryQuality(summary: string, messages: UIMessage[]): boolean {
+export function validateSummaryQuality(summary: string, messages: PipelineMessage[]): boolean {
   // 基本长度检查：太短或太长都不可用
   if (!summary || summary.length < 20) return false;
   if (summary.length > MAX_SUMMARY_LENGTH) {
@@ -293,7 +294,7 @@ function longestCommonSubstringLength(s1: string, s2: string): number {
 
 // LLM 摘要失败时的兜底：套用结构化小标题，尽量填入能机械提取的信息，
 // 与 SUMMARY_SYSTEM_PROMPT 的结构保持一致（见主文档 D）。
-function generateTemplateSummary(messages: UIMessage[]): string {
+function generateTemplateSummary(messages: PipelineMessage[]): string {
   const userMessages = messages.filter((m) => m.role === 'user');
   const goal = userMessages.length > 0
     ? extractMessageText(userMessages[0]).substring(0, 200).replace(/\n/g, ' ')
@@ -336,7 +337,7 @@ function generateTemplateSummary(messages: UIMessage[]): string {
 // ============================================================
 
 async function findSplitIndex(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   targetTokens: number,
   modelName: string,
 ): Promise<number> {

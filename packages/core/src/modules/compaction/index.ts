@@ -8,10 +8,10 @@
 // 2. Layer 2: 工具输出生命周期管理 (同步，微秒级)
 // 3. Layer 3: 上下文窗口检查 (异步，极少触发)
 
-import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import type { ToolOutputState } from '../session/interfaces';
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle, extractToolMeta } from './lifecycle';
 import { enforceContextWindow } from './context-window';
@@ -28,7 +28,7 @@ import { getToolOutputString, unwrapOutput } from './message-utils';
  * prepareStep 中调用：每步 API 调用前的上下文管理
  */
 export async function compactBeforeStep(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   toolOutputState: ToolOutputState,
   config: CompactionConfig = DEFAULT_COMPACTION_CONFIG,
   context: {
@@ -45,7 +45,7 @@ export async function compactBeforeStep(
     /** usage 反馈校准系数(见 F);应用到 Layer 3 触发判断,默认 1 */
     calibration?: number;
   },
-): Promise<UIMessage[]> {
+): Promise<PipelineMessage[]> {
   let current = messages;
 
   // ── Layer 1: 应用 Agent 主动释放 ──
@@ -98,7 +98,7 @@ export async function compactBeforeStep(
 // Layer 1: Apply Pending Compactions
 // ============================================================
 
-function applyPendingCompactions(messages: UIMessage[], ids: string[]): UIMessage[] {
+function applyPendingCompactions(messages: PipelineMessage[], ids: string[]): PipelineMessage[] {
   const idSet = new Set(ids);
   return messages.map((msg) => {
     const content = (msg as unknown as Record<string, unknown>).content;
@@ -129,7 +129,7 @@ function applyPendingCompactions(messages: UIMessage[], ids: string[]): UIMessag
     });
 
     if (!modified) return msg;
-    return { ...msg, content: newContent } as unknown as UIMessage;
+    return { ...msg, content: newContent } as PipelineMessage;
   });
 }
 

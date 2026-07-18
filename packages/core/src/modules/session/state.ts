@@ -2,7 +2,7 @@
 // Session State - 会话状态管理
 // ============================================================
 
-import type { UIMessage } from 'ai';
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import { DenialTracker } from './denial-tracking';
 import { ModelSwapper } from './model-switching';
 import type { CompactionResult, CompactionConfig } from '../../services/config/compaction-types';
@@ -113,7 +113,7 @@ export function createSessionState(
     fallbackModels: undefined,
     dataStore: dataStore,
 
-    async compact(messages: UIMessage[]): Promise<CompactionResult> {
+    async compact(messages: PipelineMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {
         return { messages, executed: false, tokensFreed: 0, actions: [] };
       }

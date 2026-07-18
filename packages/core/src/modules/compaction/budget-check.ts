@@ -3,7 +3,8 @@
 // ============================================================
 // 简化版：在第一次 API 调用前检查预算，按优先级降级
 
-import type { UIMessage, Tool } from 'ai';
+import type { Tool } from 'ai';
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
@@ -46,7 +47,7 @@ export interface InitialBudgetCheckResult {
   estimation: FullRequestEstimation;
   actions: string[];
   adjustedTools?: Record<string, Tool>;
-  adjustedMessages?: UIMessage[];
+  adjustedMessages?: PipelineMessage[];
 }
 
 // ============================================================
@@ -54,7 +55,7 @@ export interface InitialBudgetCheckResult {
 // ============================================================
 
 export async function checkInitialBudget(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string,
@@ -229,10 +230,10 @@ async function filterToolsByPriority(
 // ============================================================
 
 function truncateFromHead(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   targetMessageTokens: number,
   estimation: FullRequestEstimation,
-): { messages: UIMessage[]; removed: number } {
+): { messages: PipelineMessage[]; removed: number } {
   // 同步估算（如果 tokenizer 已加载）
   let tokens = estimation.messagesTokens;
   let startIndex = 0;

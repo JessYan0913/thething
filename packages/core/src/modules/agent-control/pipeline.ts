@@ -1,4 +1,5 @@
 import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import type { PipelineContext } from '../session/interfaces';
 import { enforceToolResultBudget } from '../budget/message-budget';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
@@ -172,17 +173,17 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     }
 
     // 每步调用 compactBeforeStep（Layer 1 + Layer 2 + Layer 3）
-    const compactResult = await sessionState.compact(messages as unknown as UIMessage[]);
+    const compactResult = await sessionState.compact(messages as PipelineMessage[]);
     if (compactResult.executed) {
       debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
-      messages = compactResult.messages as unknown as ModelMessageType[];
+      messages = compactResult.messages as ModelMessageType[];
     }
 
     // ✅ 新增：工具结果预算检查
     // 在工具结果进入下一轮前，检查总额是否超过预算
     if (stepNumber > 0 && lastStep?.toolResults && lastStep.toolResults.length > 0) {
       const budgetResult = await enforceToolResultBudget(
-        messages as unknown as UIMessage[],
+        messages as PipelineMessage[],
         sessionState.contentReplacementState,
         sessionState.conversationId,
         sessionState.layout.dataDir,
@@ -196,14 +197,14 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           `[Agent] Tool result budget: persisted ${budgetResult.newlyPersisted.length} results, ` +
           `saved ${budgetResult.tokensSaved} tokens`
         );
-        messages = budgetResult.messages as unknown as ModelMessageType[];
+        messages = budgetResult.messages as ModelMessageType[];
       }
     }
 
     // Context usage progress bar
     if (config.instructions != null && config.tools) {
       const estimation = await estimateFullRequest(
-        messages as unknown as UIMessage[],
+        messages as PipelineMessage[],
         config.instructions,
         config.tools,
         sessionState.model,

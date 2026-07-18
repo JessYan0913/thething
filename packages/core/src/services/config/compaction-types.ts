@@ -3,6 +3,15 @@
 // Shared between services/config (behavior) and modules/compaction
 // ============================================================
 
+/**
+ * 流水线消息类型。pipeline 运行时传递的是 ModelMessage(.content 数组),
+ * 而 DB/app 边界处是 UIMessage(.parts 数组)。compaction/budget 的多数函数
+ * 在转换之后运行、按 .content 操作,少数(如按 .parts 的 token 估算)两种都要处理。
+ * 用这个 union 作为流水线侧签名,取代此前遍布调用点的 `as unknown as` 强转。
+ * 见 docs/context-compaction-analysis.md #4 与执行计划 8.9。
+ */
+export type PipelineMessage = import('ai').UIMessage | import('ai').ModelMessage;
+
 export interface LifecycleConfig {
   /** 完整保留最近 K 个含工具结果的 step（默认 3）。step = 一条携带 tool-result 的消息 */
   keepRecentSteps: number;
@@ -31,7 +40,7 @@ export interface CompactionConfig {
 }
 
 export interface CompactionResult {
-  messages: import('ai').UIMessage[];
+  messages: PipelineMessage[];
   executed: boolean;
   tokensFreed: number;
   actions: string[];

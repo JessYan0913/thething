@@ -7,7 +7,7 @@
 // 流水线传递的是 ModelMessage 格式（AI SDK 内部格式），
 // 工具结果位于 .content 数组中，类型为 tool-result。
 
-import type { UIMessage } from 'ai';
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import {
   type LifecycleConfig,
   type CompactedToolResult,
@@ -48,10 +48,10 @@ export interface LifecycleStorage {
  * @returns 替换后的消息和释放的 token 数
  */
 export function manageToolOutputLifecycle(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
   storage?: LifecycleStorage,
-): { messages: UIMessage[]; tokensFreed: number; persistence?: Promise<void> } {
+): { messages: PipelineMessage[]; tokensFreed: number; persistence?: Promise<void> } {
   const recentBoundary = findNthToolResultMessageFromEnd(messages, config.keepRecentSteps);
   let tokensFreed = 0;
   const persistTasks: Promise<void>[] = [];
@@ -97,7 +97,7 @@ export function manageToolOutputLifecycle(
 // ============================================================
 
 /** 消息中是否有 tool-result 项 */
-function hasToolResults(msg: UIMessage): boolean {
+function hasToolResults(msg: PipelineMessage): boolean {
   const content = (msg as unknown as Record<string, unknown>).content;
   return Array.isArray(content) && content.some((c: unknown) => {
     const item = c as Record<string, unknown>;
@@ -106,7 +106,7 @@ function hasToolResults(msg: UIMessage): boolean {
 }
 
 /** 获取 tool-result 项的数组 */
-function getToolResultItems(msg: UIMessage): Record<string, unknown>[] {
+function getToolResultItems(msg: PipelineMessage): Record<string, unknown>[] {
   const content = (msg as unknown as Record<string, unknown>).content;
   if (!Array.isArray(content)) return [];
   return content.filter((c: unknown) => {
@@ -116,21 +116,21 @@ function getToolResultItems(msg: UIMessage): Record<string, unknown>[] {
 }
 
 /** 是否所有 tool-result 都已压缩 */
-function isAllCompacted(msg: UIMessage): boolean {
+function isAllCompacted(msg: PipelineMessage): boolean {
   const items = getToolResultItems(msg);
   if (items.length === 0) return true;
   return items.every((item) => item._compacted === true);
 }
 
 /** 未压缩的 tool-result 输出总字符数 */
-function totalToolResultSize(msg: UIMessage): number {
+function totalToolResultSize(msg: PipelineMessage): number {
   return getToolResultItems(msg)
     .filter((item) => item._compacted !== true)
     .reduce((sum, item) => sum + getToolOutputString(item.output).length, 0);
 }
 
 /** 提取工具名称列表 */
-function extractToolNames(msg: UIMessage): string[] {
+function extractToolNames(msg: PipelineMessage): string[] {
   return getToolResultItems(msg).map((item) => (item.toolName as string) ?? '');
 }
 
@@ -144,7 +144,7 @@ function extractToolNames(msg: UIMessage): string[] {
  * read/edit/write 用 `error:true`,web_fetch 用 `success:false`,
  * bash 用非零 `exitCode`。
  */
-function isErrorResult(msg: UIMessage): boolean {
+function isErrorResult(msg: PipelineMessage): boolean {
   return getToolResultItems(msg)
     .filter((item) => item._compacted !== true)
     .some((item) => {
@@ -171,7 +171,7 @@ function readResultPath(item: Record<string, unknown>): string | null {
  * 同文件重复读取去重:同一文件被 read_file 多次,只保留最后一次完整输出,
  * 更早的直接进压缩集。返回应压缩的消息索引集合。
  */
-function findStaleDuplicateReads(messages: UIMessage[]): Set<number> {
+function findStaleDuplicateReads(messages: PipelineMessage[]): Set<number> {
   // path → 最后一次读取该文件的消息索引
   const lastReadIndex = new Map<string, number>();
   const perPathIndices = new Map<string, number[]>();
@@ -203,7 +203,7 @@ function findStaleDuplicateReads(messages: UIMessage[]): Set<number> {
  * 说明它属于当前工作集,降低压缩优先级(延迟老化)。
  * 返回被引用、应延迟老化的 tool-result 消息索引集合。
  */
-function findReferencedResults(messages: UIMessage[]): Set<number> {
+function findReferencedResults(messages: PipelineMessage[]): Set<number> {
   // 收集每条 tool-result 消息回显的路径
   const msgPaths: { index: number; paths: string[] }[] = [];
   messages.forEach((msg, i) => {
@@ -236,7 +236,7 @@ function findReferencedResults(messages: UIMessage[]): Set<number> {
 }
 
 /** 提取 assistant 消息的文本内容(ModelMessage .content 或 UIMessage .parts) */
-function extractAssistantText(msg: UIMessage): string {
+function extractAssistantText(msg: PipelineMessage): string {
   const content = (msg as unknown as Record<string, unknown>).content;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -263,7 +263,7 @@ function extractAssistantText(msg: UIMessage): string {
 // Compactability Check
 // ============================================================
 
-function isToolCompactable(msg: UIMessage, config: LifecycleConfig): boolean {
+function isToolCompactable(msg: PipelineMessage, config: LifecycleConfig): boolean {
   const toolNames = extractToolNames(msg);
 
   // 受保护的工具不压缩
@@ -294,11 +294,11 @@ function isToolCompactable(msg: UIMessage, config: LifecycleConfig): boolean {
 // ============================================================
 
 function compactToolResults(
-  msg: UIMessage,
+  msg: PipelineMessage,
   storage?: LifecycleStorage,
   persistTasks?: Promise<void>[],
 ): {
-  compacted: UIMessage;
+  compacted: PipelineMessage;
   freed: number;
 } {
   const content = (msg as unknown as Record<string, unknown>).content;
@@ -352,7 +352,7 @@ function compactToolResults(
   });
 
   return {
-    compacted: { ...msg, content: newContent } as unknown as UIMessage,
+    compacted: { ...msg, content: newContent } as PipelineMessage,
     freed,
   };
 }
@@ -570,7 +570,7 @@ export function extractToolMeta(toolName: string, args: unknown, result: unknown
  * 返回该位置作为"最近 K 个 step"的边界:该索引之前的工具输出被压缩,
  * 自身及之后保持完整
  */
-function findNthToolResultMessageFromEnd(messages: UIMessage[], k: number): number {
+function findNthToolResultMessageFromEnd(messages: PipelineMessage[], k: number): number {
   if (k <= 0) return messages.length; // 不保留任何 step → 全部压缩
   let count = 0;
   for (let i = messages.length - 1; i >= 0; i--) {

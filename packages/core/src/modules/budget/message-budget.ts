@@ -5,7 +5,7 @@
 // 防止 N 个工具同时返回大输出，总额超过限制
 // ============================================================
 
-import type { UIMessage } from 'ai'
+import type { PipelineMessage } from '../../services/config/compaction-types'
 import { logger } from '../../primitives/logger'
 import {
   getMessageBudgetLimit,
@@ -35,7 +35,7 @@ interface ToolResultCandidate {
  * 预算检查结果
  */
 export interface BudgetCheckResult {
-  messages: UIMessage[]
+  messages: PipelineMessage[]
   newlyPersisted: ContentReplacementRecord[]
   tokensSaved: number
   totalBefore: number
@@ -62,7 +62,7 @@ export interface BudgetCheckResult {
   * @param skipToolNames 跳过的工具名称集合
   */
 export async function enforceToolResultBudget(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   state: ContentReplacementState,
   sessionId: string,
   dataDir: string,
@@ -182,7 +182,7 @@ export async function enforceToolResultBudget(
  * 从消息的 .content 中收集所有 tool-result 候选
  * 流水线传递的是 ModelMessage 格式，工具结果在 content 数组中
  */
-function collectCandidatesByMessage(messages: UIMessage[]): ToolResultCandidate[] {
+function collectCandidatesByMessage(messages: PipelineMessage[]): ToolResultCandidate[] {
   const candidates: ToolResultCandidate[] = []
 
   for (const message of messages) {
@@ -227,9 +227,9 @@ function extractToolNameFromId(toolUseId: string): string {
  * 替换消息 .content 中的 tool-result output 为预览文本
  */
 function applyReplacements(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   replacements: ContentReplacementRecord[]
-): UIMessage[] {
+): PipelineMessage[] {
   const replacementMap = new Map<string, string>()
   for (const r of replacements) {
     replacementMap.set(r.toolUseId, r.replacement)
@@ -255,7 +255,7 @@ function applyReplacements(
     })
 
     if (!modified) return message
-    return { ...message, content: newContent } as unknown as UIMessage
+    return { ...message, content: newContent } as PipelineMessage
   })
 }
 
@@ -268,7 +268,7 @@ function applyReplacements(
  * 用于提前预警
  */
 export function estimateToolResultsTotal(
-  messages: UIMessage[],
+  messages: PipelineMessage[],
   sessionConfig?: ToolOutputConfig,
 ): {
   totalChars: number
@@ -299,7 +299,7 @@ export function estimateToolResultsTotal(
 /**
  * 从 assistant 消息的 .content 中构建 toolCallId → toolName 映射
  */
-export function buildToolNameMap(messages: UIMessage[]): Map<string, string> {
+export function buildToolNameMap(messages: PipelineMessage[]): Map<string, string> {
   const nameMap = new Map<string, string>()
 
   for (const message of messages) {

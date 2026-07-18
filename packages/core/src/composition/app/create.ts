@@ -23,6 +23,7 @@ import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
 import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
+import type { PipelineMessage } from '../../services/config/compaction-types'
 import type { AgentDefinition } from '../../modules/agent/types'
 import { resolveModelAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
@@ -577,7 +578,7 @@ Respond with exactly "APPROVED", or "DENIED: <brief reason>" if denied. Include 
   };
 }
 
-async function estimateTokensDiff(before: import('ai').UIMessage[], after: import('ai').UIMessage[]): Promise<number> {
+async function estimateTokensDiff(before: PipelineMessage[], after: PipelineMessage[]): Promise<number> {
   try {
     const { estimateMessagesTokens } = await import('../../modules/compaction/token-counter')
     const beforeTokens = await estimateMessagesTokens(before)
