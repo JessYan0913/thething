@@ -146,8 +146,7 @@ export async function POST(request: Request) {
       userId,
       agentType,
       model: {
-        ...getModelConfig(),
-        modelName: modelName || getModelConfig().modelName,
+        ...getModelConfig(modelName),
         includeUsage: true,
       },
       modules: enableConnectors === false ? { connectors: false } : undefined,
@@ -312,7 +311,7 @@ export async function POST(request: Request) {
                       undefined, // 使用默认 compaction config
                       {
                         model: model!,
-                        modelName: modelName || getModelConfig().modelName || '',
+                        modelName: getModelConfig(modelName).modelName || '',
                         conversationId,
                         dataStore: store,
                       },

@@ -15,6 +15,9 @@ const FILE_PATH_PATTERN = /([\/~]?[\w一-鿿\-\.\/]+(?:\.[a-zA-Z]{1,10}))/g;
 // 匹配已有的 markdown 链接语法 [text](url)
 const MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/g;
 
+// 匹配反引号内包含文件扩展名的路径: `path/to/file.md`
+const BACKTICK_PATH = /`([^`]*?(?:\.(?:docx?|xlsx?|pptx?|pdf|png|jpe?g|gif|webp|svg|html?|tsx?|jsx?|js|mjs|cjs|py|go|rs|java|kt|scala|c|cpp|h|hpp|rb|php|swift|sql|sh|bash|zsh|json|yaml|yml|toml|ini|env|css|scss|less|styl|xml|vue|svelte|graphql|gql|proto|md|mdx|txt|log|diff|patch|csv|tsv)\b)[^`]*)`/gi;
+
 export const PREVIEW_URL_PREFIX = '/api/preview?path=';
 
 /**
@@ -35,7 +38,18 @@ export function linkifyFilePaths(text: string, basePath?: string): string {
   });
 
   // 对非链接部分执行文件路径检测
-  const linked = protected_.replace(FILE_PATH_PATTERN, (match) => {
+  // Step 2: 处理反引号路径 `path/file.md`（在裸路径检测之前）
+  const unbackticked = protected_.replace(BACKTICK_PATH, (_, inner) => {
+    const path = inner.trim();
+    const absolutePath = basePath && !path.startsWith('/') && !path.startsWith('~')
+      ? basePath + '/' + path
+      : path;
+    const encoded = encodeURIComponent(absolutePath);
+    return `[${path}](${PREVIEW_URL_PREFIX}${encoded})`;
+  });
+
+  // Step 3: 处理裸文件路径
+  const linked = unbackticked.replace(FILE_PATH_PATTERN, (match) => {
     if (PREVIEW_EXTS.test(match) && !match.startsWith('<')) {
       // 如果是相对路径且有 basePath，补全为绝对路径
       const absolutePath = basePath && !match.startsWith('/') && !match.startsWith('~')

@@ -513,7 +513,7 @@ export default function ModelSettings() {
 
       {/* Model Selection Dialog */}
       <Dialog open={isModelsDialogOpen} onOpenChange={setIsModelsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("models.fetchModels.dialogTitle")}</DialogTitle>
             <DialogDescription>

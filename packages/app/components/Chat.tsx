@@ -1420,16 +1420,19 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                   a: ({ href, children, ...rest }: any) => {
                                     if (href?.startsWith('/api/preview?path=')) {
                                       const filePath = decodeURIComponent(href.slice('/api/preview?path='.length));
+                                      const fileName = filePath.split('/').pop() ?? filePath;
                                       return (
                                         <span
-                                          className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/70 cursor-pointer font-medium text-sm transition-colors align-middle mx-0.5"
                                           role="button"
                                           tabIndex={0}
+                                          title={`点击预览: ${filePath}`}
                                           onClick={() => setPreviewFile({ path: filePath, content: '' })}
                                           onKeyDown={(e) => e.key === 'Enter' && setPreviewFile({ path: filePath, content: '' })}
                                         >
                                           <FileTextIcon className="size-3.5" />
-                                          {children}
+                                          <span>{fileName}</span>
+                                          <span className="text-[10px] text-blue-400 dark:text-blue-500 font-normal">预览</span>
                                         </span>
                                       );
                                     }

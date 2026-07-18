@@ -108,8 +108,8 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
       <PromptInputSelectContent>
         {availableModels.map(([key, config]) => (
           <PromptInputSelectItem key={key} value={key}>
-            <span className="font-medium">{config.model.split('/').pop()}</span>
-            <span className="ml-1.5 text-muted-foreground text-xs">
+            <span className="font-medium max-w-30 truncate" title={config.model}>{config.model.split('/').pop()}</span>
+            <span className="ml-1.5 text-muted-foreground text-xs shrink-0">
               {MODEL_LABELS[key] ?? key}
             </span>
           </PromptInputSelectItem>

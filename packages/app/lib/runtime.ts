@@ -59,12 +59,30 @@ export async function saveTheThingRC(config: { dataDir?: string }): Promise<void
 /**
  * 获取当前模型配置。
  * 从 ~/.thething/models.json 读取（通过 ~/.agents → ~/.thething symlink 兼容协议工具）。
+ * 每次调用都从磁盘读取，确保配置更改后立即生效。
+ * @param aliasKey 可选，模型别名 key（fast/smart/default），用于解析实际模型名称
  */
-export function getModelConfig(): { apiKey: string; baseURL: string; modelName?: string } {
+export function getModelConfig(aliasKey?: string): { apiKey: string; baseURL: string; modelName?: string } {
+  const configDir = path.join(os.homedir(), '.thething');
+  const freshConfig = loadGlobalConfig(configDir) || cachedGlobalConfig;
+  const aliases = freshConfig?.modelAliases;
+
+  let modelName: string | undefined;
+
+  if (aliasKey === 'fast') {
+    modelName = aliases?.fast?.model;
+  } else if (aliasKey === 'smart') {
+    modelName = aliases?.smart?.model;
+  }
+
+  if (!modelName) {
+    modelName = aliases?.default?.model;
+  }
+
   return {
-    apiKey: cachedGlobalConfig?.apiKey || '',
-    baseURL: cachedGlobalConfig?.baseURL || '',
-    modelName: cachedGlobalConfig?.modelAliases?.default?.model || undefined,
+    apiKey: freshConfig?.apiKey || '',
+    baseURL: freshConfig?.baseURL || '',
+    modelName,
   };
 }
 
