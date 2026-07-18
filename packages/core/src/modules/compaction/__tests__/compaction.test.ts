@@ -336,8 +336,8 @@ describe('extractToolMeta', () => {
     const meta = extractToolMeta('grep', null, raw);
     expect(meta).toContain('Grep');
     expect(meta).toContain('extractToolMeta');
+    // grep 默认改为紧凑文本输出后不再有 matches 数组,meta 只报总数
     expect(meta).toContain('12 matches');
-    expect(meta).toContain('2 files');
   });
 
   it('glob: parses JSON string result and extracts pattern (args=null)', () => {

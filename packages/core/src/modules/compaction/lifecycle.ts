@@ -424,10 +424,11 @@ const extractGrep: MetaExtractor = (args, rawResult) => {
   const result = asRecord(parseIfJsonString(rawResult));
   const argsRecord = asRecord(args);
   const pattern = firstString(result?.pattern, argsRecord?.pattern);
+  // grep 默认已改为紧凑文本输出(formattedOutput),不再有 matches 数组;
+  // 优先取 totalMatches,兼容旧结果的 matches 数组。
   const matches = Array.isArray(result?.matches) ? (result.matches as Record<string, unknown>[]) : [];
   const total = typeof result?.totalMatches === 'number' ? result.totalMatches : matches.length;
-  const files = new Set(matches.map((m) => (m.file ?? m.path) as string)).size;
-  return `Grep '${pattern}' → ${total} matches${files > 0 ? ` in ${files} files` : ''}`;
+  return `Grep '${pattern}' → ${total} matches`;
 };
 
 const extractGlob: MetaExtractor = (args, rawResult) => {

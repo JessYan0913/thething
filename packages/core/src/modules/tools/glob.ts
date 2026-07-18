@@ -4,7 +4,10 @@ import * as path from 'path';
 import { z } from 'zod';
 
 // 默认配置
-const DEFAULT_LIMIT = 1000;
+// 参考 Claude Code 的默认 100:1000 个路径 ≈ 30-50k chars,一次就打到 budget 阈值。
+// 模型极少需要一次看这么多路径,需要时可用更具体的 pattern 或分页。
+// 见 docs/built-in-tools-compaction-analysis.md 三.C。
+const DEFAULT_LIMIT = 200;
 
 export function createGlobTool(options: { cwd: string }) {
   return tool({

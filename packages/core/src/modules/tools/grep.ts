@@ -192,6 +192,71 @@ async function searchWithNode(
 }
 
 /**
+ * per-file 上限:单个文件命中过多时(如搜常用符号),避免 100 条 limit
+ * 全被一个文件吃掉。每文件最多保留 N 条,其余记入 omitted 提示,
+ * 总量分给更多文件。见 docs/built-in-tools-compaction-analysis.md 三.D。
+ */
+function applyPerFileLimit(
+  matches: GrepMatch[],
+  perFileLimit: number,
+): { limited: GrepMatch[]; omittedByFile: Map<string, number> } {
+  const perFileCount = new Map<string, number>();
+  const omittedByFile = new Map<string, number>();
+  const limited: GrepMatch[] = [];
+
+  for (const m of matches) {
+    const count = perFileCount.get(m.file) ?? 0;
+    if (count < perFileLimit) {
+      limited.push(m);
+      perFileCount.set(m.file, count + 1);
+    } else {
+      omittedByFile.set(m.file, (omittedByFile.get(m.file) ?? 0) + 1);
+    }
+  }
+
+  return { limited, omittedByFile };
+}
+
+/**
+ * 默认紧凑文本格式:`file:line: content`,按文件分组去重路径前缀。
+ * 相比 pretty-print JSON(2 空格缩进 + 每条重复 file/line/content 键 +
+ * 绝对路径全量重复),信息密度高得多。
+ */
+function formatCompact(
+  matches: GrepMatch[],
+  omittedByFile: Map<string, number>,
+): string {
+  const output: string[] = [];
+  let lastFile = '';
+
+  for (const match of matches) {
+    if (match.file !== lastFile) {
+      output.push(`${match.file}:`);
+      lastFile = match.file;
+      // 文件切换时,若上一文件有省略,提示会在文件块末尾统一加(见下)
+    }
+    output.push(`  ${match.line}: ${match.content}`);
+    // 该文件的最后一条之后追加省略提示
+    const omitted = omittedByFile.get(match.file);
+    if (omitted && isLastMatchOfFile(matches, match)) {
+      output.push(`  … ${omitted} more matches in this file`);
+    }
+  }
+
+  return output.join('\n');
+}
+
+/** 判断某条匹配是否是其所在文件在列表中的最后一条 */
+function isLastMatchOfFile(matches: GrepMatch[], target: GrepMatch): boolean {
+  for (let i = matches.length - 1; i >= 0; i--) {
+    if (matches[i].file === target.file) {
+      return matches[i] === target;
+    }
+  }
+  return false;
+}
+
+/**
  * 格式化匹配结果为可读文本
  */
 function formatMatches(
@@ -250,8 +315,9 @@ export function createGrepTool(options: { cwd: string }) {
       include: z.string().optional().describe('文件类型过滤，如 "*.ts"、"*.py"'),
       context: z.number().optional().describe('显示匹配行前后 N 行上下文（默认不显示）'),
       limit: z.number().optional().default(100).describe('最大返回匹配数（默认 100）'),
+      perFileLimit: z.number().optional().default(10).describe('单个文件最多返回的匹配数（默认 10，超出记为 more matches）'),
     }),
-    execute: async ({ pattern, path: searchPath, ignoreCase = true, include, context: contextLines, limit }) => {
+    execute: async ({ pattern, path: searchPath, ignoreCase = true, include, context: contextLines, limit, perFileLimit }) => {
       const absolutePath = searchPath ? path.resolve(searchPath) : options.cwd;
 
       try {
@@ -267,15 +333,14 @@ export function createGrepTool(options: { cwd: string }) {
 
       const searchEngine = useRg ? 'ripgrep' : 'node.js';
       const effectiveLimit = Math.max(1, limit ?? 100);
+      const effectivePerFileLimit = Math.max(1, perFileLimit ?? 10);
 
-      // 应用 limit 限制
-      const matches = allMatches.slice(0, effectiveLimit);
-      const truncated = allMatches.length > effectiveLimit;
+      // 先按 per-file 上限裁剪,让总量分给更多文件,再应用全局 limit
+      const { limited, omittedByFile } = applyPerFileLimit(allMatches, effectivePerFileLimit);
+      const matches = limited.slice(0, effectiveLimit);
+      const truncated = limited.length > effectiveLimit;
 
-      // 格式化输出
-      const formattedMatches = formatMatches(matches, contextLines ?? 0);
-
-      // 构建结果
+      // 构建结果元信息
       const result: Record<string, unknown> = {
         pattern,
         searchPath: absolutePath,
@@ -286,20 +351,17 @@ export function createGrepTool(options: { cwd: string }) {
         flags: { ignoreCase, include, context: contextLines },
       };
 
-      // 根据是否有 context 选择输出格式
+      // 有 context 时保留原多行上下文格式;否则默认用紧凑文本(file:line: content),
+      // 信息密度远高于 pretty-print JSON。见 docs/built-in-tools-compaction-analysis.md 三.B。
       if (contextLines && contextLines > 0) {
-        result.formattedOutput = formattedMatches.join('\n');
+        result.formattedOutput = formatMatches(matches, contextLines).join('\n');
       } else {
-        result.matches = matches.map(m => ({
-          file: m.file,
-          line: m.line,
-          content: m.content,
-        }));
+        result.formattedOutput = formatCompact(matches, omittedByFile);
       }
 
       // 添加截断提示
       if (truncated) {
-        result.note = `结果已截断：显示 ${matches.length} / ${allMatches.length} 条匹配。使用更具体的 pattern 或 include 参数缩小范围。`;
+        result.note = `结果已截断：显示 ${matches.length} / ${limited.length} 条匹配（per-file 上限 ${effectivePerFileLimit}）。使用更具体的 pattern 或 include 参数缩小范围。`;
       }
 
       return JSON.stringify(result, null, 2);
