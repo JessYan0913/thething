@@ -137,6 +137,15 @@ export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
   'web_fetch': {
     maxResultSizeChars: 20_000,
   },
+  // sub-agent 报告是"结论"性输出,压缩需谨慎,但超大报告应走持久化路径
+  // (预览留在上下文,全文落盘可 read_file 找回)。阈值放宽,只兜超大情况。
+  // 见 docs/built-in-tools-compaction-analysis.md 二.5。
+  'agent': {
+    maxResultSizeChars: 50_000,
+  },
+  'parallel_agent': {
+    maxResultSizeChars: 50_000,
+  },
 
   // 外部工具默认配置
   'mcp_default': {
