@@ -60,6 +60,19 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     // 条件技能激活已移除，技能现在通过 Skill 工具主动调用
 
+    // Layer 1 激活:上下文水位 >60% 时注入一次提醒,把被动的
+    // compact_tool_result 能力激活(见 docs/context-compaction-analysis.md C4)
+    if (!sessionState.layer1HintInjected && budgetSummary.usagePercentage > 60) {
+      sessionState.layer1HintInjected = true;
+      debugLog(debugEnabled, `[Agent] Injecting Layer 1 compaction hint at ${budgetSummary.usagePercentage.toFixed(1)}%`);
+      return {
+        messages: [...messages, {
+          role: 'user',
+          content: '上下文已使用较多空间。对于已经用完、不再需要的工具输出，请调用 compact_tool_result（传入对应的 toolCallId）释放空间。',
+        } as ModelMessageType],
+      } as PrepareStepResult<TOOLS>;
+    }
+
     if (sessionState.denialTracker.isThresholdExceeded()) {
       const injectMsg = sessionState.denialTracker.getInjectMessage();
       if (injectMsg) {

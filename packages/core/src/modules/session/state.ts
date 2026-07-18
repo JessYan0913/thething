@@ -106,6 +106,7 @@ export function createSessionState(
     contentReplacementState: createContentReplacementState(),
     pendingCompactIds: [],
     consecutiveReasoningOnlySteps: 0,
+    layer1HintInjected: false,
     goalState: null,
     compactionConfig: compactionCfg,
     compactModel: undefined,

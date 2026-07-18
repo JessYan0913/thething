@@ -56,16 +56,26 @@ export function manageToolOutputLifecycle(
   let tokensFreed = 0;
   const persistTasks: Promise<void>[] = [];
 
+  // 价值感知信号(见 docs/context-compaction-analysis.md C):
+  // - staleReadIndices:同一文件被多次读取时,更早那几次直接压缩(只留最后一次完整)
+  // - referencedIndices:后续 assistant 文本引用过的结果,延迟老化(降低压缩优先级)
+  const staleReadIndices = findStaleDuplicateReads(messages);
+  const referencedIndices = findReferencedResults(messages);
+
   const result = messages.map((msg, i) => {
     // 不是 tool-result 消息 → 原样保留
     if (!hasToolResults(msg)) return msg;
     // 已经全部压缩过 → 跳过
     if (isAllCompacted(msg)) return msg;
+    // 错误结果保护:失败的工具输出信息密度高、体积小,压缩后模型会重蹈覆辙
+    if (isErrorResult(msg)) return msg;
 
-    // 判断是否应该压缩这条消息的工具输出
-    const shouldCompact =
-      i < recentBoundary || // 超出最近 K 个 step
-      totalToolResultSize(msg) > config.largeOutputThreshold; // 或者输出太大
+    const tooLarge = totalToolResultSize(msg) > config.largeOutputThreshold;
+    const isStaleDuplicate = staleReadIndices.has(i);
+    // 被后续引用的结果延迟老化:仅豁免"超出最近 K step"这一条,不豁免超大/重复读
+    const beyondBoundary = i < recentBoundary && !referencedIndices.has(i);
+
+    const shouldCompact = isStaleDuplicate || tooLarge || beyondBoundary;
 
     if (!shouldCompact) return msg;
     if (!isToolCompactable(msg, config)) return msg;
@@ -122,6 +132,131 @@ function totalToolResultSize(msg: UIMessage): number {
 /** 提取工具名称列表 */
 function extractToolNames(msg: UIMessage): string[] {
   return getToolResultItems(msg).map((item) => (item.toolName as string) ?? '');
+}
+
+// ============================================================
+// 价值感知信号(见 docs/context-compaction-analysis.md C)
+// ============================================================
+
+/**
+ * 错误结果保护:失败的工具输出信息密度高、体积小,压缩后模型会忘记
+ * 失败原因并重蹈覆辙。检测各工具的错误标记:
+ * read/edit/write 用 `error:true`,web_fetch 用 `success:false`,
+ * bash 用非零 `exitCode`。
+ */
+function isErrorResult(msg: UIMessage): boolean {
+  return getToolResultItems(msg)
+    .filter((item) => item._compacted !== true)
+    .some((item) => {
+      const parsed = parseIfJsonString(unwrapOutput(item.output));
+      const r = asRecord(parsed);
+      if (!r) return false;
+      if (r.error === true) return true;
+      if (r.success === false) return true;
+      if (typeof r.exitCode === 'number' && r.exitCode !== 0) return true;
+      return false;
+    });
+}
+
+/** 取一条 read_file 结果回显的文件路径(用于去重),非 read 或无路径返回 null */
+function readResultPath(item: Record<string, unknown>): string | null {
+  const toolName = (item.toolName as string) ?? '';
+  if (toolName !== 'read_file' && toolName !== 'Read') return null;
+  const r = asRecord(parseIfJsonString(unwrapOutput(item.output)));
+  const path = r?.path;
+  return typeof path === 'string' && path.length > 0 ? path : null;
+}
+
+/**
+ * 同文件重复读取去重:同一文件被 read_file 多次,只保留最后一次完整输出,
+ * 更早的直接进压缩集。返回应压缩的消息索引集合。
+ */
+function findStaleDuplicateReads(messages: UIMessage[]): Set<number> {
+  // path → 最后一次读取该文件的消息索引
+  const lastReadIndex = new Map<string, number>();
+  const perPathIndices = new Map<string, number[]>();
+
+  messages.forEach((msg, i) => {
+    if (!hasToolResults(msg) || isAllCompacted(msg)) return;
+    for (const item of getToolResultItems(msg)) {
+      const path = readResultPath(item);
+      if (!path) continue;
+      lastReadIndex.set(path, i);
+      const list = perPathIndices.get(path) ?? [];
+      list.push(i);
+      perPathIndices.set(path, list);
+    }
+  });
+
+  const stale = new Set<number>();
+  for (const [path, indices] of perPathIndices) {
+    const keep = lastReadIndex.get(path);
+    for (const idx of indices) {
+      if (idx !== keep) stale.add(idx);
+    }
+  }
+  return stale;
+}
+
+/**
+ * 引用感知:后续 assistant 文本里出现了某工具结果回显的文件路径,
+ * 说明它属于当前工作集,降低压缩优先级(延迟老化)。
+ * 返回被引用、应延迟老化的 tool-result 消息索引集合。
+ */
+function findReferencedResults(messages: UIMessage[]): Set<number> {
+  // 收集每条 tool-result 消息回显的路径
+  const msgPaths: { index: number; paths: string[] }[] = [];
+  messages.forEach((msg, i) => {
+    if (!hasToolResults(msg) || isAllCompacted(msg)) return;
+    const paths: string[] = [];
+    for (const item of getToolResultItems(msg)) {
+      const r = asRecord(parseIfJsonString(unwrapOutput(item.output)));
+      const p = r?.path;
+      if (typeof p === 'string' && p.length > 0) paths.push(p);
+    }
+    if (paths.length > 0) msgPaths.push({ index: i, paths });
+  });
+
+  if (msgPaths.length === 0) return new Set();
+
+  const referenced = new Set<number>();
+  for (const { index, paths } of msgPaths) {
+    // 只看该结果之后的 assistant 文本
+    for (let j = index + 1; j < messages.length; j++) {
+      if (messages[j].role !== 'assistant') continue;
+      const text = extractAssistantText(messages[j]);
+      if (!text) continue;
+      if (paths.some((p) => text.includes(p))) {
+        referenced.add(index);
+        break;
+      }
+    }
+  }
+  return referenced;
+}
+
+/** 提取 assistant 消息的文本内容(ModelMessage .content 或 UIMessage .parts) */
+function extractAssistantText(msg: UIMessage): string {
+  const content = (msg as unknown as Record<string, unknown>).content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c: unknown) => {
+        const item = c as Record<string, unknown>;
+        return item?.type === 'text' && typeof item.text === 'string' ? item.text : '';
+      })
+      .join('\n');
+  }
+  const parts = (msg as unknown as Record<string, unknown>).parts;
+  if (Array.isArray(parts)) {
+    return parts
+      .map((p: unknown) => {
+        const item = p as Record<string, unknown>;
+        return item?.type === 'text' && typeof item.text === 'string' ? item.text : '';
+      })
+      .join('\n');
+  }
+  return '';
 }
 
 // ============================================================
