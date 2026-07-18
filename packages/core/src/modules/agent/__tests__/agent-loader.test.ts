@@ -58,7 +58,7 @@ describe('Agent Loader Integration', () => {
 
     const testAgent = customAgents.find(agent => agent.agentType === 'test-agent');
     expect(testAgent).toBeDefined();
-    expect(testAgent?.instructions).toContain('测试 Agent');
+    expect(testAgent?.instructions).toContain('You are a test agent.');
     expect(testAgent?.tools).toContain('read_file');
     expect(testAgent?.tools).toContain('grep');
     expect(testAgent?.model).toBe('fast');

@@ -5,8 +5,8 @@ export type ModelAliases = {
 };
 
 export function resolveModelAlias(modelName: string, aliases?: ModelAliases): string {
-  if (modelName === 'fast') return aliases?.fast?.model ?? '';
-  if (modelName === 'smart') return aliases?.smart?.model ?? '';
-  if (modelName === 'default') return aliases?.default?.model ?? '';
+  if (modelName === 'fast') return aliases?.fast?.model ?? modelName;
+  if (modelName === 'smart') return aliases?.smart?.model ?? modelName;
+  if (modelName === 'default') return aliases?.default?.model ?? modelName;
   return modelName;
 }

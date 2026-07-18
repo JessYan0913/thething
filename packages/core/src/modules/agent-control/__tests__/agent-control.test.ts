@@ -133,7 +133,7 @@ describe('denial-tracking', () => {
         tracker.record('bash', '3');
         const message = tracker.getInjectMessage();
         expect(message).toBeDefined();
-        expect(message?.role).toBe('system');
+        expect(message?.role).toBe('user');
         expect(message?.content).toContain('bash');
       });
 
