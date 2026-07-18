@@ -65,11 +65,21 @@ export async function estimateMessageTokens(message: UIMessage, modelName?: stri
     if (typeof content === 'string') {
       tokens += await estimateTextTokens(content, modelName);
     } else if (Array.isArray(content)) {
-      // ModelMessage 中的 tool-result 输出也要计入 token
+      // ModelMessage 的 content 数组:统计 text / tool-call input / tool-result 三类
+      // 见 docs/context-compaction-analysis.md #2
       const textChunks: string[] = [];
       for (const item of content) {
         const c = item as Record<string, unknown>;
-        if (c.type === 'tool-result' && c.output) {
+        if (c.type === 'text' && typeof c.text === 'string') {
+          textChunks.push(c.text);
+        } else if (c.type === 'tool-call') {
+          const toolName = typeof c.toolName === 'string' ? c.toolName : '';
+          if (toolName) textChunks.push(`[tool-call: ${toolName}]`);
+          const args = c.args;
+          if (args !== undefined && args !== null) {
+            try { textChunks.push(JSON.stringify(args)); } catch { /* ignore */ }
+          }
+        } else if (c.type === 'tool-result' && c.output) {
           const str = getToolOutputString(c.output);
           if (str) textChunks.push(str);
         }

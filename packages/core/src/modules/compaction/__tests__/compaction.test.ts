@@ -37,6 +37,46 @@ describe('token-counter', () => {
     expect(tokens).toBeGreaterThan(0);
   });
 
+  it('should count ModelMessage text content (not just tool-result)', async () => {
+    // 修复前:ModelMessage 的 content 数组中只统计 tool-result,text 和 tool-call input 被忽略
+    // 修复后:assistant 长回复的实际文本内容也应计入
+    const longText = 'x'.repeat(5000);
+    const msgWithText = {
+      role: 'assistant',
+      content: [{ type: 'text', text: longText }],
+    } as unknown as UIMessage;
+    const tokensWithText = await estimateMessageTokens(msgWithText);
+
+    const msgWithoutText = {
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+    } as unknown as UIMessage;
+    const tokensWithoutText = await estimateMessageTokens(msgWithoutText);
+
+    // 有长文本的消息 token 应显著高于空文本
+    expect(tokensWithText).toBeGreaterThan(tokensWithoutText + 100);
+  });
+
+  it('should count ModelMessage tool-call input', async () => {
+    const msgWithToolCall = {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Let me search' },
+        { type: 'tool-call', toolCallId: 'tc-1', toolName: 'grep', args: { pattern: 'extractToolMeta', path: '/repo/src' } },
+      ],
+    } as unknown as UIMessage;
+    const msgWithoutToolCall = {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Let me search' }],
+    } as unknown as UIMessage;
+
+    const tokensWith = await estimateMessageTokens(msgWithToolCall);
+    const tokensWithout = await estimateMessageTokens(msgWithoutToolCall);
+
+    // tool-call 的 args 应被计入
+    expect(tokensWith).toBeGreaterThan(tokensWithout);
+  });
+
   it('should extract message text', () => {
     const msg: UIMessage = {
       id: '1',
