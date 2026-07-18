@@ -67,7 +67,8 @@ describe('tool-output-manager', () => {
   });
 
   it('estimates content and output sizes', () => {
-    expect(estimateContentTokens('a'.repeat(35))).toBe(10);
+    // 系数统一后拉丁文本按 4 字符/token 估算(35/4 → 9)
+    expect(estimateContentTokens('a'.repeat(36))).toBe(9);
     expect(estimateObjectTokens({ key: 'value' })).toBeGreaterThan(0);
     expect(calculateOutputSize('hello')).toBe(5);
     expect(calculateOutputSize({ key: 'value' })).toBe(JSON.stringify({ key: 'value' }).length);

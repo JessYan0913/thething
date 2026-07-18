@@ -28,6 +28,7 @@ import {
   PREVIEW_SIZE_CHARS,
 } from '../../services/config/defaults';
 import { BYTES_PER_TOKEN } from '../../primitives/constants';
+import { estimateTokensFromChars, estimateTokensFromObject } from '../../primitives/token-estimate';
 import { persistToolResult, buildPersistedOutputMessage } from './tool-result-storage';
 
 const MAX_TOOL_RESULT_BYTES = MAX_TOOL_RESULT_TOKENS * BYTES_PER_TOKEN;
@@ -225,23 +226,17 @@ export function cloneContentReplacementState(
 
 /**
  * 估算字符串内容的 Token 数量
+ * 统一走 CJK 校准的字符级估算(见 docs/context-compaction-analysis.md #5)
  */
 export function estimateContentTokens(content: string): number {
-  // 保守估计：每 Token 约 3.5 字符
-  return Math.ceil(content.length / 3.5)
+  return estimateTokensFromChars(content)
 }
 
 /**
  * 估算对象内容的 Token 数量
  */
 export function estimateObjectTokens(obj: unknown): number {
-  try {
-    const json = JSON.stringify(obj)
-    // JSON 密集格式：每 Token 仅 1-2 字符
-    return Math.ceil(json.length / 2)
-  } catch {
-    return DEFAULT_MAX_RESULT_SIZE_CHARS / 3.5
-  }
+  return estimateTokensFromObject(obj)
 }
 
 /**

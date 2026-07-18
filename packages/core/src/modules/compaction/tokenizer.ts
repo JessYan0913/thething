@@ -1,6 +1,9 @@
+import { estimateTokensFromChars } from '../../primitives/token-estimate'
+
 function estimateTokens(text: string): number {
   if (!text) return 0
-  return Math.ceil(text.length / 2.5)
+  // 统一走 CJK 校准的字符级估算(见 docs/context-compaction-analysis.md #5)
+  return estimateTokensFromChars(text)
 }
 
 export function registerTokenizer(_modelName: string, _configPath: string): void {}

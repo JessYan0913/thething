@@ -15,6 +15,7 @@ import {
 } from './tool-output-manager'
 import { persistToolResult, buildPersistedOutputMessage, formatSize } from './tool-result-storage'
 import { getToolOutputString } from '../compaction/message-utils'
+import { estimateContentTokens } from './tool-output-manager'
 
 // ============================================================
 // 类型定义
@@ -277,7 +278,8 @@ export function estimateToolResultsTotal(
 } {
   const candidates = collectCandidatesByMessage(messages)
   const totalChars = candidates.reduce((sum, c) => sum + c.size, 0)
-  const totalTokens = Math.ceil(totalChars / 3.5) // 粗略估算
+  // CJK 校准的字符级估算(逐候选累加,见 docs/context-compaction-analysis.md #5)
+  const totalTokens = candidates.reduce((sum, c) => sum + estimateContentTokens(c.content), 0)
   const limit = getMessageBudgetLimit(sessionConfig)
   const isOverBudget = totalChars > limit
   const percentUsed = Math.min(100, (totalChars / limit) * 100)

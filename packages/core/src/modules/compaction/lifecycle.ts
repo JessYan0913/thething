@@ -17,6 +17,7 @@ import {
 import { getToolOutputString, unwrapOutput } from './message-utils';
 import { persistToolResult, getToolResultPath } from '../budget/tool-result-storage';
 import { logger } from '../../primitives/logger';
+import { estimateTokensFromChars } from '../../primitives/token-estimate';
 
 // ============================================================
 // Main Function
@@ -203,7 +204,8 @@ function compactToolResults(
       );
     }
 
-    freed += Math.max(0, Math.floor(originalSize / 3.5) - Math.floor(summary.length / 3.5));
+    // CJK 校准的字符级估算(见 docs/context-compaction-analysis.md #5)
+    freed += Math.max(0, estimateTokensFromChars(resultStr) - estimateTokensFromChars(summary));
 
     // 保持 ToolResultOutput 结构 { type, value }，附加 _compacted 标记
     return {
