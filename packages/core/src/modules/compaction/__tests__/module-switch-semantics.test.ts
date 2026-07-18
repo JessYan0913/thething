@@ -10,19 +10,23 @@ import { manageToolOutputLifecycle } from '../lifecycle';
 import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 
 // ============================================================
-// Helper: Create test messages
+// Helper: Create test messages (ModelMessage 格式,与流水线一致)
 // ============================================================
 
 function createUserMessage(text: string): UIMessage {
-  return { id: `u-${Date.now()}`, role: 'user', parts: [{ type: 'text', text }] };
+  return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
 }
 
 function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): UIMessage {
   return {
     id: `a-${toolCallId}`,
-    role: 'assistant',
-    parts: [{ type: 'dynamic-tool', toolName, toolCallId, input: {}, output } as any],
-  };
+    role: 'tool',
+    content: [{ type: 'tool-result', toolName, toolCallId, output: { type: 'json', value: output } }],
+  } as unknown as UIMessage;
+}
+
+function getResultItem(msg: UIMessage): any {
+  return ((msg as unknown as Record<string, unknown>).content as any[])[0];
 }
 
 // ============================================================
@@ -54,9 +58,9 @@ describe('V2 compaction module semantics', () => {
     // Tool output after Q2 but before Q3 (tc-2) should NOT be compressed
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 2 });
     // First tool output should be compressed (outside keepRecentTurns)
-    expect((result.messages[1].parts[0] as any).output._compacted).toBe(true);
+    expect(getResultItem(result.messages[1])._compacted).toBe(true);
     // Last tool output should NOT be compressed (within keepRecentTurns)
-    expect((result.messages[3].parts[0] as any).output._compacted).toBeUndefined();
+    expect(getResultItem(result.messages[3])._compacted).toBeUndefined();
   });
 
   it('protected tools are never compressed', () => {
@@ -70,7 +74,7 @@ describe('V2 compaction module semantics', () => {
       protectedTools: new Set(['MyTool']),
     };
     const result = manageToolOutputLifecycle(messages, config);
-    expect((result.messages[1].parts[0] as any).output._compacted).toBeUndefined();
+    expect(getResultItem(result.messages[1])._compacted).toBeUndefined();
   });
 
   it('mcp_ tools are compactable by default', () => {
@@ -79,7 +83,7 @@ describe('V2 compaction module semantics', () => {
       createToolMessage('mcp_server', { result: 'x'.repeat(10000) }),
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
-    expect((result.messages[1].parts[0] as any).output._compacted).toBe(true);
+    expect(getResultItem(result.messages[1])._compacted).toBe(true);
   });
 
   it('connector_ tools are compactable by default', () => {
@@ -88,6 +92,6 @@ describe('V2 compaction module semantics', () => {
       createToolMessage('connector_api', { data: 'x'.repeat(10000) }),
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
-    expect((result.messages[1].parts[0] as any).output._compacted).toBe(true);
+    expect(getResultItem(result.messages[1])._compacted).toBe(true);
   });
 });

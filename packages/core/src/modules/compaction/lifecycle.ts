@@ -181,71 +181,149 @@ function compactToolResults(msg: UIMessage): {
 // ============================================================
 // Tool Meta Extractors
 // ============================================================
+// 设计要点(见 docs/built-in-tools-compaction-analysis.md #1/#2):
+// 1. 键名使用工具的实际注册名(snake_case,见 agent/tools.ts),
+//    同时保留首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字)。
+// 2. grep/glob/web_fetch 返回 JSON.stringify 后的字符串,先解析回对象。
+// 3. 字段提取顺序:result 回显字段 → camelCase args → snake_case args。
+//    内置工具的结果都回显了关键输入,args 缺失(恒为 null)时依然能提取。
 
 type MetaExtractor = (args: unknown, result: unknown) => string;
 
+/** grep/glob/web_fetch 返回 JSON.stringify 后的字符串,先解析回对象 */
+function parseIfJsonString(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** 依次取第一个非空字符串 */
+function firstString(...candidates: unknown[]): string {
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.length > 0) return c;
+  }
+  return '';
+}
+
+const extractRead: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const filePath = firstString(result?.path, argsRecord?.filePath, argsRecord?.file_path, argsRecord?.path);
+  if (result?.error) {
+    return `Read ${filePath} → error: ${firstString(result.message).slice(0, 100)}`;
+  }
+  const content = firstString(result?.content, typeof rawResult === 'string' ? rawResult : '');
+  const lines = typeof result?.totalLines === 'number' ? result.totalLines : content.split('\n').length;
+  return `Read ${filePath} → ${lines} lines`;
+};
+
+const extractBash: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const cmd = firstString(result?.command, argsRecord?.command).slice(0, 80);
+  if (result?.error) {
+    return `Bash '${cmd}' → error: ${firstString(result.message).slice(0, 100)}`;
+  }
+  const stdout = firstString(result?.stdout, typeof rawResult === 'string' ? rawResult : '');
+  const exitCode = result?.exitCode ?? (stdout ? 0 : '?');
+  const lastLine = stdout.trim().split('\n').pop()?.slice(0, 100) ?? '';
+  return `Bash '${cmd}' → exit ${exitCode}${lastLine ? `: ${lastLine}` : ''}`;
+};
+
+const extractGrep: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const pattern = firstString(result?.pattern, argsRecord?.pattern);
+  const matches = Array.isArray(result?.matches) ? (result.matches as Record<string, unknown>[]) : [];
+  const total = typeof result?.totalMatches === 'number' ? result.totalMatches : matches.length;
+  const files = new Set(matches.map((m) => (m.file ?? m.path) as string)).size;
+  return `Grep '${pattern}' → ${total} matches${files > 0 ? ` in ${files} files` : ''}`;
+};
+
+const extractGlob: MetaExtractor = (args, rawResult) => {
+  const parsed = parseIfJsonString(rawResult);
+  const result = asRecord(parsed);
+  const argsRecord = asRecord(args);
+  const pattern = firstString(result?.pattern, argsRecord?.pattern);
+  const files = Array.isArray(result?.files) ? result.files : Array.isArray(parsed) ? parsed : [];
+  const total = typeof result?.totalCount === 'number' ? result.totalCount : files.length;
+  return `Glob '${pattern}' → ${total} files`;
+};
+
+const extractEdit: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const filePath = firstString(result?.path, argsRecord?.filePath, argsRecord?.file_path, argsRecord?.path);
+  if (result?.error) {
+    return `Edit ${filePath} → error: ${firstString(result.message).slice(0, 100)}`;
+  }
+  const summary = firstString(result?.summary);
+  return `Edit ${filePath} → ${summary || 'applied'}`;
+};
+
+const extractWrite: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const filePath = firstString(result?.path, argsRecord?.filePath, argsRecord?.file_path, argsRecord?.path);
+  if (result?.error) {
+    return `Write ${filePath} → error: ${firstString(result.message).slice(0, 100)}`;
+  }
+  const size = typeof result?.size === 'number' ? ` (${result.size} bytes)` : '';
+  return `Write ${filePath} → written${size}`;
+};
+
+const extractWebFetch: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const url = firstString(result?.url, argsRecord?.url).slice(0, 80);
+  if (result?.success === false) {
+    return `WebFetch ${url} → error: ${firstString(result.error).slice(0, 80)}`;
+  }
+  const title = firstString(result?.title).slice(0, 60);
+  const len = typeof result?.content === 'string'
+    ? result.content.length
+    : typeof rawResult === 'string' ? rawResult.length : JSON.stringify(rawResult).length;
+  return `WebFetch ${url} → ${len} chars${title ? ` ('${title}')` : ''}`;
+};
+
+const extractWebSearch: MetaExtractor = (args, rawResult) => {
+  const result = parseIfJsonString(rawResult);
+  const raw = Array.isArray(result) ? result : asRecord(result)?.results;
+  const count = Array.isArray(raw) ? raw.length : 0;
+  const argsRecord = asRecord(args);
+  const query = firstString(asRecord(result)?.query, argsRecord?.query).slice(0, 60);
+  return `WebSearch '${query}' → ${count} results`;
+};
+
 const EXTRACTORS: Record<string, MetaExtractor> = {
-  Read: (_args, result) => {
-    const content = typeof result === 'string' ? result : (result as Record<string, unknown>)?.content as string ?? '';
-    const lines = content.split('\n').length;
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const filePath = (argsRecord?.file_path ?? argsRecord?.path) as string | undefined ?? '';
-    const ext = filePath.split('.').pop() ?? '';
-    return `Read ${filePath} → ${lines} lines (.${ext})`;
-  },
-
-  Bash: (_args, result) => {
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const cmd = ((argsRecord?.command as string) ?? '').slice(0, 80);
-    const stdout = typeof result === 'string' ? result : (result as Record<string, unknown>)?.stdout as string ?? '';
-    const exitCode = (result as Record<string, unknown>)?.exitCode ?? (stdout ? 0 : '?');
-    const lastLine = stdout.trim().split('\n').pop()?.slice(0, 100) ?? '';
-    return `Bash '${cmd}' → exit ${exitCode}${lastLine ? `: ${lastLine}` : ''}`;
-  },
-
-  Grep: (_args, result) => {
-    const raw = Array.isArray(result) ? result : (result as Record<string, unknown>)?.matches;
-    const matches = Array.isArray(raw) ? raw as Record<string, unknown>[] : [];
-    const files = new Set(matches.map((m) => (m.file ?? m.path) as string)).size;
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const pattern = (argsRecord?.pattern as string) ?? '';
-    return `Grep '${pattern}' → ${matches.length} matches in ${files} files`;
-  },
-
-  Glob: (_args, result) => {
-    const raw = Array.isArray(result) ? result : (result as Record<string, unknown>)?.files;
-    const files = Array.isArray(raw) ? raw as unknown[] : [];
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const pattern = (argsRecord?.pattern as string) ?? '';
-    return `Glob '${pattern}' → ${files.length} files`;
-  },
-
-  Edit: (_args) => {
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const filePath = (argsRecord?.file_path ?? argsRecord?.path) as string | undefined ?? '';
-    return `Edit ${filePath} → applied`;
-  },
-
-  Write: (_args) => {
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const filePath = (argsRecord?.file_path ?? argsRecord?.path) as string | undefined ?? '';
-    return `Write ${filePath} → written`;
-  },
-
-  WebSearch: (_args, result) => {
-    const raw = Array.isArray(result) ? result : (result as Record<string, unknown>)?.results;
-    const count = Array.isArray(raw) ? raw.length : 0;
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const query = ((argsRecord?.query as string) ?? '').slice(0, 60);
-    return `WebSearch '${query}' → ${count} results`;
-  },
-
-  WebFetch: (_args, result) => {
-    const len = typeof result === 'string' ? result.length : JSON.stringify(result).length;
-    const argsRecord = _args as Record<string, unknown> | undefined;
-    const url = ((argsRecord?.url as string) ?? '').slice(0, 80);
-    return `WebFetch ${url} → ${len} chars`;
-  },
+  // 实际注册名(snake_case,见 agent/tools.ts)
+  read_file: extractRead,
+  bash: extractBash,
+  grep: extractGrep,
+  glob: extractGlob,
+  edit_file: extractEdit,
+  write_file: extractWrite,
+  web_fetch: extractWebFetch,
+  // 首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字与旧格式)
+  Read: extractRead,
+  Bash: extractBash,
+  Grep: extractGrep,
+  Glob: extractGlob,
+  Edit: extractEdit,
+  Write: extractWrite,
+  WebFetch: extractWebFetch,
+  WebSearch: extractWebSearch,
 };
 
 /** 通用提取器：保留结果的结构轮廓 */

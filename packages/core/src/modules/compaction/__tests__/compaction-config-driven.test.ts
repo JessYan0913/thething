@@ -73,34 +73,38 @@ describe('lifecycle config defaults', () => {
 // ============================================================
 describe('config-driven lifecycle behavior', () => {
   function createUserMessage(text: string): UIMessage {
-    return { id: `u-${Date.now()}`, role: 'user', parts: [{ type: 'text', text }] };
+    return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
   }
 
   function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): UIMessage {
     return {
       id: `a-${toolCallId}`,
-      role: 'assistant',
-      parts: [{ type: 'dynamic-tool', toolName, toolCallId, input: {}, output } as any],
-    };
+      role: 'tool',
+      content: [{ type: 'tool-result', toolName, toolCallId, output: { type: 'json', value: output } }],
+    } as unknown as UIMessage;
+  }
+
+  function getResultItem(msg: UIMessage): any {
+    return ((msg as unknown as Record<string, unknown>).content as any[])[0];
   }
 
   it('keepRecentTurns=0 compresses all tool outputs', () => {
     const messages = [
       createUserMessage('Q1'),
-      createToolMessage('Read', { content: 'x'.repeat(10000) }),
+      createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(10000) }),
       createUserMessage('Q2'),
-      createToolMessage('Bash', { stdout: 'y'.repeat(10000) }),
+      createToolMessage('bash', { command: 'echo', stdout: 'y'.repeat(10000), exitCode: 0 }),
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
     expect(result.tokensFreed).toBeGreaterThan(0);
-    expect((result.messages[1].parts[0] as any).output._compacted).toBe(true);
-    expect((result.messages[3].parts[0] as any).output._compacted).toBe(true);
+    expect(getResultItem(result.messages[1])._compacted).toBe(true);
+    expect(getResultItem(result.messages[3])._compacted).toBe(true);
   });
 
   it('largeOutputThreshold triggers compression for big outputs', () => {
     const messages = [
       createUserMessage('Q1'),
-      createToolMessage('Read', { content: 'x'.repeat(5000) }),
+      createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(5000) }),
     ];
     const config = { ...DEFAULT_LIFECYCLE_CONFIG, largeOutputThreshold: 1000 };
     const result = manageToolOutputLifecycle(messages, config);
@@ -110,19 +114,19 @@ describe('config-driven lifecycle behavior', () => {
   it('custom compactableTools limits which tools are compressed', () => {
     const messages = [
       createUserMessage('Q1'),
-      createToolMessage('Read', { content: 'x'.repeat(10000) }),
+      createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(10000) }),
       createUserMessage('Q2'),
       createToolMessage('CustomTool', { data: 'y'.repeat(10000) }),
     ];
     const config = {
       ...DEFAULT_LIFECYCLE_CONFIG,
       keepRecentTurns: 0,
-      compactableTools: new Set(['Read']),
+      compactableTools: new Set(['read_file']),
     };
     const result = manageToolOutputLifecycle(messages, config);
-    // Read should be compressed
-    expect((result.messages[1].parts[0] as any).output._compacted).toBe(true);
+    // read_file should be compressed
+    expect(getResultItem(result.messages[1])._compacted).toBe(true);
     // CustomTool should NOT be compressed (not in compactableTools)
-    expect((result.messages[3].parts[0] as any).output._compacted).toBeUndefined();
+    expect(getResultItem(result.messages[3])._compacted).toBeUndefined();
   });
 });
