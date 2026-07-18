@@ -521,6 +521,37 @@ export function createBashTool(options: BashToolOptions) {
     execute: ({ command, timeoutMs = DEFAULT_TIMEOUT_MS, background = false }, execOptions) => {
       return bashExecute({ command, timeoutMs, background, execOptions, ops, options });
     },
+
+    // 以纯文本形式发送给模型,避免 stdout/stderr 经 JSON 序列化时的转义开销。
+    // 结构化字段仍保留给 UI 渲染层。见 docs/built-in-tools-compaction-analysis.md 三.A。
+    toModelOutput: ({ output }) => {
+      if (!output || typeof output !== 'object') {
+        return { type: 'text' as const, value: '' };
+      }
+      const r = output as Record<string, unknown>;
+
+      // 错误 / 安全拦截分支
+      if (r.error === true) {
+        const message = typeof r.message === 'string' ? r.message : 'command failed';
+        return { type: 'text' as const, value: `❌ ${message}` };
+      }
+
+      // 后台启动分支
+      if (r.background === true) {
+        return { type: 'text' as const, value: typeof r.message === 'string' ? r.message : 'Process started in background.' };
+      }
+
+      // 正常执行分支:拼接为纯文本
+      const parts: string[] = [];
+      const stdout = typeof r.stdout === 'string' ? r.stdout : '';
+      const stderr = typeof r.stderr === 'string' ? r.stderr : '';
+      const exitCode = typeof r.exitCode === 'number' ? r.exitCode : null;
+      if (stdout) parts.push(stdout);
+      if (stderr) parts.push(stderr.startsWith('⚠') || stderr.trim() ? `[stderr]\n${stderr}` : stderr);
+      if (exitCode !== null && exitCode !== 0) parts.push(`[exit code: ${exitCode}]`);
+      const value = parts.join('\n').trim();
+      return { type: 'text' as const, value: value || '(no output)' };
+    },
   });
 }
 

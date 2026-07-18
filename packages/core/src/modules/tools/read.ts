@@ -350,6 +350,25 @@ export function createReadFileTool(options: FileToolOptions & {
 
       return result;
     },
+
+    // 以纯文本形式发送给模型,避免对象经 JSON 序列化时的转义开销
+    // (代码里每个换行变 \n、每个引号变 \",对代码文件是 5%-15% 的纯浪费)。
+    // 结构化字段仍保留给 UI 渲染层。见 docs/built-in-tools-compaction-analysis.md 三.A。
+    toModelOutput: ({ output }) => {
+      if (output && typeof output === 'object') {
+        const r = output as Record<string, unknown>;
+        if (r.error === true) {
+          const path = typeof r.path === 'string' ? r.path : '';
+          const message = typeof r.message === 'string' ? r.message : 'read failed';
+          return { type: 'text' as const, value: `❌ ${message}${path ? ` (${path})` : ''}` };
+        }
+        if (typeof r.content === 'string') {
+          const header = typeof r.path === 'string' ? `${r.path}\n` : '';
+          return { type: 'text' as const, value: header + r.content };
+        }
+      }
+      return { type: 'text' as const, value: '' };
+    },
   });
 }
 
