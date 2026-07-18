@@ -46,6 +46,24 @@ describe('validateSummaryQuality (语言无关)', () => {
       'mismatched extractor keys and missing token accounting, then proposed a staged fix plan.';
     expect(validateSummaryQuality(summary, enMessages)).toBe(true);
   });
+
+  // 8.4:结构化任务状态摘要(8-section 风格)应通过验证
+  it('accepts a structured task-state summary with section headers', () => {
+    const summary = [
+      '## 用户目标 / 验收标准',
+      '修复上下文压缩机制的若干缺陷，验收标准是既有测试不回归。',
+      '## 已完成步骤 & 关键结论',
+      '- 统一了 token 估算系数并加入 CJK 校准',
+      '- 实现了 usage 反馈校准，EMA 夹在 [0.5, 2]',
+      '## 涉及的文件路径及改动',
+      '- packages/core/src/primitives/token-estimate.ts：新增统一估算模块',
+      '## 当前卡点 / 下一步计划',
+      '正在实现结构化任务状态摘要，下一步做 checkpoint 持久化。',
+      '## 用户明确表达的约束与偏好',
+      '用中文回复；不重构无关代码。',
+    ].join('\n');
+    expect(validateSummaryQuality(summary, chineseMessages)).toBe(true);
+  });
 });
 
 describe('summaryMessage 格式 (.content 而非 .parts)', () => {

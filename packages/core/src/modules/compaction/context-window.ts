@@ -21,34 +21,41 @@ import { getModelContextLimit, getDefaultOutputTokens } from '../../services/mod
 // Summary Prompt
 // ============================================================
 
-const SUMMARY_SYSTEM_PROMPT = `你是一个对话摘要助手。请用简洁的语言总结对话，捕捉关键信息和价值。
+const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助手。对话即将因超出上下文窗口而被截断，你的摘要将作为唯一的记忆用于继续任务。目标不是复述对话，而是让接手者能无缝继续工作。
 
-核心要求：
-1. 长度：200-500字
-2. 视角：第三人称客观记录（"用户询问了X，助手回答了Y，随后讨论深入到Z"）
-3. 内容平衡：既要记录用户的问题，也要记录助手的关键回复和结论
+请严格按以下结构化模板输出（保留小标题，缺失的部分写"无"）：
 
-必须包含的要素：
-- 用户的核心问题是什么
-- 助手提供了什么关键信息或建议
-- 对话如何演进（从A话题转到B话题）
-- 最终讨论的焦点是什么
+## 用户目标 / 验收标准
+用户最终想达成什么，以及判断完成的标准。
+
+## 已完成步骤 & 关键结论
+按顺序列出已经做了什么、得到了什么结论（含关键数据、命令结果、决策）。
+
+## 涉及的文件路径及改动
+列出读过/改过的文件路径，以及每个文件发生了什么改动。用路径原文，不要改写。
+
+## 当前卡点 / 下一步计划
+当前遇到的问题，以及接下来打算做什么。
+
+## 用户明确表达的约束与偏好
+用户提过的要求、禁止项、风格偏好（如"用中文回复""不要重构无关代码"）。
 
 增量摘要处理：
-- 如果输入包含【历史摘要】和【新增对话】，请整合两者
-- 保留历史摘要的核心信息，补充新对话的关键内容
-- 用"随后"、"接着"、"进一步"等词衔接历史和新内容
-- 确保整体摘要连贯、完整，体现对话的完整演进过程
+- 如果输入包含【历史摘要】和【新增对话】，在历史摘要的结构基础上更新，不要丢弃历史信息。
+- 新增对话里完成的步骤追加到"已完成步骤"，新触及的文件合并到"涉及的文件"，卡点/计划以最新状态为准。
 
 避免的错误：
-❌ 只列出用户的提问，不记录助手的回复
-❌ 复制粘贴大段原文、代码、搜索结果
+❌ 大段复制原文、代码、搜索结果（只记结论和路径，不复制内容）
 ❌ 用"这是一个很好的问题"等空话
-❌ 增量摘要时丢弃历史内容，只总结新对话
+❌ 丢失文件路径、命令、验收标准等可执行的关键信息
 
-请直接输出摘要，不要任何前缀或解释。`;
+请直接输出结构化摘要，不要任何前缀或解释。`;
 
-const MAX_SUMMARY_LENGTH = 3000;
+// 结构化摘要比叙事体长，放宽上限——摘要的目的是保任务连续性，不是省 token
+const MAX_SUMMARY_LENGTH = 6000;
+
+// LLM 摘要生成的输出上限（tokens），需容纳结构化模板
+const SUMMARY_MAX_OUTPUT_TOKENS = 3000;
 
 // ============================================================
 // Main Function
@@ -187,7 +194,7 @@ async function callWithFallback(
         model,
         instructions: SUMMARY_SYSTEM_PROMPT,
         prompt,
-        maxOutputTokens: 2000,
+        maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
       });
       if (text?.trim()) return text.trim();
     } catch (err) {
@@ -202,7 +209,7 @@ async function callWithFallback(
         model: fb,
         instructions: SUMMARY_SYSTEM_PROMPT,
         prompt,
-        maxOutputTokens: 2000,
+        maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
       });
       if (text?.trim()) return text.trim();
     } catch {
@@ -278,35 +285,44 @@ function longestCommonSubstringLength(s1: string, s2: string): number {
   return maxLength;
 }
 
+// LLM 摘要失败时的兜底：套用结构化小标题，尽量填入能机械提取的信息，
+// 与 SUMMARY_SYSTEM_PROMPT 的结构保持一致（见主文档 D）。
 function generateTemplateSummary(messages: UIMessage[]): string {
   const userMessages = messages.filter((m) => m.role === 'user');
+  const goal = userMessages.length > 0
+    ? extractMessageText(userMessages[0]).substring(0, 200).replace(/\n/g, ' ')
+    : '无';
 
   const recentPairs: string[] = [];
   for (let i = Math.max(0, messages.length - 10); i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === 'user') {
-      const userText = extractMessageText(msg).substring(0, 150);
+      const userText = extractMessageText(msg).substring(0, 120).replace(/\n/g, ' ');
       const nextAssistant = messages.slice(i + 1).find((m) => m.role === 'assistant');
-      if (nextAssistant) {
-        const assistantText = extractMessageText(nextAssistant).substring(0, 200);
-        recentPairs.push(`用户询问${userText}，助手回复${assistantText}`);
-      } else {
-        recentPairs.push(`用户询问${userText}`);
-      }
+      const assistantText = nextAssistant
+        ? extractMessageText(nextAssistant).substring(0, 160).replace(/\n/g, ' ')
+        : '';
+      recentPairs.push(assistantText ? `用户：${userText} → 助手：${assistantText}` : `用户：${userText}`);
     }
   }
+  const progress = recentPairs.length > 0 ? recentPairs.slice(-5).map((p) => `- ${p}`).join('\n') : '无';
 
-  if (recentPairs.length > 0) {
-    return recentPairs.slice(-3).join('。') + '。';
-  }
-
-  const topicHints = userMessages
-    .slice(-5)
-    .map((m) => extractMessageText(m).substring(0, 60))
-    .join('; ')
-    .replace(/\n/g, ' ');
-
-  return `对话涵盖以下话题：${topicHints}`;
+  return [
+    '## 用户目标 / 验收标准',
+    goal,
+    '',
+    '## 已完成步骤 & 关键结论',
+    progress,
+    '',
+    '## 涉及的文件路径及改动',
+    '无（模板兜底，LLM 摘要未生成）',
+    '',
+    '## 当前卡点 / 下一步计划',
+    '无',
+    '',
+    '## 用户明确表达的约束与偏好',
+    '无',
+  ].join('\n');
 }
 
 // ============================================================
