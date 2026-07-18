@@ -199,6 +199,8 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         ? getModelContextLimit(sessionState.model, config.contextLimit)
         : estimation.modelLimit;
       logger.info('Context', formatContextBar(estimation, limit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
+      // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)
+      sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);
     }
 
     return {

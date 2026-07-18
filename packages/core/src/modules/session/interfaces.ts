@@ -24,6 +24,10 @@ import type { GoalState } from '../../modules/goal/types';
 export interface TokenBudget {
   accumulate(usage: LanguageModelUsage): void;
   reportCompaction(result: CompactionResult): void;
+  /** 记录本次请求发出前的输入侧估算,供下一步 usage 配对校准(见主文档 F) */
+  recordEstimate(estimatedInputTokens: number): void;
+  /** usage 反馈校准系数(实际/估算 的滑动平均) */
+  readonly calibration: number;
   getSummary(): {
     inputTokens: number;
     outputTokens: number;

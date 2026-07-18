@@ -42,6 +42,8 @@ export async function compactBeforeStep(
     contextLimit?: number;
     /** 提供时 Layer 2 压缩的原始输出落盘可找回 */
     storage?: { sessionId: string; dataDir: string };
+    /** usage 反馈校准系数(见 F);应用到 Layer 3 触发判断,默认 1 */
+    calibration?: number;
   },
 ): Promise<UIMessage[]> {
   let current = messages;
@@ -61,7 +63,10 @@ export async function compactBeforeStep(
   }
 
   // ── Layer 3: 上下文窗口检查（异步，极少触发）──
-  const msgTokens = await estimateMessagesTokens(current, context.modelName);
+  const calibration = context.calibration && context.calibration > 0 ? context.calibration : 1;
+  const rawMsgTokens = await estimateMessagesTokens(current, context.modelName);
+  // 用真实 usage 反馈校准估算(见 docs/context-compaction-analysis.md F)
+  const msgTokens = Math.ceil(rawMsgTokens * calibration);
   const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
   const overhead = (context.instructionsTokens ?? 0)
     + (context.toolsTokens ?? 0)
