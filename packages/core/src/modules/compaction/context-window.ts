@@ -112,9 +112,14 @@ export async function enforceContextWindow(
   const newerMessages = messages.slice(splitIndex);
 
   // 生成摘要
+  // checkpoint 锚点:摘要覆盖到的最后一条消息 id(稳定,不随 order 重排)。
+  // 见 docs/context-compaction-analysis.md E。
+  const anchorMessageId = olderMessages.length > 0
+    ? (olderMessages[olderMessages.length - 1] as unknown as { id?: string }).id ?? null
+    : null;
   const summary = await generateSummaryWithFallback(
     olderMessages, context.model, context.fallbackModels,
-    context.conversationId, context.dataStore, config,
+    context.conversationId, context.dataStore, config, anchorMessageId,
   );
 
   const summaryMessage: UIMessage = {
@@ -148,6 +153,7 @@ async function generateSummaryWithFallback(
   conversationId: string,
   dataStore: DataStore,
   config: ContextWindowConfig,
+  anchorMessageId: string | null,
 ): Promise<string> {
   // 1. 构建摘要输入
   const stripped = stripImagesFromMessages(messages);
@@ -174,7 +180,7 @@ async function generateSummaryWithFallback(
 
   // 4. 质量验证
   if (summary && validateSummaryQuality(summary, messages)) {
-    saveSummarySafe(conversationId, summary, messages.length - 1, 0, dataStore);
+    saveSummarySafe(conversationId, summary, messages.length - 1, 0, dataStore, anchorMessageId);
     return summary;
   }
 
@@ -361,9 +367,10 @@ function saveSummarySafe(
   lastOrder: number,
   tokenCount: number,
   dataStore: DataStore,
+  anchorMessageId: string | null,
 ): void {
   try {
-    dataStore.summaryStore.saveSummary(conversationId, summary, lastOrder, tokenCount);
+    dataStore.summaryStore.saveSummary(conversationId, summary, lastOrder, tokenCount, anchorMessageId);
   } catch {
     logger.error('ContextWindow', 'Failed to save summary');
   }

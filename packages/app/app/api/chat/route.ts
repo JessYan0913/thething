@@ -8,6 +8,7 @@ import {
   finalizeAgentRun,
   handleReactiveRetry,
   isContextLengthError,
+  applyCheckpointOnLoad,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -98,7 +99,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const messages: UIMessage[] = [...existingMessages, message];
+    // compaction checkpoint:有可用 checkpoint 时从锚点之后加载,否则回退全量
+    // (纯叠加优化,绝不丢历史。见 docs/context-compaction-analysis.md E)
+    const historyForModel = applyCheckpointOnLoad(existingMessages, conversationId, store);
+    const messages: UIMessage[] = [...historyForModel, message];
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
     const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);

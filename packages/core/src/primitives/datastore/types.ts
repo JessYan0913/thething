@@ -123,6 +123,8 @@ export interface StoredSummary {
   compactedAt: string;
   lastMessageOrder: number;
   preCompactTokenCount: number;
+  /** compaction checkpoint 锚点:摘要覆盖到的最后一条消息 id(稳定,不随 order 重排)。可空 */
+  anchorMessageId?: string | null;
 }
 
 /**
@@ -222,7 +224,8 @@ export interface SummaryStore {
     conversationId: string,
     summary: string,
     lastMessageOrder: number,
-    preCompactTokenCount: number
+    preCompactTokenCount: number,
+    anchorMessageId?: string | null
   ): StoredSummary;
 
   /**
@@ -687,6 +690,7 @@ export interface SummaryRow {
   compacted_at: string;
   last_message_order: number;
   pre_compact_token_count: number;
+  anchor_message_id: string | null;
 }
 
 export interface CostRow {

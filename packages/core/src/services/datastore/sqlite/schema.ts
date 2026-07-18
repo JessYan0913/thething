@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -234,6 +234,19 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v8: added suspended_agent_states table');
   }
 
+  if (currentVersion < 9) {
+    // v9: compaction checkpoint anchor — stable message id the summary covers up to.
+    // Uses message id (PRIMARY KEY, stable) rather than "order" (reassigned on every
+    // saveMessages full-rewrite). Nullable; older summaries simply have no anchor and
+    // fall back to full-history loading. See docs/context-compaction-analysis.md E.
+    try {
+      db.exec(`ALTER TABLE summaries ADD COLUMN anchor_message_id TEXT DEFAULT NULL`);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column name')) throw e;
+    }
+    logger.debug('Schema', 'Migrated to v9: added summaries.anchor_message_id');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -279,6 +292,7 @@ export function initializeSchema(db: SqliteDatabase): void {
       compacted_at TEXT DEFAULT (datetime('now')),
       last_message_order INTEGER NOT NULL,
       pre_compact_token_count INTEGER NOT NULL,
+      anchor_message_id TEXT DEFAULT NULL,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
 

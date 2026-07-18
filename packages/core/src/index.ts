@@ -212,6 +212,8 @@ export {
   estimateMessagesTokens,
   handleReactiveRetry,
   isContextLengthError,
+  applyCheckpointOnLoad,
+  CHECKPOINT_SUMMARY_ID_PREFIX,
 } from './modules/compaction';
 
 // Todos

@@ -16,29 +16,32 @@ export class SQLiteSummaryStore implements SummaryStore {
     conversationId: string,
     summary: string,
     lastMessageOrder: number,
-    preCompactTokenCount: number
+    preCompactTokenCount: number,
+    anchorMessageId?: string | null
   ): StoredSummary {
     const existing = this.getSummaryByConversation(conversationId);
 
     let id: string;
+    const anchor = anchorMessageId ?? null;
 
     if (existing) {
       id = existing.id;
       const updateStmt = this.db.prepare(
-        'UPDATE summaries SET summary = ?, last_message_order = ?, pre_compact_token_count = ?, compacted_at = CURRENT_TIMESTAMP WHERE id = ?'
+        'UPDATE summaries SET summary = ?, last_message_order = ?, pre_compact_token_count = ?, anchor_message_id = ?, compacted_at = CURRENT_TIMESTAMP WHERE id = ?'
       );
-      updateStmt.run(summary, lastMessageOrder, preCompactTokenCount, id);
+      updateStmt.run(summary, lastMessageOrder, preCompactTokenCount, anchor, id);
     } else {
       id = nanoid();
       const insertStmt = this.db.prepare(
-        'INSERT INTO summaries (id, conversation_id, summary, last_message_order, pre_compact_token_count) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO summaries (id, conversation_id, summary, last_message_order, pre_compact_token_count, anchor_message_id) VALUES (?, ?, ?, ?, ?, ?)'
       );
       insertStmt.run(
         id,
         conversationId,
         summary,
         lastMessageOrder,
-        preCompactTokenCount
+        preCompactTokenCount,
+        anchor
       );
     }
 
@@ -74,6 +77,7 @@ export class SQLiteSummaryStore implements SummaryStore {
       compactedAt: row.compacted_at,
       lastMessageOrder: row.last_message_order,
       preCompactTokenCount: row.pre_compact_token_count,
+      anchorMessageId: row.anchor_message_id ?? null,
     };
   }
 }
