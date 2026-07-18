@@ -20,7 +20,7 @@
 | 5 | `skill`/`read_wiki_page` 纳入 compactable + 对应 extractor | 工具文档 #5 | `compaction/types.ts`、`compaction/lifecycle.ts` | 小 | ✅ |
 | 6 | 老化维度从 user 轮数改为 assistant step 计数 | 主文档 A | `compaction/lifecycle.ts` | 中 | ✅ |
 | 7 | Layer 2 压缩落盘可恢复(与 budget 合并)+ bash 超 buffer 从杀进程改为落盘 | 主文档 B + 工具文档 #4 | `compaction/lifecycle.ts`、`budget/*`、`tools/bash.ts` | 中 | ✅ |
-| 8 | 其余 P2:结构化任务状态摘要、compaction checkpoint、usage 校准、估算系数统一、价值感知压缩、grep/glob token 效率、read_file/bash toModelOutput | 主文档 D/E/F/#5/C + 工具文档 A/B/C/D | 多处 | 按需排期 | ⬜ |
+| 8 | 其余 P2:结构化任务状态摘要、compaction checkpoint、usage 校准、估算系数统一、价值感知压缩、grep/glob token 效率、read_file/bash toModelOutput | 主文档 D/E/F/#5/C + 工具文档 A/B/C/D | 多处 | 按需排期 | ✅ |
 
 关键点:
 
