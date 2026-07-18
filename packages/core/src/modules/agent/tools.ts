@@ -122,7 +122,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     parentTools: tools,
     parentModel: config.model,
     parentSystemPrompt: '',
-    parentMessages: [],
+    parentMessages: config.parentMessages ?? [],
     writerRef: config.writerRef ?? { current: null },
     cwd: config.sessionState.projectRoot,
     agentsLayoutDirs: config.sessionState.layout.resources.agents,
@@ -132,6 +132,9 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     agentRegistry,
     configDir: config.sessionState.layout.configDir,
     dynamicReload: config.dynamicReload ?? false,
+    compactionConfig: config.compactionConfig,
+    // 子 Agent 总 token 预算上限（经 stopWhen 用每步真实 usage 累计判断）
+    maxTotalTokens: 200_000,
   }
 
   // 3. 创建统一的 agent 工具

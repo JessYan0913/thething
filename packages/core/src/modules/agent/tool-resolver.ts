@@ -14,9 +14,20 @@ const SYSTEM_TOOLS = new Set([
 ]);
 
 /**
+ * 子 Agent 禁用工具（无条件剔除，白名单也不能绕过）：
+ * - agent / parallel_agent：设计上只允许一层子 Agent——子 Agent
+ *   不能再派生子 Agent。嵌套防护完全由这里的结构性剔除保证，
+ *   没有运行时深度计数。
+ * - compact_tool_result：它往父 session 的 pendingCompactIds 写入，
+ *   但子 Agent 的 prepareStep 不消费该队列 → 调了无效果还污染父状态
+ */
+const SUB_AGENT_DENIED_TOOLS = new Set(['agent', 'parallel_agent', 'compact_tool_result']);
+
+/**
  * 解析 Agent 可用的工具列表
  *
  * 过滤逻辑：
+ * 0. 子 Agent 禁用工具（agent/parallel_agent/compact_tool_result，无条件剔除）
  * 1. tools 白名单（如指定了的话）
  * 2. connectors 开关（false 时过滤连接器工具）
  * 3. skills 开关（false 时过滤技能工具）
@@ -24,22 +35,17 @@ const SYSTEM_TOOLS = new Set([
  *
  * @param definition Agent 定义
  * @param context 执行上下文
- * @returns 活动工具名称列表，或 undefined（表示使用所有工具）
+ * @returns 活动工具名称列表（始终返回数组，空数组表示无可用工具）
  */
 export function resolveToolsForAgent(
   definition: AgentDefinition,
   context: AgentExecutionContext,
-): string[] | undefined {
+): string[] {
   const { tools: allowedTools, connectors = true, skills = true, mcp = true } = definition;
   const allToolNames = Object.keys(context.parentTools);
 
-  // 如果没有定义白名单且所有开关都开启，使用所有工具
-  if (!allowedTools?.length && connectors && skills && mcp) {
-    return undefined;
-  }
-
-  // 从全量工具开始过滤
-  let filtered = allToolNames;
+  // 0. 无条件剔除子 Agent 禁用工具（递归防护，不受白名单/开关影响）
+  let filtered = allToolNames.filter((name) => !SUB_AGENT_DENIED_TOOLS.has(name));
 
   // 1. tools 白名单过滤
   if (allowedTools?.length) {
@@ -65,7 +71,9 @@ export function resolveToolsForAgent(
     filtered = filtered.filter((name) => !name.startsWith('mcp__'));
   }
 
-  return filtered.length > 0 ? filtered : undefined;
+  // 始终返回数组：返回 undefined 会让 SDK 视为"全部工具"，
+  // 打穿第 0 步的递归防护
+  return filtered;
 }
 
 /**

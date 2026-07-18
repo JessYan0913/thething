@@ -5,15 +5,8 @@ import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from './loader';
-import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
 import { logger } from '../../primitives/logger';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
-
-// ============================================================
-// Recursion Tracker
-// ============================================================
-
-const tracker = new RecursionTracker();
 
 // ============================================================
 // Agent Tool Factory
@@ -78,22 +71,10 @@ If no agentType specified, will auto-route based on task keywords (find→explor
       const abortSignal = options.abortSignal;
       const writer = config.writerRef?.current ?? null;
 
-      const depth = config.recursionDepth ?? 0;
-      tracker.enter(toolCallId);
-
       try {
-        // 递归检查
-        if (checkRecursionGuard({ recursionDepth: depth })) {
-          tracker.exit(toolCallId);
-          return {
-            success: false,
-            summary: 'Agent execution blocked: maximum recursion depth exceeded',
-            durationMs: Date.now() - startTime,
-            stepsExecuted: 0,
-            toolsUsed: [],
-            status: 'recursion-blocked' as const,
-          };
-        }
+        // 嵌套防护说明：一层子 Agent 由结构保证——resolveToolsForAgent
+        // 无条件剔除 agent/parallel_agent，子 Agent 无法再派生，
+        // 不需要运行时深度计数。
 
         // 动态加载 Agent（显式开启 dynamicReload 时才重新扫描）
         if (config.dynamicReload && agentType && !agentRegistry.has(agentType)) {
@@ -121,13 +102,14 @@ If no agentType specified, will auto-route based on task keywords (find→explor
           writerRef: config.writerRef,
           abortSignal: abortSignal ?? new AbortController().signal,
           toolCallId,
-          recursionDepth: depth,
           todoStore: config.todoStore,
           todoId: config.todoId,
           provider: config.provider,
           modelAliases: config.modelAliases,
           cwd,
           agentRegistry,
+          compactionConfig: config.compactionConfig,
+          maxTotalTokens: config.maxTotalTokens,
         };
 
         // 路由决策
@@ -135,7 +117,7 @@ If no agentType specified, will auto-route based on task keywords (find→explor
 
         logger.debug(
           'AgentTool',
-          `Routing to ${routeDecision.type} (${routeDecision.definition.agentType}) | Reason: ${routeDecision.reason} | Depth: ${depth}`
+          `Routing to ${routeDecision.type} (${routeDecision.definition.agentType}) | Reason: ${routeDecision.reason}`
         );
 
         // 执行 Agent
@@ -144,8 +126,6 @@ If no agentType specified, will auto-route based on task keywords (find→explor
           context,
           task
         );
-
-        tracker.exit(toolCallId);
 
         // 广播完成事件
         writer?.write({
@@ -164,8 +144,6 @@ If no agentType specified, will auto-route based on task keywords (find→explor
 
         return result;
       } catch (error) {
-        tracker.exit(toolCallId);
-
         const isAborted = error instanceof Error && error.name === 'AbortError';
         const errorMsg = error instanceof Error ? error.message : String(error);
 
@@ -216,7 +194,7 @@ export function formatAgentResult(result: AgentExecutionResult): string {
 
   const lines = [
     `✅ Task completed in ${result.durationMs}ms`,
-    `   Steps: ${result.stepsExecuted}`,
+    `   Tool calls: ${result.stepsExecuted}`,
     `   Tools: ${result.toolsUsed.join(', ')}`,
   ];
 

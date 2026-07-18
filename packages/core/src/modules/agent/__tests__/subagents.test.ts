@@ -69,7 +69,7 @@ describe('subagents', () => {
       });
 
       it('should have valid status values', () => {
-        const statuses = ['completed', 'failed', 'aborted', 'recursion-blocked'] as const;
+        const statuses = ['completed', 'failed', 'aborted'] as const;
         statuses.forEach((status) => {
           const result: AgentExecutionResult = {
             success: status === 'completed',

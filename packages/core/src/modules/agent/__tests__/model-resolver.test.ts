@@ -31,7 +31,6 @@ describe('subagents/model-resolver', () => {
     writerRef: { current: null },
     abortSignal: new AbortController().signal,
     toolCallId: 'test',
-    recursionDepth: 0,
     provider: createMockProvider(),
     ...overrides,
   });

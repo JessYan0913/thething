@@ -11,6 +11,7 @@ import type { ModelProviderConfig } from '../../services/model'
 import type { Skill } from '../../modules/skills/types'
 import type { McpServerConfig } from '../../modules/mcp/types'
 import type { AgentRunStore } from '../../primitives/datastore/types'
+import type { CompactionConfig } from '../../services/config/compaction-types'
 import type { BehaviorConfig } from '../../services/config/behavior'
 import type { ModelAliases } from '../../services/model'
 import type { ConnectorRegistry } from '../../modules/connector'
@@ -143,9 +144,6 @@ export interface AgentExecutionContext {
   /** 工具调用 ID */
   toolCallId: string;
 
-  /** 递归深度 */
-  recursionDepth: number;
-
   /** 任务存储 */
   todoStore?: TodoStore;
 
@@ -172,6 +170,12 @@ export interface AgentExecutionContext {
 
   /** 会话 ID（配合 agentRunStore 使用） */
   conversationId?: string;
+
+  /** 压缩配置（从父 Agent 传入，提供时子 Agent 每步执行 Layer 2 压缩） */
+  compactionConfig?: CompactionConfig;
+
+  /** 子 Agent 总 token 预算上限（超出后停止执行） */
+  maxTotalTokens?: number;
 }
 
 // ============================================================
@@ -184,7 +188,7 @@ export interface TokenUsageStats {
   totalTokens: number;
 }
 
-export type AgentExecutionStatus = 'completed' | 'failed' | 'aborted' | 'recursion-blocked';
+export type AgentExecutionStatus = 'completed' | 'failed' | 'aborted';
 
 /**
  * Agent 执行结果
@@ -202,7 +206,7 @@ export interface AgentExecutionResult {
   /** Token 使用统计 */
   tokenUsage?: TokenUsageStats;
 
-  /** 执行轮次 */
+  /** 执行的工具调用次数（注意：是 tool-call 计数，不是 LLM step 数——一个 step 可并行多个 tool call） */
   stepsExecuted: number;
 
   /** 使用的工具 */
@@ -249,9 +253,6 @@ export interface AgentToolConfig {
   /** 输出流写入器 */
   writerRef: { current: SubAgentStreamWriter | null };
 
-  /** 递归深度 */
-  recursionDepth?: number;
-
   /** 任务存储 */
   todoStore?: TodoStore;
 
@@ -281,13 +282,19 @@ export interface AgentToolConfig {
 
   /** 配置目录路径（如 ~/.thething，用于工具描述文案） */
   configDir: string;
+
+  /** 压缩配置（提供时子 Agent 每步执行 Layer 2 压缩） */
+  compactionConfig?: CompactionConfig;
+
+  /** 子 Agent 总 token 预算上限（超出后停止执行） */
+  maxTotalTokens?: number;
 }
 
 // ============================================================
 // Agent Route Decision
 // ============================================================
 
-export type AgentRouteType = 'named' | 'context' | 'general' | 'blocked';
+export type AgentRouteType = 'named' | 'context' | 'general';
 
 /**
  * Agent 路由决策
@@ -360,6 +367,10 @@ export interface LoadToolsConfig {
   provider?: (modelName: string) => LanguageModel
   /** 预加载的 Agent 定义（来自 AppContext 快照） */
   agents?: AgentDefinition[]
+  /** 父 Agent 对话消息历史（子 Agent 上下文注入用；createAgent 每请求重建，快照即当前历史） */
+  parentMessages?: UIMessage[]
+  /** 压缩配置（透传给子 Agent 做 Layer 2 压缩） */
+  compactionConfig?: CompactionConfig
   /** 预加载的 MCP 配置（来自 AppContext 快照） */
   mcps?: McpServerConfig[]
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */

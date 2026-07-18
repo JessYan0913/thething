@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
-import { checkRecursionGuard, RecursionTracker } from './recursion-guard';
 import { logger } from '../../primitives/logger';
 import type {
   AgentToolConfig,
@@ -24,12 +23,6 @@ const MAX_PARALLEL_AGENTS = 8;
 
 /** 并行 Agent 默认数量 */
 const DEFAULT_PARALLEL_AGENTS = 5;
-
-// ============================================================
-// Recursion Tracker（复用单 agent 的 tracker）
-// ============================================================
-
-const tracker = new RecursionTracker();
 
 // ============================================================
 // Types
@@ -130,7 +123,6 @@ Results are collected and returned together with labels for easy identification.
       const parentToolCallId = options.toolCallId ?? `parallel-${Date.now()}`;
       const abortSignal = options.abortSignal;
       const writer = config.writerRef?.current ?? null;
-      const depth = config.recursionDepth ?? 0;
 
       // 输入校验（防御性，Zod 校验可能在某些调用路径下被跳过）
       if (!Array.isArray(tasks) || tasks.length < 2) {
@@ -152,25 +144,12 @@ Results are collected and returned together with labels for easy identification.
         };
       }
 
-      // 递归检查
-      if (checkRecursionGuard({ recursionDepth: depth })) {
-        return {
-          success: false,
-          summary: 'Parallel execution blocked: maximum recursion depth exceeded',
-          durationMs: Date.now() - startTime,
-          results: [],
-          status: 'recursion-blocked' as const,
-        };
-      }
-
-      // 注册所有并行任务
-      for (const task of tasks) {
-        tracker.enter(parentToolCallId);
-      }
+      // 嵌套防护说明：一层子 Agent 由结构保证——resolveToolsForAgent
+      // 无条件剔除 agent/parallel_agent，子 Agent 无法再派生。
 
       logger.info(
         'ParallelAgent',
-        `Starting ${tasks.length} parallel agents | Depth: ${depth}`
+        `Starting ${tasks.length} parallel agents`
       );
 
       // 广播并行开始事件
@@ -200,7 +179,6 @@ Results are collected and returned together with labels for easy identification.
           config,
           cwd,
           agentRegistry,
-          depth,
           abortSignal,
           writer,
         });
@@ -241,11 +219,6 @@ Results are collected and returned together with labels for easy identification.
             },
           });
         }
-      }
-
-      // 释放递归追踪
-      for (const _task of tasks) {
-        tracker.exit(parentToolCallId);
       }
 
       const totalDuration = Date.now() - startTime;
@@ -301,7 +274,6 @@ interface ExecuteSingleTaskOptions {
   config: AgentToolConfig;
   cwd: string;
   agentRegistry: AgentRegistry;
-  depth: number;
   abortSignal?: AbortSignal;
   writer: { write: (chunk: Record<string, unknown>) => void } | null;
 }
@@ -319,7 +291,6 @@ async function executeSingleTask(
     config,
     cwd,
     agentRegistry,
-    depth,
     abortSignal,
     writer,
   } = options;
@@ -347,13 +318,14 @@ async function executeSingleTask(
       writerRef: config.writerRef,
       abortSignal: abortSignal ?? new AbortController().signal,
       toolCallId: taskToolCallId,
-      recursionDepth: depth + 1, // 并行任务在下一层
       todoStore: config.todoStore,
       todoId: config.todoId,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,
       agentRegistry,
+      compactionConfig: config.compactionConfig,
+      maxTotalTokens: config.maxTotalTokens,
     };
 
     // 路由决策

@@ -234,29 +234,6 @@ describe('parallel-agent-tool', () => {
       expect(doneCalls).toHaveLength(1);
     });
 
-    it('should block on recursion depth exceeded', async () => {
-      const tool = createParallelAgentTool(
-        createMockToolConfig({
-          agentRegistry: registry,
-          recursionDepth: 3, // 达到上限
-        })
-      );
-
-      const result = await (tool as any).execute(
-        {
-          tasks: [
-            { task: 'Task 1', label: 't1' },
-            { task: 'Task 2', label: 't2' },
-          ],
-        },
-        { toolCallId: 'parallel-test', abortSignal: new AbortController().signal }
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.status).toBe('recursion-blocked');
-      expect(mockExecuteRoutedAgent).not.toHaveBeenCalled();
-    });
-
     it('should auto-label tasks when label not provided', async () => {
       mockExecuteRoutedAgent.mockResolvedValue(createMockResult('Done'));
 

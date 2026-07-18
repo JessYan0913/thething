@@ -1,5 +1,8 @@
-import { ToolLoopAgent, isStepCount } from 'ai';
+import { ToolLoopAgent, isStepCount, generateText } from 'ai';
+import type { PrepareStepFunction, PrepareStepResult, StopCondition, ToolSet, ModelMessage } from 'ai';
 import type { AgentDefinition, AgentExecutionContext, AgentExecutionResult } from './types';
+import type { CompactionConfig, PipelineMessage } from '../../services/config/compaction-types';
+import { manageToolOutputLifecycle } from '../compaction/lifecycle';
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
@@ -11,6 +14,45 @@ import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
 
 function fireAndForget<T>(fn: () => T): void {
   setTimeout(fn, 0);
+}
+
+/** 子 Agent 默认最大步数 */
+const SUB_AGENT_MAX_STEPS = 20;
+
+/**
+ * 子 Agent 的 prepareStep：每步 API 调用前执行 Layer 2 压缩
+ * （工具输出生命周期管理，同步、微秒级）。
+ *
+ * 不做 Layer 3（LLM 摘要）——子 Agent 最多 20 步，上下文短，
+ * 额外 LLM 调用的延迟和成本不值得。
+ * 不传 storage——落盘找回只对父 Agent 上下文有意义。
+ *
+ * @internal 导出仅用于测试
+ */
+export function createSubAgentPrepareStep(
+  compactionConfig: CompactionConfig,
+): PrepareStepFunction<ToolSet> {
+  return ({ messages }) => {
+    const result = manageToolOutputLifecycle(
+      messages as PipelineMessage[],
+      compactionConfig.lifecycle,
+    );
+    return {
+      messages: result.messages as ModelMessage[],
+    } as PrepareStepResult<ToolSet>;
+  };
+}
+
+/**
+ * token 预算停止条件：所有已完成步骤的真实 usage 累计超过上限时停止。
+ * 用 SDK 的 stopWhen 而非消费端 break——后者只停止读流，
+ * 不会终止 SDK 内部的 tool loop。
+ *
+ * @internal 导出仅用于测试
+ */
+export function isTokenBudgetExceeded(maxTotalTokens: number): StopCondition<ToolSet> {
+  return ({ steps }) =>
+    steps.reduce((sum, step) => sum + Number(step.usage?.totalTokens ?? 0), 0) >= maxTotalTokens;
 }
 
 // ============================================================
@@ -35,23 +77,21 @@ export async function executeRoutedAgent(
   const writer = writerRef.current;
 
   try {
-    // 0. 检查是否有未完成的 run（进程恢复场景）
+    // 0. 初始化 run 记录（checkpoint 供进程崩溃后的诊断/展示用）。
+    // 注意：这里不做"断点续跑"——ToolLoopAgent 总是从头执行完整 task，
+    // 预载旧 run 的 accumulatedText/stepCount 只会导致文本重复拼接和
+    // 步数双倍计数。发现残留的 running 态 run（进程中断遗留）时，
+    // 直接覆盖重建，重新完整执行。
     let textContent = '';
     let stepsExecuted = 0;
     const toolsUsed: string[] = [];
 
     if (agentRunStore && conversationId) {
       const existingRun = agentRunStore.getRun(conversationId);
-      if (existingRun?.status === 'running' && existingRun.stepCount > 0) {
-        // 从 checkpoint 恢复：记录已有的进度
-        stepsExecuted = existingRun.stepCount;
-        textContent = existingRun.accumulatedText;
-        toolsUsed.push(...existingRun.toolsUsed);
-      } else if (!existingRun || existingRun.status === 'completed' || existingRun.status === 'failed') {
-        // 新 run 或已完成/失败的 run → 创建新 run
+      // 'paused_approval' 状态不覆盖，由审批恢复逻辑处理
+      if (existingRun?.status !== 'paused_approval') {
         agentRunStore.createRun(conversationId);
       }
-      // 'paused_approval' 状态不处理，由审批恢复逻辑处理
     }
 
     // 1. 解析工具
@@ -63,18 +103,27 @@ export async function executeRoutedAgent(
     // 3. 构建 System Prompt
     const instructions = buildSubAgentPrompt(definition, context);
 
-    // 4. 创建 ToolLoopAgent（默认 20 轮）
-    const stopWhen = [isStepCount(20)];
+    // 4. 创建 ToolLoopAgent（默认 20 轮 + 可选 token 预算上限）
+    const stopWhen: StopCondition<ToolSet>[] = [isStepCount(SUB_AGENT_MAX_STEPS)];
+    if (context.maxTotalTokens && context.maxTotalTokens > 0) {
+      stopWhen.push(isTokenBudgetExceeded(context.maxTotalTokens));
+    }
     const subAgent = new ToolLoopAgent({
       model,
       instructions,
       tools: context.parentTools,
       activeTools,
       stopWhen,
+      // Layer 2 压缩：每步 API 调用前将旧工具输出替换为结构化元信息
+      ...(context.compactionConfig
+        ? { prepareStep: createSubAgentPrepareStep(context.compactionConfig) }
+        : {}),
     });
 
-    // 5. 执行任务
-    const initialPrompt = task;
+    // 5. 构建初始 prompt（注入父对话上下文，让子 Agent 知道任务背景）
+    const initialPrompt = context.parentMessages.length > 0
+      ? buildContextPrompt(context, task)
+      : task;
 
     // 7. 更新任务状态
     if (todoStore && todoId) {
@@ -143,10 +192,12 @@ export async function executeRoutedAgent(
         }
       : undefined;
 
-    // 10. 强制摘要：当 agent 没有产出文本时，追加一次无工具的 LLM 调用写总结
+    // 10. 强制摘要：当 agent 没有产出文本时，追加一次无工具的 LLM 调用写总结。
+    // 这是子 Agent 返回值的最后防线——没有它，父 Agent 只能拿到
+    // "completed N steps" 的零信息 fallback，子 Agent 的工作全部丢失。
     if (!textContent && stepsExecuted > 0) {
       try {
-        // 将工具结果格式化为上下文，让摘要 agent 能看到收集到的数据
+        // 将工具结果格式化为上下文，让摘要调用能看到收集到的数据
         const toolContext = toolResults
           .map((r, i) => `--- Result ${i + 1} (${r.name}) ---\n${r.output}`)
           .join('\n\n')
@@ -156,26 +207,21 @@ export async function executeRoutedAgent(
           `You just completed ${stepsExecuted} tool calls (${[...new Set(toolsUsed)].join(', ')}). ` +
           `However, you did not produce any text output during those calls. ` +
           `Here are the results you gathered:\n\n${toolContext}\n\n` +
-          `Based on the above information, write a concise summary of your findings. ` +
-          `Do NOT make any more tool calls — only write text.`;
+          `Based on the above information, write a concise summary of your findings.`;
 
-        const summaryAgent = new ToolLoopAgent({
+        const summaryResult = await generateText({
           model,
           instructions: 'You must produce a text summary. Do NOT use any tools.',
-          tools: context.parentTools,
-          activeTools: [], // 禁用所有工具
-          stopWhen: [isStepCount(1)],
-        });
-
-        const summaryResult = await summaryAgent.stream({
           prompt: summaryPrompt,
           abortSignal,
         });
+        textContent = summaryResult.text;
 
-        for await (const part of summaryResult.stream) {
-          if (part.type === 'text-delta') {
-            textContent += part.text;
-          }
+        // 摘要调用的 token 也计入统计，避免成本漏报
+        if (tokenUsage && summaryResult.usage) {
+          tokenUsage.inputTokens += Number(summaryResult.usage.inputTokens ?? 0);
+          tokenUsage.outputTokens += Number(summaryResult.usage.outputTokens ?? 0);
+          tokenUsage.totalTokens += Number(summaryResult.usage.totalTokens ?? 0);
         }
       } catch {
         // 摘要失败不影响主结果
@@ -184,7 +230,7 @@ export async function executeRoutedAgent(
 
     // 12. 构建结果
     const fallbackSummary = stepsExecuted > 0
-      ? `Agent completed ${stepsExecuted} steps using ${[...new Set(toolsUsed)].join(', ')}. No text summary was produced.`
+      ? `Agent completed ${stepsExecuted} tool calls using ${[...new Set(toolsUsed)].join(', ')}. No text summary was produced.`
       : 'Agent completed with no text output.';
 
     const result: AgentExecutionResult = {

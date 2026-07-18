@@ -1,17 +1,6 @@
-import { checkRecursionGuard } from './recursion-guard';
 import { AgentRegistry } from './registry';
 import type { AgentDefinition, AgentExecutionContext, AgentRouteDecision } from './types';
 import { logger } from '../../primitives/logger';
-
-// ============================================================
-// Blocked Agent Definition
-// ============================================================
-
-const BLOCKED_AGENT: AgentDefinition = {
-  agentType: 'blocked',
-  instructions: 'Agent execution blocked: maximum recursion depth exceeded.',
-  source: 'builtin',
-};
 
 // ============================================================
 // General-purpose Agent (Fallback)
@@ -97,16 +86,10 @@ export function resolveAgentRoute(
 ): AgentRouteDecision {
   const registry = context.agentRegistry ?? new AgentRegistry();
 
-  // 1. 递归检查
-  if (checkRecursionGuard({ recursionDepth: context.recursionDepth })) {
-    return {
-      type: 'blocked',
-      definition: BLOCKED_AGENT,
-      reason: 'Recursion depth exceeded',
-    };
-  }
+  // 嵌套防护由 resolveToolsForAgent 结构性保证（子 Agent 工具池中
+  // 没有 agent/parallel_agent），路由层无需深度检查。
 
-  // 2. 显式指定 AgentType
+  // 1. 显式指定 AgentType
   if (input.agentType) {
     const def = registry.get(input.agentType);
     if (def) {
@@ -121,7 +104,7 @@ export function resolveAgentRoute(
     return { type: 'general', definition: GENERAL_PURPOSE_FALLBACK, reason: `Unknown type: ${input.agentType}` };
   }
 
-  // 3. 自动路由（基于任务关键词）
+  // 2. 自动路由（基于任务关键词）
   if (isExploreTask(input.task)) {
     const exploreDef = registry.get('explore');
     if (exploreDef) {
@@ -143,7 +126,7 @@ export function resolveAgentRoute(
     }
   }
 
-  // 4. 检查是否需要父上下文
+  // 3. 检查是否需要父上下文
   if (needsParentContext(input.task, context)) {
     const planDef = registry.get('plan');
     if (planDef) {
@@ -151,6 +134,6 @@ export function resolveAgentRoute(
     }
   }
 
-  // 5. 默认回退到 general-purpose
+  // 4. 默认回退到 general-purpose
   return { type: 'general', definition: GENERAL_PURPOSE_FALLBACK, reason: 'Default fallback' };
 }

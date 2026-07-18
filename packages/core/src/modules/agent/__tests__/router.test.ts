@@ -16,7 +16,6 @@ describe('subagents/router', () => {
     writerRef: { current: null },
     abortSignal: new AbortController().signal,
     toolCallId: 'test-tool-call',
-    recursionDepth: 0,
     agentRegistry: registry,
   });
 
@@ -26,30 +25,6 @@ describe('subagents/router', () => {
   });
 
   describe('resolveAgentRoute', () => {
-    describe('recursion guard', () => {
-      it('should block when recursion depth exceeds limit', () => {
-        const context = {
-          ...createMockContext(),
-          recursionDepth: 10, // Exceeds limit (usually 5)
-        };
-        const result = resolveAgentRoute({ task: 'test task' }, context);
-
-        expect(result.type).toBe('blocked');
-        expect(result.definition.agentType).toBe('blocked');
-        expect(result.reason).toContain('Recursion');
-      });
-
-      it('should allow when recursion depth is within limit', () => {
-        const context = {
-          ...createMockContext(),
-          recursionDepth: 2,
-        };
-        const result = resolveAgentRoute({ task: 'test task' }, context);
-
-        expect(result.type).not.toBe('blocked');
-      });
-    });
-
     describe('explicit agentType', () => {
       it('should route to named agent when agentType is specified', () => {
         const result = resolveAgentRoute(

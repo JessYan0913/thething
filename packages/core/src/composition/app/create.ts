@@ -219,6 +219,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     debugEnabled: Boolean(context.runtime.env.DEBUG),
     modelAliases: behavior.modelAliases,
     dynamicReload: resolved.dynamicReload,
+    // 子 Agent 上下文注入：createAgent 每请求重建，此快照即当前完整历史
+    parentMessages: messagesWithAttachments,
+    // 子 Agent Layer 2 压缩配置（尊重 modules.compaction 开关）
+    compactionConfig: modules.compaction ? compactionCfg : undefined,
     cronStore: context.runtime.cronStore ?? undefined,
     tasksDir: context.runtime.tasksDir,
     userId,

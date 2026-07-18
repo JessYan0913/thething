@@ -44,9 +44,6 @@ export {
   GENERAL_AGENT,
 } from './built-in'
 
-// 递归保护
-export { RecursionTracker, checkRecursionGuard, RECURSION_GUARD_CONFIG } from './recursion-guard'
-
 // 事件
 export { EventBroadcaster } from './event-broadcaster'
 

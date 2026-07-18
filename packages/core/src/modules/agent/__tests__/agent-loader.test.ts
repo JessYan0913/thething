@@ -81,7 +81,6 @@ describe('Agent Loader Integration', () => {
         writerRef: { current: null },
         abortSignal: new AbortController().signal,
         toolCallId: 'test',
-        recursionDepth: 0,
         agentRegistry: registry,
       },
     );
@@ -101,7 +100,6 @@ describe('Agent Loader Integration', () => {
         writerRef: { current: null },
         abortSignal: new AbortController().signal,
         toolCallId: 'test',
-        recursionDepth: 0,
         agentRegistry: registry,
       },
     );
