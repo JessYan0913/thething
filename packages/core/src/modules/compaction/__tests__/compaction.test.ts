@@ -397,6 +397,51 @@ describe('extractToolMeta', () => {
     expect(meta).toContain('src/via-args.ts');
   });
 
+  it('skill: extracts skill name and output length (args=null)', () => {
+    const meta = extractToolMeta('skill', null, {
+      success: true,
+      skillName: 'frontend-design',
+      skillPath: '/skills/frontend-design/SKILL.md',
+      allowedTools: ['read_file', 'write_file'],
+      _skillOutput: 'x'.repeat(15000),
+    });
+    expect(meta).toContain('Skill');
+    expect(meta).toContain('frontend-design');
+    expect(meta).toContain('15000 chars');
+  });
+
+  it('skill: reports error when skill not found', () => {
+    const meta = extractToolMeta('skill', null, {
+      success: false,
+      skillName: 'nonexistent-skill',
+      allowedTools: [],
+      error: 'Unknown skill: "nonexistent-skill"',
+    });
+    expect(meta).toContain('nonexistent-skill');
+    expect(meta).toContain('error');
+  });
+
+  it('read_wiki_page: extracts page name and content length (args=null)', () => {
+    const meta = extractToolMeta('read_wiki_page', null, {
+      found: true,
+      name: 'LLM-基础',
+      description: '大语言模型基础知识',
+      category: 'technical',
+      content: 'a'.repeat(8000),
+    });
+    expect(meta).toContain('ReadWiki');
+    expect(meta).toContain('LLM-基础');
+    expect(meta).toContain('8000 chars');
+  });
+
+  it('read_wiki_page: reports not found', () => {
+    const meta = extractToolMeta('read_wiki_page', null, {
+      found: false,
+      message: '页面 "不存在" 不存在',
+    });
+    expect(meta).toContain('not found');
+  });
+
   it('should use default extractor for unknown tools', () => {
     const meta = extractToolMeta('CustomTool', {}, { someKey: 'value' });
     expect(meta).toContain('CustomTool');

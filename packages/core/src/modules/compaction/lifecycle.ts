@@ -306,6 +306,31 @@ const extractWebSearch: MetaExtractor = (args, rawResult) => {
   return `WebSearch '${query}' → ${count} results`;
 };
 
+const extractSkill: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const skillName = firstString(result?.skillName, argsRecord?.skill);
+  if (result?.success === false) {
+    return `Skill '${skillName}' → error: ${firstString(result.error).slice(0, 80)}`;
+  }
+  // skill 通过 toModelOutput 输出纯文本,rawResult 可能是 _skillOutput 字符串
+  const outputLen = typeof result?._skillOutput === 'string'
+    ? result._skillOutput.length
+    : typeof rawResult === 'string' ? rawResult.length : JSON.stringify(rawResult).length;
+  return `Skill '${skillName}' → loaded (${outputLen} chars)`;
+};
+
+const extractReadWikiPage: MetaExtractor = (args, rawResult) => {
+  const result = asRecord(parseIfJsonString(rawResult));
+  const argsRecord = asRecord(args);
+  const pageName = firstString(result?.name, argsRecord?.pageName, argsRecord?.page_name);
+  if (result?.found === false) {
+    return `ReadWiki '${pageName}' → not found`;
+  }
+  const contentLen = typeof result?.content === 'string' ? result.content.length : 0;
+  return `ReadWiki '${pageName}' → ${contentLen} chars`;
+};
+
 const EXTRACTORS: Record<string, MetaExtractor> = {
   // 实际注册名(snake_case,见 agent/tools.ts)
   read_file: extractRead,
@@ -315,6 +340,8 @@ const EXTRACTORS: Record<string, MetaExtractor> = {
   edit_file: extractEdit,
   write_file: extractWrite,
   web_fetch: extractWebFetch,
+  skill: extractSkill,
+  read_wiki_page: extractReadWikiPage,
   // 首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字与旧格式)
   Read: extractRead,
   Bash: extractBash,
@@ -324,6 +351,8 @@ const EXTRACTORS: Record<string, MetaExtractor> = {
   Write: extractWrite,
   WebFetch: extractWebFetch,
   WebSearch: extractWebSearch,
+  Skill: extractSkill,
+  ReadWikiPage: extractReadWikiPage,
 };
 
 /** 通用提取器：保留结果的结构轮廓 */

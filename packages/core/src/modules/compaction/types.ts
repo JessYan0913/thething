@@ -49,6 +49,8 @@ export const DEFAULT_COMPACTABLE = new Set([
   'Write',
   'WebSearch',
   'WebFetch',
+  'Skill',
+  'ReadWikiPage',
   // 小写别名（兼容旧格式）
   'read_file',
   'bash',
@@ -57,4 +59,6 @@ export const DEFAULT_COMPACTABLE = new Set([
   'edit_file',
   'write_file',
   'web_fetch',
+  'skill',
+  'read_wiki_page',
 ]);
