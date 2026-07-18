@@ -25,14 +25,14 @@ describe('compaction config merge', () => {
     const result = resolveAgentCompactionConfig(behavior);
     expect(result.lifecycle).toBeDefined();
     expect(result.contextWindow).toBeDefined();
-    expect(result.lifecycle.keepRecentTurns).toBe(3);
+    expect(result.lifecycle.keepRecentSteps).toBe(3);
     expect(result.contextWindow.triggerPercent).toBe(0.85);
   });
 
   it('config has correct structure', () => {
     const config: CompactionConfig = {
       lifecycle: {
-        keepRecentTurns: 5,
+        keepRecentSteps: 5,
         largeOutputThreshold: 10000,
         compactableTools: null,
         protectedTools: new Set(['MyTool']),
@@ -44,7 +44,7 @@ describe('compaction config merge', () => {
         incrementalSummary: false,
       },
     };
-    expect(config.lifecycle.keepRecentTurns).toBe(5);
+    expect(config.lifecycle.keepRecentSteps).toBe(5);
     expect(config.contextWindow.triggerPercent).toBe(0.9);
   });
 });
@@ -54,7 +54,7 @@ describe('compaction config merge', () => {
 // ============================================================
 describe('lifecycle config defaults', () => {
   it('has correct default values', () => {
-    expect(DEFAULT_LIFECYCLE_CONFIG.keepRecentTurns).toBe(3);
+    expect(DEFAULT_LIFECYCLE_CONFIG.keepRecentSteps).toBe(3);
     expect(DEFAULT_LIFECYCLE_CONFIG.largeOutputThreshold).toBe(8000);
     expect(DEFAULT_LIFECYCLE_CONFIG.compactableTools).toBeNull();
     expect(DEFAULT_LIFECYCLE_CONFIG.protectedTools.size).toBe(0);
@@ -88,14 +88,14 @@ describe('config-driven lifecycle behavior', () => {
     return ((msg as unknown as Record<string, unknown>).content as any[])[0];
   }
 
-  it('keepRecentTurns=0 compresses all tool outputs', () => {
+  it('keepRecentSteps=0 compresses all tool outputs', () => {
     const messages = [
       createUserMessage('Q1'),
       createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(10000) }),
       createUserMessage('Q2'),
       createToolMessage('bash', { command: 'echo', stdout: 'y'.repeat(10000), exitCode: 0 }),
     ];
-    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(result.tokensFreed).toBeGreaterThan(0);
     expect(getResultItem(result.messages[1])._compacted).toBe(true);
     expect(getResultItem(result.messages[3])._compacted).toBe(true);
@@ -120,7 +120,7 @@ describe('config-driven lifecycle behavior', () => {
     ];
     const config = {
       ...DEFAULT_LIFECYCLE_CONFIG,
-      keepRecentTurns: 0,
+      keepRecentSteps: 0,
       compactableTools: new Set(['read_file']),
     };
     const result = manageToolOutputLifecycle(messages, config);

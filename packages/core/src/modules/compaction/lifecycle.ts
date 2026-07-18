@@ -24,9 +24,13 @@ import { getToolOutputString, unwrapOutput } from './message-utils';
  * 工具输出生命周期管理（Layer 2）
  *
  * 在每步 API 调用前同步执行：
- * - 保留最近 N 轮的工具输出
- * - 超出 N 轮的旧工具输出 → 替换为结构化元信息
- * - 超大工具输出（即使在最近 N 轮内）→ 也压缩
+ * - 保留最近 K 个 step（含 tool-result 的消息）的工具输出
+ * - 更早的旧工具输出 → 替换为结构化元信息
+ * - 超大工具输出（即使在最近 K 个 step 内）→ 也压缩
+ *
+ * 老化按 step 计数而非 user 轮数：agentic 场景下单个 user 轮内
+ * 可能有上百次工具调用,按轮数计算时它们永不老化。
+ * 见 docs/context-compaction-analysis.md A。
  *
  * @returns 替换后的消息和释放的 token 数
  */
@@ -34,7 +38,7 @@ export function manageToolOutputLifecycle(
   messages: UIMessage[],
   config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
 ): { messages: UIMessage[]; tokensFreed: number } {
-  const recentBoundary = findNthUserMessageFromEnd(messages, config.keepRecentTurns);
+  const recentBoundary = findNthToolResultMessageFromEnd(messages, config.keepRecentSteps);
   let tokensFreed = 0;
 
   const result = messages.map((msg, i) => {
@@ -45,7 +49,7 @@ export function manageToolOutputLifecycle(
 
     // 判断是否应该压缩这条消息的工具输出
     const shouldCompact =
-      i < recentBoundary || // 超出最近 N 轮
+      i < recentBoundary || // 超出最近 K 个 step
       totalToolResultSize(msg) > config.largeOutputThreshold; // 或者输出太大
 
     if (!shouldCompact) return msg;
@@ -386,16 +390,18 @@ export function extractToolMeta(toolName: string, args: unknown, result: unknown
 // ============================================================
 
 /**
- * 从消息末尾找到第 N 个用户消息的位置
- * 返回该位置作为"最近 N 轮"的边界
+ * 从消息末尾找到第 K 条含 tool-result 的消息的位置
+ * 返回该位置作为"最近 K 个 step"的边界:该索引之前的工具输出被压缩,
+ * 自身及之后保持完整
  */
-function findNthUserMessageFromEnd(messages: UIMessage[], n: number): number {
+function findNthToolResultMessageFromEnd(messages: UIMessage[], k: number): number {
+  if (k <= 0) return messages.length; // 不保留任何 step → 全部压缩
   let count = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
+    if (hasToolResults(messages[i])) {
       count++;
-      if (count >= n) return i;
+      if (count >= k) return i;
     }
   }
-  return 0; // 不到 N 轮 → 全部消息都在"最近"范围内
+  return 0; // 不到 K 个 step → 全部消息都在"最近"范围内
 }

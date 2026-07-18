@@ -53,7 +53,7 @@ describe('resolve-agent-config helpers', () => {
     const result = resolveAgentCompactionConfig(behavior);
     expect(result.lifecycle).toBeDefined();
     expect(result.contextWindow).toBeDefined();
-    expect(result.lifecycle.keepRecentTurns).toBe(3);
+    expect(result.lifecycle.keepRecentSteps).toBe(3);
     expect(result.contextWindow.triggerPercent).toBe(0.85);
   });
 

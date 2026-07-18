@@ -43,7 +43,7 @@ describe('V2 compaction module semantics', () => {
     expect(result.tokensFreed).toBeGreaterThan(0);
   });
 
-  it('manageToolOutputLifecycle respects keepRecentTurns', () => {
+  it('manageToolOutputLifecycle respects keepRecentSteps', () => {
     // Use outputs just above the 200 char minimum for compression
     const largeOutput = 'x'.repeat(300);
     const messages = [
@@ -53,13 +53,12 @@ describe('V2 compaction module semantics', () => {
       createToolMessage('Bash', { stdout: largeOutput }, 'tc-2'),
       createUserMessage('Q3'),
     ];
-    // keepRecentTurns=2 means keep last 2 user turns (Q2 and Q3)
-    // Tool output before Q2 (tc-1) should be compressed
-    // Tool output after Q2 but before Q3 (tc-2) should NOT be compressed
-    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 2 });
-    // First tool output should be compressed (outside keepRecentTurns)
+    // keepRecentSteps=1 means keep the last 1 tool-result message (tc-2)
+    // Earlier tool output (tc-1) should be compressed
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 1 });
+    // First tool output should be compressed (outside keepRecentSteps)
     expect(getResultItem(result.messages[1])._compacted).toBe(true);
-    // Last tool output should NOT be compressed (within keepRecentTurns)
+    // Last tool output should NOT be compressed (within keepRecentSteps)
     expect(getResultItem(result.messages[3])._compacted).toBeUndefined();
   });
 
@@ -70,7 +69,7 @@ describe('V2 compaction module semantics', () => {
     ];
     const config = {
       ...DEFAULT_LIFECYCLE_CONFIG,
-      keepRecentTurns: 0,
+      keepRecentSteps: 0,
       protectedTools: new Set(['MyTool']),
     };
     const result = manageToolOutputLifecycle(messages, config);
@@ -82,7 +81,7 @@ describe('V2 compaction module semantics', () => {
       createUserMessage('Q1'),
       createToolMessage('mcp_server', { result: 'x'.repeat(10000) }),
     ];
-    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(getResultItem(result.messages[1])._compacted).toBe(true);
   });
 
@@ -91,7 +90,7 @@ describe('V2 compaction module semantics', () => {
       createUserMessage('Q1'),
       createToolMessage('connector_api', { data: 'x'.repeat(10000) }),
     ];
-    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(getResultItem(result.messages[1])._compacted).toBe(true);
   });
 });

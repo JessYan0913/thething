@@ -54,10 +54,10 @@ export async function handleReactiveRetry(
 
   logger.warn('ReactiveRetry', 'Context length error detected, attempting recovery');
 
-  // 1. 激进 Layer 2：keepRecentTurns=1
+  // 1. 激进 Layer 2：keepRecentSteps=1
   let current = manageToolOutputLifecycle(messages, {
     ...config.lifecycle,
-    keepRecentTurns: 1,
+    keepRecentSteps: 1,
   }).messages;
 
   // 2. Layer 3 紧急摘要

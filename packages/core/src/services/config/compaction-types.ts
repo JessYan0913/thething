@@ -4,8 +4,8 @@
 // ============================================================
 
 export interface LifecycleConfig {
-  /** 完整保留最近 N 轮的工具输出（默认 3） */
-  keepRecentTurns: number;
+  /** 完整保留最近 K 个含工具结果的 step（默认 3）。step = 一条携带 tool-result 的消息 */
+  keepRecentSteps: number;
   /** 大输出阈值：超过此字符数的工具输出即使在最近 N 轮内也被压缩（默认 8000） */
   largeOutputThreshold: number;
   /** 可压缩的工具名集合。为 null 时使用默认规则（内置工具 + mcp_* + connector_*） */

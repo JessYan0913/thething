@@ -86,7 +86,7 @@ export async function checkInitialBudget(
 
   // ── Strategy 1: Layer 2 aggressive compression ──
   if (currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
-    const aggressiveConfig = { ...config.lifecycle, keepRecentTurns: 1 };
+    const aggressiveConfig = { ...config.lifecycle, keepRecentSteps: 1 };
     const lifecycleResult = manageToolOutputLifecycle(currentMessages, aggressiveConfig);
     if (lifecycleResult.tokensFreed > 0) {
       currentMessages = lifecycleResult.messages;

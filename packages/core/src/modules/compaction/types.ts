@@ -8,7 +8,7 @@ export type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../
 export type { CompactionResult } from '../../services/config/compaction-types';
 
 export const DEFAULT_LIFECYCLE_CONFIG: LifecycleConfig = {
-  keepRecentTurns: 3,
+  keepRecentSteps: 3,
   largeOutputThreshold: 8000,
   compactableTools: null,
   protectedTools: new Set(),

@@ -77,6 +77,13 @@
 
 **验收**:构造一个单 user 轮 + 50 次工具调用的消息序列,断言只有最近 K 个 step 的输出保持完整;以 skill 输出作为验收用例(步骤 5 的遗留语义在此闭环)。
 
+**设计要点**(2026-07-18 补充):
+
+1. **step 的定义**:一个 step = 一条携带 tool-result 的消息(ModelMessage 格式下 role 为 tool 的消息;AI SDK 每个 step 的所有并行工具结果落在同一条 tool 消息里)。直接数 tool-result 消息而非 assistant 消息,原因:(a) 纯文本/纯推理的 assistant 消息与工具老化无关;(b) 对测试与旧数据里没有 assistant 消息的序列也成立。
+2. **配置字段重命名**:`keepRecentTurns` → `keepRecentSteps`,语义从"保留最近 N 个 user 轮"变为"保留最近 K 个含工具结果的 step"。默认值保持 3。项目当前无外部用户,不保留旧字段兼容。改动点:`services/config/compaction-types.ts`、`compaction/types.ts`、`services/config/behavior.ts`、`compaction/retry.ts`(激进路径 =1)、`compaction/budget-check.ts`(=1)、相关测试。
+3. **边界函数**:`findNthToolResultMessageFromEnd(messages, k)` 从末尾向前数第 K 条含 tool-result 的消息,返回其索引;该索引之前(`i < boundary`)的工具输出被压缩,自身及之后保持完整(仍受 `largeOutputThreshold` 约束)。不足 K 条时返回 0(全部保留)。
+4. **行为变化**:多轮对话下老化比原来更激进(原来 3 个 user 轮内的所有 step 都完整保留)。这是有意的——旧输出压缩后仍有元信息,且步骤 7 落盘后可找回。
+
 ### 步骤 7:分层存储闭环(主文档 B + 工具文档 #4)
 
 - Layer 2 压缩时同步落盘(复用 [tool-result-storage.ts](../packages/core/src/modules/budget/tool-result-storage.ts)),元信息带 `saved to: <path>`,压缩从有损丢弃变为可找回。

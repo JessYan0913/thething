@@ -282,7 +282,7 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     // 压缩配置
     compaction: partial?.compaction ?? {
       lifecycle: {
-        keepRecentTurns: 3,
+        keepRecentSteps: 3,
         largeOutputThreshold: 8000,
         compactableTools: null,
         protectedTools: new Set(),

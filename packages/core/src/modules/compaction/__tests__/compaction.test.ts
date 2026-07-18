@@ -144,7 +144,7 @@ describe('manageToolOutputLifecycle', () => {
     return ((msg as unknown as Record<string, unknown>).content as any[])[0];
   }
 
-  it('should compress old tool outputs beyond keepRecentTurns', () => {
+  it('should compress old tool outputs beyond keepRecentSteps', () => {
     const largeOutput = 'x'.repeat(10000);
     const messages = [
       createUserMessage('First question'),
@@ -156,7 +156,7 @@ describe('manageToolOutputLifecycle', () => {
       createUserMessage('Fourth question'),
     ];
 
-    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 2 });
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 2 });
 
     // First two tool outputs should be compressed
     const item1 = getResultItem(result.messages[1]);
@@ -167,12 +167,12 @@ describe('manageToolOutputLifecycle', () => {
     expect(item3._compacted).toBe(true);
     expect(item3.output.value).toContain('Bash');
 
-    // Last tool output should NOT be compressed (within keepRecentTurns)
+    // Last tool output should NOT be compressed (within keepRecentSteps)
     const item5 = getResultItem(result.messages[5]);
     expect(item5._compacted).toBeUndefined();
   });
 
-  it('should compress large outputs even within keepRecentTurns', () => {
+  it('should compress large outputs even within keepRecentSteps', () => {
     const hugeOutput = 'x'.repeat(20000);
     const messages = [
       createUserMessage('Question'),
@@ -217,7 +217,7 @@ describe('manageToolOutputLifecycle', () => {
 
     const config: LifecycleConfig = {
       ...DEFAULT_LIFECYCLE_CONFIG,
-      keepRecentTurns: 0,
+      keepRecentSteps: 0,
       protectedTools: new Set(['MyProtectedTool']),
     };
 
@@ -232,9 +232,52 @@ describe('manageToolOutputLifecycle', () => {
       createToolMessage('mcp_myserver', { result: 'x'.repeat(10000) }),
     ];
 
-    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentTurns: 0 });
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const item = ((result.messages[1] as unknown as Record<string, unknown>).content as any[])[0];
     expect(item._compacted).toBe(true);
+  });
+
+  // ── 步骤 6 验收:单 user 轮内按 step 老化 ──
+  // 见 docs/compaction-execution-plan.md 步骤 6
+  it('ages tool outputs by step count within a single user turn', () => {
+    // 单个 user 轮 + 50 次工具调用(每次输出 300 字符,低于 largeOutputThreshold)
+    const messages: UIMessage[] = [createUserMessage('One big agentic task')];
+    for (let i = 0; i < 50; i++) {
+      messages.push(createToolMessage('read_file', { path: `src/f${i}.ts`, content: 'x'.repeat(300) }, `tc-${i}`));
+    }
+
+    const keepRecentSteps = 3;
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps });
+
+    // 只有最近 3 个 step 的输出保持完整
+    for (let i = 1; i <= 50; i++) {
+      const item = getResultItem(result.messages[i]);
+      if (i <= 50 - keepRecentSteps) {
+        expect(item._compacted, `step ${i} should be compacted`).toBe(true);
+      } else {
+        expect(item._compacted, `step ${i} should stay intact`).toBeUndefined();
+      }
+    }
+  });
+
+  it('ages old skill outputs while keeping the current one intact', () => {
+    // skill 输出作为验收用例:旧的 skill 输出压缩为一行元信息,最近的保持完整
+    const skillOutput = { success: true, skillName: 'frontend-design', _skillOutput: 'y'.repeat(5000) };
+    const messages: UIMessage[] = [
+      createUserMessage('Build me a page'),
+      createToolMessage('skill', skillOutput, 'tc-old'),
+      createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(300) }, 'tc-mid'),
+      createToolMessage('skill', { ...skillOutput, _skillOutput: 'z'.repeat(3000) }, 'tc-new'),
+    ];
+
+    const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 1 });
+
+    const oldSkill = getResultItem(result.messages[1]);
+    expect(oldSkill._compacted).toBe(true);
+    expect(oldSkill.output.value).toContain("Skill 'frontend-design'");
+
+    const newSkill = getResultItem(result.messages[3]);
+    expect(newSkill._compacted).toBeUndefined();
   });
 });
 
