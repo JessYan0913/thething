@@ -78,7 +78,7 @@ export interface BashOperations {
       onStdout?: (chunk: string) => void;
       onStderr?: (chunk: string) => void;
     },
-  ) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
+  ) => Promise<{ stdout: string; stderr: string; exitCode: number | null; outputFile?: string }>;
 }
 
 export interface BashToolOptions {
@@ -240,28 +240,49 @@ const defaultBashOperations: BashOperations = {
         signal,
       });
 
-      // Prevent memory exhaustion — guard output size
+      // 超过 buffer 限制后不再杀进程,改为把后续输出溢出到磁盘文件,
+      // 内存里只保留前 BASH_MAX_BUFFER 字节作为预览(见工具文档 #4)。
       let totalOutput = 0;
-      const checkOutputLimit = (chunk: string): boolean => {
-        totalOutput += Buffer.byteLength(chunk, 'utf-8');
-        if (totalOutput > BASH_MAX_BUFFER && !child.killed) {
-          child.kill('SIGTERM');
-          return false;
+      let overflowFile: string | undefined;
+      let overflowStream: fs.WriteStream | undefined;
+      const openOverflow = (): void => {
+        if (overflowStream) return;
+        fs.mkdirSync(BG_LOG_DIR, { recursive: true });
+        overflowFile = path.join(
+          BG_LOG_DIR,
+          `overflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`,
+        );
+        overflowStream = fs.createWriteStream(overflowFile);
+        // 已缓冲的内容先落盘,保证文件是完整输出
+        overflowStream.write(stdout);
+        overflowStream.write(stderr);
+      };
+
+      // 记录输出:未超限时进内存缓冲;超限后进磁盘文件
+      const record = (text: string, buffer: 'stdout' | 'stderr'): void => {
+        const bytes = Buffer.byteLength(text, 'utf-8');
+        if (totalOutput <= BASH_MAX_BUFFER && totalOutput + bytes > BASH_MAX_BUFFER) {
+          openOverflow();
         }
-        return true;
+        totalOutput += bytes;
+        if (overflowStream) {
+          overflowStream.write(text);
+        } else if (buffer === 'stdout') {
+          stdout += text;
+        } else {
+          stderr += text;
+        }
       };
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const text = chunk.toString('utf-8');
-        if (!checkOutputLimit(text)) return;
-        stdout += text;
+        record(text, 'stdout');
         onStdout?.(text);
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString('utf-8');
-        if (!checkOutputLimit(text)) return;
-        stderr += text;
+        record(text, 'stderr');
         onStderr?.(text);
       });
 
@@ -269,16 +290,18 @@ const defaultBashOperations: BashOperations = {
         if (err.code === 'ETIMEDOUT') {
           timedOut = true;
         }
+        overflowStream?.end();
         reject(err);
       });
 
       child.on('close', (exitCode) => {
+        overflowStream?.end();
         if (timedOut) {
           reject(Object.assign(new Error('Command timed out'), {
             killed: true, code: 'ETIMEDOUT', stdout, stderr, exitCode,
           }));
         } else {
-          resolve({ stdout, stderr, exitCode });
+          resolve({ stdout, stderr, exitCode, outputFile: overflowFile });
         }
       });
 
@@ -390,7 +413,7 @@ async function bashExecute({
   }
 
   try {
-    const { stdout, stderr, exitCode } = await ops.exec(command, {
+    const { stdout, stderr, exitCode, outputFile } = await ops.exec(command, {
       cwd: resolvedCwd,
       timeout: resolvedTimeout,
       signal: execOptions.abortSignal,
@@ -398,7 +421,15 @@ async function bashExecute({
 
     const duration = Date.now() - startTime;
     const bgWarning = checkBgWarning(command);
-    const finalStderr = bgWarning ? bgWarning + stderr : stderr;
+    let finalStderr = bgWarning ? bgWarning + stderr : stderr;
+
+    // 输出超过 buffer 上限,已溢出到磁盘:提示完整输出的文件路径
+    if (outputFile) {
+      finalStderr =
+        `⚠️  Output exceeded ${BASH_MAX_BUFFER} bytes; full output saved to: ${outputFile}\n` +
+        `Read it with the read_file tool if you need more than the preview above.\n` +
+        finalStderr;
+    }
 
     return {
       stdout,
@@ -407,6 +438,7 @@ async function bashExecute({
       command,
       timedOut: false,
       duration,
+      ...(outputFile ? { outputFile } : {}),
     };
   } catch (error: unknown) {
     const execError = error as Error & {

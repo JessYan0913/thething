@@ -40,6 +40,8 @@ export async function compactBeforeStep(
     instructionsTokens?: number;
     toolsTokens?: number;
     contextLimit?: number;
+    /** 提供时 Layer 2 压缩的原始输出落盘可找回 */
+    storage?: { sessionId: string; dataDir: string };
   },
 ): Promise<UIMessage[]> {
   let current = messages;
@@ -51,8 +53,12 @@ export async function compactBeforeStep(
   }
 
   // ── Layer 2: 工具输出生命周期管理（同步，微秒级）──
-  const lifecycle = manageToolOutputLifecycle(current, config.lifecycle);
+  const lifecycle = manageToolOutputLifecycle(current, config.lifecycle, context.storage);
   current = lifecycle.messages;
+  // 落盘异步进行,不阻塞主流程;等待写盘完成以保证元信息中的路径可读
+  if (lifecycle.persistence) {
+    await lifecycle.persistence;
+  }
 
   // ── Layer 3: 上下文窗口检查（异步，极少触发）──
   const msgTokens = await estimateMessagesTokens(current, context.modelName);

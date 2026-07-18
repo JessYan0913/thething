@@ -191,6 +191,8 @@ function collectCandidatesByMessage(messages: UIMessage[]): ToolResultCandidate[
     for (const item of content) {
       const itemObj = item as Record<string, unknown>
       if (itemObj.type !== 'tool-result') continue
+      // 已被 Layer 2 压缩为一行元信息 → 不再作为持久化候选(避免重复处理)
+      if (itemObj._compacted === true) continue
 
       const toolUseId = itemObj.toolCallId as string | undefined
       const toolName = (itemObj.toolName as string) || extractToolNameFromId(toolUseId || '')

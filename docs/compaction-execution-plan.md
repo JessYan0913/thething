@@ -18,8 +18,8 @@
 | 3 | 中文摘要验证修复 + 摘要消息格式(.parts vs .content) | 主文档 #3/#4 | `compaction/context-window.ts`、`app/api/chat/route.ts` | 小 | ✅ |
 | 4 | `web_fetch` 阈值对齐 + originalLength 在截断前记录 | 工具文档 #3 | `tools/web-fetch.ts`、`budget/tool-output-manager.ts` | 小 | ✅ |
 | 5 | `skill`/`read_wiki_page` 纳入 compactable + 对应 extractor | 工具文档 #5 | `compaction/types.ts`、`compaction/lifecycle.ts` | 小 | ✅ |
-| 6 | 老化维度从 user 轮数改为 assistant step 计数 | 主文档 A | `compaction/lifecycle.ts` | 中 | ⬜ |
-| 7 | Layer 2 压缩落盘可恢复(与 budget 合并)+ bash 超 buffer 从杀进程改为落盘 | 主文档 B + 工具文档 #4 | `compaction/lifecycle.ts`、`budget/*`、`tools/bash.ts` | 中 | ⬜ |
+| 6 | 老化维度从 user 轮数改为 assistant step 计数 | 主文档 A | `compaction/lifecycle.ts` | 中 | ✅ |
+| 7 | Layer 2 压缩落盘可恢复(与 budget 合并)+ bash 超 buffer 从杀进程改为落盘 | 主文档 B + 工具文档 #4 | `compaction/lifecycle.ts`、`budget/*`、`tools/bash.ts` | 中 | ✅ |
 | 8 | 其余 P2:结构化任务状态摘要、compaction checkpoint、usage 校准、估算系数统一、价值感知压缩、grep/glob token 效率、read_file/bash toModelOutput | 主文档 D/E/F/#5/C + 工具文档 A/B/C/D | 多处 | 按需排期 | ⬜ |
 
 关键点:
@@ -91,6 +91,12 @@
 - [bash.ts](../packages/core/src/modules/tools/bash.ts) 超过 200k buffer 后不再杀进程,改为把后续输出管道到磁盘文件,进程跑完返回预览 + 文件路径(与 background 模式 logFile 机制合并)。
 
 **验收**:压缩后的任意历史输出可通过 `read_file` 找回;bash 执行超大输出命令能正常完成并返回文件路径。
+
+**设计要点**(2026-07-18 补充):
+
+1. **Layer 2 落盘**:`manageToolOutputLifecycle` 增加可选第三参数 `storage?: { sessionId, dataDir }`。提供时:压缩每个 tool-result 前,用 `getToolResultPath(toolCallId, …)` 同步算出确定性路径,元信息追加 ` [saved to: <path>]`,并通过 `persistToolResult`(复用 budget 的存储层,`wx` 写入防覆盖)异步写盘。函数本身保持同步(微秒级承诺不变),返回值新增 `persistence?: Promise<void>` 供异步调用方 await(`compactBeforeStep` 会 await;测试也 await)。不提供 storage 时行为与现状完全一致(有损丢弃),`retry.ts`/`budget-check.ts` 的紧急路径暂不接线。
+2. **两套逻辑的合并边界**:本步做**存储层统一**而非流水线合并——lifecycle 与 message-budget 写同一个存储目录、同一套路径方案,模型看到的找回方式一致(`read_file <path>`)。流水线仍是 lifecycle(老化 + 单个大输出)→ budget(单消息总额)两趟,但 budget 的候选收集跳过 `_compacted === true` 的项,消除"把一行元信息再持久化一遍"的重叠处理。完全合并为一趟遍历留给步骤 8 的重构(涉及 PrepareStep 流水线重排,风险大)。
+3. **bash 超 buffer 落盘**:`defaultBashOperations.exec` 超过 200k buffer 后不再 `kill`,改为惰性打开溢出日志文件(复用 background 模式的 `BG_LOG_DIR`),先把已缓冲内容写入,再把后续 chunk 管道进去;进程跑完后返回 `{ stdout: 前 200k 预览, outputFile, exitCode }`,`bashExecute` 在结果中附带说明文字。`BashOperations.exec` 返回类型新增可选 `outputFile`。
 
 ### 步骤 8:P2 项(按需排期)
 

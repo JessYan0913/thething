@@ -298,6 +298,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         contextLimit: sessionOptions.maxContextTokens,
         instructionsTokens: overheadInstructions,
         toolsTokens: overheadTools,
+        // Layer 2 压缩落盘可恢复:与 budget 模块共用存储目录(见主文档 B)
+        storage: { sessionId: conversationId, dataDir: sessionState.layout.dataDir },
       })
       const tokensFreed = await estimateTokensDiff(msgs, afterResult)
       return {

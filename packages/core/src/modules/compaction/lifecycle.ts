@@ -15,10 +15,18 @@ import {
   DEFAULT_COMPACTABLE,
 } from './types';
 import { getToolOutputString, unwrapOutput } from './message-utils';
+import { persistToolResult, getToolResultPath } from '../budget/tool-result-storage';
+import { logger } from '../../primitives/logger';
 
 // ============================================================
 // Main Function
 // ============================================================
+
+/** Layer 2 压缩落盘配置。提供时压缩的原始输出写盘可找回 */
+export interface LifecycleStorage {
+  sessionId: string;
+  dataDir: string;
+}
 
 /**
  * 工具输出生命周期管理（Layer 2）
@@ -32,14 +40,20 @@ import { getToolOutputString, unwrapOutput } from './message-utils';
  * 可能有上百次工具调用,按轮数计算时它们永不老化。
  * 见 docs/context-compaction-analysis.md A。
  *
+ * 提供 storage 时,压缩的原始输出异步落盘,元信息带 saved to 路径,
+ * 模型可用 read_file 找回(见主文档 B)。函数本身保持同步;
+ * 落盘完成情况通过返回值的 persistence Promise 暴露。
+ *
  * @returns 替换后的消息和释放的 token 数
  */
 export function manageToolOutputLifecycle(
   messages: UIMessage[],
   config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
-): { messages: UIMessage[]; tokensFreed: number } {
+  storage?: LifecycleStorage,
+): { messages: UIMessage[]; tokensFreed: number; persistence?: Promise<void> } {
   const recentBoundary = findNthToolResultMessageFromEnd(messages, config.keepRecentSteps);
   let tokensFreed = 0;
+  const persistTasks: Promise<void>[] = [];
 
   const result = messages.map((msg, i) => {
     // 不是 tool-result 消息 → 原样保留
@@ -55,12 +69,16 @@ export function manageToolOutputLifecycle(
     if (!shouldCompact) return msg;
     if (!isToolCompactable(msg, config)) return msg;
 
-    const { compacted, freed } = compactToolResults(msg);
+    const { compacted, freed } = compactToolResults(msg, storage, persistTasks);
     tokensFreed += freed;
     return compacted;
   });
 
-  return { messages: result, tokensFreed };
+  return {
+    messages: result,
+    tokensFreed,
+    persistence: persistTasks.length > 0 ? Promise.all(persistTasks).then(() => undefined) : undefined,
+  };
 }
 
 // ============================================================
@@ -139,7 +157,11 @@ function isToolCompactable(msg: UIMessage, config: LifecycleConfig): boolean {
 // Tool Output Compression
 // ============================================================
 
-function compactToolResults(msg: UIMessage): {
+function compactToolResults(
+  msg: UIMessage,
+  storage?: LifecycleStorage,
+  persistTasks?: Promise<void>[],
+): {
   compacted: UIMessage;
   freed: number;
 } {
@@ -160,11 +182,27 @@ function compactToolResults(msg: UIMessage): {
 
     // 解包 ToolResultOutput 格式，确保 extractors 拿到实际值
     const unwrappedResult = unwrapOutput(contentItem.output);
-    const summary = extractToolMeta(
+    let summary = extractToolMeta(
       (contentItem.toolName as string) ?? 'unknown',
       null,
       unwrappedResult,
     );
+
+    // 落盘可恢复:元信息带路径,原文异步写盘(见主文档 B)
+    const toolCallId = contentItem.toolCallId as string | undefined;
+    if (storage && toolCallId) {
+      const isJson = resultStr.trim().startsWith('{') || resultStr.trim().startsWith('[');
+      const filepath = getToolResultPath(toolCallId, storage.sessionId, storage.dataDir, isJson);
+      summary += ` [saved to: ${filepath}]`;
+      persistTasks?.push(
+        persistToolResult(resultStr, toolCallId, storage.sessionId, storage.dataDir)
+          .then(() => undefined)
+          .catch((err) => {
+            logger.warn('Lifecycle', `Failed to persist ${toolCallId}:`, err);
+          }),
+      );
+    }
+
     freed += Math.max(0, Math.floor(originalSize / 3.5) - Math.floor(summary.length / 3.5));
 
     // 保持 ToolResultOutput 结构 { type, value }，附加 _compacted 标记
