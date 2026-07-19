@@ -9,7 +9,7 @@ import {
   GlobeIcon, BoxIcon, Loader2Icon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import MarkdownEditor from "@/components/markdown-editor"
 import { cn } from "@/lib/utils"
 import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
@@ -207,11 +207,11 @@ export default function WikiDetail({
       <div className="flex-1 min-h-0 overflow-auto">
         {editing ? (
           <div className="flex flex-col h-full min-h-0 p-6 gap-3">
-            <Textarea
+            <MarkdownEditor
               value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="flex-1 min-h-0 text-sm font-mono resize-none"
-              autoFocus
+              onChange={setEditContent}
+              onSave={handleSaveEdit}
+              className="flex-1 min-h-0"
             />
             <div className="flex items-center gap-2 shrink-0">
               <Button size="sm" variant="ghost" onClick={handleCancelEdit}>取消</Button>
