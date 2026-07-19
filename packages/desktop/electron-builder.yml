@@ -8,6 +8,7 @@ files:
   - build/**/*
   - loading/**/*
   - icons/**/*
+  - "!node_modules/**/*"
 
 extraResources:
   - from: vendor/agent
@@ -15,10 +16,6 @@ extraResources:
     filter:
       - "**/*"
       - "!**/*.map"
-  - from: vendor/node
-    to: node
-    filter:
-      - "**/*"
 
 asarUnpack:
   - "**/*.node"
@@ -33,6 +30,9 @@ mac:
       arch: [arm64, x64]
   category: public.app-category.developer-tools
   icon: icons/icon.icns
+
+dmg:
+  format: UDBZ
 
 win:
   target:

@@ -313,6 +313,75 @@ function setupNativeBetterSqlite3() {
 }
 
 // ---------------------------------------------------------------------------
+// Electron-ABI better-sqlite3 binary
+// ---------------------------------------------------------------------------
+// The server runs via ELECTRON_RUN_AS_NODE (Electron's internal Node.js),
+// whose ABI differs from the system Node.js that pnpm compiled against.
+// Download the official Electron prebuild and replace both copies.
+
+function setupElectronSqliteBinary() {
+  const electronPkg = JSON.parse(
+    readFileSync(join(__dirname, '..', 'node_modules', 'electron', 'package.json'), 'utf8')
+  );
+  const electronVersion: string = electronPkg.version;
+
+  const pnpmStore = join(ROOT_DIR, 'node_modules', '.pnpm');
+  const prebuildDirs = readdirSync(pnpmStore).filter((d) => d.startsWith('prebuild-install@'));
+  if (!prebuildDirs[0]) {
+    throw new Error('prebuild-install not found in pnpm store (it is a dependency of better-sqlite3)');
+  }
+  const prebuildBin = join(pnpmStore, prebuildDirs[0], 'node_modules', 'prebuild-install', 'bin.js');
+
+  const nativeDir = join(VENDOR_AGENT_DIR, 'packages', 'app', 'native', 'better-sqlite3');
+  console.log(`[Prepare Standalone] Downloading better-sqlite3 prebuild for Electron ${electronVersion} (${process.platform}-${process.arch})...`);
+  execSync(
+    `node "${prebuildBin}" --runtime electron --target ${electronVersion} --arch ${process.arch} --platform ${process.platform}`,
+    { cwd: nativeDir, stdio: 'inherit' }
+  );
+
+  const builtBinary = join(nativeDir, 'build', 'Release', 'better_sqlite3.node');
+  const nodeModulesBinary = join(
+    VENDOR_AGENT_DIR, 'packages', 'app', 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node'
+  );
+  if (existsSync(dirname(nodeModulesBinary))) {
+    rmSync(nodeModulesBinary, { force: true });
+    cpSync(builtBinary, nodeModulesBinary);
+    console.log('[Prepare Standalone] Replaced node_modules/better-sqlite3 binary with Electron build');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Prune better-sqlite3 build sources — runtime only needs build/Release + lib
+// ---------------------------------------------------------------------------
+
+function pruneNativeSqliteSources() {
+  const nativeDir = join(VENDOR_AGENT_DIR, 'packages', 'app', 'native', 'better-sqlite3');
+  for (const entry of ['deps', 'src', 'binding.gyp', 'README.md']) {
+    const target = join(nativeDir, entry);
+    if (existsSync(target)) {
+      rmSyncRetry(target, { recursive: true, force: true });
+      console.log(`[Prepare Standalone] Pruned native/better-sqlite3/${entry}`);
+    }
+  }
+  // build/ artifacts other than Release/ (obj files, gyp intermediates)
+  const buildDir = join(nativeDir, 'build');
+  if (existsSync(buildDir)) {
+    for (const entry of readdirSync(buildDir)) {
+      if (entry === 'Release') continue;
+      rmSyncRetry(join(buildDir, entry), { recursive: true, force: true });
+    }
+  }
+  const releaseDir = join(buildDir, 'Release');
+  if (existsSync(releaseDir)) {
+    for (const entry of readdirSync(releaseDir)) {
+      if (!entry.endsWith('.node')) {
+        rmSyncRetry(join(releaseDir, entry), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Handle Turbopack hashed module names
 // ---------------------------------------------------------------------------
 
@@ -383,7 +452,7 @@ function pruneSourceDirs() {
     }
   }
 
-  const sourceFiles = ['next.config.ts', 'next.config.mjs', 'next-env.d.ts', 'tsconfig.json', 'tsconfig.*.json', 'postcss.config.mjs', 'instrumentation.ts'];
+  const sourceFiles = ['next.config.ts', 'next.config.mjs', 'next-env.d.ts', 'tsconfig.json', 'tsconfig.*.json', 'tsconfig.tsbuildinfo', 'postcss.config.mjs', 'instrumentation.ts'];
   for (const pattern of sourceFiles) {
     if (pattern.includes('*')) {
       // Glob-like pattern matching
@@ -533,6 +602,10 @@ async function main() {
   // 7. Setup native better-sqlite3
   console.log('[Prepare Standalone] Setting up native better-sqlite3...');
   setupNativeBetterSqlite3();
+
+  // 7b. Replace sqlite binary with Electron-ABI prebuild, then prune sources
+  setupElectronSqliteBinary();
+  pruneNativeSqliteSources();
 
   // 8. Copy missing dependencies from pnpm store
   console.log('[Prepare Standalone] Copying missing dependencies...');

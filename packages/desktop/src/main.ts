@@ -35,12 +35,6 @@ function getRootDir(): string {
   return path.resolve(__dirname, '..', '..', '..');
 }
 
-function getBundledNodePath(): string | null {
-  const exe = process.platform === 'win32' ? 'node.exe' : 'node';
-  const bundledNode = path.join(process.resourcesPath, 'node', exe);
-  return fs.existsSync(bundledNode) ? bundledNode : null;
-}
-
 function getDataDir(): string {
   return app.getPath('userData');
 }
@@ -312,20 +306,16 @@ function startProductionServer(): Promise<number> {
     const agentDir = getAgentDir();
     const scriptPath = path.join(agentDir, 'start-standalone.js');
 
-    const bundledNode = getBundledNodePath();
-    const nodeExe = bundledNode || process.execPath;
-    const useElectronAsNode = !bundledNode;
-
     const homeDir = os.homedir();
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       NODE_ENV: 'production',
       HOME: homeDir,
       USERPROFILE: homeDir,
-      ...(useElectronAsNode ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+      ELECTRON_RUN_AS_NODE: '1',
     };
 
-    serverProcess = spawn(nodeExe, [scriptPath, '-p', '0'], {
+    serverProcess = spawn(process.execPath, [scriptPath, '-p', '0'], {
       cwd: agentDir,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
