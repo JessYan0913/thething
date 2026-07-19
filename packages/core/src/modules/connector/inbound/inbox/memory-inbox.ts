@@ -16,7 +16,8 @@ export class MemoryInboundInbox implements InboundInbox {
   constructor(private readonly maxSize = 100) {}
 
   async publish(event: InboundEvent): Promise<PublishResult> {
-    const eventKey = `${event.connectorId}:${event.protocol}:${event.externalEventId}`
+    // 与 SQLite inbox 一致：去重以业务身份为准，不含传输通道
+    const eventKey = `${event.connectorId}:${event.externalEventId}`
     if (this.seenEventKeys.has(eventKey)) {
       return { eventId: event.id, accepted: false, reason: 'duplicate' }
     }

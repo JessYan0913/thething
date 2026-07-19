@@ -80,24 +80,15 @@ export function schemaPropertyToZod(prop: SchemaProperty): z.ZodTypeAny {
       zodType = z.unknown()
   }
 
-  // 处理默认值
-  if (prop.default !== undefined) {
-    // 根据类型设置默认值
-    if (prop.type === 'string' && typeof prop.default === 'string') {
-      zodType = zodType.default(prop.default)
-    } else if ((prop.type === 'number' || prop.type === 'integer') && typeof prop.default === 'number') {
-      zodType = zodType.default(prop.default)
-    } else if (prop.type === 'boolean' && typeof prop.default === 'boolean') {
-      zodType = zodType.default(prop.default)
-    } else {
-      zodType = zodType.default(prop.default)
-    }
-  }
-
-  // 处理枚举
+  // 处理枚举（先于 default，避免 z.enum 整体替换丢失已附加的默认值）
   if (prop.enum && prop.enum.length > 0) {
     const enumValues = prop.enum as [string, ...string[]]
     zodType = z.enum(enumValues)
+  }
+
+  // 处理默认值
+  if (prop.default !== undefined) {
+    zodType = zodType.default(prop.default as never)
   }
 
   return zodType

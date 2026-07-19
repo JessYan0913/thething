@@ -17,7 +17,6 @@ export { configureConnectorInboundRuntime, type ConfigureConnectorInboundOptions
 // 审批逻辑（从 connector 搬来的）
 export {
   buildApprovalAskMessage,
-  parseApprovalResponse,
   buildApprovalAskMessageForRequests,
 } from './approval-handler'
 export type { SuspendedAgentState } from './approval-context'

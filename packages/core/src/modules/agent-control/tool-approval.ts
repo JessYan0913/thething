@@ -53,6 +53,8 @@ export interface ApprovalRuntimeContext extends Record<string, unknown> {
   reviewer?: (toolName: string, input: unknown, messages: unknown[]) => Promise<ToolApprovalStatus>;
   /** 当前目标状态（有目标时，Agent 应自主决策而非询问用户） */
   goalState?: GoalState | null;
+  /** 已注册的 connector 工具名集合（{connectorId}_{toolName}），用于识别外部 API 工具 */
+  connectorToolNames?: ReadonlySet<string>;
 }
 
 // ============================================================
@@ -143,6 +145,19 @@ async function editFileApproval(
   return 'user-approval';
 }
 
+async function connectorToolApproval(
+  toolName: string,
+  input: unknown,
+  ctx: ApprovalRuntimeContext,
+): Promise<ToolApprovalStatus> {
+  const inputObj = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+  const matchedRule = checkPermissionRules(toolName, inputObj, ctx.permissionRules);
+  if (matchedRule?.behavior === 'allow') return 'approved';
+  if (matchedRule?.behavior === 'deny') return 'denied';
+  // 外部 API 调用有副作用，默认需要用户确认
+  return 'user-approval';
+}
+
 // ============================================================
 // catchAllApproval — 兜底审批函数（GenericToolApprovalFunction）
 // ============================================================
@@ -167,6 +182,7 @@ export async function catchAllApproval(options: {
   // 'full-trust': 所有已知工具自动放行
   if (ctx.approvalMode === 'full-trust') {
     if (TOOLS_WITH_APPROVAL.has(toolName)) return 'approved';
+    if (ctx.connectorToolNames?.has(toolName)) return 'approved';
     return undefined;
   }
 
@@ -230,6 +246,9 @@ async function runSmartDecision(
       return 'user-approval';
     }
     default:
+      if (ctx.connectorToolNames?.has(toolName)) {
+        return connectorToolApproval(toolName, input, ctx);
+      }
       return undefined;
   }
 }

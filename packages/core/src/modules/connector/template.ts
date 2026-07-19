@@ -50,7 +50,8 @@ export function renderTemplate(template: string, ctx: TemplateContext): string {
     .replace(/\{\{iso_timestamp\}\}/g, () => new Date().toISOString())
     .replace(/\{\{uuid\}\}/g, () => crypto.randomUUID())
     .replace(/\{\{([\w.]+)\}\}/g, (_, path) => stringify(resolveContextPath(ctx, path)))
-    .replace(/\$\{([^}]+)\}/g, (_, path) => {
+    // (?!\{) 避免匹配未解析的 ${{ var }} 字面量（var-resolver 语法），防止静默模板损坏
+    .replace(/\$\{(?!\{)([^}]+)\}/g, (_, path) => {
       const value = resolveContextPath(ctx, path.trim())
       return value == null ? '' : String(value)
     })

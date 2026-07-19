@@ -21,7 +21,34 @@ export function resolveConnectorVars(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
   const rawVars = (obj.variables ?? {}) as Record<string, string>;
-  return walkAndReplace(obj, rawVars) as Record<string, unknown>;
+  const vars: Record<string, string> = {};
+  for (const [name, value] of Object.entries(rawVars)) {
+    vars[name] = typeof value === 'string' ? resolveEnvRefs(value) : value;
+  }
+  const resolved = walkAndReplace(obj, vars) as Record<string, unknown>;
+  // variables 区本身也使用 env 解析后的值，供 getCredentials 消费
+  resolved.variables = vars;
+  return resolved;
+}
+
+const ENV_REF_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+
+/**
+ * 将变量值中的 ${ENV_VAR} 替换为环境变量值。
+ * 未设置的环境变量保留原样并记录警告，便于用户发现配置缺失。
+ */
+export function resolveEnvRefs(value: string): string {
+  return value.replace(ENV_REF_RE, (match, envName) => {
+    const envValue = process.env[envName];
+    if (envValue !== undefined) {
+      return envValue;
+    }
+    logger.warn(
+      'ConnectorVarResolver',
+      `Environment variable '${envName}' referenced but not set — keeping as literal`,
+    );
+    return match;
+  });
 }
 
 const VAR_REF_RE = /\$\{\{(\s*\w+\s*)\}\}/g;

@@ -33,7 +33,10 @@ import {
   clearSuspendedState,
   detectApprovalResponse,
   initializeApprovalContext,
+  setSuspendedStateExpiredCallback,
+  cleanupExpiredSuspendedStates,
 } from './approval-context'
+import { ConnectorResponder } from '../../modules/connector/inbound/responder/responder'
 
 // ============================================================
 // stepsToMessageParts - 将 AI SDK steps 转换为 UIMessage parts
@@ -368,13 +371,39 @@ export class AgentInboundHandler implements InboundEventHandler {
   constructor(config: AgentHandlerConfig) {
     this.config = config
     this.conversationResolver = config.conversationResolver
-    
+
     // 初始化 Approval Context，绑定 SQLite 存储以支持跨重启恢复
     const store = config.context.runtime.dataStore
     if (store?.suspendedStateStore) {
       initializeApprovalContext(store.suspendedStateStore)
     }
+
+    // 审批过期：通知用户超时 + 结束 agent run（不再静默清除）
+    const responder = new ConnectorResponder({ registry: config.registry })
+    setSuspendedStateExpiredCallback((conversationId, state) => {
+      try {
+        store.agentRunStore.resumeFromApproval(conversationId)
+        store.agentRunStore.completeRun(conversationId)
+      } catch { /* run 状态可能已结束 */ }
+      const tools = [...new Set(state.pendingApprovals.map(item => item.toolName))].join(', ')
+      void responder.respond(state.replyAddress, {
+        type: 'text',
+        text: `⏰ 审批已超时（${tools}），操作已取消。如仍需执行请重新发起。`,
+      }).catch(err => {
+        logger.warn('AgentInboundHandler', 'Failed to send approval timeout notice:', err)
+      })
+    })
+
+    // 定期清理过期挂起状态（触发超时通知）
+    if (!AgentInboundHandler.cleanupTimer) {
+      AgentInboundHandler.cleanupTimer = setInterval(() => {
+        cleanupExpiredSuspendedStates()
+      }, 60_000)
+      AgentInboundHandler.cleanupTimer.unref?.()
+    }
   }
+
+  private static cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   async handle(event: InboundEvent): Promise<InboundEventResult> {
     if (!claimInboundEvent(event.id)) {
@@ -423,6 +452,23 @@ export class AgentInboundHandler implements InboundEventHandler {
         // ── 审批回复：同意 → 恢复执行现场 ──
         if (isResume && isApprove && suspended) {
           return this.resumeFromSuspended(event, conversationId, suspended, existingMessages, store, isFirstMessage)
+        }
+
+        // ── 挂起状态下无法解析为审批指令：提示重新选择，不触发新 run ──
+        if (suspended && !isApprovalResponse) {
+          const promptMsg = `当前有待审批的操作（${summarizePendingToolNames(suspended)}）。请回复 "同意" 或 "拒绝"。`
+          const userMsg: UIMessage = {
+            id: nanoid(),
+            role: 'user',
+            parts: [{ type: 'text', text: messageText }],
+          }
+          const assistantMsg: UIMessage = {
+            id: nanoid(),
+            role: 'assistant',
+            parts: [{ type: 'text', text: promptMsg }],
+          }
+          store.messageStore.saveMessages(conversationId, [...existingMessages, userMsg, assistantMsg])
+          return { success: true, response: promptMsg, conversationId }
         }
 
         // ── 正常消息：从用户消息开始 ──
@@ -477,6 +523,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       conversationId,
       uiMessagesForSave,
       event.connectorId,
+      event.agentType,
     )
 
     const initialModelMessages = await convertToModelMessages(
@@ -544,6 +591,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       conversationId,
       uiMessagesForSave,
       event.connectorId,
+      event.agentType,
     )
 
     return this.runAgentLoop(
@@ -625,7 +673,7 @@ export class AgentInboundHandler implements InboundEventHandler {
           approvalRequests = []
           stepContent = []
 
-          for await (const part of streamResult.stream ?? streamResult.stream) {
+          for await (const part of streamResult.fullStream ?? streamResult.stream) {
             if (part.type === 'text-delta') {
               responseText += part.text
             }
@@ -929,6 +977,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     conversationId: string,
     messages: UIMessage[],
     connectorId?: string,
+    agentType?: string,
   ) {
     const modelConfig = this.config.modelConfig
     if (!modelConfig) throw new Error('[AgentInboundHandler] modelConfig is required')
@@ -942,6 +991,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       conversationId,
       messages,
       userId: this.config.userId || 'connector',
+      agentType,
       model: {
         apiKey: modelConfig.apiKey,
         baseURL: modelConfig.baseURL,

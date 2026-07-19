@@ -4,9 +4,39 @@ import { InboundEventProcessor, type InboundEventHandler } from '../inbound-proc
 import { MemoryInboundInbox } from '../inbox/memory-inbox'
 import { ConnectorResponder } from '../responder/responder'
 import { DefaultConversationResolver } from '../../../../composition/inbound'
-import type { InboundEvent } from '../types'
+import type { AdapterInput, ConnectorInboundConfig, InboundEvent, ProtocolAdapter } from '../types'
 import type { ConnectorDefinition, ConnectorToolCall, ToolCallResponse } from '../../types'
 import type { ConnectorRegistry } from '../../registry'
+
+class TestServiceAdapter implements ProtocolAdapter {
+  readonly protocol = 'test-service'
+
+  async verify(): Promise<boolean> {
+    return true
+  }
+
+  async parse(input: AdapterInput, config: ConnectorInboundConfig): Promise<InboundEvent> {
+    const body = JSON.parse(input.body || '{}') as Record<string, string>
+    const externalEventId = body.message_id
+    return {
+      id: `${config.connectorId}:${input.transport}:${externalEventId}`,
+      connectorId: config.connectorId,
+      protocol: 'test-service',
+      transport: input.transport,
+      externalEventId,
+      channel: { id: body.channel_id },
+      sender: { id: body.sender_id, type: 'user' },
+      message: { id: externalEventId, type: 'text', text: body.content },
+      replyAddress: {
+        connectorId: config.connectorId,
+        protocol: 'test-service',
+        channelId: body.channel_id,
+        messageId: externalEventId,
+      },
+      receivedAt: input.receivedAt,
+    }
+  }
+}
 
 class FakeRegistry {
   calls: ConnectorToolCall[] = []
@@ -43,6 +73,7 @@ describe('connector inbound gateway', () => {
     const gateway = new ConnectorInboundGateway({
       registry: new FakeRegistry([testConnector('test-service', 'test-service')]) as unknown as ConnectorRegistry,
       inbox,
+      adapters: [new TestServiceAdapter()],
     })
 
     const body = JSON.stringify({

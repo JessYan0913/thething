@@ -24,6 +24,18 @@ function describeApprovalTarget(toolName: string, input: Record<string, unknown>
   if (toolName === 'read_file' && input.filePath) {
     return `文件: \`${input.filePath}\``
   }
+  // 其他工具（connector/MCP 等）：展示截断后的入参 JSON
+  const keys = Object.keys(input)
+  if (keys.length > 0) {
+    let json: string
+    try {
+      json = JSON.stringify(input)
+    } catch {
+      return null
+    }
+    if (json.length > 200) json = json.slice(0, 200) + '…'
+    return `参数: \`${json}\``
+  }
   return null
 }
 
@@ -58,36 +70,7 @@ export function buildApprovalAskMessageForRequests(
 
   lines.push('')
   lines.push('请回复 "同意" 或 "拒绝"')
-  lines.push('_审批有效期 5 分钟，超时将自动拒绝_')
+  lines.push('_审批有效期 30 分钟，超时将自动取消并通知您_')
 
   return lines.join('\n')
-}
-
-/**
- * 解析用户回复，判断是否为审批响应
- * 注意：调用方应先通过 hasPendingApproval() 确认存在待审批项，
- * 再调用此函数，否则普通消息会被误判为审批响应
- */
-export function parseApprovalResponse(text: string): {
-  isApprovalResponse: boolean
-  approved?: boolean
-} {
-  const lowerText = text.toLowerCase().trim()
-
-  const approveKeywords = ['同意', '允许', '批准', '确认', 'ok', 'yes', '好', '行', '可以', '是的', '没问题']
-  const denyKeywords = ['拒绝', '不同意', '禁止', '取消', 'no', '不行', '不要', 'deny']
-
-  for (const keyword of approveKeywords) {
-    if (lowerText.includes(keyword)) {
-      return { isApprovalResponse: true, approved: true }
-    }
-  }
-
-  for (const keyword of denyKeywords) {
-    if (lowerText.includes(keyword)) {
-      return { isApprovalResponse: true, approved: false }
-    }
-  }
-
-  return { isApprovalResponse: false }
 }

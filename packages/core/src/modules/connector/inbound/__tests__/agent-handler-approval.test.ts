@@ -288,8 +288,10 @@ function createHandler(): { handler: AgentInboundHandler; store: DataStore } {
         memory: false,
         connectors: false,
       },
-      conversationResolver: { resolve: vi.fn() },
-      createAgent: vi.fn(),
+      conversationResolver: {
+        resolve: vi.fn(async (event: InboundEvent) => `connector:${event.connectorId}:channel:${event.channel.id}`),
+      },
+      createAgent: mocks.createAgent,
     }),
   }
 }
@@ -312,6 +314,11 @@ function createStore(): DataStore {
         messages.set(id, nextMessages)
       }),
     },
+    agentRunStore: {
+      pauseForApproval: vi.fn(),
+      resumeFromApproval: vi.fn(),
+      completeRun: vi.fn(),
+    },
   } as unknown as DataStore
 }
 
@@ -328,6 +335,7 @@ function createAgentFactory(streamCalls: ModelMessage[][], streamResults: unknow
     sessionState: {
       costTracker: {
         persistToDB: vi.fn().mockResolvedValue(undefined),
+        getSummary: vi.fn(() => ({ totalCostUsd: 0, inputTokens: 0, outputTokens: 0 })),
       },
     },
     adjustedMessages: undefined,

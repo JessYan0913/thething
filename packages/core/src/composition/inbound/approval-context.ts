@@ -45,13 +45,30 @@ export interface SuspendedAgentState {
   createdAt: number
 }
 
-const SUSPENDED_TTL_MS = 5 * 60 * 1000
+const SUSPENDED_TTL_MS = 30 * 60 * 1000
 
 // 内存缓存（快速访问） + SQLite 持久化（跨重启恢复）
 const suspendedStates = new Map<string, SuspendedAgentState>()
 
 // 全局 store 引用，由 initializeApprovalContext 设置
 let suspendedStateStore: SuspendedStateStore | null = null
+
+// 过期回调：状态过期被清理时触发（用于向用户发送超时通知）
+type SuspendedStateExpiredCallback = (conversationId: string, state: SuspendedAgentState) => void
+let onExpiredCallback: SuspendedStateExpiredCallback | null = null
+
+export function setSuspendedStateExpiredCallback(callback: SuspendedStateExpiredCallback | null): void {
+  onExpiredCallback = callback
+}
+
+function notifyExpired(conversationId: string, state: SuspendedAgentState): void {
+  if (!onExpiredCallback) return
+  try {
+    onExpiredCallback(conversationId, state)
+  } catch (e) {
+    logger.error('ApprovalContext', `Expired callback failed for ${conversationId}:`, e)
+  }
+}
 
 /**
  * 初始化 Approval Context，绑定 SQLite 存储
@@ -146,6 +163,7 @@ export function getSuspendedState(conversationId: string): SuspendedAgentState |
         suspendedStateStore.clearSuspendedState(conversationId)
       }
       logger.debug('ApprovalContext', `Suspended state expired (memory): ${conversationId}`)
+      notifyExpired(conversationId, state)
       return null
     }
     return state
@@ -163,6 +181,7 @@ export function getSuspendedState(conversationId: string): SuspendedAgentState |
         if (Date.now() - dbState.createdAt > SUSPENDED_TTL_MS) {
           suspendedStateStore.clearSuspendedState(conversationId)
           logger.debug('ApprovalContext', `Suspended state expired (DB): ${conversationId}`)
+          notifyExpired(conversationId, dbState)
           return null
         }
         
@@ -203,18 +222,21 @@ export function hasSuspendedState(conversationId: string): boolean {
 // ============================================================
 // Approval Response Detection
 // ============================================================
+// 严格全等匹配：审批响应必须是明确的指令，不做自然语言子串猜测。
+// "好的，不要删了" 这类含糊消息不会命中任何分支，会被当作普通消息
+// 或（在挂起状态下）触发"请回复 同意 或 拒绝"的提示。
 
-const APPROVE_KEYWORDS = ['同意', '允许', '批准', '确认', 'ok', 'yes', '好', '行', '可以', '是的', '没问题']
-const DENY_KEYWORDS = ['拒绝', '不同意', '禁止', '取消', 'no', '不行', '不要', 'deny']
+const APPROVE_COMMANDS = new Set(['同意', '批准', '允许', '确认', 'y', 'yes', 'ok', 'approve'])
+const DENY_COMMANDS = new Set(['拒绝', '不同意', '取消', 'n', 'no', 'deny'])
 
 export function detectApprovalResponse(text: string): {
   isApprove: boolean
   isDeny: boolean
   isApprovalResponse: boolean
 } {
-  const lower = text.toLowerCase().trim()
-  const isApprove = APPROVE_KEYWORDS.some(k => lower.includes(k))
-  const isDeny = DENY_KEYWORDS.some(k => lower.includes(k))
+  const normalized = text.toLowerCase().trim().replace(/[。．.!！]$/, '')
+  const isApprove = APPROVE_COMMANDS.has(normalized)
+  const isDeny = DENY_COMMANDS.has(normalized)
   return { isApprove, isDeny, isApprovalResponse: isApprove || isDeny }
 }
 
@@ -233,13 +255,19 @@ export function cleanupExpiredSuspendedStates(): void {
   for (const [key, state] of suspendedStates.entries()) {
     if (now - state.createdAt > SUSPENDED_TTL_MS) {
       suspendedStates.delete(key)
+      if (suspendedStateStore) {
+        try {
+          suspendedStateStore.clearSuspendedState(key)
+        } catch { /* DB 清理失败不阻塞内存清理 */ }
+      }
+      notifyExpired(key, state)
       count++
     }
   }
   if (count > 0) {
     logger.debug('ApprovalContext', `Cleaned up expired suspended states (memory): ${count}`)
   }
-  
+
   // 同时清理数据库中的过期状态
   cleanupExpiredFromDb()
 }

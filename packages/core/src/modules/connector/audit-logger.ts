@@ -1,6 +1,11 @@
 // ============================================================
 // Audit Logger - 记录 Connector 操作审计日志
 // ============================================================
+// 内存环形缓冲（快速查询） + 可选 SQLite 持久化（审计留痕）
+
+import { logger } from '../../primitives/logger'
+import { getDatabase } from '../../services/datastore/sqlite/native-loader'
+import type { SqliteDatabase } from '../../primitives/datastore/types'
 
 export type AuditEventType =
   | 'tool_call'
@@ -34,14 +39,36 @@ export class AuditLogger {
   private entries: AuditLogEntry[] = []
   private maxEntries: number
   private onLog?: (entry: AuditLogEntry) => void
-  private dbPath?: string
-  private enablePersistence: boolean
+  private db: SqliteDatabase | null = null
 
   constructor(options?: AuditLoggerOptions) {
     this.maxEntries = options?.maxEntries ?? 1000
     this.onLog = options?.onLog
-    this.dbPath = options?.dbPath
-    this.enablePersistence = options?.enablePersistence ?? false
+
+    if (options?.enablePersistence && options.dbPath) {
+      try {
+        const Database = getDatabase()
+        this.db = new Database(options.dbPath)
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS connector_audit_log (
+            id TEXT PRIMARY KEY,
+            timestamp INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            connector_id TEXT,
+            tool_name TEXT,
+            status TEXT NOT NULL,
+            message TEXT NOT NULL,
+            metadata TEXT,
+            duration_ms INTEGER
+          );
+          CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON connector_audit_log (timestamp);
+          CREATE INDEX IF NOT EXISTS idx_audit_connector ON connector_audit_log (connector_id, timestamp);
+        `)
+      } catch (error) {
+        logger.warn('AuditLogger', 'Failed to initialize SQLite persistence; falling back to memory only:', error)
+        this.db = null
+      }
+    }
   }
 
   log(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): AuditLogEntry {
@@ -55,6 +82,27 @@ export class AuditLogger {
 
     if (this.entries.length > this.maxEntries) {
       this.entries = this.entries.slice(-this.maxEntries)
+    }
+
+    if (this.db) {
+      try {
+        this.db.prepare(`
+          INSERT INTO connector_audit_log (id, timestamp, type, connector_id, tool_name, status, message, metadata, duration_ms)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          fullEntry.id,
+          fullEntry.timestamp,
+          fullEntry.type,
+          fullEntry.connector_id ?? null,
+          fullEntry.tool_name ?? null,
+          fullEntry.status,
+          fullEntry.message,
+          fullEntry.metadata ? JSON.stringify(fullEntry.metadata) : null,
+          fullEntry.duration_ms ?? null,
+        )
+      } catch (error) {
+        logger.warn('AuditLogger', 'Failed to persist audit entry:', error)
+      }
     }
 
     this.onLog?.(fullEntry)
@@ -182,9 +230,14 @@ export class AuditLogger {
     this.entries = []
   }
 
+  close(): void {
+    try {
+      this.db?.close()
+    } catch { /* already closed */ }
+    this.db = null
+  }
+
   private generateId(): string {
     return 'audit_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9)
   }
 }
-
-export const auditLogger = new AuditLogger()

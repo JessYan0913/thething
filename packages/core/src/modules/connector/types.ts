@@ -46,6 +46,9 @@ export interface ConnectorDefinition {
   // 基础 URL（用于模板渲染）
   base_url?: string
 
+  // HTTP 工具允许访问的域名白名单（含子域名）
+  allowed_domains?: string[]
+
   // 工具定义
   tools: ToolDefinition[]
 }
@@ -63,7 +66,7 @@ export interface ConnectorReplyDefinition {
  * 认证配置
  */
 export interface AuthConfig {
-  type: 'none' | 'api_key' | 'bearer' | 'custom' | 'database'
+  type: 'none' | 'api_key' | 'bearer' | 'custom'
   config: {
     // API Key 认证
     header?: string        // e.g., "X-API-Token"
@@ -76,15 +79,9 @@ export interface AuthConfig {
     token_body?: Record<string, string>
     token_field?: string           // 返回 JSON 中 token 字段名
     expires_in_field?: string      // 返回 JSON 中过期时间字段名
-    refresh_before_expiry_ms?: number  // 提前刷新时间（毫秒）
 
     // Bearer Token 认证
     token?: string
-
-    // Database 认证
-    db_path?: string
-    query?: string
-    token_column?: string
   }
 }
 
@@ -106,19 +103,16 @@ export interface SchemaProperty {
 export interface ToolDefinition {
   name: string
   description: string
-  executor: 'http' | 'mock' | 'sql' | 'script'
-  executor_config: HttpExecutorConfig | MockExecutorConfig | SqlExecutorConfig | ScriptExecutorConfig
+  executor: 'http' | 'mock'
+  executor_config: HttpExecutorConfig | MockExecutorConfig
   input_schema?: {
     type?: string
     properties?: Record<string, SchemaProperty>
     required?: string[]
     additionalProperties?: boolean
   }
-  output_schema?: Record<string, unknown>
   /** 超时时间（毫秒），默认 10000ms */
   timeout_ms?: number
-  /** 是否允许自动重试 */
-  retryable?: boolean
 }
 
 /**
@@ -131,9 +125,6 @@ export interface HttpExecutorConfig {
   query_params?: Record<string, string>
   /** 请求体（JSON 对象，经过模板渲染） */
   body?: Record<string, unknown>
-  body_template?: string
-  response_path?: string
-  timeout_ms?: number
 }
 
 /**
@@ -144,23 +135,6 @@ export interface MockExecutorConfig {
   delay_ms?: number
   /** 模拟错误（不为空时直接返回失败） */
   error?: string
-}
-
-/**
- * SQL 执行器配置
- */
-export interface SqlExecutorConfig {
-  db_path: string
-  query: string
-  params?: unknown[]
-}
-
-/**
- * Script 执行器配置
- */
-export interface ScriptExecutorConfig {
-  script: string
-  timeout_ms?: number
 }
 
 /**
@@ -192,34 +166,6 @@ export interface ExecutorResult {
   data?: unknown
   error?: string
   metadata?: Record<string, unknown>
-}
-
-/**
- * Connector Frontmatter（从 loader 加载）
- */
-export interface ConnectorFrontmatter {
-  id: string
-  name: string
-  version: string
-  description: string
-  enabled: boolean
-  variables?: Record<string, string>
-  inbound?: ConnectorDefinition['inbound']
-  auth: AuthConfig
-  custom_settings?: Record<string, unknown>
-  base_url?: string
-  tools: ToolDefinition[]
-}
-
-/**
- * Permission Rule
- */
-export interface PermissionRule {
-  id: string
-  connector_id: string
-  tool_name: string
-  behavior: 'allow' | 'deny' | 'prompt'
-  conditions?: Record<string, unknown>
 }
 
 /**
@@ -257,9 +203,6 @@ export interface ConnectorRuntimeConfig {
 
   /** 模型配置（用于 inbound handler） */
   model?: ConnectorModelConfig
-
-  /** 显式允许不安全 script executor；默认 false */
-  allowUnsafeScriptExecutor?: boolean
 
   /** 使用内存 Inbox（测试用） */
   useMemoryInbox?: boolean

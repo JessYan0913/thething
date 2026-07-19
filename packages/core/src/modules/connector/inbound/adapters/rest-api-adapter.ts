@@ -6,18 +6,34 @@
 // into an InboundEvent, making all body fields available via
 // $replyAddress.raw.* and $message.raw.* for reply templates.
 //
-// Unlike task-trigger/feishu/wechat adapters, this adapter has
-// NO verify/decrypt/challenge — it accepts all generic HTTP
-// requests as-is.
+// Authentication: when the connector declares a `webhook_secret`
+// (or `webhookSecret`) variable, requests must carry it as
+// `Authorization: Bearer <secret>` or `X-Webhook-Secret: <secret>`.
+// Without the variable, all requests are accepted (with a warning).
 
 import type { AdapterInput, ConnectorInboundConfig, InboundEvent, ProtocolAdapter } from '../types'
 import crypto from 'crypto'
+import { logger } from '../../../../primitives/logger'
 
 export class RestApiProtocolAdapter implements ProtocolAdapter {
   readonly protocol = 'rest-api'
 
-  async verify(_input: AdapterInput, _config: ConnectorInboundConfig): Promise<boolean> {
-    return true
+  async verify(input: AdapterInput, config: ConnectorInboundConfig): Promise<boolean> {
+    const secret = config.credentials.webhook_secret || config.credentials.webhookSecret
+    if (!secret) {
+      logger.warn('RestApiAdapter', `Connector '${config.connectorId}' has no webhook_secret configured; accepting unauthenticated webhook. Set webhook_secret variable to secure this endpoint.`)
+      return true
+    }
+
+    const authHeader = input.headers['authorization'] || ''
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    const headerSecret = input.headers['x-webhook-secret'] || ''
+    const provided = bearerToken || headerSecret
+    if (!provided) return false
+
+    const expected = Buffer.from(secret)
+    const actual = Buffer.from(provided)
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual)
   }
 
   async parse(input: AdapterInput, config: ConnectorInboundConfig): Promise<InboundEvent> {

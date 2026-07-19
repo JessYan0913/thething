@@ -31,6 +31,8 @@ export interface LoadedToolsResult {
   mcpRegistry: McpRegistry | undefined
   /** 标记 registry 是否为 AppContext 共享，用于调用方决定 dispose 行为 */
   isSharedMcpRegistry: boolean
+  /** 已注册的 connector 工具名（{connectorId}_{toolName}），用于审批识别 */
+  connectorToolNames: string[]
 }
 
 export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedToolsResult> {
@@ -195,12 +197,13 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     }
   }
 
+  const connectorToolNames: string[] = []
   if (config.enableConnector) {
     try {
       const registry = config.connectorRegistry
       if (!registry) {
         logger.warn('Connector', 'connectorRegistry not provided; skipping connector tools')
-        return { tools, mcpRegistry }
+        return { tools, mcpRegistry, isSharedMcpRegistry, connectorToolNames }
       }
       // ✅ 新增：传递 sessionContext 用于输出持久化
       const sessionContext = {
@@ -213,6 +216,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       for (const [toolName, toolDef] of Object.entries(connectorTools)) {
         if (!(toolName in tools)) {
           tools[toolName] = toolDef
+          connectorToolNames.push(toolName)
         }
       }
     } catch (error) {
@@ -220,5 +224,5 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     }
   }
 
-  return { tools, mcpRegistry, isSharedMcpRegistry }
+  return { tools, mcpRegistry, isSharedMcpRegistry, connectorToolNames }
 }

@@ -7,6 +7,17 @@ import yaml from 'js-yaml';
 
 export const runtime = 'nodejs';
 
+const SENSITIVE_VAR_RE = /secret|token|password|key|credential/i;
+const MASKED_VALUE = '••••••••';
+
+function maskSensitiveVars(variables: Record<string, string>): Record<string, string> {
+  const masked: Record<string, string> = {};
+  for (const [name, value] of Object.entries(variables)) {
+    masked[name] = SENSITIVE_VAR_RE.test(name) && value ? MASKED_VALUE : value;
+  }
+  return masked;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -26,7 +37,7 @@ export async function GET(request: Request) {
       version: conn.version,
       description: conn.description,
       enabled: conn.enabled,
-      variables: conn.variables ?? {},
+      variables: maskSensitiveVars((conn.variables ?? {}) as Record<string, string>),
       base_url: conn.base_url,
       auth: conn.auth,
       inbound: conn.inbound,
@@ -35,7 +46,6 @@ export async function GET(request: Request) {
         description: t.description,
         executor: t.executor,
         timeout_ms: t.timeout_ms,
-        retryable: t.retryable,
         input_schema: t.input_schema,
       })) ?? [],
       toolCount: conn.tools?.length ?? 0,
@@ -147,14 +157,18 @@ export async function PUT(request: Request) {
     // Parse for validation (check that keys exist)
     const raw = yaml.load(content) as Record<string, unknown>;
     const existingVars = (raw.variables ?? {}) as Record<string, string>;
-    for (const key of Object.keys(newVars)) {
+    const varsToWrite: Record<string, string> = {};
+    for (const [key, value] of Object.entries(newVars as Record<string, string>)) {
       if (!(key in existingVars)) {
         return NextResponse.json({ error: `Variable '${key}' not found in connector` }, { status: 400 });
       }
+      // 掩码值表示前端未修改该敏感变量，保留原值
+      if (value === MASKED_VALUE) continue;
+      varsToWrite[key] = value;
     }
 
     // String-level replacement — preserve comments and formatting
-    const updatedContent = updateVariablesInYaml(content, newVars);
+    const updatedContent = updateVariablesInYaml(content, varsToWrite);
     await fs.writeFile(connector.sourcePath, updatedContent, 'utf-8');
 
     // Reload context

@@ -12,18 +12,25 @@ import type {
   ToolDefinition,
 } from './types'
 import type { ConnectorFrontmatter } from './loader'
+import { ConnectorFrontmatterSchema } from './loader'
 import { ConnectorToolExecutor } from './executor'
 import { logger } from '../../primitives/logger'
 import { resolveConnectorVars } from './var-resolver'
+import { AuditLogger } from './audit-logger'
 
 export class ConnectorRegistry {
   private connectors = new Map<string, ConnectorDefinition>()
   private executor: ConnectorToolExecutor
+  private auditLogger: AuditLogger | null = null
 
   constructor(
     private configDir: string,
   ) {
     this.executor = new ConnectorToolExecutor(this.getCredentials.bind(this))
+  }
+
+  setAuditLogger(auditLogger: AuditLogger): void {
+    this.auditLogger = auditLogger
   }
 
   async initialize(): Promise<void> {
@@ -81,23 +88,13 @@ export class ConnectorRegistry {
     const raw = yaml.load(content) as Record<string, unknown>
     const processed = resolveConnectorVars(raw)
 
-    const connector: ConnectorDefinition = {
-      id: processed.id as string,
-      name: processed.name as string,
-      version: processed.version as string,
-      description: processed.description as string,
-      enabled: processed.enabled as boolean ?? true,
-      variables: processed.variables as Record<string, string> | undefined,
-      inbound: processed.inbound as ConnectorDefinition['inbound'],
-      auth: processed.auth as ConnectorDefinition['auth'],
-      custom_settings: processed.custom_settings as Record<string, unknown>,
-      base_url: processed.base_url as string,
-      tools: (processed.tools as ToolDefinition[]) || [],
+    // 与 loader-internal 路径同等强度的 Zod 校验，拒绝半损坏定义
+    const parsed = ConnectorFrontmatterSchema.safeParse(processed)
+    if (!parsed.success) {
+      throw new Error(`Invalid connector definition in ${yamlPath}: ${parsed.error.message}`)
     }
 
-    if (!connector.id) {
-      throw new Error(`Connector missing 'id' field in ${yamlPath}`)
-    }
+    const connector = parsed.data as unknown as ConnectorDefinition
 
     this.connectors.set(connector.id, connector)
     logger.debug('ConnectorRegistry', `Loaded connector: ${connector.id} (${connector.name} v${connector.version})`)
@@ -148,7 +145,16 @@ export class ConnectorRegistry {
       return { success: false, error: `Tool not found: ${toolName} in connector ${connectorId}` }
     }
 
-    return this.executor.execute(connector, toolDef, input)
+    const response = await this.executor.execute(connector, toolDef, input)
+    const durationMs = response.metadata?.durationMs
+    this.auditLogger?.logToolCall(
+      connectorId,
+      toolName,
+      response.success ? 'success' : 'failure',
+      response.success ? 'OK' : (response.error ?? 'Unknown error'),
+      typeof durationMs === 'number' ? durationMs : undefined,
+    )
+    return response
   }
 
   async invokeTool(request: ConnectorToolCall): Promise<ToolCallResponse> {
@@ -167,6 +173,7 @@ export class ConnectorRegistry {
   }
 
   dispose(): void {
-    // No-op
+    this.connectors.clear()
+    this.executor.dispose()
   }
 }

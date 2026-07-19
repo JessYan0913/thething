@@ -39,7 +39,6 @@ tools:
   - name: get_user                  # 工具名称
     description: "获取用户信息"       # 工具描述
     executor: http                  # http | mock
-    retryable: false                # 是否可重试
     timeout_ms: 30000               # 超时时间
     input_schema:                   # JSON Schema 格式的输入参数
       type: object

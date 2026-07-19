@@ -47,7 +47,6 @@ const ToolDefinitionSchema = z.object({
   name: z.string(),
   description: z.string(),
   input_schema: InputSchemaSchema,
-  retryable: z.boolean().optional(),
   timeout_ms: z.number().optional(),
   executor: z.enum(['http', 'mock']),
   executor_config: z.unknown(),
@@ -85,6 +84,8 @@ export const ConnectorFrontmatterSchema = z.object({
   auth: AuthConfigSchema.optional().default({ type: 'none' as const, config: {} }),
   custom_settings: z.record(z.string(), z.unknown()).optional(),
   base_url: z.string().optional(),
+  /** HTTP 工具允许访问的域名白名单（含子域名）。声明后 executor 会校验渲染后的 URL。 */
+  allowed_domains: z.array(z.string()).optional(),
   tools: z.array(ToolDefinitionSchema).optional().default([]),
   /**
    * 权限范围声明（如 OAuth scopes、API 权限列表）。

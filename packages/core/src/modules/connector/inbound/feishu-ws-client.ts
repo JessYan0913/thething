@@ -64,6 +64,11 @@ export class FeishuWsClient {
   async stop(): Promise<void> {
     if (!this.running) return
     this.running = false
+    try {
+      ;(this.wsClient as unknown as { close?: (params?: { force?: boolean }) => void })?.close?.()
+    } catch (error) {
+      logger.warn('FeishuWsClient', 'Error closing WebSocket:', error)
+    }
     this.wsClient = null
     this.client = null
     logger.info('FeishuWsClient', 'WebSocket client stopped')

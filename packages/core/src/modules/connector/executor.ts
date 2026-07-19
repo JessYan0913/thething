@@ -23,6 +23,34 @@ interface CachedToken {
   expiresAt: number
 }
 
+function truncate(text: string, maxLength: number): string {
+  return text.length > maxLength ? text.slice(0, maxLength) + '…' : text
+}
+
+/**
+ * 校验渲染后的 URL 域名是否在 connector 声明的 allowed_domains 白名单内。
+ * 未声明白名单时不限制（向后兼容），但 LLM input 插值进 URL 的 connector
+ * 建议声明白名单以防 SSRF。
+ */
+function validateUrlAgainstAllowlist(url: string, connector: ConnectorDefinition): void {
+  const allowedDomains = connector.allowed_domains
+  if (!allowedDomains || allowedDomains.length === 0) return
+
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname
+  } catch {
+    throw new Error(`Invalid URL after template rendering: ${truncate(url, 200)}`)
+  }
+
+  const allowed = allowedDomains.some(domain =>
+    hostname === domain || hostname.endsWith(`.${domain}`)
+  )
+  if (!allowed) {
+    throw new Error(`URL domain '${hostname}' is not in allowed_domains [${allowedDomains.join(', ')}]`)
+  }
+}
+
 export class ConnectorToolExecutor {
   private tokenCache = new Map<string, CachedToken>()
   private refreshingPromises = new Map<string, Promise<CachedToken>>()
@@ -32,6 +60,11 @@ export class ConnectorToolExecutor {
   constructor(
     private getCredentials: (connectorId: string) => Promise<Record<string, string>>,
   ) {}
+
+  dispose(): void {
+    this.tokenCache.clear()
+    this.refreshingPromises.clear()
+  }
 
   async execute(
     connector: ConnectorDefinition,
@@ -116,6 +149,7 @@ export class ConnectorToolExecutor {
     }
 
     const url = renderTemplate(toolConfig.url, ctx)
+    validateUrlAgainstAllowlist(url, connector)
     const body = toolConfig.body
       ? renderObject(toolConfig.body, ctx) as Record<string, unknown>
       : undefined
@@ -155,7 +189,11 @@ export class ConnectorToolExecutor {
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`)
+        // 401 时清除 token 缓存，下次调用立即重刷（token 可能已被上游吊销）
+        if (response.status === 401 && token) {
+          this.tokenCache.delete(connector.id)
+        }
+        throw new Error(`HTTP ${response.status}: ${truncate(JSON.stringify(data), 500)}`)
       }
 
       return data

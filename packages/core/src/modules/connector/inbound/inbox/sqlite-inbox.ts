@@ -11,11 +11,13 @@ export interface SQLiteInboundInboxOptions {
   heartbeatIntervalMs?: number
   retryBaseDelayMs?: number
   pollIntervalMs?: number
+  batchSize?: number
+  completedTtlMs?: number
 }
 
 /**
  * SQLite 可靠队列实现
- * 支持幂等、重试、死信队列、可见性超时
+ * 支持幂等、重试、死信队列、可见性超时、心跳续锁、批量派发
  */
 export class SQLiteInboundInbox implements InboundInbox {
   private db: SqliteDatabase
@@ -25,7 +27,10 @@ export class SQLiteInboundInbox implements InboundInbox {
   private readonly heartbeatIntervalMs: number
   private readonly retryBaseDelayMs: number
   private readonly pollIntervalMs: number
+  private readonly batchSize: number
+  private readonly completedTtlMs: number
   private pollTimer?: ReturnType<typeof setInterval>
+  private cleanupTimer?: ReturnType<typeof setInterval>
   private dispatching = false
 
   constructor(options: SQLiteInboundInboxOptions) {
@@ -34,6 +39,8 @@ export class SQLiteInboundInbox implements InboundInbox {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? Math.max(1_000, Math.floor(this.visibilityTimeoutMs / 3))
     this.retryBaseDelayMs = options.retryBaseDelayMs ?? 1_000
     this.pollIntervalMs = options.pollIntervalMs ?? 1_000
+    this.batchSize = options.batchSize ?? 10
+    this.completedTtlMs = options.completedTtlMs ?? 7 * 24 * 60 * 60 * 1000
     const Database = getDatabase()
     this.db = new Database(options.dbPath)
     this.initialize()
@@ -143,10 +150,26 @@ export class SQLiteInboundInbox implements InboundInbox {
 
       CREATE INDEX IF NOT EXISTS idx_inbox_status_next_attempt
       ON connector_inbox_events (status, next_attempt_at);
-
-      CREATE INDEX IF NOT EXISTS idx_inbox_external_event_id
-      ON connector_inbox_events (external_event_id);
     `)
+
+    // 去重以业务身份 (connector_id, external_event_id) 为准，与传输通道无关：
+    // 同一条飞书消息从 HTTP 和 WebSocket 同时进来只处理一次。
+    // 建唯一索引前先清理历史重复行（保留最早一条）。
+    try {
+      this.db.exec(`
+        DELETE FROM connector_inbox_events
+        WHERE rowid NOT IN (
+          SELECT MIN(rowid) FROM connector_inbox_events
+          GROUP BY connector_id, external_event_id
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_dedup
+        ON connector_inbox_events (connector_id, external_event_id);
+      `)
+    } catch (error) {
+      logger.error('SQLiteInboundInbox', 'Failed to create dedup index:', error)
+    }
+
+    this.cleanupExpiredRecords()
   }
 
   private async dispatchPending(): Promise<void> {
@@ -154,51 +177,76 @@ export class SQLiteInboundInbox implements InboundInbox {
     this.dispatching = true
 
     try {
-      const now = Date.now()
-      const lockedUntil = now + this.visibilityTimeoutMs
+      // 连续派发：处理完一批立即取下一批，直到队列为空
+      while (this.handlers.size > 0) {
+        const batch = this.claimBatch()
+        if (batch.length === 0) break
 
-      // Find and lock a pending event
-      const event = this.db.prepare(`
-        UPDATE connector_inbox_events
-        SET status = 'processing',
-            locked_until = ?,
-            attempts = attempts + 1,
-            updated_at = ?
-        WHERE id = (
-          SELECT id FROM connector_inbox_events
-          WHERE status = 'pending'
-            AND next_attempt_at <= ?
-          ORDER BY next_attempt_at ASC
-          LIMIT 1
-        )
-        RETURNING *
-      `).get(lockedUntil, now, now) as Record<string, unknown> | undefined
-
-      if (!event) {
-        return
-      }
-
-      const payload = JSON.parse(event.payload as string) as InboundEvent
-
-      // Dispatch to all handlers
-      for (const handler of this.handlers) {
-        try {
-          await handler(payload)
-          this.markCompleted(event.id as string)
-        } catch (error) {
-          const attempts = event.attempts as number
-          const maxAttempts = event.max_attempts as number
-          const errorMessage = error instanceof Error ? error.message : String(error)
-
-          if (attempts >= maxAttempts) {
-            this.markDead(event.id as string, errorMessage)
-          } else {
-            this.markPending(event.id as string, attempts, errorMessage)
-          }
+        for (const event of batch) {
+          await this.processOne(event)
         }
       }
     } finally {
       this.dispatching = false
+    }
+  }
+
+  private claimBatch(): Array<Record<string, unknown>> {
+    const now = Date.now()
+    const lockedUntil = now + this.visibilityTimeoutMs
+
+    return this.db.prepare(`
+      UPDATE connector_inbox_events
+      SET status = 'processing',
+          locked_until = ?,
+          attempts = attempts + 1,
+          updated_at = ?
+      WHERE id IN (
+        SELECT id FROM connector_inbox_events
+        WHERE status = 'pending'
+          AND next_attempt_at <= ?
+        ORDER BY next_attempt_at ASC
+        LIMIT ?
+      )
+      RETURNING *
+    `).all(lockedUntil, now, now, this.batchSize) as Array<Record<string, unknown>>
+  }
+
+  private async processOne(event: Record<string, unknown>): Promise<void> {
+    const eventId = event.id as string
+    const payload = JSON.parse(event.payload as string) as InboundEvent
+
+    // 心跳续锁：Agent 处理可能是分钟级，处理期间定时延长锁，
+    // 防止可见性超时导致消息被重复派发；worker 崩溃后锁自然过期快速恢复。
+    const heartbeat = setInterval(() => {
+      try {
+        this.db.prepare(`
+          UPDATE connector_inbox_events
+          SET locked_until = ?, updated_at = ?
+          WHERE id = ? AND status = 'processing'
+        `).run(Date.now() + this.visibilityTimeoutMs, Date.now(), eventId)
+      } catch (error) {
+        logger.warn('SQLiteInboundInbox', 'Heartbeat renewal failed:', error)
+      }
+    }, this.heartbeatIntervalMs)
+
+    try {
+      for (const handler of this.handlers) {
+        await handler(payload)
+      }
+      this.markCompleted(eventId)
+    } catch (error) {
+      const attempts = event.attempts as number
+      const maxAttempts = event.max_attempts as number
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
+      if (attempts >= maxAttempts) {
+        this.markDead(eventId, errorMessage)
+      } else {
+        this.markPending(eventId, attempts, errorMessage)
+      }
+    } finally {
+      clearInterval(heartbeat)
     }
   }
 
@@ -256,6 +304,22 @@ export class SQLiteInboundInbox implements InboundInbox {
     `).run(now, now, now)
   }
 
+  private cleanupExpiredRecords(): void {
+    try {
+      const cutoff = Date.now() - this.completedTtlMs
+      const result = this.db.prepare(`
+        DELETE FROM connector_inbox_events
+        WHERE status IN ('completed', 'dead')
+          AND updated_at < ?
+      `).run(cutoff) as unknown as { changes?: number }
+      if (result.changes) {
+        logger.debug('SQLiteInboundInbox', `Cleaned up ${result.changes} expired records`)
+      }
+    } catch (error) {
+      logger.warn('SQLiteInboundInbox', 'Cleanup failed:', error)
+    }
+  }
+
   private retryDelay(attempts: number): number {
     const capped = Math.min(attempts, 6)
     return this.retryBaseDelayMs * Math.pow(2, capped - 1)
@@ -267,12 +331,19 @@ export class SQLiteInboundInbox implements InboundInbox {
       this.dispatchPending()
       this.recoverExpiredLocks()
     }, this.pollIntervalMs)
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupExpiredRecords()
+    }, 60 * 60 * 1000)
   }
 
   private stopPolling(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer)
       this.pollTimer = undefined
+    }
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = undefined
     }
   }
 }

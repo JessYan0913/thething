@@ -18,7 +18,6 @@ interface ToolView {
   description: string
   executor: string
   timeout_ms?: number
-  retryable?: boolean
   input_schema?: {
     type: string
     properties: Record<string, { type: string; description?: string }>
@@ -342,9 +341,6 @@ export default function ConnectorsDetail({
                         <Badge variant="outline" className="text-xs shrink-0">
                           {executorLabels[tool.executor] ?? tool.executor}
                         </Badge>
-                        {tool.retryable && (
-                          <Badge variant="secondary" className="text-xs shrink-0">可重试</Badge>
-                        )}
                         {tool.timeout_ms && (
                           <span className="text-xs text-muted-foreground shrink-0">{tool.timeout_ms}ms</span>
                         )}

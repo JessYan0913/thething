@@ -111,7 +111,13 @@ export async function startAllFeishuLongConnections(
 export function stopFeishuLongConnection(connectorId?: string): void {
   const effectiveConnectorId = connectorId || 'feishu'
 
-  if (wsClients.has(effectiveConnectorId)) {
+  const wsClient = wsClients.get(effectiveConnectorId)
+  if (wsClient) {
+    try {
+      ;(wsClient as unknown as { close?: (params?: { force?: boolean }) => void }).close?.()
+    } catch (err) {
+      console.warn(`[FeishuWS:${effectiveConnectorId}] Error closing WebSocket:`, err)
+    }
     wsClients.delete(effectiveConnectorId)
     larkClients.delete(effectiveConnectorId)
     console.log(`[FeishuWS:${effectiveConnectorId}] Long connection stopped`)

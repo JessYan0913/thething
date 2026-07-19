@@ -203,7 +203,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // Tools
   // ============================================================
-  const { tools, mcpRegistry, isSharedMcpRegistry } = await loadAllTools({
+  const { tools, mcpRegistry, isSharedMcpRegistry, connectorToolNames } = await loadAllTools({
     conversationId,
     sessionState,
     enableMcp: modules.mcps,
@@ -362,6 +362,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     approvalMode: options.approvalMode ?? 'smart',
     reviewer,
     goalState: sessionState.goalState,
+    connectorToolNames: new Set(connectorToolNames),
   }
   // ── Checkpoint 回调：跟踪工具调用，每步结束写 checkpoint ──
   const agentRunStore = options.agentRunStore;

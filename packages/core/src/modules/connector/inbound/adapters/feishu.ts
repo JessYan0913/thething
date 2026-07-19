@@ -317,9 +317,29 @@ function decryptFeishuMessage(encrypted: string, encryptKey: string): FeishuDecr
 export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
   readonly protocol = 'feishu'
 
-  async challenge(input: AdapterInput): Promise<InboundAcceptResult | null> {
+  async challenge(input: AdapterInput, config: ConnectorInboundConfig): Promise<InboundAcceptResult | null> {
     const bodyJson = parseJsonObject(input.body)
     if (!bodyJson) return null
+
+    // 加密模式下 challenge 也在密文中，需先解密
+    if (typeof bodyJson.encrypt === 'string') {
+      const encryptKey = getCredential(config, 'encrypt_key', 'encryptKey')
+      if (!encryptKey) return null
+      try {
+        const decrypted = decryptFeishuMessage(bodyJson.encrypt, encryptKey)
+        const raw = decrypted.raw as Record<string, unknown>
+        if (raw.type === 'url_verification' && typeof raw.challenge === 'string') {
+          return {
+            accepted: true,
+            status: 200,
+            body: { challenge: raw.challenge },
+          }
+        }
+      } catch (error) {
+        logger.warn('FeishuAdapter', 'Failed to decrypt challenge:', error)
+      }
+      return null
+    }
 
     if (bodyJson.type === 'url_verification' || typeof bodyJson.challenge === 'string') {
       return {
@@ -334,8 +354,18 @@ export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
 
   async verify(input: AdapterInput, config: ConnectorInboundConfig): Promise<boolean> {
     const bodyJson = parseJsonObject(input.body)
-    if (!bodyJson || typeof bodyJson.encrypt !== 'string') {
-      return true
+    if (!bodyJson) return false
+
+    // 未加密模式：校验 verification token（v1 body.token / v2 header.token）
+    if (typeof bodyJson.encrypt !== 'string') {
+      const verificationToken = getCredential(config, 'verification_token', 'verificationToken')
+      if (!verificationToken) {
+        logger.warn('FeishuAdapter', 'No verification_token configured; accepting unverified plaintext webhook. Configure verification_token to secure this endpoint.')
+        return true
+      }
+      const header = bodyJson.header as Record<string, unknown> | undefined
+      const bodyToken = (bodyJson.token as string) || (header?.token as string) || ''
+      return bodyToken === verificationToken
     }
 
     const encryptKey = getCredential(config, 'encrypt_key', 'encryptKey')
@@ -373,22 +403,14 @@ export class FeishuHttpProtocolAdapter implements ProtocolAdapter {
       throw new Error('INVALID_BODY_FORMAT')
     }
 
-    const event = feishuPayloadToInboundEvent(bodyJson, {
+    // 只解析 envelope，附件下载延迟到 worker 侧 enrichFeishuEvent
+    // （避免大附件下载阻塞 webhook 响应，超出飞书 3 秒时限）
+    return feishuPayloadToInboundEvent(bodyJson, {
       connectorId: config.connectorId,
       transport: input.transport,
       receivedAt: input.receivedAt,
       raw: input.raw ?? bodyJson,
     })
-
-    // 在 parse 阶段下载附件（图片/文件）
-    if (event.message.type === 'image' || event.message.type === 'file' || event.message.type === 'text') {
-      const attachments = await downloadMessageAttachments(event, config)
-      if (attachments.length > 0) {
-        event.message.attachments = attachments
-      }
-    }
-
-    return event
   }
 }
 
@@ -407,23 +429,31 @@ export class FeishuWsProtocolAdapter implements ProtocolAdapter {
       throw new Error('INVALID_EXTERNAL_INPUT')
     }
 
-    const event = feishuPayloadToInboundEvent(raw as Record<string, unknown>, {
+    // 只解析 envelope，附件下载延迟到 worker 侧 enrichFeishuEvent
+    return feishuPayloadToInboundEvent(raw as Record<string, unknown>, {
       connectorId: config.connectorId,
       transport: input.transport,
       receivedAt: input.receivedAt,
       raw,
     })
-
-    // 在 parse 阶段下载附件（图片/文件）
-    if (event.message.type === 'image' || event.message.type === 'file' || event.message.type === 'text') {
-      const attachments = await downloadMessageAttachments(event, config)
-      if (attachments.length > 0) {
-        event.message.attachments = attachments
-      }
-    }
-
-    return event
   }
+}
+
+/**
+ * Worker 侧异步补全：下载消息中的附件（图片/文件）。
+ * 在消息出队后、交给 Agent 前调用，失败会触发 inbox 重试。
+ */
+export async function enrichFeishuEvent(
+  event: InboundEvent,
+  config: ConnectorInboundConfig,
+): Promise<InboundEvent> {
+  if (event.message.type === 'image' || event.message.type === 'file' || event.message.type === 'text') {
+    const attachments = await downloadMessageAttachments(event, config)
+    if (attachments.length > 0) {
+      event.message.attachments = attachments
+    }
+  }
+  return event
 }
 
 // ---- Shared helpers ----

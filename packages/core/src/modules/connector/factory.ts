@@ -51,6 +51,9 @@ export function createConnectorRuntime(config: ConnectorRuntimeConfig): Connecto
   const gateway = new ConnectorInboundGateway({ registry, inbox })
   const inbound = new DefaultConnectorInboundRuntime(gateway, inbox, responder)
 
+  // 6. 审计接线：registry.callTool 完成后写审计日志
+  registry.setAuditLogger(auditLogger)
+
   return {
     registry,
     auditLogger,
@@ -87,6 +90,7 @@ export async function initializeConnectorRuntime(
 export async function disposeConnectorRuntime(runtime: ConnectorRuntime): Promise<void> {
   // 1. 释放 Registry 资源
   runtime.registry.dispose()
+  runtime.auditLogger.close()
 
   // 2. 停止并关闭入站运行时
   runtime.inbound.stopConsumer()

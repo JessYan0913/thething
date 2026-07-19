@@ -180,9 +180,14 @@ export function matchRule(
   const effectiveRules = rules ?? [];
 
   for (const rule of effectiveRules) {
-    // 支持通配符 toolName: '*' 匹配所有工具
+    // 支持通配符 toolName: '*' 匹配所有工具；'feishu_*' 前缀匹配 connector 工具族
     if (rule.toolName !== toolName && rule.toolName !== '*') {
-      continue;
+      if (rule.toolName.endsWith('*')) {
+        const prefix = rule.toolName.slice(0, -1);
+        if (!toolName.startsWith(prefix)) continue;
+      } else {
+        continue;
+      }
     }
 
     // 无 pattern 的规则匹配所有调用

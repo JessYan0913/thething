@@ -17,7 +17,6 @@ export async function GET() {
       inputSchema: unknown;
       executor: string;
       timeoutMs?: number;
-      retryable?: boolean;
     }> = [];
 
     for (const connectorId of connectorIds) {
@@ -36,7 +35,6 @@ export async function GET() {
           inputSchema: tool.input_schema,
           executor: tool.executor,
           timeoutMs: tool.timeout_ms,
-          retryable: tool.retryable,
         });
       }
     }
