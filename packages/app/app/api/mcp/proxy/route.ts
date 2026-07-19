@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isToolVisibilityModelOnly } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { loadAgentContext } from '@/lib/agent-context';
 
 export const runtime = 'nodejs';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/mcp/proxy?server=serverName
  *
- * 代理 MCP App 内的工具调用
+ * 代理 MCP App 内的请求（tools/call、tools/list）
  *
  * Query: {
  *   server: string  // MCP 服务器名称
@@ -15,11 +16,8 @@ export const dynamic = 'force-dynamic';
  *
  * Body: {
  *   jsonrpc: '2.0',
- *   method: 'tools/call',
- *   params: {
- *     name: string,
- *     arguments: Record<string, unknown>
- *   }
+ *   method: 'tools/call' | 'tools/list',
+ *   params: { name?: string, arguments?: Record<string, unknown> }
  * }
  *
  * Response: JSON-RPC result
@@ -37,14 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { params } = body;
-
-    if (!params || !params.name) {
-      return NextResponse.json(
-        { error: 'Missing tool name in params' },
-        { status: 400 }
-      );
-    }
+    const { method, params } = body;
 
     // 从 AgentContext 获取 MCP Registry
     const context = await loadAgentContext();
@@ -57,7 +48,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 获取服务器配置和连接
+    // 获取服务器配置
     const serverConfig = mcpRegistry.servers.find((s: { name: string }) => s.name === serverName);
     if (!serverConfig) {
       return NextResponse.json(
@@ -66,32 +57,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let connection = mcpRegistry.connections.get(serverName);
+    const serverTools = mcpRegistry.getServerTools(serverName) as Record<string, Record<string, unknown>>;
 
-    // 如果没有连接，尝试连接
-    if (!connection || connection.error) {
-      connection = await mcpRegistry.connect(serverConfig);
-      if (connection.error) {
-        return NextResponse.json(
-          { error: `Failed to connect to MCP server: ${connection.error.message}` },
-          { status: 500 }
-        );
-      }
+    // tools/list：只返回 App 可见的工具（规范：App 不应看到 model-only 工具）
+    if (method === 'tools/list') {
+      const tools = Object.entries(serverTools)
+        .filter(([, tool]) => !isToolVisibilityModelOnly(tool))
+        .map(([name, tool]) => ({
+          name,
+          description: tool.description,
+          inputSchema: (tool.inputSchema as object) ?? { type: 'object', properties: {} },
+          ...(tool._meta ? { _meta: tool._meta } : {}),
+        }));
+      return NextResponse.json({ jsonrpc: '2.0', result: { tools } });
     }
 
-    const client = connection.client;
-    if (!client) {
+    if (method !== 'tools/call' || !params?.name) {
       return NextResponse.json(
-        { error: 'MCP client not available' },
-        { status: 500 }
+        { error: 'Unsupported method or missing tool name' },
+        { status: 400 }
       );
     }
 
-    // 调用工具
-    const result = await client.callTool({
-      name: params.name,
-      arguments: params.arguments || {},
-    });
+    // visibility 校验（规范 MUST）：App 只能调用 visibility 含 "app" 的工具。
+    // 未声明 visibility 默认 model+app 可见；model-only 的工具必须拒绝
+    const tool = serverTools[params.name];
+    if (!tool) {
+      return NextResponse.json(
+        { jsonrpc: '2.0', error: { code: -32602, message: `Tool "${params.name}" not found on server "${serverName}"` } },
+        { status: 404 }
+      );
+    }
+    if (isToolVisibilityModelOnly(tool)) {
+      return NextResponse.json(
+        { jsonrpc: '2.0', error: { code: -32602, message: `Tool "${params.name}" is not callable from apps (visibility: model-only)` } },
+        { status: 403 }
+      );
+    }
+
+    // 调用工具（callToolSafe 内含超时 + 一次自动重连重试，治僵尸连接的 -32001）
+    const result = await mcpRegistry.callToolSafe(
+      serverName,
+      params.name,
+      params.arguments || {},
+    );
 
     // 返回 JSON-RPC 格式的结果
     return NextResponse.json({

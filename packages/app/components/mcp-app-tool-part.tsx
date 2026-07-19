@@ -12,6 +12,7 @@ interface McpAppToolPartProps {
   state: string;
   input?: Record<string, unknown>;
   output?: unknown;
+  errorText?: string;
   onSendMessage?: (text: string) => void;
 }
 
@@ -38,7 +39,7 @@ function fetchToolMeta(serverName: string, baseToolName: string): Promise<McpToo
  * 从 qualified 工具名解析 server/base 名，探测工具 _meta.ui.resourceUri，
  * 是 MCP App 则渲染 McpWidget，否则返回 null（普通 MCP 工具零影响）。
  */
-export function McpAppToolPart({ toolName, state, input, output, onSendMessage }: McpAppToolPartProps) {
+export function McpAppToolPart({ toolName, state, input, output, errorText, onSendMessage }: McpAppToolPartProps) {
   const [meta, setMeta] = useState<McpToolMeta | null>(null);
 
   const [, serverName, ...rest] = toolName.split('__');
@@ -58,6 +59,12 @@ export function McpAppToolPart({ toolName, state, input, output, onSendMessage }
   const resourceUri = meta?.ui?.resourceUri;
   if (!serverName || !baseToolName || !resourceUri) return null;
 
+  // 工具执行未正常产出结果的终态 → 通知 App tool-cancelled（规范 MUST）
+  const cancelReason =
+    state === 'output-error' ? (errorText || 'Tool execution failed')
+    : state === 'output-denied' ? 'Tool execution denied by user'
+    : undefined;
+
   return (
     <McpWidget
       resourceUri={resourceUri}
@@ -66,6 +73,7 @@ export function McpAppToolPart({ toolName, state, input, output, onSendMessage }
       toolInput={input ?? {}}
       isFinal={state !== 'input-streaming'}
       toolResult={state === 'output-available' ? (output as CallToolResult) : undefined}
+      cancelReason={cancelReason}
       onSendMessage={(params) => {
         if (!onSendMessage) return;
         // MCP App 发来的消息：提取 text content 转发给 agent

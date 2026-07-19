@@ -60,6 +60,8 @@ export interface McpWidgetProps {
   toolInput: Record<string, unknown>;
   isFinal: boolean;
   toolName: string;
+  /** 工具执行被取消/失败/拒绝时的原因，触发 ui/notifications/tool-cancelled */
+  cancelReason?: string;
   onSendMessage?: (params: unknown) => void;
 }
 

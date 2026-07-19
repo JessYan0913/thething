@@ -1504,6 +1504,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                       state={toolPart.state}
                                       input={input}
                                       output={output}
+                                      errorText={(part as { errorText?: string }).errorText}
                                       onSendMessage={handleMcpAppMessage}
                                     />
                                   );

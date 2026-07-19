@@ -4,20 +4,36 @@ import { promises as fs } from 'fs';
 import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext, type GlobalConfig } from '@the-thing/core';
 import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
-let runtime: CoreRuntime | null = null;
-let context: AppContext | null = null;
-let initPromise: Promise<CoreRuntime> | null = null;
+// Next.js dev 的 HMR 会重新执行本模块，module 级单例随之清空 —— 旧 runtime
+// （及其 spawn 的 MCP stdio 子进程）失去引用变成孤儿，新 runtime 又 spawn 一批，
+// 每次热更新泄漏一组子进程。把单例挂到 globalThis 上跨 HMR 保活，保证整个
+// dev 进程始终只有一个 runtime / 一组 MCP 连接。
+interface RuntimeState {
+  runtime: CoreRuntime | null;
+  context: AppContext | null;
+  initPromise: Promise<CoreRuntime> | null;
+  /**
+   * MCP 连接就绪的 Promise。
+   * 由 initializeRuntime() 设置，在 connectAll() 完成后 resolve。
+   * MCP API 路由等待此 Promise 以确保返回准确的连接状态。
+   */
+  mcpReadyPromise: Promise<void> | null;
+  mcpReadyResolve: (() => void) | null;
+  /** 启动时缓存的全局配置，供 getModelConfig() 使用 */
+  cachedGlobalConfig: GlobalConfig | null;
+  /** Project Context 缓存（按 projectId 缓存 AppContext） */
+  projectContextCache: Map<string, AppContext>;
+}
 
-/**
- * MCP 连接就绪的 Promise。
- * 由 initializeRuntime() 设置，在 connectAll() 完成后 resolve。
- * MCP API 路由等待此 Promise 以确保返回准确的连接状态。
- */
-let mcpReadyPromise: Promise<void> | null = null;
-let mcpReadyResolve: (() => void) | null = null;
-
-/** 启动时缓存的全局配置，供 getModelConfig() 使用 */
-let cachedGlobalConfig: GlobalConfig | null = null;
+const G: RuntimeState = ((globalThis as unknown as { __thethingRuntimeState?: RuntimeState }).__thethingRuntimeState ??= {
+  runtime: null,
+  context: null,
+  initPromise: null,
+  mcpReadyPromise: null,
+  mcpReadyResolve: null,
+  cachedGlobalConfig: null,
+  projectContextCache: new Map(),
+});
 
 // ============================================================
 // TheThing RC — ~/.thethingrc
@@ -64,7 +80,7 @@ export async function saveTheThingRC(config: { dataDir?: string }): Promise<void
  */
 export function getModelConfig(aliasKey?: string): { apiKey: string; baseURL: string; modelName?: string } {
   const configDir = path.join(os.homedir(), '.thething');
-  const freshConfig = loadGlobalConfig(configDir) || cachedGlobalConfig;
+  const freshConfig = loadGlobalConfig(configDir) || G.cachedGlobalConfig;
   const aliases = freshConfig?.modelAliases;
 
   let modelName: string | undefined;
@@ -85,11 +101,6 @@ export function getModelConfig(aliasKey?: string): { apiKey: string; baseURL: st
     modelName,
   };
 }
-
-// ============================================================
-// Project Context 缓存（按 projectId 缓存 AppContext）
-// ============================================================
-const projectContextCache: Map<string, AppContext> = new Map();
 
 // ============================================================
 // Runtime 初始化
@@ -125,9 +136,9 @@ async function initializeRuntime(): Promise<CoreRuntime> {
   }
 
   const globalConfig = loadGlobalConfig(configDir) || bootConfig;
-  cachedGlobalConfig = globalConfig;
+  G.cachedGlobalConfig = globalConfig;
 
-  runtime = await bootstrap({
+  const runtime = await bootstrap({
     layout: {
       resourceRoot: process.cwd(),
       configDir,
@@ -152,21 +163,23 @@ async function initializeRuntime(): Promise<CoreRuntime> {
     debug: true,
   });
 
-  context = await createContext({ runtime });
+  const context = await createContext({ runtime });
+  G.runtime = runtime;
+  G.context = context;
 
   // 后台异步连接所有 MCP 服务，不阻塞启动流程。
   // 连接状态通过 registry.snapshot() 由调用方按需获取。
   // MCP API 路由通过 mcpReadyPromise 等待连接完成。
   if (context.mcpRegistry) {
-    mcpReadyPromise = new Promise<void>((resolve) => {
-      mcpReadyResolve = resolve;
+    G.mcpReadyPromise = new Promise<void>((resolve) => {
+      G.mcpReadyResolve = resolve;
     });
     context.mcpRegistry.connectAll()
-      .then(() => mcpReadyResolve?.())
-      .catch(() => mcpReadyResolve?.())  // 即使失败也 resolve，让 API 可以返回错误状态
+      .then(() => G.mcpReadyResolve?.())
+      .catch(() => G.mcpReadyResolve?.())  // 即使失败也 resolve，让 API 可以返回错误状态
       .finally(() => {
-        mcpReadyPromise = null;
-        mcpReadyResolve = null;
+        G.mcpReadyPromise = null;
+        G.mcpReadyResolve = null;
       });
   }
 
@@ -197,25 +210,25 @@ async function initializeRuntime(): Promise<CoreRuntime> {
 }
 
 export async function getServerRuntime(): Promise<CoreRuntime> {
-  if (!runtime) {
-    if (initPromise) {
-      return initPromise;
+  if (!G.runtime) {
+    if (G.initPromise) {
+      return G.initPromise;
     }
-    initPromise = initializeRuntime();
+    G.initPromise = initializeRuntime();
     try {
-      return await initPromise;
+      return await G.initPromise;
     } finally {
-      initPromise = null;
+      G.initPromise = null;
     }
   }
-  return runtime;
+  return G.runtime;
 }
 
 /**
  * 获取当前缓存的 AppContext，未初始化时返回 null（不触发初始化）。
  */
 export function getServerContextIfReady(): AppContext | null {
-  return context;
+  return G.context;
 }
 
 /**
@@ -224,18 +237,18 @@ export function getServerContextIfReady(): AppContext | null {
  * MCP API 路由使用此函数确保返回准确的连接状态。
  */
 export async function waitForMcpReady(): Promise<void> {
-  if (mcpReadyPromise) {
-    await mcpReadyPromise;
+  if (G.mcpReadyPromise) {
+    await G.mcpReadyPromise;
   }
 }
 
 export async function getServerContext(): Promise<AppContext> {
-  if (context) {
-    return context;
+  if (G.context) {
+    return G.context;
   }
   const rt = await getServerRuntime();
-  context = await createContext({ runtime: rt });
-  return context;
+  G.context ??= await createContext({ runtime: rt });
+  return G.context;
 }
 
 /**
@@ -246,7 +259,7 @@ export async function getProjectContext(projectId: string, projectPath: string):
   const defaultCtx = await getServerContext();
 
   // 检查缓存
-  const cached = projectContextCache.get(projectId);
+  const cached = G.projectContextCache.get(projectId);
   if (cached) {
     return cached;
   }
@@ -256,19 +269,19 @@ export async function getProjectContext(projectId: string, projectPath: string):
   const projectCtx = await createContext({ runtime: defaultCtx.runtime, layout: projectLayout });
 
   // 缓存
-  projectContextCache.set(projectId, projectCtx);
+  G.projectContextCache.set(projectId, projectCtx);
 
   return projectCtx;
 }
 
 export async function reloadServerContext(): Promise<AppContext> {
   const ctx = await getServerContext();
-  context = await ctx.reload();
+  G.context = await ctx.reload();
   // reload 会断开旧 MCP 连接并创建新注册表，需要重新建立连接
-  if (context.mcpRegistry) {
-    await context.mcpRegistry.connectAll().catch(() => {});
+  if (G.context.mcpRegistry) {
+    await G.context.mcpRegistry.connectAll().catch(() => {});
   }
-  return context;
+  return G.context;
 }
 
 export async function getServerDataStore() {
@@ -279,9 +292,9 @@ export async function getServerDataStore() {
 // Cleanup function to stop all connections
 export async function shutdownRuntime(): Promise<void> {
   stopAllFeishuLongConnections();
-  if (runtime) {
-    await runtime.dispose();
-    runtime = null;
-    context = null;
+  if (G.runtime) {
+    await G.runtime.dispose();
+    G.runtime = null;
+    G.context = null;
   }
 }
