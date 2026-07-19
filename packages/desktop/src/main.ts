@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, dialog, ipcMain, utilityProcess } from 'electron';
 import { spawn, spawnSync, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as net from 'net';
 
 let mainWindow: BrowserWindow | null = null;
-let serverProcess: ChildProcess | null = null;
+let serverProcess: ChildProcess | Electron.UtilityProcess | null = null;
 let serverPort: number | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -312,18 +312,21 @@ function startProductionServer(): Promise<number> {
       NODE_ENV: 'production',
       HOME: homeDir,
       USERPROFILE: homeDir,
-      ELECTRON_RUN_AS_NODE: '1',
     };
 
-    serverProcess = spawn(process.execPath, [scriptPath, '-p', '0'], {
+    // utilityProcess 在 Helper 进程（LSUIElement）中以纯 Node.js 环境运行脚本，
+    // 不会像 spawn(process.execPath) + ELECTRON_RUN_AS_NODE 那样在 macOS Dock
+    // 中注册出第二个应用图标
+    const child = utilityProcess.fork(scriptPath, ['-p', '0'], {
       cwd: agentDir,
       env,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: 'pipe',
     });
+    serverProcess = child;
 
     let resolved = false;
 
-    serverProcess.stdout?.on('data', (data: Buffer) => {
+    child.stdout?.on('data', (data: Buffer) => {
       const lines = data.toString().split('\n');
       for (const line of lines) {
         if (line.trim()) {
@@ -338,19 +341,13 @@ function startProductionServer(): Promise<number> {
       }
     });
 
-    serverProcess.stderr?.on('data', (data: Buffer) => {
+    child.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trimEnd();
       console.error('[server]', msg);
       logToFile(`[stderr] ${msg}`);
     });
 
-    serverProcess.on('error', (err) => {
-      console.error('[server] Failed to start:', err);
-      logToFile(`[error] ${err}`);
-      if (!resolved) { resolved = true; reject(err); }
-    });
-
-    serverProcess.on('exit', (code) => {
+    child.on('exit', (code) => {
       console.log('[server] Exited with code:', code);
       logToFile(`[exit] code=${code}`);
       serverProcess = null;
@@ -370,6 +367,12 @@ function startServer(): Promise<number> {
 
 function killServer(): void {
   if (serverProcess) {
+    if (!(serverProcess instanceof ChildProcess)) {
+      // utilityProcess（生产环境）：kill() 发送 SIGTERM，无进程组概念
+      serverProcess.kill();
+      serverProcess = null;
+      return;
+    }
     const pid = serverProcess.pid;
     if (pid) {
       try {
