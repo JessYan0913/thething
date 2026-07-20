@@ -621,7 +621,7 @@ export async function PATCH(request: Request) {
     }
 
     const store = await getServerDataStore();
-    store.messageStore.saveMessages(body.conversationId, body.messages);
+    store.messageStore.replaceConversation(body.conversationId, body.messages);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Skill Workbench] PATCH error:', error);

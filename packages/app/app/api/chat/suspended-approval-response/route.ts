@@ -54,7 +54,7 @@ export async function POST(request: Request) {
         parts: [{ type: 'text' as const, text: '用户已批准工具操作' }],
       };
       const uiMessagesForSave = [...existingMessages, approvalReplyMsg];
-      store.messageStore.saveMessages(conversationId, uiMessagesForSave);
+      store.messageStore.appendMessages(conversationId, [approvalReplyMsg]);
 
       // 3a. 构建恢复用 ModelMessages：挂起消息 + approval-response
       const resumeModelMessages = [
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
       };
 
       const messagesToSave = [...uiMessagesForSave, assistantMsg];
-      store.messageStore.saveMessages(conversationId, messagesToSave);
+      store.messageStore.appendMessages(conversationId, [assistantMsg]);
 
       // 7a. 收尾：成本持久化 + 标题生成 + MCP 断开
       store.agentRunStore.completeRun(conversationId);
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
         role: 'user' as const,
         parts: [{ type: 'text' as const, text: '用户已拒绝工具操作' }],
       };
-      store.messageStore.saveMessages(conversationId, [...existingMessages, denyMsg]);
+      store.messageStore.appendMessages(conversationId, [denyMsg]);
 
       store.suspendedStateStore.clearSuspendedState(conversationId);
       store.agentRunStore.resumeFromApproval(conversationId);

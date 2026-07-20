@@ -191,26 +191,38 @@ export interface ConversationStore {
  */
 export interface MessageStore {
   /**
-   * Get all messages for a conversation
+   * Get the active message path for a conversation:
+   * walk from conversations.head_message_id up the parent chain to the root.
+   * Messages on abandoned branches (regenerate/edit) are not returned.
    */
   getMessagesByConversation(conversationId: string): UIMessage[];
 
   /**
-   * Save messages for a conversation.
-   *
-   * **Semantics: full replacement**. This method deletes all existing messages
-   * for the given conversationId, then re-inserts the provided messages list.
-   * It is NOT an incremental append — callers must pass the complete message history.
-   *
-   * For large conversations (100+ messages), implementations should wrap this
-   * in a transaction for atomicity.
+   * Commit a user message, handling all three send semantics by id/content:
+   * - id unknown          → normal send: insert as child of head, move head
+   * - id known, same parts → regenerate: move head back to that node (no insert)
+   * - id known, new parts  → edit-resend: insert a NEW sibling node (fresh id)
+   *                          under the same parent, move head to it
+   * Invalidates the compaction summary if its anchor leaves the active path.
+   * @returns the id of the message now at head (differs from message.id on edit)
    */
-  saveMessages(conversationId: string, messages: UIMessage[]): void;
+  commitUserMessage(conversationId: string, message: UIMessage): string;
 
   /**
-   * Get the next order number for a conversation
+   * Append a chain of messages as descendants of `afterMessageId`
+   * (defaults to current head). Rows are always inserted (immutable tree);
+   * head only moves if it still equals the anchor — a compare-and-set that
+   * makes stale writes from superseded runs harmless orphan branches.
+   * @returns true if head moved (this writer is still current)
    */
-  getNextMessageOrder(conversationId: string): number;
+  appendMessages(conversationId: string, messages: UIMessage[], afterMessageId?: string): boolean;
+
+  /**
+   * Destructively rebuild a conversation as a single linear chain.
+   * Dev-tool / CLI semantics only (workbench PATCH, CLI session save) —
+   * drops all branches. Never use in the chat runtime paths.
+   */
+  replaceConversation(conversationId: string, messages: UIMessage[]): void;
 }
 
 /**

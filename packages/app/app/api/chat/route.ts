@@ -1,7 +1,8 @@
 import path from 'path'
+import { nanoid } from 'nanoid';
 import { getServerRuntime, getServerContext, getProjectContext, getModelConfig } from '@/lib/runtime';
 import { convertFileToText } from '@/lib/file-convert';
-import { getStreamManager, registerAbortController, unregisterAbortController } from '@/lib/stream-manager';
+import { getStreamManager, registerAbortController, unregisterAbortController, abortChat } from '@/lib/stream-manager';
 import {
   createAgent,
   generateConversationTitle,
@@ -54,15 +55,16 @@ export async function POST(request: Request) {
       enableConnectors?: boolean;
       systemPrompt?: string;
       approvalMode?: string;
+      trigger?: string; // 'submit-message' | 'regenerate-message'（来自 AI SDK transport）
     };
 
-    const { message, conversationId, userId: messageUserId, modelName, agentType, enableConnectors, systemPrompt, approvalMode } = body;
+    const { message, conversationId, userId: messageUserId, modelName, agentType, enableConnectors, systemPrompt, approvalMode, trigger } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
     }
 
-    console.log(`[Chat API] POST start: conversationId=${conversationId}`);
+    console.log(`[Chat API] POST start: conversationId=${conversationId} trigger=${trigger ?? 'submit-message'}`);
 
     const defaultContext = await getServerContext();
     console.log(`[Chat API] getServerContext done: ${Date.now() - startTime}ms`);
@@ -86,23 +88,33 @@ export async function POST(request: Request) {
       }
     }
 
-    let existingMessages = store.messageStore.getMessagesByConversation(conversationId);
-    const isFirstMessage = existingMessages.length === 0;
+    const isFirstMessage = store.messageStore.getMessagesByConversation(conversationId).length === 0;
 
-    const existingMessageIndex = existingMessages.findIndex((m: UIMessage) => m.id === message.id);
-    if (existingMessageIndex >= 0) {
-      existingMessages = existingMessages.slice(0, existingMessageIndex);
-    } else {
-      const lastUserMessageIndex = existingMessages.findLastIndex((m: UIMessage) => m.role === 'user');
-      if (lastUserMessageIndex >= 0 && existingMessages[lastUserMessageIndex].id === message.id) {
-        existingMessages = existingMessages.slice(0, lastUserMessageIndex);
-      }
-    }
+    // ── 本轮运行 id：abort 注册与写库守卫都按 runId 判定，
+    //    旧运行迟到的 onEnd 因 runId 不匹配被拒绝写库 ──
+    const runId = nanoid();
 
-    // compaction checkpoint:有可用 checkpoint 时从锚点之后加载,否则回退全量
-    // (纯叠加优化,绝不丢历史。见 docs/context-compaction-analysis.md E)
+    // ── 单飞行：同会话已有运行 → 先中止（编辑/重新生成时这正是用户想要的）──
+    abortChat(conversationId);
+
+    // ── 用户消息落库（不可变消息树，见 message-store.ts）──
+    // 必须先落库：agent 运行中刷新/切页/停止时，恢复流只回放 assistant chunks，
+    // GET 加载不到未保存的用户消息。
+    // commitUserMessage 内部区分三种语义：
+    //   新 id → 普通发送（head 下追加）；
+    //   已知 id + 内容未变 → regenerate（head 移回该消息，旧回答成为孤儿分支）；
+    //   已知 id + 内容变化 → 编辑重发（同 parent 插入新节点，旧版本保留）。
+    const headMessageId = store.messageStore.commitUserMessage(conversationId, message);
+
+    // 模型输入基线 = 落库后的活跃路径（截断/编辑已由 head 移动体现）
+    const activeMessages = store.messageStore.getMessagesByConversation(conversationId);
+    const existingMessages = activeMessages.slice(0, -1);
+
+    // compaction checkpoint:有可用 checkpoint 时从锚点之后加载,否则回退全量。
+    // 仅用于模型输入——落库路径是往树上追加节点,结构上不会触碰锚点前的历史。
+    // (见 docs/context-compaction-analysis.md E)
     const historyForModel = applyCheckpointOnLoad(existingMessages, conversationId, store);
-    const messages: UIMessage[] = [...historyForModel, message];
+    const messages: UIMessage[] = [...historyForModel, activeMessages[activeMessages.length - 1]];
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
     const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);
@@ -231,22 +243,23 @@ export async function POST(request: Request) {
     );
 
     const abortController = new AbortController();
-    registerAbortController(conversationId, abortController);
+    registerAbortController(conversationId, abortController, runId);
 
-    // onEnd 回调：流结束时保存消息（成功时保存，失败/0 chunks 时跳过）
+    // onEnd 回调：流结束时把新 assistant 消息挂到本轮用户消息（headMessageId）之后。
+    // appendMessages 的 head CAS 是写入权威：head 已被更新的运行移走时，
+    // 本轮结果只是挂出一条孤儿分支，天然无害——无需依赖时序守卫。
     // 工厂形式：每次 createAgentUIStream 的输入消息数可能不同（context-length 重试会压缩消息），
     // 切片基准必须与实际传入的消息数一致，否则新增 assistant 消息会被切掉导致不保存。
     const createOnEnd = (inputMessageCount: number) => async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
       try {
-        unregisterAbortController(conversationId);
+        unregisterAbortController(conversationId, runId);
         store.agentRunStore.completeRun(conversationId);
 
-        const newAssistantMessages = completedMessages.slice(inputMessageCount);
-        const hasValidNewMessages = newAssistantMessages.some(
-          (m) => m.role === 'assistant' && m.parts && m.parts.length > 0,
-        );
+        const newAssistantMessages = completedMessages
+          .slice(inputMessageCount)
+          .filter((m) => m.role === 'assistant' && m.parts && m.parts.length > 0);
 
-        if (!hasValidNewMessages) {
+        if (newAssistantMessages.length === 0) {
           console.warn(
             `[Chat API] Stream produced no valid assistant messages, skipping save.\n` +
             `  Conversation: ${conversationId}\n` +
@@ -256,9 +269,12 @@ export async function POST(request: Request) {
           return;
         }
 
-        const messagesToSave = [...messages, ...newAssistantMessages];
+        // 锚定在本轮用户消息上追加；head 已移走则成为孤儿分支（headMoved=false）
+        const headMoved = store.messageStore.appendMessages(
+          conversationId, newAssistantMessages, headMessageId,
+        );
         console.log(
-          `[Storage] Saving ${messagesToSave.length} messages (${messages.length} original + ${newAssistantMessages.length} new)`,
+          `[Storage] Appended ${newAssistantMessages.length} assistant messages after ${headMessageId} (headMoved=${headMoved})`,
         );
 
         const costSummary = sessionState.costTracker.getSummary();
@@ -268,7 +284,7 @@ export async function POST(request: Request) {
 
         await finalizeAgentRun({
           dataStore: store,
-          messages: messagesToSave,
+          messages: [...store.messageStore.getMessagesByConversation(conversationId)],
           conversationId,
           costTracker: sessionState.costTracker,
           mcpRegistry,

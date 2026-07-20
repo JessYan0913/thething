@@ -303,11 +303,12 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
   const transport: ResumableChatTransport = new ResumableChatTransport({
     api: apiEndpoint,
     body: { conversationId },
-    prepareSendMessagesRequest({ messages, body }: { id: string; messages: UIMessage[]; body: Record<string, any> | undefined; credentials: RequestCredentials | undefined; headers: HeadersInit | undefined; api: string; requestMetadata: unknown; trigger: string; messageId: string | undefined }) {
+    prepareSendMessagesRequest({ messages, body, trigger }: { id: string; messages: UIMessage[]; body: Record<string, any> | undefined; credentials: RequestCredentials | undefined; headers: HeadersInit | undefined; api: string; requestMetadata: unknown; trigger: string; messageId: string | undefined }) {
       return {
         body: {
           message: messages.at(-1),
           conversationId,
+          trigger, // 'submit-message' | 'regenerate-message'，服务端用于区分重发语义
           ...extraBodyRef?.current,
           ...body,
         },
@@ -637,12 +638,18 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const lastProcessedPartCountRef = useRef(0);
   const pendingAutoApprovalRef = useRef(false);
 
+  // 用户主动终止标志：abort 后 SDK 会在 finally 里再跑一次 sendAutomaticallyWhen，
+  // 若最后一条 assistant 消息的工具调用恰好都已完成，会立即自动重发（终止按钮"没反应"）。
+  // 置位后 sendAutomaticallyWhen 一律返回 false；用户下一次主动操作时复位。
+  const stopRequestedRef = useRef(false);
+
   const { messages, setMessages, sendMessage, regenerate, status, stop, error, addToolApprovalResponse } = useChat({
     id: conversationId || 'pending',
     transport: transport as any,
     resume: !!conversationId,
     experimental_throttle: 80, // 节流 UI 更新，避免每块 SSE chunk 都触发 React 全量重渲染
     sendAutomaticallyWhen: ({ messages }) => {
+      if (stopRequestedRef.current) return false;
       const lastMsg = messages.at(-1);
       if (!lastMsg || lastMsg.role !== 'assistant') return false;
 
@@ -874,6 +881,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 处理审批批准（单个）
   const handleApprove = useCallback((approvalId: string, options?: { alwaysAllow?: boolean }) => {
+    // 用户主动批准：解除终止拦截（审批响应依赖 sendAutomaticallyWhen 续跑）
+    stopRequestedRef.current = false;
     // 后台挂起的审批不能使用 addToolApprovalResponse（需要活跃 stream）
     if (backgroundApprovalIdsRef.current.has(approvalId)) {
       // 清空审批列表，调用恢复 API
@@ -906,6 +915,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 处理批量审批批准
   const handleApproveAll = useCallback((requests: ApprovalRequest[], options?: { alwaysAllow?: boolean }) => {
+    // 用户主动批准：解除终止拦截
+    stopRequestedRef.current = false;
     // 检查是否为后台挂起审批
     const hasBackground = requests.some(r => backgroundApprovalIdsRef.current.has(r.approvalId));
     if (hasBackground) {
@@ -936,6 +947,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 处理审批拒绝（单个）
   const handleDeny = useCallback((approvalId: string, reason?: string) => {
+    // 用户主动拒绝：解除终止拦截（拒绝后同样依赖自动续跑把拒绝结果发回 Agent）
+    stopRequestedRef.current = false;
     // 后台挂起的审批
     if (backgroundApprovalIdsRef.current.has(approvalId)) {
       setApprovalRequests([]);
@@ -954,6 +967,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 处理批量审批拒绝
   const handleDenyAll = useCallback((requests: ApprovalRequest[], reason?: string) => {
+    // 用户主动拒绝：解除终止拦截
+    stopRequestedRef.current = false;
     // 检查是否为后台挂起审批
     const hasBackground = requests.some(r => backgroundApprovalIdsRef.current.has(r.approvalId));
     if (hasBackground) {
@@ -975,7 +990,17 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 停止 Agent 时清理未完成的 todo，避免 orphaned in_progress 状态
   const handleStop = useCallback(() => {
+    // 先置位：abort 触发的 finally 会再跑一次 sendAutomaticallyWhen，必须拦住自动重发
+    stopRequestedRef.current = true;
     stop();
+    // stop() 只中止客户端 fetch；resume 重连的流没有 abort signal，
+    // 且服务端 agent（LLM 调用/bash 进程）需通过 /stop 端点的 abortChat 终止。
+    // 服务端 stopStream 会向所有监听者发 DONE，恢复中的流也会随之关闭。
+    if (conversationId) {
+      const baseEndpoint = apiEndpoint || '/api/chat';
+      fetch(`${baseEndpoint}/${conversationId}/stop`, { method: 'POST' })
+        .catch(err => console.error('[Chat] Failed to stop server stream:', err));
+    }
     // Fire and forget: 将在执行中的 todo 重置为 pending，下一轮 Agent 可以继续
     fetch('/api/todos', {
       method: 'POST',
@@ -985,7 +1010,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         conversationId,
       }),
     }).catch(err => console.error('[Chat] Failed to reset todos:', err));
-  }, [stop, conversationId]);
+  }, [stop, conversationId, apiEndpoint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1139,6 +1164,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       const trimmed = text.trim();
       if (!trimmed && files.length === 0) return;
 
+      // 用户主动发送：解除终止拦截，恢复自动继续
+      stopRequestedRef.current = false;
+
       // 解析命令
       const commandResult = parseCommand(trimmed);
 
@@ -1207,6 +1235,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   // 服务端不截断旧轮次，刷新后历史出现重复消息与错乱。
   const handleRegenerate = useCallback(
     (messageId: string) => {
+      // 用户主动重新生成：解除终止拦截
+      stopRequestedRef.current = false;
       Promise.resolve(regenerate({ messageId })).catch((err: unknown) =>
         console.error('[Chat] Regenerate error:', err),
       );
@@ -1229,6 +1259,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const handleEditConfirm = useCallback(() => {
     if (!editingMessageId || !editingText.trim()) return;
 
+    // 若旧一轮还在运行，先停掉客户端流（服务端由新 POST 的单飞行 abort 兜底），
+    // 避免旧流的 UI 更新与编辑后的新流互踩
+    if (status === 'streaming' || status === 'submitted') {
+      stop();
+    }
+
+    // 用户主动重发编辑后的消息：解除终止拦截
+    stopRequestedRef.current = false;
+
     const messageIndex = messages.findIndex(m => m.id === editingMessageId);
     if (messageIndex === -1) return;
 
@@ -1238,12 +1277,20 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     const truncated = messages.slice(0, messageIndex);
 
     // 更新被编辑消息的文本内容。保留原 id：服务端按 id 匹配截断点，
-    // 换新 id 会导致旧轮次不被截断、历史错乱
+    // 换新 id 会导致旧轮次不被截断、历史错乱。
+    // 只替换第一个 text part（编辑框展示的即合并后的文本），
+    // 其余 text part 置空，避免多 text part 消息内容重复
+    let textReplaced = false;
     const updatedMessage = {
       ...originalMessage,
-      parts: originalMessage.parts.map(p =>
-        p.type === 'text' ? { ...p, text: editingText } : p
-      ),
+      parts: originalMessage.parts
+        .map(p => {
+          if (p.type !== 'text') return p;
+          if (textReplaced) return null;
+          textReplaced = true;
+          return { ...p, text: editingText };
+        })
+        .filter((p): p is NonNullable<typeof p> => p !== null),
     };
 
     // 只保留截断部分；sendMessage 会把消息重新推入列表
@@ -1254,7 +1301,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     setEditingMessageId(null);
     setEditingText('');
     setEditingAttachments([]);
-  }, [editingMessageId, editingText, messages, setMessages, sendMessage]);
+  }, [editingMessageId, editingText, messages, setMessages, sendMessage, status, stop]);
 
   // ── 输入卡片（在空状态和对话模式中复用） ──────────────
   const inputCard = (

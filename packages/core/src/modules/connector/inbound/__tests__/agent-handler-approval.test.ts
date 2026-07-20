@@ -310,7 +310,15 @@ function createStore(): DataStore {
     },
     messageStore: {
       getMessagesByConversation: vi.fn((id: string) => messages.get(id) ?? []),
-      saveMessages: vi.fn((id: string, nextMessages: UIMessage[]) => {
+      commitUserMessage: vi.fn((id: string, message: UIMessage) => {
+        messages.set(id, [...(messages.get(id) ?? []), message])
+        return message.id
+      }),
+      appendMessages: vi.fn((id: string, newMessages: UIMessage[]) => {
+        messages.set(id, [...(messages.get(id) ?? []), ...newMessages])
+        return true
+      }),
+      replaceConversation: vi.fn((id: string, nextMessages: UIMessage[]) => {
         messages.set(id, nextMessages)
       }),
     },

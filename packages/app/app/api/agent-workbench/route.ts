@@ -309,7 +309,7 @@ async function handlePatchMessages(request: Request) {
     }
 
     const store = await getServerDataStore();
-    store.messageStore.saveMessages(body.conversationId, body.messages);
+    store.messageStore.replaceConversation(body.conversationId, body.messages);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Agent Workbench] PATCH error:', error);

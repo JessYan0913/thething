@@ -440,7 +440,7 @@ export class AgentInboundHandler implements InboundEventHandler {
             role: 'user',
             parts: [{ type: 'text', text: messageText }],
           }
-          store.messageStore.saveMessages(conversationId, [...existingMessages, denyMsg])
+          store.messageStore.appendMessages(conversationId, [denyMsg])
           logger.debug('AgentInboundHandler', `User denied tool calls: ${summarizePendingToolNames(suspended!)}`)
           return {
             success: true,
@@ -467,7 +467,7 @@ export class AgentInboundHandler implements InboundEventHandler {
             role: 'assistant',
             parts: [{ type: 'text', text: promptMsg }],
           }
-          store.messageStore.saveMessages(conversationId, [...existingMessages, userMsg, assistantMsg])
+          store.messageStore.appendMessages(conversationId, [userMsg, assistantMsg])
           return { success: true, response: promptMsg, conversationId }
         }
 
@@ -490,7 +490,7 @@ export class AgentInboundHandler implements InboundEventHandler {
             role: 'assistant',
             parts: [{ type: 'text', text: `⚠️ Agent 执行失败：${errorMsg}` }],
           }
-          store.messageStore.saveMessages(conversationId, [...existingMessages, errorAssistantMsg])
+          store.messageStore.appendMessages(conversationId, [errorAssistantMsg])
         }
       } catch {
         // 保存错误消息失败不影响主流程
@@ -516,8 +516,8 @@ export class AgentInboundHandler implements InboundEventHandler {
     const uiMessagesForSave = [...existingMessages, userMessage]
 
     // Persist the inbound user turn before agent execution so suspend paths
-    // can append approval prompts without overwriting the first message.
-    store.messageStore.saveMessages(conversationId, uiMessagesForSave)
+    // can append approval prompts without losing the user message.
+    store.messageStore.commitUserMessage(conversationId, userMessage)
 
     const { agent, sessionState, adjustedMessages, model, dispose, mcpRegistry } = await this.createAgentInstance(
       conversationId,
@@ -565,7 +565,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       parts: [{ type: 'text', text: event.message.text || '' }],
     }
     const uiMessagesForSave = [...existingMessages, approvalReplyMsg]
-    store.messageStore.saveMessages(conversationId, uiMessagesForSave)
+    store.messageStore.appendMessages(conversationId, [approvalReplyMsg])
 
     // 在挂起点追加 approval-response，继续执行
     const resumeModelMessages: ModelMessage[] = [
@@ -869,7 +869,7 @@ export class AgentInboundHandler implements InboundEventHandler {
             ...toolApprovalParts,
           ],
         }
-        store.messageStore.saveMessages(conversationId, [...uiMessagesForSave, approvalAskMsg])
+        store.messageStore.appendMessages(conversationId, [approvalAskMsg])
 
         await dispose().catch((err: Error) => logger.error('AgentDispose', 'Error:', err))
 
@@ -941,6 +941,8 @@ export class AgentInboundHandler implements InboundEventHandler {
       role: 'assistant',
       parts: [...messageParts, { type: 'text', text: finalResponse }],
     }
+
+    store.messageStore.appendMessages(conversationId, [assistantMessage])
 
     const messagesToSave = this.filterInjectedMessages(uiMessagesForSave)
     const finalMessages = [...messagesToSave, assistantMessage]

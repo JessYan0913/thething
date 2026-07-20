@@ -43,7 +43,7 @@ export function useConversation(
       if (!conv) {
         store.conversationStore.createConversation(conversationId, conversationTitle || undefined)
       }
-      store.messageStore.saveMessages(conversationId, messages)
+      store.messageStore.replaceConversation(conversationId, messages)
     } catch {
       // silently ignore save failures
     }

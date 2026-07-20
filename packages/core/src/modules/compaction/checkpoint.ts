@@ -18,17 +18,21 @@ import { logger } from '../../primitives/logger';
 export const CHECKPOINT_SUMMARY_ID_PREFIX = 'checkpoint-summary-';
 
 /**
- * 构建 checkpoint 摘要消息(ModelMessage .content 格式,与 enforceContextWindow 一致)
+ * 构建 checkpoint 摘要消息。
+ * 注意:这里必须是 UIMessage 的 .parts 格式——本函数在 route 层(UIMessage 流水线)使用,
+ * 消息随后要过 validateUIMessages/convertToModelMessages;.content 格式会导致校验抛错、
+ * 以及 route 层 `for (const part of msg.parts)` 崩溃。
+ * (enforceContextWindow 内部的 .content 摘要属于 ModelMessage 流水线,是另一层,勿混淆。)
  */
 function buildCheckpointSummaryMessage(summary: string): UIMessage {
   return {
     id: `${CHECKPOINT_SUMMARY_ID_PREFIX}${Date.now()}`,
     role: 'user',
-    content: [{
+    parts: [{
       type: 'text',
       text: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}`,
     }],
-  } as unknown as UIMessage;
+  } as UIMessage;
 }
 
 /**

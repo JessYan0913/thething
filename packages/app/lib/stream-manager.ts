@@ -15,22 +15,33 @@ let streamContext: ReturnType<ReturnType<typeof createResumableStreamContextFact
 // Abort Controller Registry
 // 用于将 stopStream 与 abortController.abort() 连接起来，
 // 确保点击停止按钮时能真正终止服务端的 LLM 调用和 bash 进程。
+// 按 runId 守卫：同会话新一轮运行会顶替（并 abort）旧运行；
+// 旧运行迟到的注销/写库请求因 runId 不匹配而被拒绝。
 // ============================================================
 
-const abortControllers = new Map<string, AbortController>();
+const abortControllers = new Map<string, { runId: string; controller: AbortController }>();
 
 /**
- * 注册 AbortController，关联到 conversationId
+ * 注册 AbortController，关联到 conversationId + runId。
+ * 若该会话已有运行中的 controller，先 abort 旧的再顶替（单飞行）。
  */
-export function registerAbortController(chatId: string, controller: AbortController) {
-  abortControllers.set(chatId, controller);
+export function registerAbortController(chatId: string, controller: AbortController, runId: string) {
+  const existing = abortControllers.get(chatId);
+  if (existing) {
+    existing.controller.abort();
+  }
+  abortControllers.set(chatId, { runId, controller });
 }
 
 /**
- * 移除 AbortController（流正常结束时调用）
+ * 注销 AbortController。仅当 runId 与当前注册的一致时才生效。
+ * @returns false 表示本 run 已被更新的 run 顶替（调用方应放弃后续写库）
  */
-export function unregisterAbortController(chatId: string) {
+export function unregisterAbortController(chatId: string, runId: string): boolean {
+  const entry = abortControllers.get(chatId);
+  if (!entry || entry.runId !== runId) return false;
   abortControllers.delete(chatId);
+  return true;
 }
 
 /**
@@ -38,9 +49,9 @@ export function unregisterAbortController(chatId: string) {
  * @returns true 如果找到了并中止了对应的 controller
  */
 export function abortChat(chatId: string): boolean {
-  const controller = abortControllers.get(chatId);
-  if (controller) {
-    controller.abort();
+  const entry = abortControllers.get(chatId);
+  if (entry) {
+    entry.controller.abort();
     abortControllers.delete(chatId);
     return true;
   }

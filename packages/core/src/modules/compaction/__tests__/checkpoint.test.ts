@@ -9,7 +9,7 @@ import { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX } from '../checkpoi
 // ============================================================
 
 function msg(id: string, text: string): UIMessage {
-  return { id, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
+  return { id, role: 'user', parts: [{ type: 'text', text }] } as UIMessage;
 }
 
 function storeWith(summary: StoredSummary | null): DataStore {
@@ -56,7 +56,8 @@ describe('applyCheckpointOnLoad', () => {
     // m1,m2 → summary; m3,m4 kept
     expect(result.length).toBe(3);
     expect((result[0] as any).id).toContain(CHECKPOINT_SUMMARY_ID_PREFIX);
-    expect((result[0] as any).content[0].text).toContain('previous work summary');
+    // 摘要消息必须是 UIMessage .parts 格式(route 层随后要过 validateUIMessages)
+    expect((result[0] as any).parts[0].text).toContain('previous work summary');
     expect((result[1] as any).id).toBe('m3');
     expect((result[2] as any).id).toBe('m4');
   });

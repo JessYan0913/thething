@@ -12,7 +12,7 @@ import { logger } from '../primitives/logger'
 export interface FinalizeAgentRunOptions {
   /** DataStore 实例 */
   dataStore: DataStore
-  /** 要保存的最终消息列表（调用方负责过滤/切片） */
+  /** 最终消息列表（仅用于标题生成；消息落库由调用方通过 MessageStore 原语完成） */
   messages: UIMessage[]
   /** 对话 ID */
   conversationId: string
@@ -34,20 +34,19 @@ export interface FinalizeAgentRunOptions {
  * Agent 运行完成后的统一后处理。
  *
  * 职责（按顺序）：
- * 1. 保存消息到 DataStore
- * 2. 首次对话生成标题
- * 3. 持久化成本数据
- * 4. 断开 MCP 连接
+ * 1. 首次对话生成标题
+ * 2. 持久化成本数据
+ * 3. 断开 MCP 连接
+ *
+ * 消息落库不在此处：调用方在流结束时用 messageStore.appendMessages /
+ * commitUserMessage 增量写入（不可变消息树，见 message-store.ts）。
  *
  * 注意：成本持久化和 MCP 清理只调一次，避免 double-persist。
  */
 export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<void> {
   const { dataStore, messages, conversationId, costTracker, mcpRegistry } = opts
 
-  // 1. 保存消息（空 assistant 消息已在上游 onEnd 中过滤）
-  dataStore.messageStore.saveMessages(conversationId, messages)
-
-  // 2-5. 后台任务
+  // 后台任务
   setImmediate(async () => {
     try {
       // 首次对话生成标题

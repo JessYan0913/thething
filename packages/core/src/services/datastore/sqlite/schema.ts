@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 11;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -247,6 +247,76 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v9: added summaries.anchor_message_id');
   }
 
+  if (currentVersion < 10) {
+    // v10: (superseded same-day by v11 tree model) — archived_at soft-delete columns.
+    // Body removed; v11 rebuilds the messages table and handles both v9 and v10 shapes.
+  }
+
+  if (currentVersion < 11) {
+    // v11: immutable message tree.
+    //   - messages become append-only nodes linked by parent_id (NULL = conversation root)
+    //   - conversations.head_message_id is the ONLY mutable state; the active history
+    //     is the walk from head to root. Regenerate/edit just move head — old branches
+    //     stay untouched, stale writes become harmless orphan branches.
+    //   - drops "order" / v10's archived_at: both roles are covered by the parent chain.
+    // Migration: linearize each conversation's active messages into a parent chain.
+    try {
+      db.exec(`ALTER TABLE conversations ADD COLUMN head_message_id TEXT DEFAULT NULL`);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column name')) throw e;
+    }
+
+    const msgCols = (db.pragma('table_info(messages)') as { name: string }[]).map((c) => c.name);
+    if (!msgCols.includes('parent_id')) {
+      const hasArchived = msgCols.includes('archived_at'); // v10 shape
+      db.exec(`
+        CREATE TABLE messages_tree (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          parent_id TEXT,
+          role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+          content TEXT NOT NULL,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        );
+      `);
+
+      const convRows = db
+        .prepare('SELECT DISTINCT conversation_id FROM messages')
+        .all() as { conversation_id: string }[];
+      const selectMsgs = db.prepare(
+        `SELECT id, role, content, created_at FROM messages
+           WHERE conversation_id = ?${hasArchived ? ' AND archived_at IS NULL' : ''}
+           ORDER BY "order" ASC`
+      );
+      const insertMsg = db.prepare(
+        `INSERT OR REPLACE INTO messages_tree (id, conversation_id, parent_id, role, content, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+      );
+      const setHead = db.prepare('UPDATE conversations SET head_message_id = ? WHERE id = ?');
+
+      for (const conv of convRows) {
+        const rows = selectMsgs.all(conv.conversation_id) as {
+          id: string; role: string; content: string; created_at: string;
+        }[];
+        let parentId: string | null = null;
+        for (const row of rows) {
+          insertMsg.run(row.id, conv.conversation_id, parentId, row.role, row.content, row.created_at);
+          parentId = row.id;
+        }
+        if (parentId) setHead.run(parentId, conv.conversation_id);
+      }
+
+      db.exec(`
+        DROP TABLE messages;
+        ALTER TABLE messages_tree RENAME TO messages;
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(conversation_id, parent_id);
+      `);
+      logger.debug('Schema', 'Migrated to v11: rebuilt messages as immutable tree');
+    }
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -257,28 +327,30 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
  */
 export function initializeSchema(db: SqliteDatabase): void {
   db.exec(`
-    -- Conversations table (base v1 schema; v5 adds source/source_id/channel_id, v6 adds project_id)
+    -- Conversations table (base v1 schema; v5 adds source/source_id/channel_id,
+    -- v6 adds project_id, v11 adds head_message_id)
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       title TEXT DEFAULT 'New Conversation',
+      head_message_id TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Messages table
+    -- Messages table: immutable tree (v11).
+    -- Rows are append-only; parent_id links to the previous message (NULL = root).
+    -- The active history is the walk from conversations.head_message_id to the root.
+    -- NOTE: indexes on parent_id are created AFTER ensureSchemaVersion (an existing
+    -- pre-v11 table lacks the column until the v11 migration rebuilds it).
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
+      parent_id TEXT,
       role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
       content TEXT NOT NULL,
-      "order" INTEGER NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
-
-    -- Index for efficient message retrieval by conversation
-    CREATE INDEX IF NOT EXISTS idx_messages_conversation
-      ON messages(conversation_id, "order");
 
     -- Index for conversation ordering
     CREATE INDEX IF NOT EXISTS idx_conversations_updated
@@ -341,4 +413,13 @@ export function initializeSchema(db: SqliteDatabase): void {
   `);
 
   ensureSchemaVersion(db);
+
+  // Message tree indexes — created after migration so pre-v11 tables
+  // (no parent_id column until the rebuild) don't fail here.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation
+      ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_parent
+      ON messages(conversation_id, parent_id);
+  `);
 }
