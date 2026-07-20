@@ -223,6 +223,27 @@ export interface MessageStore {
    * drops all branches. Never use in the chat runtime paths.
    */
   replaceConversation(conversationId: string, messages: UIMessage[]): void;
+
+  /**
+   * Branch metadata for the active path:
+   * - branches: active-path message id → ALL sibling ids at that position
+   *   (same parent, insertion order), only for positions with ≥ 2 versions
+   * - headChildId: when head is not a leaf (after a fork), the latest child
+   *   of head — the entry point for jumping back to the later messages
+   */
+  getBranchInfo(conversationId: string): {
+    branches: Record<string, string[]>;
+    headChildId: string | null;
+  };
+
+  /**
+   * Move head to another branch. With descendToTip (default) head lands on
+   * the leaf of the target's latest descendant chain (sibling switching);
+   * with false head parks exactly on the message (fork: the next user
+   * message will branch off from this point).
+   * @returns false if the message doesn't belong to the conversation
+   */
+  switchHead(conversationId: string, messageId: string, descendToTip?: boolean): boolean;
 }
 
 /**

@@ -35,7 +35,9 @@ export async function GET(request: Request) {
 
     const rt = await getServerRuntime();
     const messages = rt.dataStore.messageStore.getMessagesByConversation(conversationId);
-    return NextResponse.json({ messages });
+    // 分支元信息：活跃路径上每个多版本位置的兄弟列表 + head 分叉时的前进入口
+    const { branches, headChildId } = rt.dataStore.messageStore.getBranchInfo(conversationId);
+    return NextResponse.json({ messages, branches, headChildId });
   } catch (error) {
     console.error('[Chat API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load messages' }, { status: 500 });

@@ -40,7 +40,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, ChevronLeftIcon, ChevronRightIcon, GitBranchIcon, ArrowDownToLineIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -332,6 +332,41 @@ function createChatTransport(conversationId: string, apiEndpoint: string = '/api
   return transport;
 }
 
+// ── 分支版本切换器（< 1/2 >）──────────────────────────────
+// 出现在活跃路径上存在多版本（regenerate/编辑重发产生的兄弟节点）的消息下方。
+function BranchSwitcher({ siblings, currentId, disabled, onSwitch }: {
+  siblings: string[];
+  currentId: string;
+  disabled: boolean;
+  onSwitch: (messageId: string) => void;
+}) {
+  const index = siblings.indexOf(currentId);
+  if (index < 0 || siblings.length < 2) return null;
+  return (
+    <div className="flex items-center gap-0.5 text-xs text-muted-foreground select-none">
+      <button
+        type="button"
+        className="p-0.5 rounded hover:text-foreground hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+        disabled={disabled || index === 0}
+        onClick={() => onSwitch(siblings[index - 1])}
+        title="上一个版本"
+      >
+        <ChevronLeftIcon className="size-3.5" />
+      </button>
+      <span className="tabular-nums px-0.5">{index + 1}/{siblings.length}</span>
+      <button
+        type="button"
+        className="p-0.5 rounded hover:text-foreground hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+        disabled={disabled || index === siblings.length - 1}
+        onClick={() => onSwitch(siblings[index + 1])}
+        title="下一个版本"
+      >
+        <ChevronRightIcon className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export interface ChatProps {
   conversationId?: string | null;
   onTitleUpdated?: () => void;
@@ -384,6 +419,14 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingAttachments, setEditingAttachments] = useState<Array<{ type: 'file'; mediaType?: string; url: string; filename?: string }>>([]);
+
+  // 分支状态：活跃路径上多版本位置的兄弟列表（来自 GET /api/chat 的 branches 字段）
+  // + head 分叉时的前进入口（headChildId，"回到后面的消息"用）
+  const [branchInfo, setBranchInfo] = useState<{
+    branches: Record<string, string[]>;
+    headChildId: string | null;
+  }>({ branches: {}, headChildId: null });
+  const [branchSwitching, setBranchSwitching] = useState(false);
 
   // 文件预览分栏状态
   const [previewFile, setPreviewFile] = useState<{
@@ -638,6 +681,32 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const lastProcessedPartCountRef = useRef(0);
   const pendingAutoApprovalRef = useRef(false);
 
+  // ── 分支 ──────────────────────────────────────────────
+  // 重新拉取分支元信息（一轮生成结束 / regenerate / 编辑重发后分支结构会变化）
+  const refreshBranchInfo = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const endpoint = apiEndpoint || '/api/chat';
+      const res = await fetch(`${endpoint}?conversationId=${encodeURIComponent(conversationId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setBranchInfo({ branches: data.branches ?? {}, headChildId: data.headChildId ?? null });
+    } catch {
+      // 分支元信息拉取失败不影响主流程
+    }
+  }, [conversationId, apiEndpoint]);
+
+  // 分支反查表：任意兄弟 id → 该位置的完整版本列表 + 当前活跃版本 id。
+  // 必须按"任意兄弟"反查而非只按活跃 id：编辑重发时服务端为新版本生成新 id，
+  // 本会话内前端消息列表仍持旧 id（内容已是编辑后的），需通过旧 id 命中同一位置。
+  const branchLookup = useMemo(() => {
+    const map = new Map<string, { siblings: string[]; activeId: string }>();
+    for (const [activeId, siblings] of Object.entries(branchInfo.branches)) {
+      for (const s of siblings) map.set(s, { siblings, activeId });
+    }
+    return map;
+  }, [branchInfo]);
+
   // 用户主动终止标志：abort 后 SDK 会在 finally 里再跑一次 sendAutomaticallyWhen，
   // 若最后一条 assistant 消息的工具调用恰好都已完成，会立即自动重发（终止按钮"没反应"）。
   // 置位后 sendAutomaticallyWhen 一律返回 false；用户下一次主动操作时复位。
@@ -781,6 +850,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       }
 
       onTurnFinish?.();
+
+      // 一轮结束后刷新分支元信息（regenerate/编辑产生的新分支此时才落库）。
+      // 略作延迟：服务端 onEnd 落库与客户端 onFinish 存在竞态
+      setTimeout(() => void refreshBranchInfo(), 800);
 
       const msgCount = finishedMessages.length;
 
@@ -1031,6 +1104,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         if (!cancelled && data.messages && data.messages.length > 0) {
           initialMessageCountRef.current = data.messages.length;
           setMessages(data.messages as UIMessage[]);
+          setBranchInfo({ branches: data.branches ?? {}, headChildId: data.headChildId ?? null });
 
           // 刷新/重启后从消息历史重建待审批 UI
           const { approvals, question } = collectPendingApprovals(data.messages as UIMessage[]);
@@ -1243,6 +1317,31 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     },
     [regenerate],
   );
+
+  // ── 分支 ──────────────────────────────────────────────
+  // 切换到某个兄弟版本（< 1/2 > 切换器）或从某条消息拉出新分支
+  const handleBranchSwitch = useCallback(async (messageId: string, descendToTip = true) => {
+    if (!conversationId || branchSwitching) return;
+    setBranchSwitching(true);
+    stopRequestedRef.current = true; // 切换不应触发自动重发
+    try {
+      const res = await fetch(`/api/chat/${encodeURIComponent(conversationId)}/branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, descendToTip }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success) {
+        setMessages(data.messages as UIMessage[]);
+        setBranchInfo({ branches: data.branches ?? {}, headChildId: data.headChildId ?? null });
+      }
+    } catch (err) {
+      console.error('[Chat] Branch switch error:', err);
+    } finally {
+      setBranchSwitching(false);
+    }
+  }, [conversationId, branchSwitching, setMessages]);
 
   const handleEditStart = useCallback((messageId: string, currentText: string, attachments?: Array<{ type: 'file'; mediaType?: string; url: string; filename?: string }>) => {
     setEditingMessageId(messageId);
@@ -1936,6 +2035,14 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                     {message.role === 'user' && !isEditing && status !== 'streaming' && status !== 'submitted' && (
                       <MessageToolbar className="mt-0! opacity-0 group-hover:opacity-100 transition-opacity justify-end">
                         <MessageActions>
+                          {branchLookup.has(message.id) && (
+                            <BranchSwitcher
+                              siblings={branchLookup.get(message.id)!.siblings}
+                              currentId={branchLookup.get(message.id)!.activeId}
+                              disabled={branchSwitching}
+                              onSwitch={(id) => handleBranchSwitch(id)}
+                            />
+                          )}
                           <MessageAction
                             label="Edit"
                             onClick={() => {
@@ -1969,6 +2076,14 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                     ) : message.role === 'assistant' && (
                       <MessageToolbar className="mt-0! opacity-0 group-hover:opacity-100 transition-opacity">
                         <MessageActions>
+                          {branchLookup.has(message.id) && (
+                            <BranchSwitcher
+                              siblings={branchLookup.get(message.id)!.siblings}
+                              currentId={branchLookup.get(message.id)!.activeId}
+                              disabled={branchSwitching}
+                              onSwitch={(id) => handleBranchSwitch(id)}
+                            />
+                          )}
                           <MessageAction
                             label="Regenerate"
                             onClick={() => handleRegenerate(message.id)}
@@ -1976,6 +2091,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           >
                             <RefreshCcwIcon className="size-4" />
                           </MessageAction>
+                          {messageIndex < messages.length - 1 && (
+                            <MessageAction
+                              label="Branch"
+                              onClick={() => handleBranchSwitch(message.id, false)}
+                              tooltip="从这里拉出新分支（之后的消息保留为另一分支）"
+                            >
+                              <GitBranchIcon className="size-4" />
+                            </MessageAction>
+                          )}
                           <MessageAction
                             label="Copy"
                             onClick={() =>
@@ -1996,6 +2120,22 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   </Message>
                 );
               })}
+              {/* head 停在分叉点（fork 后）：提示可直接发新消息开分支，或跳回后面的消息 */}
+              {branchInfo.headChildId && status !== 'streaming' && status !== 'submitted' && (
+                <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground border border-dashed rounded-lg">
+                  <GitBranchIcon className="size-3.5 shrink-0" />
+                  <span>已定位到此处——直接发送新消息将从这里拉出新分支</span>
+                  <button
+                    type="button"
+                    className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded hover:text-foreground hover:bg-accent disabled:opacity-40"
+                    disabled={branchSwitching}
+                    onClick={() => handleBranchSwitch(branchInfo.headChildId!)}
+                  >
+                    <ArrowDownToLineIcon className="size-3.5" />
+                    回到后面的消息
+                  </button>
+                </div>
+              )}
               {/* Thinking indicator for gap between submission and assistant starting */}
               {status === 'submitted' && messages.length > 0 && messages.at(-1)?.role === 'user' && (
                 <div className="flex items-center gap-2.5 px-1 py-2 text-sm text-muted-foreground">

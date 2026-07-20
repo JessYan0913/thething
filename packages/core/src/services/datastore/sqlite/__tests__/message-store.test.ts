@@ -181,6 +181,68 @@ describe('SQLiteMessageStore (immutable tree)', () => {
     })
   })
 
+  describe('getBranchInfo / switchHead', () => {
+    it('reports sibling versions at regenerated positions', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1')) // regenerate
+      store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')], 'u1')
+
+      const { branches } = store.messageStore.getBranchInfo(CONV)
+      expect(branches['a2']).toEqual(['a1', 'a2']) // a1、a2 同为 u1 的孩子
+      expect(branches['u1']).toBeUndefined() // u1 无兄弟
+    })
+
+    it('switchHead descends to the tip of the target branch', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
+      store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')])
+      // regenerate a1 → 新分支只有 a1b
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1b', 'assistant', 'r1b')], 'u1')
+
+      // 切回旧分支 a1 → head 应下行到旧分支叶子 a2
+      expect(store.messageStore.switchHead(CONV, 'a1')).toBe(true)
+      expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id))
+        .toEqual(['u1', 'a1', 'u2', 'a2'])
+    })
+
+    it('switchHead with descendToTip=false parks head on the message (fork point)', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
+      store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')])
+
+      expect(store.messageStore.switchHead(CONV, 'a1', false)).toBe(true)
+      expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a1'])
+
+      // headChildId 指向"后面的消息"入口
+      const { headChildId } = store.messageStore.getBranchInfo(CONV)
+      expect(headChildId).toBe('u2')
+
+      // 从分叉点发新消息 → u2 的兄弟出现
+      store.messageStore.commitUserMessage(CONV, msg('u3', 'user', 'q3-branched'))
+      const { branches } = store.messageStore.getBranchInfo(CONV)
+      expect(branches['u3']).toEqual(['u2', 'u3'])
+    })
+
+    it('switchHead returns false for a message not in the conversation', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      expect(store.messageStore.switchHead(CONV, 'nope')).toBe(false)
+    })
+
+    it('invalidates summary when switching makes its anchor leave the active path', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
+      store.summaryStore.saveSummary(CONV, 'summary', 2, 100, 'u2')
+
+      store.messageStore.switchHead(CONV, 'a1', false) // u2 离开活跃路径
+      expect(store.summaryStore.getSummaryByConversation(CONV)).toBeNull()
+    })
+  })
+
   describe('getMessagesByConversation', () => {
     it('returns empty for unknown conversation', () => {
       expect(store.messageStore.getMessagesByConversation('nope')).toEqual([])

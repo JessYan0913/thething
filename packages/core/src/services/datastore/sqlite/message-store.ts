@@ -143,6 +143,68 @@ export class SQLiteMessageStore implements MessageStore {
     transaction();
   }
 
+  // ── 分支查询 / 切换 ─────────────────────────────────────────
+
+  getBranchInfo(conversationId: string): {
+    branches: Record<string, string[]>;
+    headChildId: string | null;
+  } {
+    const branches: Record<string, string[]> = {};
+    const head = this.getHead(conversationId);
+    if (!head) return { branches, headChildId: null };
+
+    const activePath = this.getMessagesByConversation(conversationId);
+    // 兄弟按 rowid（插入顺序）排列，created_at 秒级精度在快速重发时会并列
+    const siblingsStmt = this.db.prepare(
+      `SELECT id FROM messages
+         WHERE conversation_id = ? AND parent_id IS ? ORDER BY rowid ASC`
+    );
+
+    let parentOfCurrent: string | null = null;
+    for (const msg of activePath) {
+      const siblings = (siblingsStmt.all(conversationId, parentOfCurrent) as unknown as { id: string }[])
+        .map((r) => r.id);
+      if (siblings.length > 1) {
+        branches[msg.id] = siblings;
+      }
+      parentOfCurrent = msg.id;
+    }
+
+    // head 处于分叉点（非叶子）时，给出回到"之后消息"的入口：head 的最新孩子
+    const headChildren = (siblingsStmt.all(conversationId, head) as unknown as { id: string }[]);
+    const headChildId = headChildren.length > 0 ? headChildren[headChildren.length - 1].id : null;
+
+    return { branches, headChildId };
+  }
+
+  switchHead(conversationId: string, messageId: string, descendToTip = true): boolean {
+    const transaction = this.db.transaction(() => {
+      const target = this.db
+        .prepare('SELECT id FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(conversationId, messageId);
+      if (!target) return false;
+
+      let tip = messageId;
+      if (descendToTip) {
+        // 沿"每层最新的孩子"下行到叶子——恢复该分支上最后的对话位置
+        const childStmt = this.db.prepare(
+          `SELECT id FROM messages
+             WHERE conversation_id = ? AND parent_id = ? ORDER BY rowid DESC LIMIT 1`
+        );
+        for (;;) {
+          const child = childStmt.get(conversationId, tip) as { id: string } | undefined;
+          if (!child) break;
+          tip = child.id;
+        }
+      }
+
+      this.setHead(conversationId, tip);
+      this.invalidateSummaryIfAnchorOffPath(conversationId);
+      return true;
+    });
+    return transaction();
+  }
+
   // ── private helpers ─────────────────────────────────────────
 
   private insertNode(conversationId: string, msg: UIMessage, parentId: string | null): void {
