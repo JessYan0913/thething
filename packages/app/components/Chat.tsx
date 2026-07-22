@@ -726,7 +726,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       if (lastMsg.parts.some((p) => p.type === 'data-plan')) {
         return false;
       }
-      }
 
       // 快速检查：如果没有工具调用或审批请求，直接判断是否完成
       const hasToolParts = lastMsg.parts.some(p => p.type.startsWith('tool-') || p.type === 'dynamic-tool');
