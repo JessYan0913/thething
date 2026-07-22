@@ -69,7 +69,8 @@ export async function compactBeforeStep(
         context.contextLimit,
       );
       context.writer.write({
-        type: 'data-budget',
+        type: 'custom',
+        kind: 'data.budget',
         usagePercentage: estimation.utilizationPercent,
         totalTokens: estimation.totalTokens,
         modelLimit: estimation.modelLimit,
