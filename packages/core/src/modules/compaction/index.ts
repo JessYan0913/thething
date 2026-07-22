@@ -71,9 +71,13 @@ export async function compactBeforeStep(
       context.writer.write({
         type: 'custom',
         kind: 'data.budget',
-        usagePercentage: estimation.utilizationPercent,
-        totalTokens: estimation.totalTokens,
-        modelLimit: estimation.modelLimit,
+        providerMetadata: {
+          budget: {
+            usagePercentage: estimation.utilizationPercent,
+            totalTokens: estimation.totalTokens,
+            modelLimit: estimation.modelLimit,
+          },
+        },
       } as any);
     } catch (err) {
       // 估算失败不阻塞主流程
