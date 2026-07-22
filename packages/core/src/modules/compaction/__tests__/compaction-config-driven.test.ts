@@ -8,13 +8,12 @@ import { resolveAgentCompactionConfig } from '../../../composition/app/resolve-a
 import {
   DEFAULT_COMPACTION_CONFIG,
   DEFAULT_LIFECYCLE_CONFIG,
-  DEFAULT_CONTEXT_WINDOW_CONFIG,
   type CompactionConfig,
   type LifecycleConfig,
-  type ContextWindowConfig,
 } from '../types';
 import { manageToolOutputLifecycle } from '../lifecycle';
 import type { UIMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 
 // ============================================================
 // 1. resolveAgentCompactionConfig returns config
@@ -60,31 +59,26 @@ describe('lifecycle config defaults', () => {
     expect(DEFAULT_LIFECYCLE_CONFIG.protectedTools.size).toBe(0);
   });
 
-  it('context window has correct defaults', () => {
-    expect(DEFAULT_CONTEXT_WINDOW_CONFIG.triggerPercent).toBe(0.85);
-    expect(DEFAULT_CONTEXT_WINDOW_CONFIG.targetPercent).toBe(0.60);
-    expect(DEFAULT_CONTEXT_WINDOW_CONFIG.contextHintMessages).toBe(2);
-    expect(DEFAULT_CONTEXT_WINDOW_CONFIG.incrementalSummary).toBe(true);
-  });
+  // Removed: context window config tests (DEFAULT_CONTEXT_WINDOW_CONFIG was removed)
 });
 
 // ============================================================
 // 3. Config-driven lifecycle behavior
 // ============================================================
 describe('config-driven lifecycle behavior', () => {
-  function createUserMessage(text: string): UIMessage {
-    return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
+  function createUserMessage(text: string): ModelMessage {
+    return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as ModelMessage;
   }
 
-  function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): UIMessage {
+  function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): ModelMessage {
     return {
       id: `a-${toolCallId}`,
       role: 'tool',
       content: [{ type: 'tool-result', toolName, toolCallId, output: { type: 'json', value: output } }],
-    } as unknown as UIMessage;
+    } as ModelMessage;
   }
 
-  function getResultItem(msg: UIMessage): any {
+  function getResultItem(msg: ModelMessage): any {
     return ((msg as unknown as Record<string, unknown>).content as any[])[0];
   }
 
@@ -97,8 +91,8 @@ describe('config-driven lifecycle behavior', () => {
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(result.tokensFreed).toBeGreaterThan(0);
-    expect(getResultItem(result.messages[1] as UIMessage)._compacted).toBe(true);
-    expect(getResultItem(result.messages[3] as UIMessage)._compacted).toBe(true);
+    expect(getResultItem(result.messages[1] as ModelMessage)._compacted).toBe(true);
+    expect(getResultItem(result.messages[3] as ModelMessage)._compacted).toBe(true);
   });
 
   it('largeOutputThreshold triggers compression for big outputs', () => {
@@ -125,8 +119,8 @@ describe('config-driven lifecycle behavior', () => {
     };
     const result = manageToolOutputLifecycle(messages, config);
     // read_file should be compressed
-    expect(getResultItem(result.messages[1] as UIMessage)._compacted).toBe(true);
+    expect(getResultItem(result.messages[1] as ModelMessage)._compacted).toBe(true);
     // CustomTool should NOT be compressed (not in compactableTools)
-    expect(getResultItem(result.messages[3] as UIMessage)._compacted).toBeUndefined();
+    expect(getResultItem(result.messages[3] as ModelMessage)._compacted).toBeUndefined();
   });
 });

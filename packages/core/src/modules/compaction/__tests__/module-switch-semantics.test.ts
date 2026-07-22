@@ -5,6 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { UIMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 
 import { manageToolOutputLifecycle } from '../lifecycle';
 import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
@@ -13,19 +14,19 @@ import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 // Helper: Create test messages (ModelMessage 格式,与流水线一致)
 // ============================================================
 
-function createUserMessage(text: string): UIMessage {
-  return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
+function createUserMessage(text: string): ModelMessage {
+  return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as ModelMessage;
 }
 
-function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): UIMessage {
+function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): ModelMessage {
   return {
     id: `a-${toolCallId}`,
     role: 'tool',
     content: [{ type: 'tool-result', toolName, toolCallId, output: { type: 'json', value: output } }],
-  } as unknown as UIMessage;
+  } as unknown as ModelMessage;
 }
 
-function getResultItem(msg: UIMessage): any {
+function getResultItem(msg: ModelMessage): any {
   return ((msg as unknown as Record<string, unknown>).content as any[])[0];
 }
 

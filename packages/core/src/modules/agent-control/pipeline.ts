@@ -1,5 +1,5 @@
 import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import type { PipelineContext } from '../session/interfaces';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
 import { getModelContextLimit } from '../../services/model';
@@ -173,7 +173,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     }
 
     // 每步调用 compactBeforeStep（Layer 2 + Layer 3）
-    const compactResult = await sessionState.compact(messages as PipelineMessage[]);
+    const compactResult = await sessionState.compact(messages as import('ai').ModelMessage[]);
     if (compactResult.executed) {
       debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
       messages = compactResult.messages as ModelMessageType[];
@@ -182,7 +182,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     // Context usage progress bar
     if (config.instructions != null && config.tools) {
       const estimation = await estimateFullRequest(
-        messages as PipelineMessage[],
+        messages as import('ai').ModelMessage[],
         config.instructions,
         config.tools,
         sessionState.model,

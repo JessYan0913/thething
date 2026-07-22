@@ -9,7 +9,7 @@
 // 这打破了 session-state ↔ compaction 和 session-state ↔ agent-control 的循环。
 
 import type { LanguageModelUsage, UIMessage } from 'ai';
-import type { CompactionResult, CompactionConfig, PipelineMessage } from '../../services/config/compaction-types';
+import type { CompactionResult, CompactionConfig} from '../../services/config/compaction-types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { TodoStore } from '../../primitives/datastore/types';
@@ -129,7 +129,7 @@ export interface SessionContext {
 // 打破 session-state ↔ compaction 循环的关键：
 // session-state 只依赖这个接口，不 import compaction 模块。
 export interface CompactionService {
-  compact(messages: PipelineMessage[]): Promise<CompactionResult>;
+  compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;
 }
 
 // ============================================================
@@ -143,7 +143,7 @@ export interface PipelineContext {
   modelSwapper: ModelSwitching;
   contentReplacementState: ContentReplacementState;
   toolOutputConfig: ToolOutputConfig;
-  compact(messages: PipelineMessage[]): Promise<CompactionResult>;
+  compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;
   aborted: boolean;
   turnCount: number;
   model: string;

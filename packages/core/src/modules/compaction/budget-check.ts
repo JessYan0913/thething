@@ -2,7 +2,7 @@
 // 见 docs/context-invariant-architecture.md S6
 
 import type { Tool } from 'ai';
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
@@ -19,11 +19,11 @@ export interface InitialBudgetCheckResult {
   estimation: FullRequestEstimation;
   actions: string[];
   adjustedTools?: Record<string, Tool>;
-  adjustedMessages?: PipelineMessage[];
+  adjustedMessages?: import('ai').ModelMessage[];
 }
 
 export async function checkInitialBudget(
-  messages: PipelineMessage[],
+  messages: import('ai').ModelMessage[],
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string,

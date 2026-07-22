@@ -5,17 +5,21 @@
 //
 // compactBeforeStep 执行顺序：
 // 1. Layer 2: 工具输出生命周期管理 (同步，微秒级)
-// 2. 跨消息预算检查 (吸收原 enforceToolResultBudget)
-// 注: Layer 1 (compact_tool_result) 和 Layer 3 (同步 LLM 摘要) 已删除。
-//     超过上下文窗口 → 闸门 413 诚实拒绝。
+// 2. Layer 2.5: 确定性文本压缩 (若 Layer 2 后仍超限)
+// 3. Layer 3: 紧急 LLM 摘要 (若 Layer 2.5 后仍超限，带超时保护)
+// 4. 降级: 强制截断 (保底方案，保证永不返回 413)
+// 注: Layer 1 (compact_tool_result) 已删除。
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
 import { estimateFullRequest } from './token-counter';
 import type { Tool } from 'ai';
+import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
+import { emergencySummarize } from './emergency-summary';
+import { logger } from '../../primitives/logger';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -25,7 +29,7 @@ import type { Tool } from 'ai';
  * prepareStep 中调用：每步 API 调用前的上下文管理
  */
 export async function compactBeforeStep(
-  messages: PipelineMessage[],
+  messages: import('ai').ModelMessage[],
   config: CompactionConfig = DEFAULT_COMPACTION_CONFIG,
   context: {
     model: LanguageModelV3;
@@ -47,7 +51,7 @@ export async function compactBeforeStep(
     /** 系统提示词，用于估算 token */
     instructions?: string;
   },
-): Promise<PipelineMessage[]> {
+): Promise<import('ai').ModelMessage[]> {
   let current = messages;
 
   // ── Layer 2: 工具输出生命周期管理（同步，微秒级）──
@@ -58,33 +62,134 @@ export async function compactBeforeStep(
     await lifecycle.persistence;
   }
 
-  // ── 压缩完成后估算当前请求水位，发送给前端 ──
-  if (context.writer && context.tools && context.instructions) {
-    try {
-      const estimation = await estimateFullRequest(
-        current,
-        context.instructions,
-        context.tools,
-        context.modelName,
-        context.contextLimit,
-      );
-      context.writer.write({
-        type: 'custom',
-        kind: 'data.budget',
-        providerMetadata: {
-          budget: {
-            usagePercentage: estimation.utilizationPercent,
-            totalTokens: estimation.totalTokens,
-            modelLimit: estimation.modelLimit,
+  // ── 预算检查：是否需要进一步压缩？ ──
+  if (context.tools && context.instructions) {
+    const estimation = await estimateFullRequest(
+      current,
+      context.instructions,
+      context.tools,
+      context.modelName,
+      context.contextLimit,
+    );
+
+    // 发送水位数据给前端
+    if (context.writer) {
+      try {
+        context.writer.write({
+          type: 'custom',
+          kind: 'data.budget',
+          providerMetadata: {
+            budget: {
+              usagePercentage: estimation.utilizationPercent,
+              totalTokens: estimation.totalTokens,
+              modelLimit: estimation.modelLimit,
+            },
           },
-        },
-      } as any);
-    } catch (err) {
-      // 估算失败不阻塞主流程
+        } as any);
+      } catch (err) {
+        // 估算失败不阻塞主流程
+      }
+    }
+
+    // 如果 Layer 2 后仍超限，启动紧急压缩流程
+    if (estimation.exceedsLimit) {
+      logger.warn(
+        'Compaction',
+        `Layer 2 后仍超限 (${estimation.utilizationPercent.toFixed(1)}%)，启动紧急压缩`,
+      );
+
+      current = await applyEmergencyCompression(current, {
+        ...context,
+        tools: context.tools,
+        instructions: context.instructions,
+        targetTokens: estimation.modelLimit * 0.8, // 目标 80% 利用率
+      });
     }
   }
 
   return current;
+}
+
+/**
+ * 紧急压缩流程：Layer 2.5 → Layer 3 → 降级
+ */
+async function applyEmergencyCompression(
+  messages: import('ai').ModelMessage[],
+  context: {
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    contextLimit?: number;
+    tools: Record<string, Tool>;
+    instructions: string;
+    targetTokens: number;
+  },
+): Promise<import('ai').ModelMessage[]> {
+  let current = messages;
+
+  // ── Step 1: Layer 2.5 - 确定性文本压缩 ──
+  logger.info('Compaction', 'Step 1: Layer 2.5 - 确定性文本压缩');
+
+  const deterministicResult = await compressMessagesDeterministic(
+    current,
+    context.targetTokens,
+    context.modelName,
+  );
+
+  current = deterministicResult.messages;
+
+  const afterDeterministic = await estimateFullRequest(
+    current,
+    context.instructions,
+    context.tools,
+    context.modelName,
+    context.contextLimit,
+  );
+
+  if (!afterDeterministic.exceedsLimit) {
+    logger.info(
+      'Compaction',
+      `Layer 2.5 成功: 释放 ${deterministicResult.tokensFreed} tokens，降至 ${afterDeterministic.utilizationPercent.toFixed(1)}%`,
+    );
+    return current;
+  }
+
+  // ── Step 2: Layer 3 - 紧急 LLM 摘要 ──
+  logger.warn(
+    'Compaction',
+    `Layer 2.5 后仍超限 (${afterDeterministic.utilizationPercent.toFixed(1)}%)，启动 Layer 3`,
+  );
+
+  const summaryResult = await emergencySummarize(current, {
+    model: context.model,
+    fallbackModels: context.fallbackModels,
+    targetPercent: 0.6, // 压缩到 60%
+  });
+
+  if (summaryResult.success) {
+    current = summaryResult.messages;
+
+    const afterSummary = await estimateFullRequest(
+      current,
+      context.instructions,
+      context.tools,
+      context.modelName,
+      context.contextLimit,
+    );
+
+    if (!afterSummary.exceedsLimit) {
+      logger.info(
+        'Compaction',
+        `Layer 3 成功: 降至 ${afterSummary.utilizationPercent.toFixed(1)}%`,
+      );
+      return current;
+    }
+  }
+
+  // ── Step 3: 降级 - 强制截断 ──
+  logger.error('Compaction', '所有压缩策略失败，执行强制截断（保底方案）');
+
+  return forceTruncateMessages(current, 0.15);
 }
 
 // ============================================================
@@ -98,3 +203,5 @@ export { estimateMessagesTokens } from './token-counter';
 export { generateConversationTitle } from './title-generator';
 export { handleReactiveRetry, isContextLengthError } from './retry';
 export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX } from './checkpoint';
+export { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
+export { emergencySummarize } from './emergency-summary';

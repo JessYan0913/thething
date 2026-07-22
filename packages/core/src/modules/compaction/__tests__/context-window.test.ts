@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { ModelMessage } from 'ai';
 import type { UIMessage } from 'ai';
 import { validateSummaryQuality } from '../context-window';
 import { extractMessageText } from '../token-counter';
@@ -8,7 +9,7 @@ import { extractMessageText } from '../token-counter';
 // 见 docs/compaction-execution-plan.md 步骤 3
 // ============================================================
 
-function userMsg(text: string): UIMessage {
+function userMsg(text: string): ModelMessage {
   return {
     id: `u-${text.slice(0, 8)}`,
     role: 'user',
@@ -17,7 +18,7 @@ function userMsg(text: string): UIMessage {
 }
 
 describe('validateSummaryQuality (语言无关)', () => {
-  const chineseMessages: UIMessage[] = [
+  const chineseMessages: ModelMessage[] = [
     userMsg('帮我分析一下这个项目的上下文压缩机制有什么问题'),
     userMsg('那 token 统计遗漏的问题怎么修比较好？'),
   ];
@@ -74,7 +75,7 @@ describe('summaryMessage 格式 (.content 而非 .parts)', () => {
       id: 'summary-1',
       role: 'user',
       content: [{ type: 'text', text: 'This session is being continued.\n\n摘要内容' }],
-    } as unknown as UIMessage;
+    } as unknown as ModelMessage;
 
     const text = extractMessageText(summaryMessage);
     expect(text).toContain('摘要内容');

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import type { UIMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 import {
   estimateTextTokens,
   estimateMessageTokens,
@@ -28,7 +29,7 @@ describe('token-counter', () => {
   });
 
   it('should estimate message tokens', async () => {
-    const msg: UIMessage = {
+    const msg: ModelMessage = {
       id: '1',
       role: 'user',
       parts: [{ type: 'text', text: 'Hello' }],
@@ -44,13 +45,13 @@ describe('token-counter', () => {
     const msgWithText = {
       role: 'assistant',
       content: [{ type: 'text', text: longText }],
-    } as unknown as UIMessage;
+    } as ModelMessage;
     const tokensWithText = await estimateMessageTokens(msgWithText);
 
     const msgWithoutText = {
       role: 'assistant',
       content: [{ type: 'text', text: '' }],
-    } as unknown as UIMessage;
+    } as ModelMessage;
     const tokensWithoutText = await estimateMessageTokens(msgWithoutText);
 
     // 有长文本的消息 token 应显著高于空文本
@@ -64,11 +65,11 @@ describe('token-counter', () => {
         { type: 'text', text: 'Let me search' },
         { type: 'tool-call', toolCallId: 'tc-1', toolName: 'grep', args: { pattern: 'extractToolMeta', path: '/repo/src' } },
       ],
-    } as unknown as UIMessage;
+    } as ModelMessage;
     const msgWithoutToolCall = {
       role: 'assistant',
       content: [{ type: 'text', text: 'Let me search' }],
-    } as unknown as UIMessage;
+    } as ModelMessage;
 
     const tokensWith = await estimateMessageTokens(msgWithToolCall);
     const tokensWithout = await estimateMessageTokens(msgWithoutToolCall);
@@ -78,7 +79,7 @@ describe('token-counter', () => {
   });
 
   it('should extract message text', () => {
-    const msg: UIMessage = {
+    const msg: ModelMessage = {
       id: '1',
       role: 'user',
       parts: [{ type: 'text', text: 'Hello world' }],
@@ -87,7 +88,7 @@ describe('token-counter', () => {
   });
 
   it('should detect text blocks', () => {
-    const msg: UIMessage = {
+    const msg: ModelMessage = {
       id: '1',
       role: 'user',
       parts: [{ type: 'text', text: 'Hello' }],
@@ -96,7 +97,7 @@ describe('token-counter', () => {
   });
 
   it('should strip images', () => {
-    const msg: UIMessage = {
+    const msg: ModelMessage = {
       id: '1',
       role: 'user',
       parts: [
@@ -105,9 +106,9 @@ describe('token-counter', () => {
       ],
     };
     const stripped = stripImagesFromMessages([msg]);
-    expect((stripped[0] as UIMessage).parts).toHaveLength(2);
-    expect(((stripped[0] as UIMessage).parts[1] as any).type).toBe('text');
-    expect(((stripped[0] as UIMessage).parts[1] as any).text).toBe('[image]');
+    expect((stripped[0] as ModelMessage).parts).toHaveLength(2);
+    expect(((stripped[0] as ModelMessage).parts[1] as any).type).toBe('text');
+    expect(((stripped[0] as ModelMessage).parts[1] as any).text).toBe('[image]');
   });
 });
 
@@ -117,7 +118,7 @@ describe('token-counter', () => {
 // 流水线传递的是 ModelMessage 格式:工具结果在 .content 数组中,
 // 类型为 tool-result,output 为 ToolResultOutput({type, value})。
 describe('manageToolOutputLifecycle', () => {
-  function createToolMessage(toolName: string, output: unknown, toolCallId = 'tc-1'): UIMessage {
+  function createToolMessage(toolName: string, output: unknown, toolCallId?: string): ModelMessage {
     return {
       id: `msg-${toolCallId}`,
       role: 'tool',
@@ -129,18 +130,18 @@ describe('manageToolOutputLifecycle', () => {
           output: { type: 'json', value: output },
         },
       ],
-    } as unknown as UIMessage;
+    } as ModelMessage;
   }
 
-  function createUserMessage(text: string): UIMessage {
+  function createUserMessage(text: string): ModelMessage {
     return {
       id: `msg-${Date.now()}`,
       role: 'user',
       content: [{ type: 'text', text }],
-    } as unknown as UIMessage;
+    } as ModelMessage;
   }
 
-  function getResultItem(msg: UIMessage): any {
+  function getResultItem(msg: ModelMessage): any {
     return ((msg as unknown as Record<string, unknown>).content as any[])[0];
   }
 
@@ -159,16 +160,16 @@ describe('manageToolOutputLifecycle', () => {
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 2 });
 
     // First two tool outputs should be compressed
-    const item1 = getResultItem(result.messages[1] as UIMessage);
+    const item1 = getResultItem(result.messages[1] as ModelMessage);
     expect(item1._compacted).toBe(true);
     expect(item1.output.value).toContain('Read');
 
-    const item3 = getResultItem(result.messages[3] as UIMessage);
+    const item3 = getResultItem(result.messages[3] as ModelMessage);
     expect(item3._compacted).toBe(true);
     expect(item3.output.value).toContain('Bash');
 
     // Last tool output should NOT be compressed (within keepRecentSteps)
-    const item5 = getResultItem(result.messages[5] as UIMessage);
+    const item5 = getResultItem(result.messages[5] as ModelMessage);
     expect(item5._compacted).toBeUndefined();
   });
 
@@ -181,7 +182,7 @@ describe('manageToolOutputLifecycle', () => {
 
     const result = manageToolOutputLifecycle(messages, DEFAULT_LIFECYCLE_CONFIG);
 
-    const item = getResultItem(result.messages[1] as UIMessage);
+    const item = getResultItem(result.messages[1] as ModelMessage);
     expect(item._compacted).toBe(true);
     expect(item._originalSize).toBeGreaterThan(0);
   });
@@ -202,7 +203,7 @@ describe('manageToolOutputLifecycle', () => {
             _originalSize: 5000,
           },
         ],
-      } as unknown as UIMessage,
+      } as ModelMessage,
     ];
 
     const result = manageToolOutputLifecycle(messages, DEFAULT_LIFECYCLE_CONFIG);
@@ -222,7 +223,7 @@ describe('manageToolOutputLifecycle', () => {
     };
 
     const result = manageToolOutputLifecycle(messages, config);
-    const item = getResultItem(result.messages[1] as UIMessage);
+    const item = getResultItem(result.messages[1] as ModelMessage);
     expect(item._compacted).toBeUndefined();
   });
 
@@ -241,7 +242,7 @@ describe('manageToolOutputLifecycle', () => {
   // 见 docs/compaction-execution-plan.md 步骤 6
   it('ages tool outputs by step count within a single user turn', () => {
     // 单个 user 轮 + 50 次工具调用(每次输出 300 字符,低于 largeOutputThreshold)
-    const messages: UIMessage[] = [createUserMessage('One big agentic task')];
+    const messages: ModelMessage[] = [createUserMessage('One big agentic task')];
     for (let i = 0; i < 50; i++) {
       messages.push(createToolMessage('read_file', { path: `src/f${i}.ts`, content: 'x'.repeat(300) }, `tc-${i}`));
     }
@@ -263,7 +264,7 @@ describe('manageToolOutputLifecycle', () => {
   it('ages old skill outputs while keeping the current one intact', () => {
     // skill 输出作为验收用例:旧的 skill 输出压缩为一行元信息,最近的保持完整
     const skillOutput = { success: true, skillName: 'frontend-design', _skillOutput: 'y'.repeat(5000) };
-    const messages: UIMessage[] = [
+    const messages: ModelMessage[] = [
       createUserMessage('Build me a page'),
       createToolMessage('skill', skillOutput, 'tc-old'),
       createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(300) }, 'tc-mid'),
@@ -272,11 +273,11 @@ describe('manageToolOutputLifecycle', () => {
 
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 1 });
 
-    const oldSkill = getResultItem(result.messages[1] as UIMessage);
+    const oldSkill = getResultItem(result.messages[1] as ModelMessage);
     expect(oldSkill._compacted).toBe(true);
     expect(oldSkill.output.value).toContain("Skill 'frontend-design'");
 
-    const newSkill = getResultItem(result.messages[3] as UIMessage);
+    const newSkill = getResultItem(result.messages[3] as ModelMessage);
     expect(newSkill._compacted).toBeUndefined();
   });
 });
@@ -289,7 +290,7 @@ describe('manageToolOutputLifecycle', () => {
 // 生产事故:此格式此前不被识别,加载时 Layer 2 静默失效,
 // 上下文膨胀到 525k tokens(2026-07-21)。
 describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
-  function createUIToolMessage(toolName: string, input: unknown, output: unknown, toolCallId = 'tc-1'): UIMessage {
+  function createUIToolMessage(toolName: string, input: unknown, output: unknown, toolCallId = 'tc-1'): ModelMessage {
     return {
       id: `msg-${toolCallId}`,
       role: 'assistant',
@@ -302,15 +303,15 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
           output,
         },
       ],
-    } as unknown as UIMessage;
+    } as ModelMessage;
   }
 
-  function createUIUserMessage(text: string): UIMessage {
+  function createUIUserMessage(text: string): ModelMessage {
     return {
       id: `msg-user-${text.length}`,
       role: 'user',
       parts: [{ type: 'text', text }],
-    } as unknown as UIMessage;
+    } as ModelMessage;
   }
 
   function getUIPart(msg: unknown): any {
@@ -368,7 +369,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
         parts: [
           { type: 'tool-read_file', toolCallId: 'tc-p', state: 'input-available', input: { filePath: 'a.ts' } },
         ],
-      } as unknown as UIMessage,
+      } as ModelMessage,
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(result.tokensFreed).toBe(0);
@@ -391,7 +392,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
             output: { result: 'x'.repeat(10000) },
           },
         ],
-      } as unknown as UIMessage,
+      } as ModelMessage,
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const item = getUIPart(result.messages[1]);
@@ -416,7 +417,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
           },
           { type: 'text', text: 'done' },
         ],
-      } as unknown as UIMessage,
+      } as ModelMessage,
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const parts = (result.messages[1] as unknown as Record<string, unknown>).parts as any[];

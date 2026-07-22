@@ -12,7 +12,7 @@
 // ============================================================
 
 import type { Tool } from 'ai';
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
 import { logger } from '../../primitives/logger';
 
@@ -50,7 +50,7 @@ export interface GateResult {
  * @param contextLimit 外部指定的上下文上限（可选）
  */
 export async function assertContextInvariant(
-  messages: PipelineMessage[],
+  messages: import('ai').ModelMessage[],
   instructions: string,
   tools: Record<string, Tool>,
   modelName: string,

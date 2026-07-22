@@ -3,7 +3,7 @@
 // ============================================================
 // 当 API 调用因 context-length 错误失败时，尝试恢复
 
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
@@ -38,7 +38,7 @@ export function isContextLengthError(error: unknown): boolean {
 
 export async function handleReactiveRetry(
   error: unknown,
-  messages: PipelineMessage[],
+  messages: import('ai').ModelMessage[],
   config: CompactionConfig = DEFAULT_COMPACTION_CONFIG,
   context: {
     model: LanguageModelV3;
@@ -48,7 +48,7 @@ export async function handleReactiveRetry(
     dataStore: DataStore;
     contextLimit?: number;
   },
-): Promise<{ messages: PipelineMessage[] }> {
+): Promise<{ messages: import('ai').ModelMessage[] }> {
   if (!isContextLengthError(error)) throw error;
 
   logger.warn('ReactiveRetry', 'Context length error detected, attempting recovery');

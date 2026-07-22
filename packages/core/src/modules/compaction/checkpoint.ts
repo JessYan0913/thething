@@ -13,7 +13,7 @@
 import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import { logger } from '../../primitives/logger';
 import { estimateMessageTokens, estimateMessagesTokens } from './token-counter';
 import { getModelContextLimit } from '../../services/model';
@@ -115,7 +115,7 @@ export async function maybeCheckpointAfterRun(
     if (activeMessages.length < MIN_KEEP_MESSAGES + 2) return false;
 
     const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
-    const totalTokens = await estimateMessagesTokens(activeMessages as unknown as PipelineMessage[], context.modelName);
+    const totalTokens = await estimateMessagesTokens(activeMessages as unknown as import('ai').ModelMessage[], context.modelName);
     if (totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
 
     // 从已有 checkpoint 锚点之后开始摘要(增量);无锚点则从头开始
@@ -131,7 +131,7 @@ export async function maybeCheckpointAfterRun(
     let kept = 0;
     let splitIndex = activeMessages.length;
     for (let i = activeMessages.length - 1; i > startIndex; i--) {
-      kept += await estimateMessageTokens(activeMessages[i] as unknown as PipelineMessage, context.modelName);
+      kept += await estimateMessageTokens(activeMessages[i] as unknown as import('ai').ModelMessage, context.modelName);
       if (kept >= keepBudget) { splitIndex = i; break; }
       splitIndex = i;
     }
@@ -145,7 +145,7 @@ export async function maybeCheckpointAfterRun(
     if (!anchorMessageId) return false;
 
     const ok = await generateAndPersistCheckpointSummary(
-      olderMessages as unknown as PipelineMessage[],
+      olderMessages as unknown as import('ai').ModelMessage[],
       {
         model: context.model,
         fallbackModels: context.fallbackModels,

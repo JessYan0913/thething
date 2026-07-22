@@ -3,8 +3,7 @@
 // 见 docs/context-invariant-architecture.md
 
 import { generateText } from 'ai';
-import type { PipelineMessage } from '../../services/config/compaction-types'
-import type { LanguageModelV3 } from '@ai-sdk/provider';
+
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { extractMessageText, stripImagesFromMessages } from './token-counter';
@@ -43,7 +42,7 @@ const MAX_SUMMARY_LENGTH = 6000;
 const SUMMARY_MAX_OUTPUT_TOKENS = 3000;
 
 export async function generateAndPersistCheckpointSummary(
-  olderMessages: PipelineMessage[],
+  olderMessages: import('ai').ModelMessage[],
   context: {
     model: LanguageModelV3;
     fallbackModels?: LanguageModelV3[];
@@ -114,7 +113,7 @@ async function callWithFallback(
   return null;
 }
 
-export function validateSummaryQuality(summary: string, messages: PipelineMessage[]): boolean {
+export function validateSummaryQuality(summary: string, messages: import('ai').ModelMessage[]): boolean {
   if (!summary || summary.length < 20) return false;
   if (summary.length > MAX_SUMMARY_LENGTH) {
     logger.warn('ContextWindow', `Summary too long (${summary.length} chars), likely copying content`);

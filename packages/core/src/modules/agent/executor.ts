@@ -1,7 +1,7 @@
 import { ToolLoopAgent, isStepCount, generateText } from 'ai';
 import type { PrepareStepFunction, PrepareStepResult, StopCondition, ToolSet, ModelMessage } from 'ai';
 import type { AgentDefinition, AgentExecutionContext, AgentExecutionResult } from './types';
-import type { CompactionConfig, PipelineMessage } from '../../services/config/compaction-types';
+import type { CompactionConfig} from '../../services/config/compaction-types';
 import { manageToolOutputLifecycle } from '../compaction/lifecycle';
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
@@ -34,7 +34,7 @@ export function createSubAgentPrepareStep(
 ): PrepareStepFunction<ToolSet> {
   return ({ messages }) => {
     const result = manageToolOutputLifecycle(
-      messages as PipelineMessage[],
+      messages as import('ai').ModelMessage[],
       compactionConfig.lifecycle,
     );
     return {

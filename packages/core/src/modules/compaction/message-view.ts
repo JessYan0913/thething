@@ -19,7 +19,7 @@
 // 原样保留——天然无损。见 docs/compaction-unification-design.md。
 // ============================================================
 
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import { getToolOutputString, unwrapOutput } from './message-utils';
 
 // ============================================================
@@ -77,11 +77,11 @@ export interface CompactionPatch {
 // ============================================================
 
 /**
- * 从 PipelineMessage（UIMessage 或 ModelMessage）提取统一的
+ * 从 import('ai').ModelMessage（UIMessage 或 ModelMessage）提取统一的
  * 工具结果视图。这是 compaction 代码**唯一**需要判断消息格式
  * 的地方——所有下游函数只操作此视图。
  */
-export function extractToolResultView(msg: PipelineMessage): ToolResultView {
+export function extractToolResultView(msg: import('ai').ModelMessage): ToolResultView {
   // ---- detect format ----
   const raw = msg as unknown as Record<string, unknown>;
   const parts = raw.parts;
@@ -110,9 +110,9 @@ export function extractToolResultView(msg: PipelineMessage): ToolResultView {
  * @returns 写回后的消息与释放的 token 估算
  */
 export function applyCompactionPatches(
-  msg: PipelineMessage,
+  msg: import('ai').ModelMessage,
   patches: CompactionPatch[],
-): { patched: PipelineMessage; freed: number } {
+): { patched: import('ai').ModelMessage; freed: number } {
   if (patches.length === 0) return { patched: msg, freed: 0 };
 
   const raw = msg as unknown as Record<string, unknown>;
@@ -132,7 +132,7 @@ export function applyCompactionPatches(
 // ============================================================
 
 function buildViewFromUIMessage(
-  msg: PipelineMessage,
+  msg: import('ai').ModelMessage,
   parts: Record<string, unknown>[],
 ): ToolResultView {
   const toolResults: ToolResultItemView[] = [];
@@ -188,7 +188,7 @@ function buildViewFromUIMessage(
 // ============================================================
 
 function buildViewFromModelMessage(
-  msg: PipelineMessage,
+  msg: import('ai').ModelMessage,
   content: Record<string, unknown>[],
 ): ToolResultView {
   const toolResults: ToolResultItemView[] = [];
@@ -248,10 +248,10 @@ function buildViewFromModelMessage(
 // ============================================================
 
 function applyToUIMessage(
-  msg: PipelineMessage,
+  msg: import('ai').ModelMessage,
   parts: Record<string, unknown>[],
   patches: CompactionPatch[],
-): { patched: PipelineMessage; freed: number } {
+): { patched: import('ai').ModelMessage; freed: number } {
   const patchMap = new Map(patches.map((p) => [p.refIndex, p.summary]));
   let freed = 0;
 
@@ -275,16 +275,16 @@ function applyToUIMessage(
   });
 
   return {
-    patched: { ...msg, parts: newParts } as PipelineMessage,
+    patched: { ...msg, parts: newParts } as import('ai').ModelMessage,
     freed,
   };
 }
 
 function applyToModelMessage(
-  msg: PipelineMessage,
+  msg: import('ai').ModelMessage,
   content: Record<string, unknown>[],
   patches: CompactionPatch[],
-): { patched: PipelineMessage; freed: number } {
+): { patched: import('ai').ModelMessage; freed: number } {
   const patchMap = new Map(patches.map((p) => [p.refIndex, p.summary]));
   let freed = 0;
 
@@ -306,7 +306,7 @@ function applyToModelMessage(
   });
 
   return {
-    patched: { ...msg, content: newContent } as PipelineMessage,
+    patched: { ...msg, content: newContent } as import('ai').ModelMessage,
     freed,
   };
 }
@@ -334,7 +334,7 @@ function detectError(output: unknown): boolean {
   return false;
 }
 
-function emptyView(msg: PipelineMessage, format: 'ui' | 'model'): ToolResultView {
+function emptyView(msg: import('ai').ModelMessage, format: 'ui' | 'model'): ToolResultView {
   return {
     role: msg.role,
     id: (msg as unknown as { id?: string }).id,
@@ -363,7 +363,7 @@ const SUMMARY_PREAMBLE =
 export function buildSummaryMessage(
   summary: string,
   format: 'ui' | 'model',
-): PipelineMessage {
+): import('ai').ModelMessage {
   const bodyText = SUMMARY_PREAMBLE + summary;
   const id = `${SUMMARY_ID_PREFIX}${Date.now()}`;
 
@@ -372,13 +372,13 @@ export function buildSummaryMessage(
       id,
       role: 'user',
       parts: [{ type: 'text', text: bodyText }],
-    } as PipelineMessage;
+    } as import('ai').ModelMessage;
   }
   return {
     id,
     role: 'user',
     content: [{ type: 'text', text: bodyText }],
-  } as PipelineMessage;
+  } as import('ai').ModelMessage;
 }
 
 // ============================================================

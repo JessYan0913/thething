@@ -23,7 +23,6 @@ import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
 import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
-import type { PipelineMessage } from '../../services/config/compaction-types'
 import type { AgentDefinition } from '../../modules/agent/types'
 import { resolveModelAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
@@ -281,7 +280,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ── 闸门：最终不变量验证 ──
   const { assertContextInvariant } = await import('../../modules/compaction/gate')
   const gateResult = await assertContextInvariant(
-    finalMessages as unknown as PipelineMessage[],
+    finalMessages as unknown as import('ai').ModelMessage[],
     instructions,
     finalTools,
     modelName,
@@ -599,7 +598,7 @@ Respond with exactly "APPROVED", or "DENIED: <brief reason>" if denied. Include 
   };
 }
 
-async function estimateTokensDiff(before: PipelineMessage[], after: PipelineMessage[]): Promise<number> {
+async function estimateTokensDiff(before: import('ai').ModelMessage[], after: import('ai').ModelMessage[]): Promise<number> {
   try {
     const { estimateMessagesTokens } = await import('../../modules/compaction/token-counter')
     const beforeTokens = await estimateMessagesTokens(before)

@@ -287,12 +287,6 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
         compactableTools: null,
         protectedTools: new Set(),
       },
-      contextWindow: {
-        triggerPercent: 0.85,
-        targetPercent: 0.60,
-        contextHintMessages: 2,
-        incrementalSummary: true,
-      },
     },
     // 新增：工具输出限制
     toolOutput: partial?.toolOutput ?? {

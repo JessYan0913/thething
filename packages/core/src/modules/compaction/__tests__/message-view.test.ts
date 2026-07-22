@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { UIMessage } from 'ai';
-import type { PipelineMessage } from '../../../services/config/compaction-types';
+
 import {
   extractToolResultView,
   applyCompactionPatches,
@@ -18,12 +18,12 @@ import {
 // Helpers
 // ============================================================
 
-function makeUIMsg(role: string, parts: Record<string, unknown>[]): PipelineMessage {
-  return { id: 'm1', role, parts } as unknown as PipelineMessage;
+function makeUIMsg(role: string, parts: Record<string, unknown>[]): import('ai').ModelMessage {
+  return { id: 'm1', role, parts } as unknown as import('ai').ModelMessage;
 }
 
-function makeModelMsg(role: string, content: Record<string, unknown>[]): PipelineMessage {
-  return { role, content } as PipelineMessage;
+function makeModelMsg(role: string, content: Record<string, unknown>[]): import('ai').ModelMessage {
+  return { role, content } as import('ai').ModelMessage;
 }
 
 // ============================================================

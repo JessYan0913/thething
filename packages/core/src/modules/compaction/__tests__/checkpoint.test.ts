@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { ModelMessage } from 'ai';
 import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore, StoredSummary } from '../../../primitives/datastore/types';
@@ -9,8 +10,8 @@ import { applyCheckpointOnLoad, maybeCheckpointAfterRun, CHECKPOINT_SUMMARY_ID_P
 // 见 docs/compaction-execution-plan.md 步骤 8.5
 // ============================================================
 
-function msg(id: string, text: string): UIMessage {
-  return { id, role: 'user', parts: [{ type: 'text', text }] } as UIMessage;
+function msg(id: string, text: string): ModelMessage {
+  return { id, role: 'user', parts: [{ type: 'text', text }] } as ModelMessage;
 }
 
 function storeWith(summary: StoredSummary | null): DataStore {
@@ -102,8 +103,8 @@ function mockModel(summaryText: string | Error): LanguageModelV3 {
   } as unknown as LanguageModelV3;
 }
 
-function bigMsg(id: string, role: 'user' | 'assistant', size: number): UIMessage {
-  return { id, role, parts: [{ type: 'text', text: 'x'.repeat(size) }] } as UIMessage;
+function bigMsg(id: string, role: 'user' | 'assistant', size: number): ModelMessage {
+  return { id, role, parts: [{ type: 'text', text: 'x'.repeat(size) }] } as ModelMessage;
 }
 
 function checkpointStore(existing: StoredSummary | null) {

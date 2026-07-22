@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { UIMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 import { manageToolOutputLifecycle } from '../lifecycle';
 import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 
@@ -8,23 +9,23 @@ import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 // 见 docs/compaction-execution-plan.md 步骤 8.3
 // ============================================================
 
-function userMessage(text: string): UIMessage {
-  return { id: `u-${Math.random()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
+function userMessage(text: string): ModelMessage {
+  return { id: `u-${Math.random()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as ModelMessage;
 }
 
-function assistantMessage(text: string): UIMessage {
-  return { id: `a-${Math.random()}`, role: 'assistant', content: [{ type: 'text', text }] } as unknown as UIMessage;
+function assistantMessage(text: string): ModelMessage {
+  return { id: `a-${Math.random()}`, role: 'assistant', content: [{ type: 'text', text }] } as unknown as ModelMessage;
 }
 
-function toolMessage(toolName: string, output: unknown, toolCallId: string): UIMessage {
+function toolMessage(toolName: string, output: unknown, toolCallId: string): ModelMessage {
   return {
     id: `t-${toolCallId}`,
     role: 'tool',
     content: [{ type: 'tool-result', toolName, toolCallId, output: { type: 'json', value: output } }],
-  } as unknown as UIMessage;
+  } as unknown as ModelMessage;
 }
 
-function item(msg: UIMessage): any {
+function item(msg: ModelMessage): any {
   return ((msg as unknown as Record<string, unknown>).content as any[])[0];
 }
 

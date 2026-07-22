@@ -3,6 +3,7 @@ import { mkdtemp, rm, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { UIMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 import { manageToolOutputLifecycle } from '../lifecycle';
 import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 import { getToolResultPath } from '../../budget/tool-result-storage';
@@ -12,19 +13,19 @@ import { getToolResultPath } from '../../budget/tool-result-storage';
 // 见 docs/compaction-execution-plan.md 步骤 7
 // ============================================================
 
-function createUserMessage(text: string): UIMessage {
-  return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as UIMessage;
+function createUserMessage(text: string): ModelMessage {
+  return { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] } as ModelMessage;
 }
 
-function createToolMessage(toolName: string, output: unknown, toolCallId: string): UIMessage {
+function createToolMessage(toolName: string, output: unknown, toolCallId?: string): ModelMessage {
   return {
     id: `a-${toolCallId}`,
     role: 'tool',
     content: [{ type: 'tool-result', toolName, toolCallId, output: { type: 'json', value: output } }],
-  } as unknown as UIMessage;
+  } as ModelMessage;
 }
 
-function getResultItem(msg: UIMessage): any {
+function getResultItem(msg: ModelMessage): any {
   return ((msg as unknown as Record<string, unknown>).content as any[])[0];
 }
 

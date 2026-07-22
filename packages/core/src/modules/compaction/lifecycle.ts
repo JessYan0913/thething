@@ -13,7 +13,7 @@
 // 可能有上百次工具调用,按轮数计算时它们永不老化。
 // 见 docs/context-compaction-analysis.md A。
 
-import type { PipelineMessage } from '../../services/config/compaction-types';
+
 import {
   type LifecycleConfig,
   type CompactedToolResult,
@@ -53,10 +53,10 @@ export interface LifecycleStorage {
  * @returns 替换后的消息和释放的 token 数
  */
 export function manageToolOutputLifecycle(
-  messages: PipelineMessage[],
+  messages: import('ai').ModelMessage[],
   config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
   storage?: LifecycleStorage,
-): { messages: PipelineMessage[]; tokensFreed: number; persistence?: Promise<void> } {
+): { messages: import('ai').ModelMessage[]; tokensFreed: number; persistence?: Promise<void> } {
   // 预计算视图：价值感知信号需要全局扫描
   const views = messages.map(extractToolResultView);
   const staleReadIndices = findStaleDuplicateReads(views);
@@ -186,11 +186,11 @@ interface BudgetCandidate {
  * 持久化最大的直到总额低于 budget。粒度与 message-budget.ts 一致。
  */
 function applyCrossMessageBudget(
-  messages: PipelineMessage[],
+  messages: import('ai').ModelMessage[],
   budget: number,
   storage: LifecycleStorage,
   persistTasks: Promise<void>[],
-): { messages: PipelineMessage[]; freed: number } {
+): { messages: import('ai').ModelMessage[]; freed: number } {
   // 收集所有未压缩的非错误工具结果
   const candidates: BudgetCandidate[] = [];
   for (let i = 0; i < messages.length; i++) {
