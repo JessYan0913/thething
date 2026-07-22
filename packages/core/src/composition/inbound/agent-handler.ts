@@ -960,6 +960,10 @@ export class AgentInboundHandler implements InboundEventHandler {
       isNewConversation: isFirstMessage,
       wikiBaseDir,
       userId: this.config.userId || event.sender.id,
+      checkpoint: {
+        modelName: sessionState.model,
+        fallbackModels: sessionState.fallbackModels,
+      },
     })
 
     logger.debug('AgentInboundHandler', `COMPLETE: responseLen=${finalResponse.length} conversation=${conversationId} durationMs=${Date.now() - startTime}`)

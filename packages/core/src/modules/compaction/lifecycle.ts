@@ -4,8 +4,14 @@
 // 核心创新：每步 API 调用前，自动将旧工具输出替换为结构化元信息。
 // 同步执行，微秒级，不调用 LLM。
 //
-// 流水线传递的是 ModelMessage 格式（AI SDK 内部格式），
-// 工具结果位于 .content 数组中，类型为 tool-result。
+// 格式归一化：消息的双轨格式（UIMessage .parts / ModelMessage .content）
+// 已收敛到 message-view.ts 的 extractToolResultView / applyCompactionPatches
+// 两个函数中。本模块所有决策逻辑通过 ToolResultView 操作，完全格式无关。
+// 见 docs/compaction-unification-design.md。
+//
+// 老化按 step 计数而非 user 轮数：agentic 场景下单个 user 轮内
+// 可能有上百次工具调用,按轮数计算时它们永不老化。
+// 见 docs/context-compaction-analysis.md A。
 
 import type { PipelineMessage } from '../../services/config/compaction-types';
 import {
@@ -14,16 +20,19 @@ import {
   DEFAULT_LIFECYCLE_CONFIG,
   DEFAULT_COMPACTABLE,
 } from './types';
-import { getToolOutputString, unwrapOutput } from './message-utils';
+import {
+  extractToolResultView,
+  applyCompactionPatches,
+  type ToolResultItemView,
+  type ToolResultView,
+} from './message-view';
 import { persistToolResult, getToolResultPath } from '../budget/tool-result-storage';
 import { logger } from '../../primitives/logger';
-import { estimateTokensFromChars } from '../../primitives/token-estimate';
 
 // ============================================================
 // Main Function
 // ============================================================
 
-/** Layer 2 压缩落盘配置。提供时压缩的原始输出写盘可找回 */
 export interface LifecycleStorage {
   sessionId: string;
   dataDir: string;
@@ -33,13 +42,9 @@ export interface LifecycleStorage {
  * 工具输出生命周期管理（Layer 2）
  *
  * 在每步 API 调用前同步执行：
- * - 保留最近 K 个 step（含 tool-result 的消息）的工具输出
+ * - 保留最近 K 个 step 的工具输出
  * - 更早的旧工具输出 → 替换为结构化元信息
  * - 超大工具输出（即使在最近 K 个 step 内）→ 也压缩
- *
- * 老化按 step 计数而非 user 轮数：agentic 场景下单个 user 轮内
- * 可能有上百次工具调用,按轮数计算时它们永不老化。
- * 见 docs/context-compaction-analysis.md A。
  *
  * 提供 storage 时,压缩的原始输出异步落盘,元信息带 saved to 路径,
  * 模型可用 read_file 找回(见主文档 B)。函数本身保持同步;
@@ -52,117 +57,208 @@ export function manageToolOutputLifecycle(
   config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
   storage?: LifecycleStorage,
 ): { messages: PipelineMessage[]; tokensFreed: number; persistence?: Promise<void> } {
-  const recentBoundary = findNthToolResultMessageFromEnd(messages, config.keepRecentSteps);
+  // 预计算视图：价值感知信号需要全局扫描
+  const views = messages.map(extractToolResultView);
+  const staleReadIndices = findStaleDuplicateReads(views);
+  const referencedIndices = findReferencedResults(views);
+  const recentBoundary = findNthToolResultMessageFromEnd(views, config.keepRecentSteps);
+
   let tokensFreed = 0;
   const persistTasks: Promise<void>[] = [];
 
-  // 价值感知信号(见 docs/context-compaction-analysis.md C):
-  // - staleReadIndices:同一文件被多次读取时,更早那几次直接压缩(只留最后一次完整)
-  // - referencedIndices:后续 assistant 文本引用过的结果,延迟老化(降低压缩优先级)
-  const staleReadIndices = findStaleDuplicateReads(messages);
-  const referencedIndices = findReferencedResults(messages);
-
   const result = messages.map((msg, i) => {
-    // 不是 tool-result 消息 → 原样保留
-    if (!hasToolResults(msg)) return msg;
-    // 已经全部压缩过 → 跳过
-    if (isAllCompacted(msg)) return msg;
-    // 错误结果保护:失败的工具输出信息密度高、体积小,压缩后模型会重蹈覆辙
-    if (isErrorResult(msg)) return msg;
+    const v = views[i];
 
-    const tooLarge = totalToolResultSize(msg) > config.largeOutputThreshold;
+    // 无工具结果 → 原样
+    if (v.toolResults.length === 0) return msg;
+
+    // 已全部压缩 → 跳过
+    if (v.toolResults.every((tr) => tr.isCompacted)) return msg;
+
+    // 老化判定
+    const totalSize = v.toolResults
+      .filter((tr) => !tr.isCompacted)
+      .reduce((sum, tr) => sum + tr.outputSize, 0);
+    const tooLarge = totalSize > config.largeOutputThreshold;
     const isStaleDuplicate = staleReadIndices.has(i);
-    // 被后续引用的结果延迟老化:仅豁免"超出最近 K step"这一条,不豁免超大/重复读
+    // 被后续引用的结果延迟老化，仅豁免"超出最近 K step"这一条
     const beyondBoundary = i < recentBoundary && !referencedIndices.has(i);
-
     const shouldCompact = isStaleDuplicate || tooLarge || beyondBoundary;
 
     if (!shouldCompact) return msg;
-    if (!isToolCompactable(msg, config)) return msg;
+    if (!isToolCompactable(v, config)) return msg;
 
-    const { compacted, freed } = compactToolResults(msg, storage, persistTasks);
+    // 构建补丁
+    const patches = buildCompactionPatches(v, storage, persistTasks);
+    if (patches.length === 0) return msg;
+
+    const { patched, freed } = applyCompactionPatches(msg, patches);
     tokensFreed += freed;
-    return compacted;
+    return patched;
   });
+
+  // ── 跨消息超大输出扫描（吸收原 enforceToolResultBudget）──
+  // 当 messageBudget 配置时，对仍然未压缩的大工具输出做全局排序持久化。
+  if (config.messageBudget && config.messageBudget > 0 && storage) {
+    const { messages: scanResult, freed: scanFreed } = applyCrossMessageBudget(
+      result, config.messageBudget, storage, persistTasks,
+    );
+    return {
+      messages: scanResult,
+      tokensFreed: tokensFreed + scanFreed,
+      persistence: persistTasks.length > 0
+        ? Promise.all(persistTasks).then(() => undefined)
+        : undefined,
+    };
+  }
 
   return {
     messages: result,
     tokensFreed,
-    persistence: persistTasks.length > 0 ? Promise.all(persistTasks).then(() => undefined) : undefined,
+    persistence: persistTasks.length > 0
+      ? Promise.all(persistTasks).then(() => undefined)
+      : undefined,
   };
 }
 
 // ============================================================
-// 工具结果检测（直接操作 .content 数组）
-// ============================================================
-
-/** 消息中是否有 tool-result 项 */
-function hasToolResults(msg: PipelineMessage): boolean {
-  const content = (msg as unknown as Record<string, unknown>).content;
-  return Array.isArray(content) && content.some((c: unknown) => {
-    const item = c as Record<string, unknown>;
-    return item.type === 'tool-result';
-  });
-}
-
-/** 获取 tool-result 项的数组 */
-function getToolResultItems(msg: PipelineMessage): Record<string, unknown>[] {
-  const content = (msg as unknown as Record<string, unknown>).content;
-  if (!Array.isArray(content)) return [];
-  return content.filter((c: unknown) => {
-    const item = c as Record<string, unknown>;
-    return item.type === 'tool-result';
-  }) as Record<string, unknown>[];
-}
-
-/** 是否所有 tool-result 都已压缩 */
-function isAllCompacted(msg: PipelineMessage): boolean {
-  const items = getToolResultItems(msg);
-  if (items.length === 0) return true;
-  return items.every((item) => item._compacted === true);
-}
-
-/** 未压缩的 tool-result 输出总字符数 */
-function totalToolResultSize(msg: PipelineMessage): number {
-  return getToolResultItems(msg)
-    .filter((item) => item._compacted !== true)
-    .reduce((sum, item) => sum + getToolOutputString(item.output).length, 0);
-}
-
-/** 提取工具名称列表 */
-function extractToolNames(msg: PipelineMessage): string[] {
-  return getToolResultItems(msg).map((item) => (item.toolName as string) ?? '');
-}
-
-// ============================================================
-// 价值感知信号(见 docs/context-compaction-analysis.md C)
+// Patch Building (replaces old compactToolResults)
 // ============================================================
 
 /**
- * 错误结果保护:失败的工具输出信息密度高、体积小,压缩后模型会忘记
- * 失败原因并重蹈覆辙。检测各工具的错误标记:
- * read/edit/write 用 `error:true`,web_fetch 用 `success:false`,
- * bash 用非零 `exitCode`。
+ * 为一条消息中所有应压缩的工具结果构建补丁列表。
+ * 格式无关——只操作视图和输出值。
  */
-function isErrorResult(msg: PipelineMessage): boolean {
-  return getToolResultItems(msg)
-    .filter((item) => item._compacted !== true)
-    .some((item) => {
-      const parsed = parseIfJsonString(unwrapOutput(item.output));
-      const r = asRecord(parsed);
-      if (!r) return false;
-      if (r.error === true) return true;
-      if (r.success === false) return true;
-      if (typeof r.exitCode === 'number' && r.exitCode !== 0) return true;
-      return false;
-    });
+function buildCompactionPatches(
+  view: ToolResultView,
+  storage?: LifecycleStorage,
+  persistTasks?: Promise<void>[],
+): { refIndex: number; summary: string }[] {
+  const patches: { refIndex: number; summary: string }[] = [];
+
+  for (const tr of view.toolResults) {
+    if (tr.isCompacted) continue;
+    if (tr.isError) continue;          // 错误保护：失败的工具输出不压缩
+    if (tr.outputSize < 200) continue;
+
+    let summary = extractToolMeta(tr.toolName, tr.input, tr.output);
+
+    if (storage && tr.toolCallId) {
+      const isJson =
+        tr.outputRaw.trim().startsWith('{') || tr.outputRaw.trim().startsWith('[');
+      const filepath = getToolResultPath(
+        tr.toolCallId,
+        storage.sessionId,
+        storage.dataDir,
+        isJson,
+      );
+      summary += ` [saved to: ${filepath}]`;
+      persistTasks?.push(
+        persistToolResult(tr.outputRaw, tr.toolCallId, storage.sessionId, storage.dataDir)
+          .then(() => undefined)
+          .catch((err) => {
+            logger.warn('Lifecycle', `Failed to persist ${tr.toolCallId}:`, err);
+          }),
+      );
+    }
+
+    patches.push({ refIndex: tr.refIndex, summary });
+  }
+
+  return patches;
 }
 
+// ============================================================
+// Cross-Message Budget (吸收原 enforceToolResultBudget)
+// ============================================================
+
+interface BudgetCandidate {
+  msgIndex: number;
+  refIndex: number;
+  toolCallId: string;
+  toolName: string;
+  outputRaw: string;
+  size: number;
+}
+
+/**
+ * 跨消息超大输出预算检查：收集所有未压缩工具结果，按大小排序，
+ * 持久化最大的直到总额低于 budget。粒度与 message-budget.ts 一致。
+ */
+function applyCrossMessageBudget(
+  messages: PipelineMessage[],
+  budget: number,
+  storage: LifecycleStorage,
+  persistTasks: Promise<void>[],
+): { messages: PipelineMessage[]; freed: number } {
+  // 收集所有未压缩的非错误工具结果
+  const candidates: BudgetCandidate[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const view = extractToolResultView(messages[i]);
+    for (const tr of view.toolResults) {
+      if (tr.isCompacted || tr.isError) continue;
+      if (!tr.toolCallId) continue;
+      candidates.push({
+        msgIndex: i,
+        refIndex: tr.refIndex,
+        toolCallId: tr.toolCallId,
+        toolName: tr.toolName,
+        outputRaw: tr.outputRaw,
+        size: tr.outputSize,
+      });
+    }
+  }
+
+  // 计算总额
+  let totalSize = candidates.reduce((sum, c) => sum + c.size, 0);
+  if (totalSize <= budget) return { messages, freed: 0 };
+
+  // 按 size 降序排序
+  candidates.sort((a, b) => b.size - a.size);
+
+  // 持久化最大的直到总额低于 budget
+  const patchesByMsg = new Map<number, { refIndex: number; summary: string }[]>();
+  let freed = 0;
+
+  for (const c of candidates) {
+    if (totalSize <= budget) break;
+
+    const isJson = c.outputRaw.trim().startsWith('{') || c.outputRaw.trim().startsWith('[');
+    const filepath = getToolResultPath(c.toolCallId, storage.sessionId, storage.dataDir, isJson);
+    const meta = extractToolMeta(c.toolName, undefined, c.outputRaw);
+    const summary = `${meta} [saved to: ${filepath}]`;
+
+    persistTasks.push(
+      persistToolResult(c.outputRaw, c.toolCallId, storage.sessionId, storage.dataDir)
+        .then(() => undefined)
+        .catch((err) => logger.warn('Lifecycle', `Cross-msg persist ${c.toolCallId}:`, err)),
+    );
+
+    freed += c.size - summary.length;
+    totalSize -= c.size; // 总额中移除
+
+    const list = patchesByMsg.get(c.msgIndex) ?? [];
+    list.push({ refIndex: c.refIndex, summary });
+    patchesByMsg.set(c.msgIndex, list);
+  }
+
+  // 应用补丁
+  const result = messages.map((msg, i) => {
+    const patches = patchesByMsg.get(i);
+    if (!patches || patches.length === 0) return msg;
+    return applyCompactionPatches(msg, patches).patched;
+  });
+
+  return { messages: result, freed: Math.max(0, freed) };
+}
+
+// ============================================================
+
 /** 取一条 read_file 结果回显的文件路径(用于去重),非 read 或无路径返回 null */
-function readResultPath(item: Record<string, unknown>): string | null {
-  const toolName = (item.toolName as string) ?? '';
+function readResultPath(item: ToolResultItemView): string | null {
+  const toolName = item.toolName;
   if (toolName !== 'read_file' && toolName !== 'Read') return null;
-  const r = asRecord(parseIfJsonString(unwrapOutput(item.output)));
+  const r = asRecord(item.output);
   const path = r?.path;
   return typeof path === 'string' && path.length > 0 ? path : null;
 }
@@ -171,14 +267,14 @@ function readResultPath(item: Record<string, unknown>): string | null {
  * 同文件重复读取去重:同一文件被 read_file 多次,只保留最后一次完整输出,
  * 更早的直接进压缩集。返回应压缩的消息索引集合。
  */
-function findStaleDuplicateReads(messages: PipelineMessage[]): Set<number> {
-  // path → 最后一次读取该文件的消息索引
+function findStaleDuplicateReads(views: ToolResultView[]): Set<number> {
   const lastReadIndex = new Map<string, number>();
   const perPathIndices = new Map<string, number[]>();
 
-  messages.forEach((msg, i) => {
-    if (!hasToolResults(msg) || isAllCompacted(msg)) return;
-    for (const item of getToolResultItems(msg)) {
+  views.forEach((v, i) => {
+    if (v.toolResults.length === 0) return;
+    if (v.toolResults.every((tr) => tr.isCompacted)) return;
+    for (const item of v.toolResults) {
       const path = readResultPath(item);
       if (!path) continue;
       lastReadIndex.set(path, i);
@@ -203,14 +299,14 @@ function findStaleDuplicateReads(messages: PipelineMessage[]): Set<number> {
  * 说明它属于当前工作集,降低压缩优先级(延迟老化)。
  * 返回被引用、应延迟老化的 tool-result 消息索引集合。
  */
-function findReferencedResults(messages: PipelineMessage[]): Set<number> {
+function findReferencedResults(views: ToolResultView[]): Set<number> {
   // 收集每条 tool-result 消息回显的路径
   const msgPaths: { index: number; paths: string[] }[] = [];
-  messages.forEach((msg, i) => {
-    if (!hasToolResults(msg) || isAllCompacted(msg)) return;
+  views.forEach((v, i) => {
+    if (v.toolResults.length === 0 || v.toolResults.every((tr) => tr.isCompacted)) return;
     const paths: string[] = [];
-    for (const item of getToolResultItems(msg)) {
-      const r = asRecord(parseIfJsonString(unwrapOutput(item.output)));
+    for (const item of v.toolResults) {
+      const r = asRecord(item.output);
       const p = r?.path;
       if (typeof p === 'string' && p.length > 0) paths.push(p);
     }
@@ -221,10 +317,9 @@ function findReferencedResults(messages: PipelineMessage[]): Set<number> {
 
   const referenced = new Set<number>();
   for (const { index, paths } of msgPaths) {
-    // 只看该结果之后的 assistant 文本
-    for (let j = index + 1; j < messages.length; j++) {
-      if (messages[j].role !== 'assistant') continue;
-      const text = extractAssistantText(messages[j]);
+    for (let j = index + 1; j < views.length; j++) {
+      if (views[j].role !== 'assistant') continue;
+      const text = views[j].textContent;
       if (!text) continue;
       if (paths.some((p) => text.includes(p))) {
         referenced.add(index);
@@ -235,43 +330,17 @@ function findReferencedResults(messages: PipelineMessage[]): Set<number> {
   return referenced;
 }
 
-/** 提取 assistant 消息的文本内容(ModelMessage .content 或 UIMessage .parts) */
-function extractAssistantText(msg: PipelineMessage): string {
-  const content = (msg as unknown as Record<string, unknown>).content;
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((c: unknown) => {
-        const item = c as Record<string, unknown>;
-        return item?.type === 'text' && typeof item.text === 'string' ? item.text : '';
-      })
-      .join('\n');
-  }
-  const parts = (msg as unknown as Record<string, unknown>).parts;
-  if (Array.isArray(parts)) {
-    return parts
-      .map((p: unknown) => {
-        const item = p as Record<string, unknown>;
-        return item?.type === 'text' && typeof item.text === 'string' ? item.text : '';
-      })
-      .join('\n');
-  }
-  return '';
-}
-
 // ============================================================
 // Compactability Check
 // ============================================================
 
-function isToolCompactable(msg: PipelineMessage, config: LifecycleConfig): boolean {
-  const toolNames = extractToolNames(msg);
+function isToolCompactable(view: ToolResultView, config: LifecycleConfig): boolean {
+  const toolNames = new Set(view.toolResults.map((tr) => tr.toolName));
 
-  // 受保护的工具不压缩
   for (const name of toolNames) {
     if (config.protectedTools.has(name)) return false;
   }
 
-  // 显式配置的可压缩工具
   if (config.compactableTools !== null) {
     for (const name of toolNames) {
       if (config.compactableTools.has(name)) return true;
@@ -279,7 +348,6 @@ function isToolCompactable(msg: PipelineMessage, config: LifecycleConfig): boole
     return false;
   }
 
-  // 默认规则：内置工具 + MCP + Connector
   for (const name of toolNames) {
     if (DEFAULT_COMPACTABLE.has(name)) return true;
     if (name.startsWith('mcp_') || name.startsWith('MCP_')) return true;
@@ -287,74 +355,6 @@ function isToolCompactable(msg: PipelineMessage, config: LifecycleConfig): boole
   }
 
   return false;
-}
-
-// ============================================================
-// Tool Output Compression
-// ============================================================
-
-function compactToolResults(
-  msg: PipelineMessage,
-  storage?: LifecycleStorage,
-  persistTasks?: Promise<void>[],
-): {
-  compacted: PipelineMessage;
-  freed: number;
-} {
-  const content = (msg as unknown as Record<string, unknown>).content;
-  if (!Array.isArray(content)) return { compacted: msg, freed: 0 };
-
-  let freed = 0;
-  const newContent = content.map((item: unknown) => {
-    const contentItem = item as Record<string, unknown>;
-    if (contentItem.type !== 'tool-result') return item;
-    if (contentItem._compacted === true) return item;
-
-    const resultStr = getToolOutputString(contentItem.output);
-    const originalSize = resultStr.length;
-
-    // 小输出不值得压缩
-    if (originalSize < 200) return item;
-
-    // 解包 ToolResultOutput 格式，确保 extractors 拿到实际值
-    const unwrappedResult = unwrapOutput(contentItem.output);
-    let summary = extractToolMeta(
-      (contentItem.toolName as string) ?? 'unknown',
-      null,
-      unwrappedResult,
-    );
-
-    // 落盘可恢复:元信息带路径,原文异步写盘(见主文档 B)
-    const toolCallId = contentItem.toolCallId as string | undefined;
-    if (storage && toolCallId) {
-      const isJson = resultStr.trim().startsWith('{') || resultStr.trim().startsWith('[');
-      const filepath = getToolResultPath(toolCallId, storage.sessionId, storage.dataDir, isJson);
-      summary += ` [saved to: ${filepath}]`;
-      persistTasks?.push(
-        persistToolResult(resultStr, toolCallId, storage.sessionId, storage.dataDir)
-          .then(() => undefined)
-          .catch((err) => {
-            logger.warn('Lifecycle', `Failed to persist ${toolCallId}:`, err);
-          }),
-      );
-    }
-
-    // CJK 校准的字符级估算(见 docs/context-compaction-analysis.md #5)
-    freed += Math.max(0, estimateTokensFromChars(resultStr) - estimateTokensFromChars(summary));
-
-    // 保持 ToolResultOutput 结构 { type, value }，附加 _compacted 标记
-    return {
-      ...contentItem,
-      output: { type: 'text', value: summary },
-      _compacted: true,
-      _originalSize: originalSize,
-    };
-  });
-
-  return {
-    compacted: { ...msg, content: newContent } as PipelineMessage,
-    freed,
-  };
 }
 
 // ============================================================
@@ -424,8 +424,6 @@ const extractGrep: MetaExtractor = (args, rawResult) => {
   const result = asRecord(parseIfJsonString(rawResult));
   const argsRecord = asRecord(args);
   const pattern = firstString(result?.pattern, argsRecord?.pattern);
-  // grep 默认已改为紧凑文本输出(formattedOutput),不再有 matches 数组;
-  // 优先取 totalMatches,兼容旧结果的 matches 数组。
   const matches = Array.isArray(result?.matches) ? (result.matches as Record<string, unknown>[]) : [];
   const total = typeof result?.totalMatches === 'number' ? result.totalMatches : matches.length;
   return `Grep '${pattern}' → ${total} matches`;
@@ -493,7 +491,6 @@ const extractSkill: MetaExtractor = (args, rawResult) => {
   if (result?.success === false) {
     return `Skill '${skillName}' → error: ${firstString(result.error).slice(0, 80)}`;
   }
-  // skill 通过 toModelOutput 输出纯文本,rawResult 可能是 _skillOutput 字符串
   const outputLen = typeof result?._skillOutput === 'string'
     ? result._skillOutput.length
     : typeof rawResult === 'string' ? rawResult.length : JSON.stringify(rawResult).length;
@@ -512,7 +509,6 @@ const extractReadWikiPage: MetaExtractor = (args, rawResult) => {
 };
 
 const EXTRACTORS: Record<string, MetaExtractor> = {
-  // 实际注册名(snake_case,见 agent/tools.ts)
   read_file: extractRead,
   bash: extractBash,
   grep: extractGrep,
@@ -522,7 +518,6 @@ const EXTRACTORS: Record<string, MetaExtractor> = {
   web_fetch: extractWebFetch,
   skill: extractSkill,
   read_wiki_page: extractReadWikiPage,
-  // 首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字与旧格式)
   Read: extractRead,
   Bash: extractBash,
   Grep: extractGrep,
@@ -552,12 +547,9 @@ function defaultExtractor(_args: unknown, result: unknown): string {
 }
 
 export function extractToolMeta(toolName: string, args: unknown, result: unknown): string {
-  // 1. 精确匹配
   if (EXTRACTORS[toolName]) return EXTRACTORS[toolName](args, result);
-  // 2. 去掉 mcp_ / connector_ 前缀后匹配
   const baseName = toolName.replace(/^(mcp_|connector_|MCP_|Connector_)/i, '');
   if (EXTRACTORS[baseName]) return EXTRACTORS[baseName](args, result);
-  // 3. 通用提取
   return `${toolName}: ${defaultExtractor(args, result)}`;
 }
 
@@ -566,18 +558,17 @@ export function extractToolMeta(toolName: string, args: unknown, result: unknown
 // ============================================================
 
 /**
- * 从消息末尾找到第 K 条含 tool-result 的消息的位置
- * 返回该位置作为"最近 K 个 step"的边界:该索引之前的工具输出被压缩,
- * 自身及之后保持完整
+ * 从消息末尾找到第 K 条含 tool-result 的消息的位置。
+ * 返回该位置作为"最近 K 个 step"的边界。
  */
-function findNthToolResultMessageFromEnd(messages: PipelineMessage[], k: number): number {
-  if (k <= 0) return messages.length; // 不保留任何 step → 全部压缩
+function findNthToolResultMessageFromEnd(views: ToolResultView[], k: number): number {
+  if (k <= 0) return views.length;
   let count = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (hasToolResults(messages[i])) {
+  for (let i = views.length - 1; i >= 0; i--) {
+    if (views[i].toolResults.length > 0) {
       count++;
       if (count >= k) return i;
     }
   }
-  return 0; // 不到 K 个 step → 全部消息都在"最近"范围内
+  return 0;
 }

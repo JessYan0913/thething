@@ -103,8 +103,6 @@ export interface SessionState {
   todoStore: TodoStore;
   /** 内容替换状态（保证 prompt cache 稳定） */
   contentReplacementState: ContentReplacementState;
-  /** Layer 1: Agent 主动释放的工具输出 ID 列表 */
-  pendingCompactIds: string[];
   /** 压缩配置 */
   compactionConfig?: CompactionConfig;
   /** 模型实例引用（用于 Layer 3 LLM 摘要） */
@@ -115,9 +113,6 @@ export interface SessionState {
   dataStore?: DataStore;
   /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
   consecutiveReasoningOnlySteps: number;
-
-  /** Layer 1 激活提醒是否已注入（水位 >60% 时注入一次，见主文档 C4） */
-  layer1HintInjected: boolean;
 
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;

@@ -53,7 +53,5 @@ export async function buildAgentInstructions(
     excludeSections: options?.excludeSections,
   })
 
-  const compactionHint = '\n\nWhen you finish using a tool\'s output, call compact_tool_result to free context space.'
-
-  return prompt + compactionHint
+  return prompt
 }

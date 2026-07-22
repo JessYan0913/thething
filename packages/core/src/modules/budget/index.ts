@@ -1,10 +1,9 @@
 // ============================================================
 // Budget Module - 预算管理
 // ============================================================
-// 提供工具输出管理和消息预算功能：
+// 提供工具输出管理和持久化存储功能：
 // - tool-output-manager: 单工具阈值截断
 // - tool-result-storage: 工具结果持久化存储
-// - message-budget: 消息级预算检查
 // ============================================================
 
 export {
@@ -20,7 +19,6 @@ export {
   estimateContentTokens,
   estimateObjectTokens,
   calculateOutputSize,
-  processToolOutput,
   type ToolOutputConfig,
   type ContentReplacementState,
   type PersistedToolResult,
@@ -37,10 +35,3 @@ export {
   cleanupOldToolResults,
   formatSize,
 } from './tool-result-storage';
-
-export {
-  enforceToolResultBudget,
-  estimateToolResultsTotal,
-  buildToolNameMap,
-  type BudgetCheckResult,
-} from './message-budget';

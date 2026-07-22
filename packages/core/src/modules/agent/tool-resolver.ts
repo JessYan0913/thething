@@ -8,7 +8,6 @@ const SYSTEM_TOOLS = new Set([
   'grep', 'glob', 'web_fetch',
   'ask_user_question', 'skill', 'cron',
   'save_wiki', 'read_wiki_page',
-  'compact_tool_result',
   'agent', 'parallel_agent',
   'create_todos', 'update_todos', 'list_todos', 'delete_todos',
 ]);
@@ -18,16 +17,14 @@ const SYSTEM_TOOLS = new Set([
  * - agent / parallel_agent：设计上只允许一层子 Agent——子 Agent
  *   不能再派生子 Agent。嵌套防护完全由这里的结构性剔除保证，
  *   没有运行时深度计数。
- * - compact_tool_result：它往父 session 的 pendingCompactIds 写入，
- *   但子 Agent 的 prepareStep 不消费该队列 → 调了无效果还污染父状态
  */
-const SUB_AGENT_DENIED_TOOLS = new Set(['agent', 'parallel_agent', 'compact_tool_result']);
+const SUB_AGENT_DENIED_TOOLS = new Set(['agent', 'parallel_agent']);
 
 /**
  * 解析 Agent 可用的工具列表
  *
  * 过滤逻辑：
- * 0. 子 Agent 禁用工具（agent/parallel_agent/compact_tool_result，无条件剔除）
+ * 0. 子 Agent 禁用工具（agent/parallel_agent，无条件剔除）
  * 1. tools 白名单（如指定了的话）
  * 2. connectors 开关（false 时过滤连接器工具）
  * 3. skills 开关（false 时过滤技能工具）

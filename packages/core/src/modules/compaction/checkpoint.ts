@@ -11,28 +11,27 @@
 // 绝不丢失消息。见 docs/context-compaction-analysis.md E。
 
 import type { UIMessage } from 'ai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
+import type { PipelineMessage } from '../../services/config/compaction-types';
 import { logger } from '../../primitives/logger';
-
-/** checkpoint 摘要消息的 id 前缀,用于识别/去重 */
-export const CHECKPOINT_SUMMARY_ID_PREFIX = 'checkpoint-summary-';
+import { estimateMessageTokens, estimateMessagesTokens } from './token-counter';
+import { getModelContextLimit } from '../../services/model';
+import { generateAndPersistCheckpointSummary } from './context-window';
+import { buildSummaryMessage } from './message-view';
 
 /**
- * 构建 checkpoint 摘要消息。
- * 注意:这里必须是 UIMessage 的 .parts 格式——本函数在 route 层(UIMessage 流水线)使用,
- * 消息随后要过 validateUIMessages/convertToModelMessages;.content 格式会导致校验抛错、
- * 以及 route 层 `for (const part of msg.parts)` 崩溃。
- * (enforceContextWindow 内部的 .content 摘要属于 ModelMessage 流水线,是另一层,勿混淆。)
+ * @deprecated 使用 buildSummaryMessage (message-view.ts) 统一构造。
+ * 保留常量以兼容外部引用。
+ */
+export const CHECKPOINT_SUMMARY_ID_PREFIX = 'summary-';
+
+/**
+ * 构建 checkpoint 摘要消息（UIMessage 格式）。
+ * 格式收敛到 buildSummaryMessage，调用方显式声明 format。
  */
 function buildCheckpointSummaryMessage(summary: string): UIMessage {
-  return {
-    id: `${CHECKPOINT_SUMMARY_ID_PREFIX}${Date.now()}`,
-    role: 'user',
-    parts: [{
-      type: 'text',
-      text: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}`,
-    }],
-  } as UIMessage;
+  return buildSummaryMessage(summary, 'ui') as UIMessage;
 }
 
 /**
@@ -75,5 +74,97 @@ export function applyCheckpointOnLoad(
     // 任何异常 → 回退全量,绝不丢历史
     logger.warn('Checkpoint', 'applyCheckpointOnLoad failed, loading full history:', err);
     return fullMessages;
+  }
+}
+
+// ============================================================
+// 后台 checkpoint:运行结束后生成摘要落库
+// ============================================================
+// 濒死时刻(budget 超限)才做摘要有三个致命弱点:
+//   1. 超限时输入本身可能太大,摘要请求也会失败(2026-07-21 事故:66s 两次尝试全失败)
+//   2. 用户在等待,同步摘要拖慢响应
+//   3. 一旦失败,checkpoint 永远落不了库(历史 4 条摘要锚点全空)
+// 改为运行结束后异步判定:活跃路径超过水位线就在后台生成摘要 + 锚点落库,
+// 下次加载直接命中 applyCheckpointOnLoad,budget 检查天然通过。
+
+/** 触发后台 checkpoint 的上下文占比水位线 */
+const CHECKPOINT_TRIGGER_PERCENT = 0.5;
+/** checkpoint 后保留完整消息的目标占比 */
+const CHECKPOINT_KEEP_PERCENT = 0.3;
+/** 锚点之后至少保留的消息条数 */
+const MIN_KEEP_MESSAGES = 2;
+
+/**
+ * 运行结束后判定并生成 checkpoint(供 finalize/onEnd 后台调用)。
+ *
+ * @param activeMessages 当前活跃路径全量消息(UIMessage)
+ * @returns 是否成功落库了新 checkpoint
+ */
+export async function maybeCheckpointAfterRun(
+  activeMessages: UIMessage[],
+  context: {
+    conversationId: string;
+    dataStore: DataStore;
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    contextLimit?: number;
+  },
+): Promise<boolean> {
+  try {
+    if (activeMessages.length < MIN_KEEP_MESSAGES + 2) return false;
+
+    const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
+    const totalTokens = await estimateMessagesTokens(activeMessages as unknown as PipelineMessage[], context.modelName);
+    if (totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
+
+    // 从已有 checkpoint 锚点之后开始摘要(增量);无锚点则从头开始
+    const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
+    let startIndex = 0;
+    if (stored?.anchorMessageId) {
+      const idx = activeMessages.findIndex((m) => m.id === stored.anchorMessageId);
+      if (idx >= 0) startIndex = idx + 1;
+    }
+
+    // 从末尾往前保留 ≈ KEEP_PERCENT 的 token,其余进入摘要段
+    const keepBudget = contextLimit * CHECKPOINT_KEEP_PERCENT;
+    let kept = 0;
+    let splitIndex = activeMessages.length;
+    for (let i = activeMessages.length - 1; i > startIndex; i--) {
+      kept += await estimateMessageTokens(activeMessages[i] as unknown as PipelineMessage, context.modelName);
+      if (kept >= keepBudget) { splitIndex = i; break; }
+      splitIndex = i;
+    }
+    // 尾部至少保留 MIN_KEEP_MESSAGES 条
+    splitIndex = Math.min(splitIndex, activeMessages.length - MIN_KEEP_MESSAGES);
+
+    const olderMessages = activeMessages.slice(startIndex, splitIndex);
+    if (olderMessages.length === 0) return false;
+
+    const anchorMessageId = olderMessages[olderMessages.length - 1].id;
+    if (!anchorMessageId) return false;
+
+    const ok = await generateAndPersistCheckpointSummary(
+      olderMessages as unknown as PipelineMessage[],
+      {
+        model: context.model,
+        fallbackModels: context.fallbackModels,
+        conversationId: context.conversationId,
+        dataStore: context.dataStore,
+        anchorMessageId,
+      },
+    );
+    if (ok) {
+      logger.info(
+        'Checkpoint',
+        `Background checkpoint saved for ${context.conversationId}: ` +
+        `anchor=${anchorMessageId}, summarized ${olderMessages.length} messages (${totalTokens} tokens total)`,
+      );
+    }
+    return ok;
+  } catch (err) {
+    // 后台任务,失败无害,下次运行结束再试
+    logger.warn('Checkpoint', 'maybeCheckpointAfterRun failed:', err);
+    return false;
   }
 }

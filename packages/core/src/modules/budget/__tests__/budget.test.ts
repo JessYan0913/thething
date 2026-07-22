@@ -12,7 +12,6 @@ import {
   estimateContentTokens,
   estimateObjectTokens,
   calculateOutputSize,
-  processToolOutput,
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
   PREVIEW_SIZE_CHARS,
@@ -29,7 +28,7 @@ import {
   formatSize,
   TOOL_RESULTS_SUBDIR,
 } from '../tool-result-storage';
-import { enforceToolResultBudget, estimateToolResultsTotal } from '../message-budget';
+import { unifiedToolOutputHook } from '../../compaction/unified-output';
 
 describe('tool-output-manager', () => {
   it('keeps exact/default/prefix tool configs', () => {
@@ -75,14 +74,13 @@ describe('tool-output-manager', () => {
   });
 
   it('returns inline output under the limit and persists output over the limit', async () => {
-    const small = await processToolOutput('small content', 'bash', 'tool-small');
+    const small = await unifiedToolOutputHook('small content', 'bash', 'tool-small');
     expect(small.persisted).toBe(false);
     expect(small.content).toBe('small content');
 
-    const large = await processToolOutput('a'.repeat(150_000), 'bash', 'tool-large', {
+    const large = await unifiedToolOutputHook('a'.repeat(150_000), 'bash', 'tool-large', {
       sessionId: 'session-1',
       dataDir: '/tmp/thething-data',
-      state: createContentReplacementState(),
     });
     expect(large.persisted).toBe(true);
     expect(large.content).toContain(PERSISTED_OUTPUT_TAG);
@@ -123,61 +121,3 @@ describe('tool-result-storage', () => {
   });
 });
 
-describe('message-budget', () => {
-  it('persists large tool results when message budget is exceeded', async () => {
-    const state = createContentReplacementState();
-    const messages: UIMessage[] = [
-      {
-        id: '1',
-        role: 'assistant',
-        parts: [
-          {
-            type: 'tool-result',
-            tool_use_id: 'tool-budget',
-            content: 'a'.repeat(10_000),
-          } as any,
-        ],
-      },
-    ];
-
-    const result = await enforceToolResultBudget(
-      messages,
-      state,
-      'session-budget',
-      '/tmp/thething-data',
-      new Set(),
-      { maxResultSizeChars: 100_000, messageBudget: 5_000, previewSizeChars: 500 },
-    );
-
-    expect(result.totalBefore).toBe(10_000);
-    expect(result.newlyPersisted.length).toBe(1);
-    expect(result.messages[0].parts?.[0]).toMatchObject({
-      type: 'tool-result',
-    });
-  });
-
-  it('estimates totals with the same session config shape', () => {
-    const messages: UIMessage[] = [
-      {
-        id: '1',
-        role: 'assistant',
-        parts: [
-          {
-            type: 'tool-result',
-            tool_use_id: 'tool-estimate',
-            content: 'a'.repeat(10_000),
-          } as any,
-        ],
-      },
-    ];
-
-    const estimate = estimateToolResultsTotal(messages, {
-      maxResultSizeChars: 100_000,
-      messageBudget: 5_000,
-    });
-
-    expect(estimate.totalChars).toBe(10_000);
-    expect(estimate.isOverBudget).toBe(true);
-    expect(estimate.percentUsed).toBe(100);
-  });
-});

@@ -4,9 +4,9 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   getToolOutputConfig,
-  processToolOutput,
   createContentReplacementState,
 } from '../tool-output-manager';
+import { unifiedToolOutputHook } from '../../compaction/unified-output';
 
 // ============================================================
 // 8.8 agent 报告纳入 budget 持久化
@@ -22,7 +22,7 @@ describe('agent report budget config', () => {
   it('a normal-sized agent report is not persisted', async () => {
     const state = createContentReplacementState();
     const smallReport = { success: true, summary: 'Done. Fixed 3 bugs.' };
-    const result = await processToolOutput(smallReport, 'agent', 'agent-1', { state });
+    const result = await unifiedToolOutputHook(smallReport, 'agent', 'agent-1', { state });
     expect(result.persisted).toBe(false);
   });
 
@@ -31,7 +31,7 @@ describe('agent report budget config', () => {
     try {
       const state = createContentReplacementState();
       const hugeReport = { success: true, summary: 'x'.repeat(60_000) };
-      const result = await processToolOutput(hugeReport, 'agent', 'agent-2', {
+      const result = await unifiedToolOutputHook(hugeReport, 'agent', 'agent-2', {
         state,
         sessionId: 'sess-1',
         dataDir: dir,

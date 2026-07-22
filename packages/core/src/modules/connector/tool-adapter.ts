@@ -7,8 +7,8 @@ import { z } from 'zod'
 import type { ToolDefinition, SchemaProperty } from './types'
 import { ConnectorRegistry } from './registry'
 import {
-  processToolOutput,
-} from '../../modules/budget/tool-output-manager'
+  unifiedToolOutputHook,
+} from '../../modules/compaction/unified-output'
 import type { ContentReplacementState, ToolOutputConfig } from '../../modules/budget/tool-output-manager'
 
 export interface ConnectorToolOptions {
@@ -124,7 +124,7 @@ export function convertConnectorToolToAItool(
         // 生成 toolUseId（AI SDK 内部会生成，这里用于预览）
         const toolUseId = `connector_${connectorId}_${toolDef.name}_${Date.now()}`
 
-        const processed = await processToolOutput(
+        const processed = await unifiedToolOutputHook(
           result.result,
           toolName,
           toolUseId,

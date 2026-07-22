@@ -97,8 +97,8 @@ describe('config-driven lifecycle behavior', () => {
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(result.tokensFreed).toBeGreaterThan(0);
-    expect(getResultItem(result.messages[1])._compacted).toBe(true);
-    expect(getResultItem(result.messages[3])._compacted).toBe(true);
+    expect(getResultItem(result.messages[1] as UIMessage)._compacted).toBe(true);
+    expect(getResultItem(result.messages[3] as UIMessage)._compacted).toBe(true);
   });
 
   it('largeOutputThreshold triggers compression for big outputs', () => {
@@ -125,8 +125,8 @@ describe('config-driven lifecycle behavior', () => {
     };
     const result = manageToolOutputLifecycle(messages, config);
     // read_file should be compressed
-    expect(getResultItem(result.messages[1])._compacted).toBe(true);
+    expect(getResultItem(result.messages[1] as UIMessage)._compacted).toBe(true);
     // CustomTool should NOT be compressed (not in compactableTools)
-    expect(getResultItem(result.messages[3])._compacted).toBeUndefined();
+    expect(getResultItem(result.messages[3] as UIMessage)._compacted).toBeUndefined();
   });
 });

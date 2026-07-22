@@ -72,17 +72,6 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     skill: createSkillTool({
       skills: config.skills ?? [],
     }),
-    // Layer 1: Agent 主动释放工具输出
-    compact_tool_result: tool({
-      description: 'Release tool outputs you no longer need to free context space. Call this after you have extracted all needed information from a tool result.',
-      inputSchema: z.object({
-        toolCallIds: z.array(z.string()).describe('IDs of tool calls to compact'),
-      }),
-      execute: async ({ toolCallIds }: { toolCallIds: string[] }) => {
-        config.sessionState.pendingCompactIds.push(...toolCallIds)
-        return { compacted: toolCallIds.length, message: 'Will be applied before next step' }
-      },
-    }),
   })
 
   Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId))

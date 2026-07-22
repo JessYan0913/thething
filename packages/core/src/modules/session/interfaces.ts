@@ -99,7 +99,6 @@ export interface ModelSwitching {
 export interface ToolOutputState {
   contentReplacementState: ContentReplacementState;
   toolOutputConfig: ToolOutputConfig;
-  pendingCompactIds: string[];
 }
 
 // ============================================================
@@ -144,7 +143,6 @@ export interface PipelineContext {
   modelSwapper: ModelSwitching;
   contentReplacementState: ContentReplacementState;
   toolOutputConfig: ToolOutputConfig;
-  pendingCompactIds: string[];
   compact(messages: PipelineMessage[]): Promise<CompactionResult>;
   aborted: boolean;
   turnCount: number;
@@ -153,8 +151,6 @@ export interface PipelineContext {
   layout: ResolvedLayout;
   /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
   consecutiveReasoningOnlySteps: number;
-  /** Layer 1 激活提醒是否已注入（水位 >60% 时注入一次，见主文档 C4） */
-  layer1HintInjected: boolean;
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
 }

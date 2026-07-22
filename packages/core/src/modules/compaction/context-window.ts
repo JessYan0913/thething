@@ -1,22 +1,19 @@
 // ============================================================
-// Compaction - Layer 3: Context Window Management
+// Compaction - Checkpoint Summary Generation
 // ============================================================
-// 当 Layer 2 不够时（纯文本对话增长、大量小工具调用累积），
-// 用 LLM 生成摘要。极少触发。
+// 后台异步摘要生成。运行结束后 idle 时触发，失败无害。
+// 前台同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
+// 见 docs/context-invariant-architecture.md。
 
-import { generateText, type UIMessage } from 'ai';
+import { generateText } from 'ai';
 import type { PipelineMessage } from '../../services/config/compaction-types'
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
-import { type ContextWindowConfig, DEFAULT_CONTEXT_WINDOW_CONFIG } from './types';
 import { logger } from '../../primitives/logger';
 import {
-  estimateMessageTokens,
-  estimateMessagesTokens,
   extractMessageText,
   stripImagesFromMessages,
 } from './token-counter';
-import { getModelContextLimit, getDefaultOutputTokens } from '../../services/model';
 
 // ============================================================
 // Summary Prompt
@@ -59,134 +56,51 @@ const MAX_SUMMARY_LENGTH = 6000;
 const SUMMARY_MAX_OUTPUT_TOKENS = 3000;
 
 // ============================================================
-// Main Function
+// Summary Generation（后台 Checkpoint，纯异步）
 // ============================================================
 
-export async function enforceContextWindow(
-  messages: PipelineMessage[],
+/**
+ * 后台 checkpoint 摘要:生成并带锚点落库。
+ * 前台同步 LLM 摘要（原 enforceContextWindow）已删除——濒死时刻是
+ * 最差的调 LLM 时机。这里失败无害(下次运行重试)，
+ * @returns 是否成功落库
+ */
+export async function generateAndPersistCheckpointSummary(
+  olderMessages: PipelineMessage[],
   context: {
     model: LanguageModelV3;
     fallbackModels?: LanguageModelV3[];
-    modelName: string;
     conversationId: string;
     dataStore: DataStore;
-    config: ContextWindowConfig;
-    contextLimit?: number;
-    instructionsTokens?: number;
-    toolsTokens?: number;
+    anchorMessageId: string;
   },
-): Promise<{ messages: PipelineMessage[]; executed: boolean; tokensFreed: number }> {
-  const config = context.config ?? DEFAULT_CONTEXT_WINDOW_CONFIG;
-
-  const msgTokens = await estimateMessagesTokens(messages, context.modelName);
-  const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
-  const realInstructions = context.instructionsTokens ?? 0;
-  const realTools = context.toolsTokens ?? 0;
-  const outputReserve = getDefaultOutputTokens();
-  const overhead = realInstructions + realTools + outputReserve;
-  const totalEstimate = msgTokens + overhead;
-  const triggerTokens = Math.floor(contextLimit * config.triggerPercent);
-
-  if (totalEstimate < triggerTokens) {
-    return { messages, executed: false, tokensFreed: 0 };
-  }
-
-  const targetTokens = Math.floor(contextLimit * config.targetPercent);
-  const MIN_MESSAGE_BUDGET_TOKENS = 2000;
-  const rawBudget = targetTokens - overhead;
-  const targetMessageTokens = Math.max(MIN_MESSAGE_BUDGET_TOKENS, rawBudget);
-
-  if (rawBudget < MIN_MESSAGE_BUDGET_TOKENS) {
-    logger.warn('ContextWindow', `contextLimit ${contextLimit} too small for overhead `
-      + `(instructions=${realInstructions}, tools=${realTools}, output=${outputReserve}), `
-      + `message budget forced to minimum ${MIN_MESSAGE_BUDGET_TOKENS}`);
-  }
-
-  // 找到分割点：保留后段 token 数 ≈ targetMessageTokens
-  const splitIndex = await findSplitIndex(messages, targetMessageTokens, context.modelName);
-
-  if (splitIndex < 3) {
-    return { messages, executed: false, tokensFreed: 0 };
-  }
-
-  const olderMessages = messages.slice(0, splitIndex);
-  const newerMessages = messages.slice(splitIndex);
-
-  // 生成摘要
-  // checkpoint 锚点:摘要覆盖到的最后一条消息 id(稳定,不随 order 重排)。
-  // 见 docs/context-compaction-analysis.md E。
-  const anchorMessageId = olderMessages.length > 0
-    ? (olderMessages[olderMessages.length - 1] as unknown as { id?: string }).id ?? null
-    : null;
-  const summary = await generateSummaryWithFallback(
-    olderMessages, context.model, context.fallbackModels,
-    context.conversationId, context.dataStore, config, anchorMessageId,
-  );
-
-  const summaryMessage: PipelineMessage = {
-    id: `summary-${Date.now()}`,
-    role: 'user',
-    // 流水线传递的是 ModelMessage (.content) 而非 UIMessage (.parts)。
-    // 用 .content 格式,避免 summaryMessage 在发给模型时被序列化为空消息。
-    // 见 docs/context-compaction-analysis.md #4。
-    content: [{
-      type: 'text',
-      text: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}`,
-    }],
-  } as PipelineMessage;
-
-  const result = [summaryMessage, ...newerMessages];
-
-  const newMsgTokens = await estimateMessagesTokens(result, context.modelName);
-  const tokensFreed = Math.max(0, msgTokens - newMsgTokens);
-
-  return { messages: result, executed: true, tokensFreed };
-}
-
-// ============================================================
-// Summary Generation
-// ============================================================
-
-async function generateSummaryWithFallback(
-  messages: PipelineMessage[],
-  model: LanguageModelV3,
-  fallbackModels: LanguageModelV3[] | undefined,
-  conversationId: string,
-  dataStore: DataStore,
-  config: ContextWindowConfig,
-  anchorMessageId: string | null,
-): Promise<string> {
-  // 1. 构建摘要输入
-  const stripped = stripImagesFromMessages(messages);
+): Promise<boolean> {
+  const stripped = stripImagesFromMessages(olderMessages);
   const conversationText = stripped.map((m) => {
     const role = m.role === 'user' ? 'User' : 'Assistant';
     return `${role}: ${extractMessageText(m)}`;
   }).join('\n\n');
 
-  // 2. 增量摘要：如果 DB 有已存摘要，在其基础上追加
-  let prompt: string;
-  if (config.incrementalSummary) {
-    const existing = getExistingSummarySafe(conversationId, dataStore);
-    if (existing) {
-      prompt = `【历史摘要】\n${existing}\n\n【新增对话】\n${conversationText}`;
-    } else {
-      prompt = conversationText;
-    }
-  } else {
-    prompt = conversationText;
+  // 增量:已有摘要时在其基础上更新(applyCheckpointOnLoad 的锚点推进由调用方保证)
+  const existing = getExistingSummarySafe(context.conversationId, context.dataStore);
+  const prompt = existing
+    ? `【历史摘要】\n${existing}\n\n【新增对话】\n${conversationText}`
+    : conversationText;
+
+  const summary = await callWithFallback(prompt, context.model, context.fallbackModels);
+  if (!summary || !validateSummaryQuality(summary, olderMessages)) {
+    return false;
   }
 
-  // 3. 调用 LLM 生成摘要（主模型 + fallback）
-  const summary = await callWithFallback(prompt, model, fallbackModels);
-
-  // 4. 质量验证
-  if (summary && validateSummaryQuality(summary, messages)) {
-    saveSummarySafe(conversationId, summary, messages.length - 1, 0, dataStore, anchorMessageId);
-    return summary;
+  try {
+    context.dataStore.summaryStore.saveSummary(
+      context.conversationId, summary, olderMessages.length - 1, 0, context.anchorMessageId,
+    );
+    return true;
+  } catch (err) {
+    logger.warn('ContextWindow', 'Failed to persist checkpoint summary:', err);
+    return false;
   }
-
-  // 5. LLM 失败 → 模板 fallback
-  return generateTemplateSummary(messages);
 }
 
 async function callWithFallback(
@@ -227,7 +141,7 @@ async function callWithFallback(
 }
 
 // ============================================================
-// Quality Validation & Template Fallback
+// Quality Validation
 // ============================================================
 
 /**
@@ -292,66 +206,9 @@ function longestCommonSubstringLength(s1: string, s2: string): number {
   return maxLength;
 }
 
-// LLM 摘要失败时的兜底：套用结构化小标题，尽量填入能机械提取的信息，
-// 与 SUMMARY_SYSTEM_PROMPT 的结构保持一致（见主文档 D）。
-function generateTemplateSummary(messages: PipelineMessage[]): string {
-  const userMessages = messages.filter((m) => m.role === 'user');
-  const goal = userMessages.length > 0
-    ? extractMessageText(userMessages[0]).substring(0, 200).replace(/\n/g, ' ')
-    : '无';
-
-  const recentPairs: string[] = [];
-  for (let i = Math.max(0, messages.length - 10); i < messages.length; i++) {
-    const msg = messages[i];
-    if (msg.role === 'user') {
-      const userText = extractMessageText(msg).substring(0, 120).replace(/\n/g, ' ');
-      const nextAssistant = messages.slice(i + 1).find((m) => m.role === 'assistant');
-      const assistantText = nextAssistant
-        ? extractMessageText(nextAssistant).substring(0, 160).replace(/\n/g, ' ')
-        : '';
-      recentPairs.push(assistantText ? `用户：${userText} → 助手：${assistantText}` : `用户：${userText}`);
-    }
-  }
-  const progress = recentPairs.length > 0 ? recentPairs.slice(-5).map((p) => `- ${p}`).join('\n') : '无';
-
-  return [
-    '## 用户目标 / 验收标准',
-    goal,
-    '',
-    '## 已完成步骤 & 关键结论',
-    progress,
-    '',
-    '## 涉及的文件路径及改动',
-    '无（模板兜底，LLM 摘要未生成）',
-    '',
-    '## 当前卡点 / 下一步计划',
-    '无',
-    '',
-    '## 用户明确表达的约束与偏好',
-    '无',
-  ].join('\n');
-}
-
 // ============================================================
 // Helpers
 // ============================================================
-
-async function findSplitIndex(
-  messages: PipelineMessage[],
-  targetTokens: number,
-  modelName: string,
-): Promise<number> {
-  let tokens = 0;
-  // 从末尾向前累积，找到分割点
-  for (let i = messages.length - 1; i >= 1; i--) {
-    const msgTokens = await estimateMessageTokens(messages[i], modelName);
-    tokens += msgTokens;
-    if (tokens >= targetTokens) {
-      return i;
-    }
-  }
-  return 1;
-}
 
 function getExistingSummarySafe(conversationId: string, dataStore: DataStore): string | null {
   try {
@@ -359,21 +216,6 @@ function getExistingSummarySafe(conversationId: string, dataStore: DataStore): s
     return summary?.summary || null;
   } catch {
     return null;
-  }
-}
-
-function saveSummarySafe(
-  conversationId: string,
-  summary: string,
-  lastOrder: number,
-  tokenCount: number,
-  dataStore: DataStore,
-  anchorMessageId: string | null,
-): void {
-  try {
-    dataStore.summaryStore.saveSummary(conversationId, summary, lastOrder, tokenCount, anchorMessageId);
-  } catch {
-    logger.error('ContextWindow', 'Failed to save summary');
   }
 }
 

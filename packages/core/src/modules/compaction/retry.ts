@@ -8,7 +8,6 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
-import { enforceContextWindow } from './context-window';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -60,21 +59,9 @@ export async function handleReactiveRetry(
     keepRecentSteps: 1,
   }).messages;
 
-  // 2. Layer 3 紧急摘要
-  try {
-    const windowResult = await enforceContextWindow(current, {
-      model: context.model,
-      fallbackModels: context.fallbackModels,
-      modelName: context.modelName,
-      conversationId: context.conversationId,
-      dataStore: context.dataStore,
-      config: { ...config.contextWindow, targetPercent: 0.50 },
-      contextLimit: context.contextLimit,
-    });
-    current = windowResult.messages;
-  } catch (err) {
-    logger.warn('ReactiveRetry', 'Layer 3 failed:', err);
-  }
+  // 2. 同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
+  //    改为 Layer 2 激进压缩后若仍超限，直接抛出 CONTEXT_BUDGET_EXCEEDED。
+  //    见 docs/context-invariant-architecture.md。
 
   return { messages: current };
 }

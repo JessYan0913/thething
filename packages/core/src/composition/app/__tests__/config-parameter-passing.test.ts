@@ -10,9 +10,9 @@ import {
   getMessageBudgetLimit,
   getPreviewSizeLimit,
   getToolOutputConfig,
-  processToolOutput,
   type ToolOutputConfig,
 } from '../../../modules/budget/tool-output-manager';
+import { unifiedToolOutputHook } from '../../../modules/compaction/unified-output';
 import { createPermissionsSection } from '../../../modules/system-prompt/sections/permissions';
 import { resolveModelAlias } from '../../../services/model';
 import type { PermissionRule } from '../../../modules/permissions/types';
@@ -162,7 +162,7 @@ describe('config parameter passing', () => {
     expect(getPreviewSizeLimit(sessionConfig)).toBe(256);
     expect(getMessageBudgetLimit()).not.toBe(50_000);
 
-    const result = await processToolOutput('a'.repeat(100), 'bash', 'tool-token-limit', {
+    const result = await unifiedToolOutputHook('a'.repeat(100), 'bash', 'tool-token-limit', {
       sessionId: 'test-session',
       dataDir: '/tmp/test-data',
       config: sessionConfig,

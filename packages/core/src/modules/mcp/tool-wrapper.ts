@@ -7,8 +7,8 @@
 
 import type { Tool } from 'ai'
 import {
-  processToolOutput,
-} from '../../modules/budget/tool-output-manager'
+  unifiedToolOutputHook,
+} from '../../modules/compaction/unified-output'
 import type { ContentReplacementState, ToolOutputConfig } from '../../modules/budget/tool-output-manager'
 import { logger } from '../../primitives/logger'
 
@@ -55,7 +55,7 @@ export function wrapMcpToolWithOutputHandler(
       }
 
       const toolUseId = `mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      const processed = await processToolOutput(
+      const processed = await unifiedToolOutputHook(
         textContent,
         toolName,
         toolUseId,
@@ -119,7 +119,7 @@ export async function processMcpToolResult(
 }> {
   const prefixedName = toolName.startsWith('mcp_') ? toolName : `mcp_${toolName}`
 
-  return processToolOutput(result, prefixedName, toolUseId, {
+  return unifiedToolOutputHook(result, prefixedName, toolUseId, {
     sessionId: options.sessionId,
     dataDir: options.dataDir,
     state: options.contentReplacementState,

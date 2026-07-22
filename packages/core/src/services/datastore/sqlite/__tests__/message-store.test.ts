@@ -128,6 +128,46 @@ describe('SQLiteMessageStore (immutable tree)', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
       expect(store.messageStore.appendMessages(CONV, [])).toBe(true)
     })
+
+    // 生产事故(2026-07-21):同一条 978KB assistant 回复用两个不同 id
+    // 在同一秒被写入两次,活跃路径长度翻倍 → 上下文膨胀
+    it('dedupes same-content append under the same parent (different ids)', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+
+      // 重复写入:内容相同但 id 不同,锚点同为 u1
+      const moved = store.messageStore.appendMessages(CONV, [msg('a1-dup', 'assistant', 'r1')], 'u1')
+      // head 已在 a1(≠锚点 u1),CAS 失败返回 false
+      expect(moved).toBe(false)
+      // 关键:没有插入重复节点,活跃路径不变
+      expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a1'])
+      expect(store.messageStore.getBranchInfo(CONV).branches).toEqual({})
+    })
+
+    it('dedup advances parentId so trailing messages chain onto the existing node', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+
+      // 重放包含已存在的 a1(同内容不同 id) + 新消息 a2
+      const moved = store.messageStore.appendMessages(
+        CONV,
+        [msg('a1-replay', 'assistant', 'r1'), msg('a2', 'assistant', 'r2')],
+        'u1',
+      )
+      expect(moved).toBe(false) // head 在 a1,锚点 u1 → 不动 head
+      // a2 挂在既有 a1 之下(而非重复的 a1-replay 之下)
+      store.messageStore.switchHead(CONV, 'a2', false)
+      expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a1', 'a2'])
+    })
+
+    it('does NOT dedup different content under the same parent', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'different')], 'u1')
+      // 两个不同回答都存在(a2 是孤儿分支)
+      store.messageStore.switchHead(CONV, 'a2', false)
+      expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a2'])
+    })
   })
 
   describe('summary invalidation', () => {

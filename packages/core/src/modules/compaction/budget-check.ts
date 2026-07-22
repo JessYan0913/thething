@@ -10,14 +10,11 @@ import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import {
   estimateFullRequest,
-  estimateMessagesTokens,
   estimateToolsTokens,
   estimateToolTokens,
   type FullRequestEstimation,
 } from './token-counter';
-import { getModelContextLimit } from '../../services/model';
 import { manageToolOutputLifecycle } from './lifecycle';
-import { enforceContextWindow } from './context-window';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 
 // ============================================================
@@ -36,7 +33,6 @@ const OPTIONAL_TOOL_PRIORITY = [
 ];
 
 const TOOL_BUDGET_RATIO = 0.10;
-const MESSAGE_BUDGET_RATIO = 0.50;
 
 // ============================================================
 // Types
@@ -119,48 +115,7 @@ export async function checkInitialBudget(
     }
   }
 
-  // ── Strategy 3: Layer 3 LLM summary ──
-  if (context?.conversationId && context?.model && currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.3) {
-    try {
-      const windowResult = await enforceContextWindow(currentMessages, {
-        model: context.model,
-        fallbackModels: context.fallbackModels,
-        modelName,
-        conversationId: context.conversationId,
-        dataStore: context.dataStore!,
-        config: config.contextWindow,
-        contextLimit,
-        instructionsTokens: currentEstimation.instructionsTokens,
-        toolsTokens: currentEstimation.toolsTokens,
-      });
-      if (windowResult.executed) {
-        currentMessages = windowResult.messages;
-        actions.push(`Layer 3: freed ${windowResult.tokensFreed} tokens`);
-
-        currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
-        logger.debug('Budget', `After Layer 3: ${currentEstimation.totalTokens} tokens`);
-
-        if (!currentEstimation.exceedsLimit) {
-          return { passed: true, estimation: currentEstimation, actions, adjustedTools: currentTools, adjustedMessages: currentMessages };
-        }
-      }
-    } catch (err) {
-      logger.warn('Budget', 'Layer 3 failed:', err);
-    }
-  }
-
-  // ── Strategy 4: Emergency truncation ──
-  const targetMessagesBudget = currentEstimation.modelLimit * MESSAGE_BUDGET_RATIO;
-  const currentMessagesTokens = await estimateMessagesTokens(currentMessages);
-
-  if (currentMessagesTokens > targetMessagesBudget) {
-    const truncated = truncateFromHead(currentMessages, targetMessagesBudget, currentEstimation);
-    if (truncated.removed > 0) {
-      currentMessages = truncated.messages;
-      actions.push(`Emergency truncate: removed ${truncated.removed} messages`);
-    }
-  }
-
+  // ── 所有策略已用尽 ──
   const finalEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
   logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimit ? 'EXCEEDS' : 'OK'}`);
 
@@ -173,8 +128,6 @@ export async function checkInitialBudget(
   };
 }
 
-// ============================================================
-// Tool Filtering
 // ============================================================
 
 async function filterToolsByPriority(
@@ -223,55 +176,4 @@ async function filterToolsByPriority(
   }
 
   return result;
-}
-
-// ============================================================
-// Emergency Truncation (simplified, no preserveToolPairs)
-// ============================================================
-
-function truncateFromHead(
-  messages: PipelineMessage[],
-  targetMessageTokens: number,
-  estimation: FullRequestEstimation,
-): { messages: PipelineMessage[]; removed: number } {
-  // 同步估算（如果 tokenizer 已加载）
-  let tokens = estimation.messagesTokens;
-  let startIndex = 0;
-
-  // 从头部移除消息，保留至少 3 条
-  while (tokens > targetMessageTokens && startIndex < messages.length - 3) {
-    // 粗略估算每条消息的 token（使用平均值）
-    const avgTokens = tokens / (messages.length - startIndex);
-    tokens -= avgTokens;
-    startIndex++;
-  }
-
-  // 对齐到用户消息边界
-  while (startIndex < messages.length - 3) {
-    const msg = messages[startIndex];
-    if (msg.role === 'user') break;
-    startIndex++;
-  }
-
-  const result = messages.slice(startIndex);
-
-  // 验证：如果剩余消息仍超过目标预算，递归截断（处理单条超大消息的情况）
-  // 使用更激进的目标：targetMessageTokens 的80%
-  if (result.length > 3 && tokens > targetMessageTokens) {
-    const avgTokensPerMsg = tokens / result.length;
-    // 如果平均每条消息超过目标的50%，说明还有很大的消息需要截断
-    if (avgTokensPerMsg > targetMessageTokens * 0.5) {
-      const furtherTarget = Math.floor(targetMessageTokens * 0.8);
-      const furtherResult = truncateFromHead(result, furtherTarget, { ...estimation, messagesTokens: tokens });
-      return {
-        messages: furtherResult.messages,
-        removed: startIndex + furtherResult.removed,
-      };
-    }
-  }
-
-  return {
-    messages: result,
-    removed: startIndex,
-  };
 }

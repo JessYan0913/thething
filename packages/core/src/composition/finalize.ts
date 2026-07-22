@@ -7,6 +7,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { DataStore } from '../primitives/datastore/types'
 import type { McpRegistry } from '../modules/mcp/registry'
 import { generateConversationTitle } from '../modules/compaction'
+import { maybeCheckpointAfterRun } from '../modules/compaction/checkpoint'
 import { logger } from '../primitives/logger'
 
 export interface FinalizeAgentRunOptions {
@@ -28,6 +29,12 @@ export interface FinalizeAgentRunOptions {
   wikiBaseDir?: string
   /** 用户 ID */
   userId?: string
+  /** 后台 checkpoint 摘要参数（提供时，活跃路径超水位线则在后台生成摘要落库） */
+  checkpoint?: {
+    modelName: string
+    contextLimit?: number
+    fallbackModels?: LanguageModelV3[]
+  }
 }
 
 /**
@@ -56,6 +63,20 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
             dataStore.conversationStore.updateConversationTitle(conversationId, title)
           })
           .catch(e => logger.warn('FinalizeAgentRun', `Title generation failed: ${e}`))
+      }
+
+      // 后台 checkpoint:活跃路径超水位线时生成摘要 + 锚点落库,
+      // 下次加载走 applyCheckpointOnLoad,避免濒死时刻同步摘要(见 checkpoint.ts)
+      if (opts.checkpoint && opts.model) {
+        const activeMessages = dataStore.messageStore.getMessagesByConversation(conversationId)
+        maybeCheckpointAfterRun(activeMessages, {
+          conversationId,
+          dataStore,
+          model: opts.model,
+          fallbackModels: opts.checkpoint.fallbackModels,
+          modelName: opts.checkpoint.modelName,
+          contextLimit: opts.checkpoint.contextLimit,
+        }).catch(e => logger.warn('FinalizeAgentRun', `Background checkpoint failed: ${e}`))
       }
 
       // 成本持久化（只调一次）

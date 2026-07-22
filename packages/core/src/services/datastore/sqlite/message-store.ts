@@ -99,6 +99,15 @@ export class SQLiteMessageStore implements MessageStore {
       let parentId: string | null = anchor;
       for (const message of messages) {
         const msg = { ...message, id: message.id || nanoid() };
+
+        // 同内容去重：同一 parent 下已有相同 parts 的消息 → 复用而非重复插入
+        const dupId = this.findDupByContent(conversationId, parentId, msg);
+        if (dupId) {
+          logger.debug('MessageStore', `appendMessages: skip duplicate (same parts as ${dupId}) under ${parentId ?? 'root'}`);
+          parentId = dupId;
+          continue;
+        }
+
         this.insertNode(conversationId, msg, parentId);
         parentId = msg.id;
       }
@@ -213,6 +222,28 @@ export class SQLiteMessageStore implements MessageStore {
         'INSERT INTO messages (id, conversation_id, parent_id, role, content) VALUES (?, ?, ?, ?, ?)'
       )
       .run(msg.id, conversationId, parentId, msg.role, JSON.stringify(msg));
+  }
+
+  /** 同 parent 下查同内容消息，用于 appendMessages 去重 */
+  private findDupByContent(conversationId: string, parentId: string | null, msg: UIMessage): string | null {
+    const rows = parentId !== null
+      ? this.db
+          .prepare('SELECT id, content FROM messages WHERE conversation_id = ? AND parent_id = ?')
+          .all(conversationId, parentId) as { id: string; content: string }[]
+      : this.db
+          .prepare('SELECT id, content FROM messages WHERE conversation_id = ? AND parent_id IS NULL')
+          .all(conversationId) as { id: string; content: string }[];
+
+    const msgPartsJson = JSON.stringify(msg.parts);
+    for (const row of rows) {
+      try {
+        const existing = JSON.parse(row.content) as UIMessage;
+        if (existing.role === msg.role && JSON.stringify(existing.parts) === msgPartsJson) {
+          return row.id;
+        }
+      } catch { /* malformed content, skip */ }
+    }
+    return null;
   }
 
   private getHead(conversationId: string): string | null {

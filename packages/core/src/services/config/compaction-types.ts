@@ -21,6 +21,8 @@ export interface LifecycleConfig {
   compactableTools: Set<string> | null;
   /** 不可压缩的工具名集合，优先级高于 compactableTools（默认为空） */
   protectedTools: Set<string>;
+  /** 跨消息工具输出总额预算（0 = 禁用跨消息扫描，继承原 enforceToolResultBudget） */
+  messageBudget?: number;
 }
 
 export interface ContextWindowConfig {

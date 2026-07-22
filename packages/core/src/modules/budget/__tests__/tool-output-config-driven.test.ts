@@ -3,7 +3,6 @@ import path from 'path';
 import { describe, it, expect, vi } from 'vitest';
 import type { UIMessage } from 'ai';
 import {
-  processToolOutput,
   getToolOutputConfig,
   getMessageBudgetLimit,
   getPreviewSizeLimit,
@@ -11,7 +10,7 @@ import {
   type ToolOutputConfig,
 } from '../tool-output-manager';
 import { persistToolResult, buildPersistedOutputMessage } from '../tool-result-storage';
-import { enforceToolResultBudget } from '../message-budget';
+import { unifiedToolOutputHook } from '../../compaction/unified-output';
 import { createSessionState } from '../../session';
 import { resolveLayout } from '../../../services/config/layout';
 import { createPricingResolver } from '../../../services/model/pricing';
@@ -53,7 +52,7 @@ const layout = resolveLayout({
 describe('tool output config driven behavior', () => {
   it('small session maxResultSizeChars causes persistence', async () => {
     const sessionConfig: ToolOutputConfig = { maxResultSizeChars: 500 };
-    const result = await processToolOutput('a'.repeat(600), 'bash', 'tool-small-limit', {
+    const result = await unifiedToolOutputHook('a'.repeat(600), 'bash', 'tool-small-limit', {
       sessionId: 'session-small-limit',
       dataDir: '/tmp/test-data',
       config: sessionConfig,
@@ -62,42 +61,12 @@ describe('tool output config driven behavior', () => {
   });
 
   it('default config leaves small bash output inline', async () => {
-    const result = await processToolOutput('a'.repeat(600), 'bash', 'tool-default-limit', {
+    const result = await unifiedToolOutputHook('a'.repeat(600), 'bash', 'tool-default-limit', {
       sessionId: 'session-default-limit',
       dataDir: '/tmp/test-data',
     });
     expect(result.persisted).toBe(false);
     expect(result.content.length).toBe(600);
-  });
-
-  it('messageBudget controls enforceToolResultBudget', async () => {
-    const messages: UIMessage[] = [
-      {
-        id: '1',
-        role: 'assistant',
-        parts: [
-          {
-            type: 'tool-result',
-            tool_use_id: 'tool-budget',
-            content: 'a'.repeat(10_000),
-          } as any,
-        ],
-      },
-    ];
-
-    const result = await enforceToolResultBudget(
-      messages,
-      createContentReplacementState(),
-      'session-budget',
-      '/tmp/test-data',
-      new Set(),
-      { maxResultSizeChars: 100_000, messageBudget: 5_000 },
-    );
-
-    expect(result.totalBefore).toBe(10_000);
-    expect(result.newlyPersisted.length).toBe(1);
-    expect(getMessageBudgetLimit({ maxResultSizeChars: 1_000, messageBudget: 5_000 })).toBe(5_000);
-    expect(getMessageBudgetLimit()).toBe(MAX_TOOL_RESULTS_PER_MESSAGE_CHARS);
   });
 
   it('previewSizeChars controls persisted preview size', async () => {

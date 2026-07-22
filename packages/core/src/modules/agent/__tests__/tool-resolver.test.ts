@@ -23,17 +23,16 @@ function makeDefinition(overrides: Partial<AgentDefinition> = {}): AgentDefiniti
 
 const FULL_TOOLSET = [
   'read_file', 'bash', 'grep', 'glob', 'web_fetch',
-  'agent', 'parallel_agent', 'compact_tool_result',
+  'agent', 'parallel_agent',
   'skill', 'mcp__server__tool', 'some_connector_tool',
 ];
 
 describe('resolveToolsForAgent', () => {
   describe('sub-agent denied tools (single-level nesting guard)', () => {
-    it('always removes agent/parallel_agent/compact_tool_result', () => {
+    it('always removes agent/parallel_agent', () => {
       const result = resolveToolsForAgent(makeDefinition(), makeContext(FULL_TOOLSET));
       expect(result).not.toContain('agent');
       expect(result).not.toContain('parallel_agent');
-      expect(result).not.toContain('compact_tool_result');
       expect(result).toContain('read_file');
       expect(result).toContain('bash');
     });
@@ -53,7 +52,6 @@ describe('resolveToolsForAgent', () => {
       );
       expect(result).not.toContain('agent');
       expect(result).not.toContain('parallel_agent');
-      expect(result).not.toContain('compact_tool_result');
     });
   });
 

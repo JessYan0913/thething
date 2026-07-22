@@ -1,7 +1,6 @@
 import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
 import type { PipelineMessage } from '../../services/config/compaction-types';
 import type { PipelineContext } from '../session/interfaces';
-import { enforceToolResultBudget } from '../budget/message-budget';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
 import { getModelContextLimit } from '../../services/model';
 import { logger } from '../../primitives/logger';
@@ -60,19 +59,6 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     );
 
     // 条件技能激活已移除，技能现在通过 Skill 工具主动调用
-
-    // Layer 1 激活:上下文水位 >60% 时注入一次提醒,把被动的
-    // compact_tool_result 能力激活(见 docs/context-compaction-analysis.md C4)
-    if (!sessionState.layer1HintInjected && budgetSummary.usagePercentage > 60) {
-      sessionState.layer1HintInjected = true;
-      debugLog(debugEnabled, `[Agent] Injecting Layer 1 compaction hint at ${budgetSummary.usagePercentage.toFixed(1)}%`);
-      return {
-        messages: [...messages, {
-          role: 'user',
-          content: '上下文已使用较多空间。对于已经用完、不再需要的工具输出，请调用 compact_tool_result（传入对应的 toolCallId）释放空间。',
-        } as ModelMessageType],
-      } as PrepareStepResult<TOOLS>;
-    }
 
     if (sessionState.denialTracker.isThresholdExceeded()) {
       const injectMsg = sessionState.denialTracker.getInjectMessage();
@@ -172,33 +158,11 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       }
     }
 
-    // 每步调用 compactBeforeStep（Layer 1 + Layer 2 + Layer 3）
+    // 每步调用 compactBeforeStep（Layer 2 + Layer 3）
     const compactResult = await sessionState.compact(messages as PipelineMessage[]);
     if (compactResult.executed) {
       debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
       messages = compactResult.messages as ModelMessageType[];
-    }
-
-    // ✅ 新增：工具结果预算检查
-    // 在工具结果进入下一轮前，检查总额是否超过预算
-    if (stepNumber > 0 && lastStep?.toolResults && lastStep.toolResults.length > 0) {
-      const budgetResult = await enforceToolResultBudget(
-        messages as PipelineMessage[],
-        sessionState.contentReplacementState,
-        sessionState.conversationId,
-        sessionState.layout.dataDir,
-        new Set(),
-        sessionState.toolOutputConfig,
-      );
-
-      if (budgetResult.newlyPersisted.length > 0) {
-        debugLog(
-          debugEnabled,
-          `[Agent] Tool result budget: persisted ${budgetResult.newlyPersisted.length} results, ` +
-          `saved ${budgetResult.tokensSaved} tokens`
-        );
-        messages = budgetResult.messages as ModelMessageType[];
-      }
     }
 
     // Context usage progress bar

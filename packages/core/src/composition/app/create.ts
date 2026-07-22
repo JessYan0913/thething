@@ -4,7 +4,7 @@
 // 合并原 composition/app/create.ts（配置解析）+ modules/agent/create.ts（组装编排），
 // 让组装逻辑正确归属于 composition 层。
 
-import type { ToolApprovalStatus } from 'ai';
+import type { ToolApprovalStatus, UIMessage } from 'ai';
 import { ToolLoopAgent, wrapLanguageModel, generateText } from 'ai'
 import type { LanguageModel, LanguageModelMiddleware } from 'ai'
 import type { SubAgentStreamWriter } from '../../modules/agent'
@@ -270,15 +270,26 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   }
 
   if (!budgetCheck.passed) {
-    logger.warn(
-      'AgentCreate',
-      `Budget check failed after all strategies. ` +
-      `Request may still fail with context limit error.`,
-    )
+    const msg = `上下文超限(${budgetCheck.estimation.totalTokens} tokens > ${budgetCheck.estimation.modelLimit} 窗口上限),已尝试 ${budgetCheck.actions.length > 0 ? budgetCheck.actions.join('; ') : '所有策略均失败'}。请减少本轮消息量或开始新会话。`
+    logger.warn('AgentCreate', msg)
+    throw new Error(`CONTEXT_BUDGET_EXCEEDED: ${msg}`)
   }
 
   const finalTools = budgetCheck.adjustedTools ?? filteredTools
-  const finalMessages = budgetCheck.adjustedMessages ?? messagesWithAttachments
+  const finalMessages = (budgetCheck.adjustedMessages ?? messagesWithAttachments) as UIMessage[]
+
+  // ── 闸门：最终不变量验证 ──
+  const { assertContextInvariant } = await import('../../modules/compaction/gate')
+  const gateResult = await assertContextInvariant(
+    finalMessages as unknown as PipelineMessage[],
+    instructions,
+    finalTools,
+    modelName,
+    sessionOptions.maxContextTokens,
+  )
+  if (!gateResult.passed) {
+    throw new Error(`CONTEXT_BUDGET_EXCEEDED: ${gateResult.decision}`)
+  }
 
   if (options.autoApprove) {
     for (const name of Object.keys(finalTools)) {
@@ -294,7 +305,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
 
   sessionState.compact = async (msgs) => {
     if (sessionState.compactModel && sessionState.dataStore) {
-      const afterResult = await compactBeforeStep(msgs, sessionState, compactionCfg, {
+      const afterResult = await compactBeforeStep(msgs, compactionCfg, {
         model: sessionState.compactModel,
         fallbackModels: sessionState.fallbackModels,
         modelName: sessionState.model,
@@ -305,8 +316,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         toolsTokens: overheadTools,
         // Layer 2 压缩落盘可恢复:与 budget 模块共用存储目录(见主文档 B)
         storage: { sessionId: conversationId, dataDir: sessionState.layout.dataDir },
-        // usage 反馈校准系数(见主文档 F)
-        calibration: sessionState.tokenBudget.calibration,
       })
       const tokensFreed = await estimateTokensDiff(msgs, afterResult)
       return {
@@ -317,7 +326,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       }
     }
     const { manageToolOutputLifecycle } = await import('../../modules/compaction/lifecycle')
-    const result = manageToolOutputLifecycle(msgs, compactionCfg.lifecycle)
+    const result = manageToolOutputLifecycle(msgs, compactionCfg.lifecycle, {
+      sessionId: conversationId,
+      dataDir: sessionState.layout.dataDir,
+    })
     return {
       messages: result.messages,
       executed: result.tokensFreed > 0,

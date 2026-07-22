@@ -184,7 +184,7 @@ export async function POST(request: Request) {
     // We create a new array so original messages (with file parts) are preserved for storage.
     const llmMessages: UIMessage[] = await Promise.all(
       messagesWithAttachments.map(async (msg) => {
-        if (msg.role !== 'user') return msg;
+        if (msg.role !== 'user' || !Array.isArray(msg.parts)) return msg;
         const newParts: typeof msg.parts = [];
         let changed = false;
         for (const part of msg.parts) {
@@ -208,7 +208,7 @@ export async function POST(request: Request) {
     // After file-conversion, only image/PDF file parts survive; replace them with
     // text placeholders so text-only models (e.g. mimo-v2.5) don't 400.
     const finalMessages: UIMessage[] = llmMessages.map((msg) => {
-      if (msg.role !== 'user') return msg;
+      if (msg.role !== 'user' || !Array.isArray(msg.parts)) return msg;
       const strippedParts: typeof msg.parts = [];
       let changed = false;
       for (const part of msg.parts) {
@@ -231,14 +231,14 @@ export async function POST(request: Request) {
       `[LLM Input] ${finalMessages.length} messages:\n` +
         finalMessages
           .map((m, i) => {
-            const partSummaries = m.parts.map((p) => {
+            const partSummaries = Array.isArray(m.parts) ? m.parts.map((p) => {
               if (p.type === 'text') return `text(${(p as { text: string }).text.slice(0, 40)})`;
               if (p.type === 'file') {
                 const fp = p as { mediaType?: string; filename?: string; url?: string };
                 return `file(${fp.mediaType}, ${fp.filename ?? 'unnamed'}, url:${fp.url ? fp.url.slice(0, 30) + '...' : 'none'})`;
               }
               return `[${p.type}]`;
-            });
+            }) : ['<no-parts>'];
             return `  [${i}] ${m.role}: ${partSummaries.join(' | ')}`;
           })
           .join('\n'),
@@ -294,6 +294,10 @@ export async function POST(request: Request) {
           isNewConversation: isFirstMessage,
           userId,
           wikiBaseDir,
+          checkpoint: {
+            modelName: sessionState.model,
+            fallbackModels: sessionState.fallbackModels,
+          },
         });
       } catch (err) {
         console.error('[Chat API] onFinish error:', err);
@@ -429,6 +433,12 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('[Chat API] POST error:', error);
+    if (error instanceof Error && error.message.startsWith('CONTEXT_BUDGET_EXCEEDED:')) {
+      return NextResponse.json({
+        error: error.message.slice('CONTEXT_BUDGET_EXCEEDED: '.length),
+        code: 'CONTEXT_BUDGET_EXCEEDED',
+      }, { status: 413 });
+    }
     return NextResponse.json({ error: 'Failed to process chat request' }, { status: 500 });
   }
 }
