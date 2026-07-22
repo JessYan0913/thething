@@ -58,6 +58,20 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       `[Agent] Step ${stepNumber + 1} | Tokens: ${budgetSummary.totalTokens.toLocaleString()} (${budgetSummary.usagePercentage.toFixed(1)}%) | Compact: ${budgetSummary.shouldCompact ? 'YES' : 'no'}`,
     );
 
+    // 注入上下文水位信息（当使用率 > 60% 时让模型可见）
+    if (budgetSummary.usagePercentage > 60) {
+      const warningLevel = budgetSummary.usagePercentage > 85 ? ' ⚠️ CRITICAL' : budgetSummary.usagePercentage > 75 ? ' ⚠️ HIGH' : '';
+      const contextHint = `[Context Usage: ${budgetSummary.usagePercentage.toFixed(0)}%${warningLevel}]\n` +
+        (budgetSummary.usagePercentage > 75
+          ? `Note: Large tool outputs can be recovered from disk if needed. Check tool result metadata for "[saved to: ...]" paths.\n`
+          : '');
+      messages = [...messages, {
+        role: 'user',
+        content: contextHint,
+      } as ModelMessageType];
+      debugLog(debugEnabled, `[Agent] Context usage ${budgetSummary.usagePercentage.toFixed(1)}%, injected hint`);
+    }
+
     // 条件技能激活已移除，技能现在通过 Skill 工具主动调用
 
     if (sessionState.denialTracker.isThresholdExceeded()) {

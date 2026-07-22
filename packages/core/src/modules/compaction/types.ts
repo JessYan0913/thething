@@ -3,8 +3,8 @@
 // ============================================================
 
 // Re-export shared types from services layer
-import type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../../services/config/compaction-types';
-export type { CompactionConfig, LifecycleConfig, ContextWindowConfig } from '../../services/config/compaction-types';
+import type { CompactionConfig, LifecycleConfig } from '../../services/config/compaction-types';
+export type { CompactionConfig, LifecycleConfig } from '../../services/config/compaction-types';
 export type { CompactionResult } from '../../services/config/compaction-types';
 
 export const DEFAULT_LIFECYCLE_CONFIG: LifecycleConfig = {
@@ -12,18 +12,11 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleConfig = {
   largeOutputThreshold: 8000,
   compactableTools: null,
   protectedTools: new Set(),
-};
-
-export const DEFAULT_CONTEXT_WINDOW_CONFIG: ContextWindowConfig = {
-  triggerPercent: 0.85,
-  targetPercent: 0.60,
-  contextHintMessages: 2,
-  incrementalSummary: true,
+  messageBudget: 100_000,
 };
 
 export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
   lifecycle: DEFAULT_LIFECYCLE_CONFIG,
-  contextWindow: DEFAULT_CONTEXT_WINDOW_CONFIG,
 };
 
 // ── Tool Output Compression ──

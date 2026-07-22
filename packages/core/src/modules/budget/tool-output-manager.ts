@@ -1,15 +1,4 @@
-// ============================================================
-// Tool Output Manager - 工具输出管理模块
-// ============================================================
-// 参考 Claude Code 的三层截断机制：
-// 1. 单工具阈值截断
-// 2. 消息级预算检查
-// 3. 状态稳定性（保证 prompt cache）
-// ============================================================
-
-// ============================================================
-// Tool Output 配置来源说明
-// ============================================================
+// Tool Output Manager - 配置和辅助函数
 // 重要：以下配置常量已迁移到 BehaviorConfig.toolOutput
 // - DEFAULT_MAX_RESULT_SIZE_CHARS → behavior.toolOutput.maxResultSizeChars
 // - MAX_TOOL_RESULT_TOKENS → behavior.toolOutput.maxToolResultTokens
@@ -50,19 +39,9 @@ export {
 } from './tool-output-constants';
 export type { PersistedToolResult, ToolOutputConfig, ContentReplacementState } from './tool-output-constants';
 export { getPreviewSizeLimit } from './tool-output-constants';
-
-// ============================================================
-// 配置注入（替代 GrowthBook）
-// ============================================================
-// Core 只接收应用层注入的配置，不直接读取环境变量或远程配置
-// 应用层可根据需要从环境变量、配置文件、远程服务等获取配置
-
-// ============================================================
-// 内部工具函数
-// ============================================================
-
 import type { ToolOutputConfig, ContentReplacementState, PersistedToolResult } from './tool-output-constants';
-import { getPreviewSizeLimit } from './tool-output-constants';
+
+
 
 function getMaxToolResultTokens(sessionConfig?: ToolOutputConfig): number {
   const override = sessionConfig?.maxResultTokens
@@ -104,9 +83,7 @@ export interface ContentReplacementRecord {
   replacement: string
 }
 
-// ============================================================
-// 工具输出配置表
-// ============================================================
+
 
 /**
  * 工具输出配置表
@@ -161,9 +138,7 @@ export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
   },
 }
 
-// ============================================================
-// 配置获取函数
-// ============================================================
+
 
 /**
  * 前缀匹配工具类型

@@ -1,23 +1,13 @@
-// ============================================================
-// Compaction - Checkpoint Summary Generation
-// ============================================================
 // 后台异步摘要生成。运行结束后 idle 时触发，失败无害。
 // 前台同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
-// 见 docs/context-invariant-architecture.md。
+// 见 docs/context-invariant-architecture.md
 
 import { generateText } from 'ai';
 import type { PipelineMessage } from '../../services/config/compaction-types'
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
-import {
-  extractMessageText,
-  stripImagesFromMessages,
-} from './token-counter';
-
-// ============================================================
-// Summary Prompt
-// ============================================================
+import { extractMessageText, stripImagesFromMessages } from './token-counter';
 
 const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助手。对话即将因超出上下文窗口而被截断，你的摘要将作为唯一的记忆用于继续任务。目标不是复述对话，而是让接手者能无缝继续工作。
 
@@ -49,22 +39,9 @@ const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助
 
 请直接输出结构化摘要，不要任何前缀或解释。`;
 
-// 结构化摘要比叙事体长，放宽上限——摘要的目的是保任务连续性，不是省 token
 const MAX_SUMMARY_LENGTH = 6000;
-
-// LLM 摘要生成的输出上限（tokens），需容纳结构化模板
 const SUMMARY_MAX_OUTPUT_TOKENS = 3000;
 
-// ============================================================
-// Summary Generation（后台 Checkpoint，纯异步）
-// ============================================================
-
-/**
- * 后台 checkpoint 摘要:生成并带锚点落库。
- * 前台同步 LLM 摘要（原 enforceContextWindow）已删除——濒死时刻是
- * 最差的调 LLM 时机。这里失败无害(下次运行重试)，
- * @returns 是否成功落库
- */
 export async function generateAndPersistCheckpointSummary(
   olderMessages: PipelineMessage[],
   context: {
@@ -81,14 +58,13 @@ export async function generateAndPersistCheckpointSummary(
     return `${role}: ${extractMessageText(m)}`;
   }).join('\n\n');
 
-  // 增量:已有摘要时在其基础上更新(applyCheckpointOnLoad 的锚点推进由调用方保证)
   const existing = getExistingSummarySafe(context.conversationId, context.dataStore);
   const prompt = existing
     ? `【历史摘要】\n${existing}\n\n【新增对话】\n${conversationText}`
     : conversationText;
 
   const summary = await callWithFallback(prompt, context.model, context.fallbackModels);
-  if (!summary || !validateSummaryQuality(summary, olderMessages)) {
+  if (!summary || !validateSummaryQuality(summary, stripped)) {
     return false;
   }
 
@@ -108,7 +84,6 @@ async function callWithFallback(
   model: LanguageModelV3,
   fallbackModels?: LanguageModelV3[],
 ): Promise<string | null> {
-  // 主模型尝试 2 次
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { text } = await generateText({
@@ -123,7 +98,6 @@ async function callWithFallback(
       if (attempt === 0) await delay(2000);
     }
   }
-  // fallback 模型各 1 次
   for (const fb of fallbackModels ?? []) {
     try {
       const { text } = await generateText({
@@ -140,75 +114,24 @@ async function callWithFallback(
   return null;
 }
 
-// ============================================================
-// Quality Validation
-// ============================================================
-
-/**
- * 验证摘要质量 - 语言无关的验证逻辑
- * 见 docs/context-compaction-analysis.md #3
- * （导出仅用于测试）
- */
 export function validateSummaryQuality(summary: string, messages: PipelineMessage[]): boolean {
-  // 基本长度检查：太短或太长都不可用
   if (!summary || summary.length < 20) return false;
   if (summary.length > MAX_SUMMARY_LENGTH) {
     logger.warn('ContextWindow', `Summary too long (${summary.length} chars), likely copying content`);
     return false;
   }
 
-  // 提取所有对话文本用于对比
-  const allText = messages
-    .map((m) => extractMessageText(m))
-    .join('\n')
-    .trim();
-
-  if (!allText) return true; // 没有原文可对比，接受摘要
-
-  // 非复制检测：摘要不应是原文的简单复制
-  // 计算最长公共子串（LCS）长度占比
-  const lcsLength = longestCommonSubstringLength(summary, allText);
-  const lcsRatio = lcsLength / summary.length;
-
-  // 如果超过 60% 的内容是原文的连续复制，认为是复制而非摘要
-  if (lcsRatio > 0.6) {
-    logger.warn('ContextWindow', `Summary appears to be copied from original (${(lcsRatio * 100).toFixed(1)}% LCS ratio)`);
-    return false;
+  // 简单复制检测：摘要不应是任意单条消息的原文复制
+  const allTexts = messages.map((m) => extractMessageText(m));
+  for (const text of allTexts) {
+    if (text && text.length > 10 && summary.includes(text)) {
+      logger.warn('ContextWindow', 'Summary contains verbatim copy of a message');
+      return false;
+    }
   }
 
   return true;
 }
-
-/**
- * 计算两个字符串的最长公共子串长度
- * 用于检测摘要是否是原文的简单复制
- */
-function longestCommonSubstringLength(s1: string, s2: string): number {
-  // 对超长文本进行截断，避免 O(n²) 复杂度问题
-  const maxLen = 1000;
-  const a = s1.slice(0, maxLen);
-  const b = s2.slice(0, maxLen * 5); // 原文可能很长
-
-  let maxLength = 0;
-  const matrix: number[][] = Array(a.length + 1)
-    .fill(null)
-    .map(() => Array(b.length + 1).fill(0));
-
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1] + 1;
-        maxLength = Math.max(maxLength, matrix[i][j]);
-      }
-    }
-  }
-
-  return maxLength;
-}
-
-// ============================================================
-// Helpers
-// ============================================================
 
 function getExistingSummarySafe(conversationId: string, dataStore: DataStore): string | null {
   try {

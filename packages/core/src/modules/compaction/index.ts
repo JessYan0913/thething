@@ -14,6 +14,8 @@ import type { DataStore } from '../../primitives/datastore/types';
 import type { PipelineMessage } from '../../services/config/compaction-types';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
+import { estimateFullRequest } from './token-counter';
+import type { Tool } from 'ai';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -36,6 +38,14 @@ export async function compactBeforeStep(
     contextLimit?: number;
     /** 提供时 Layer 2 压缩的原始输出落盘可找回 */
     storage?: { sessionId: string; dataDir: string };
+    /** 流式输出 writer，压缩完成后发送上下文水位数据给前端 */
+    writer?: {
+      write: (chunk: unknown) => void;
+    };
+    /** 工具列表，用于估算 token */
+    tools?: Record<string, Tool>;
+    /** 系统提示词，用于估算 token */
+    instructions?: string;
   },
 ): Promise<PipelineMessage[]> {
   let current = messages;
@@ -46,6 +56,27 @@ export async function compactBeforeStep(
   // 落盘异步进行,不阻塞主流程;等待写盘完成以保证元信息中的路径可读
   if (lifecycle.persistence) {
     await lifecycle.persistence;
+  }
+
+  // ── 压缩完成后估算当前请求水位，发送给前端 ──
+  if (context.writer && context.tools && context.instructions) {
+    try {
+      const estimation = await estimateFullRequest(
+        current,
+        context.instructions,
+        context.tools,
+        context.modelName,
+        context.contextLimit,
+      );
+      context.writer.write({
+        type: 'data-budget',
+        usagePercentage: estimation.utilizationPercent,
+        totalTokens: estimation.totalTokens,
+        modelLimit: estimation.modelLimit,
+      } as any);
+    } catch (err) {
+      // 估算失败不阻塞主流程
+    }
   }
 
   return current;

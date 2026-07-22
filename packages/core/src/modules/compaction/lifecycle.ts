@@ -152,7 +152,7 @@ function buildCompactionPatches(
         storage.dataDir,
         isJson,
       );
-      summary += ` [saved to: ${filepath}]`;
+      summary += `\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
       persistTasks?.push(
         persistToolResult(tr.outputRaw, tr.toolCallId, storage.sessionId, storage.dataDir)
           .then(() => undefined)
@@ -226,7 +226,7 @@ function applyCrossMessageBudget(
     const isJson = c.outputRaw.trim().startsWith('{') || c.outputRaw.trim().startsWith('[');
     const filepath = getToolResultPath(c.toolCallId, storage.sessionId, storage.dataDir, isJson);
     const meta = extractToolMeta(c.toolName, undefined, c.outputRaw);
-    const summary = `${meta} [saved to: ${filepath}]`;
+    const summary = `${meta}\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
 
     persistTasks.push(
       persistToolResult(c.outputRaw, c.toolCallId, storage.sessionId, storage.dataDir)

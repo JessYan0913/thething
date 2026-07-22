@@ -726,6 +726,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       if (lastMsg.parts.some((p) => p.type === 'data-plan')) {
         return false;
       }
+      }
 
       // 快速检查：如果没有工具调用或审批请求，直接判断是否完成
       const hasToolParts = lastMsg.parts.some(p => p.type.startsWith('tool-') || p.type === 'dynamic-tool');
@@ -902,6 +903,16 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   useEffect(() => {
     messagesRef.current = messages;
+  }, [messages]);
+
+  // 从最新的 assistant 消息中提取上下文水位数据
+  const contextBudget = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role !== 'assistant') continue;
+      const budgetPart = messages[i].parts?.find((p) => (p as { type: string }).type === 'data-budget');
+      if (budgetPart) return budgetPart as unknown as { usagePercentage: number; totalTokens: number; remainingTokens: number };
+    }
+    return null;
   }, [messages]);
 
   // 处理问题收集完成
@@ -2181,6 +2192,27 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               />
             )}
 
+            {contextBudget && !questionPanel && approvalRequests.length === 0 && (
+              <div className="px-4 pb-1 flex items-center gap-2.5">
+                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-700',
+                      contextBudget.usagePercentage > 80 ? 'bg-destructive' :
+                      contextBudget.usagePercentage > 60 ? 'bg-yellow-500' : 'bg-primary/40',
+                    )}
+                    style={{ width: `${Math.min(100, contextBudget.usagePercentage)}%` }}
+                  />
+                </div>
+                <span className={cn(
+                  'text-xs tabular-nums',
+                  contextBudget.usagePercentage > 80 ? 'text-destructive' :
+                  contextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
+                )}>
+                  {contextBudget.usagePercentage.toFixed(0)}%
+                </span>
+              </div>
+            )}
             {!questionPanel && approvalRequests.length === 0 && inputCard}
           </div>
         </div>
