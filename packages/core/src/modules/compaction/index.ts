@@ -191,7 +191,13 @@ export async function applyEmergencyCompression(
   // ── Step 3: 降级 - 强制截断 ──
   logger.error('Compaction', '所有压缩策略失败，执行强制截断（保底方案）');
 
-  return forceTruncateMessages(current, 0.15);
+  // 传入 modelName 和 targetTokens，确保强制截断后一定能满足预算
+  return await forceTruncateMessages(
+    current,
+    0.15,
+    context.modelName,
+    context.targetTokens,
+  );
 }
 
 // ============================================================

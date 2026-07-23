@@ -110,6 +110,39 @@ export async function checkInitialBudget(
     }
   }
 
+  // Strategy 3: 最激进模式 - 只保留核心工具 + 最小消息集
+  if (currentEstimation.exceedsLimit) {
+    logger.warn('Budget', '常规策略均失败，启动最激进模式：只保留核心工具 + 最小消息');
+
+    // 只保留最核心的工具
+    const minimalTools: Record<string, Tool> = {};
+    for (const name of ['read_file', 'write_file', 'bash']) {
+      if (currentTools[name]) {
+        minimalTools[name] = currentTools[name];
+      }
+    }
+
+    // 强制截断消息到极限
+    const { forceTruncateMessages } = await import('./message-compressor');
+    const targetMessagesTokens = Math.floor(currentEstimation.modelLimit * 0.3); // 只给 messages 30% 的预算
+    currentMessages = await forceTruncateMessages(
+      currentMessages,
+      0.05, // 只保留 5%
+      modelName,
+      targetMessagesTokens,
+    );
+
+    currentTools = minimalTools;
+    actions.push(`Extreme mode: core tools only + minimal messages`);
+
+    currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
+    logger.debug('Budget', `After extreme mode: ${currentEstimation.totalTokens} tokens`);
+
+    if (!currentEstimation.exceedsLimit) {
+      return { passed: true, estimation: currentEstimation, actions, adjustedTools: currentTools, adjustedMessages: currentMessages };
+    }
+  }
+
   // 所有策略已用尽
   const finalEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
   logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimit ? 'EXCEEDS' : 'OK'}`);

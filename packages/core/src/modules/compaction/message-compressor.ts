@@ -245,12 +245,16 @@ function formatSummary(info: KeyInformation, messageCount: number): string {
  *
  * @param messages 消息列表
  * @param keepRatio 保留的比例（默认 0.15，即保留首尾各 15%）
+ * @param modelName 模型名称（用于 token 估算）
+ * @param maxTokens 最大 token 数（如果提供，会确保结果不超过此值）
  * @returns 截断后的消息
  */
-export function forceTruncateMessages(
+export async function forceTruncateMessages(
   messages: import('ai').ModelMessage[],
   keepRatio: number = 0.15,
-): import('ai').ModelMessage[] {
+  modelName?: string,
+  maxTokens?: number,
+): Promise<import('ai').ModelMessage[]> {
   if (messages.length === 0) return [];
 
   const firstUserMsg = messages.find((m) => m.role === 'user');
@@ -259,15 +263,42 @@ export function forceTruncateMessages(
     return messages.slice(-5);
   }
 
-  const keepTail = Math.max(5, Math.floor(messages.length * keepRatio));
-  const recentMessages = messages.slice(-keepTail);
+  let keepTail = Math.max(5, Math.floor(messages.length * keepRatio));
+  let recentMessages = messages.slice(-keepTail);
 
   const warningMessage = buildSummaryMessage(
     '[警告：由于对话过长，中间部分已省略。建议开始新会话以获得更好的上下文连贯性。]',
     'ui',
   ) as import('ai').ModelMessage;
 
-  logger.warn('MessageCompressor', `强制截断: ${messages.length} → ${keepTail + 2} 条消息`);
+  let result = [firstUserMsg, warningMessage, ...recentMessages];
 
-  return [firstUserMsg, warningMessage, ...recentMessages];
+  // 如果提供了 maxTokens，确保结果不超过限制
+  if (modelName && maxTokens) {
+    let currentTokens = await estimateMessagesTokens(result, modelName);
+
+    // 逐步减少尾部消息直到满足限制
+    while (currentTokens > maxTokens && keepTail > 1) {
+      keepTail = Math.max(1, Math.floor(keepTail * 0.7)); // 每次减少 30%
+      recentMessages = messages.slice(-keepTail);
+      result = [firstUserMsg, warningMessage, ...recentMessages];
+      currentTokens = await estimateMessagesTokens(result, modelName);
+      logger.debug('MessageCompressor', `强制截断调整: keepTail=${keepTail}, tokens=${currentTokens}/${maxTokens}`);
+    }
+
+    // 如果还是超限，只保留最后一条消息
+    if (currentTokens > maxTokens) {
+      result = [firstUserMsg, warningMessage, messages[messages.length - 1]];
+      currentTokens = await estimateMessagesTokens(result, modelName);
+
+      // 如果连这都超限，只保留警告消息和最后一条
+      if (currentTokens > maxTokens) {
+        result = [warningMessage, messages[messages.length - 1]];
+      }
+    }
+  }
+
+  logger.warn('MessageCompressor', `强制截断: ${messages.length} → ${result.length} 条消息`);
+
+  return result;
 }
