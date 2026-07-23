@@ -16,8 +16,20 @@ export interface LifecycleConfig {
   messageBudget?: number;
 }
 
+export interface ContextWindowConfig {
+  /** 触发压缩的上下文利用率阈值（0-1），默认 0.85 */
+  triggerPercent: number;
+  /** 压缩目标利用率（0-1），默认 0.7 */
+  targetPercent: number;
+  /** 保留用于上下文提示的最近消息数，默认 3 */
+  contextHintMessages: number;
+  /** 是否启用增量摘要，默认 false */
+  incrementalSummary: boolean;
+}
+
 export interface CompactionConfig {
   lifecycle: LifecycleConfig;
+  contextWindow: ContextWindowConfig;
 }
 
 export interface CompactionResult {

@@ -22,7 +22,7 @@ describe('agent report budget config', () => {
   it('a normal-sized agent report is not persisted', async () => {
     const state = createContentReplacementState();
     const smallReport = { success: true, summary: 'Done. Fixed 3 bugs.' };
-    const result = await unifiedToolOutputHook(smallReport, 'agent', 'agent-1', { state });
+    const result = await unifiedToolOutputHook(smallReport, 'agent', 'agent-1', {});
     expect(result.persisted).toBe(false);
   });
 
@@ -32,7 +32,6 @@ describe('agent report budget config', () => {
       const state = createContentReplacementState();
       const hugeReport = { success: true, summary: 'x'.repeat(60_000) };
       const result = await unifiedToolOutputHook(hugeReport, 'agent', 'agent-2', {
-        state,
         sessionId: 'sess-1',
         dataDir: dir,
       });

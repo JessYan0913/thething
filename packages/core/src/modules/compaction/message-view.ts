@@ -275,7 +275,7 @@ function applyToUIMessage(
   });
 
   return {
-    patched: { ...msg, parts: newParts } as import('ai').ModelMessage,
+    patched: { ...msg, parts: newParts } as unknown as import('ai').ModelMessage,
     freed,
   };
 }
@@ -372,7 +372,7 @@ export function buildSummaryMessage(
       id,
       role: 'user',
       parts: [{ type: 'text', text: bodyText }],
-    } as import('ai').ModelMessage;
+    } as unknown as import('ai').ModelMessage;
   }
   return {
     id,

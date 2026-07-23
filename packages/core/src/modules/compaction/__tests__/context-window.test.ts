@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelMessage } from 'ai';
-import type { UIMessage } from 'ai';
 import { validateSummaryQuality } from '../context-window';
 import { extractMessageText } from '../token-counter';
 
@@ -11,10 +10,9 @@ import { extractMessageText } from '../token-counter';
 
 function userMsg(text: string): ModelMessage {
   return {
-    id: `u-${text.slice(0, 8)}`,
     role: 'user',
     parts: [{ type: 'text', text }],
-  };
+  } as unknown as ModelMessage;
 }
 
 describe('validateSummaryQuality (语言无关)', () => {

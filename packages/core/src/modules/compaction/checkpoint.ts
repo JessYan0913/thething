@@ -31,7 +31,7 @@ export const CHECKPOINT_SUMMARY_ID_PREFIX = 'summary-';
  * 格式收敛到 buildSummaryMessage，调用方显式声明 format。
  */
 function buildCheckpointSummaryMessage(summary: string): UIMessage {
-  return buildSummaryMessage(summary, 'ui') as UIMessage;
+  return buildSummaryMessage(summary, 'ui') as unknown as UIMessage;
 }
 
 /**

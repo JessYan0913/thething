@@ -57,7 +57,7 @@ export async function generateSkillDirTree(dirPath: string, prefix: string = '')
 
       if (entry.isDirectory()) {
         lines.push(`${prefix}${connector}${entry.name}/`);
-        const subTree = await generateDirTree(fullPath, prefix + childPrefix);
+        const subTree = await generateSkillDirTree(fullPath, prefix + childPrefix);
         if (subTree) {
           lines.push(subTree);
         }

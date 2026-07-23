@@ -62,7 +62,6 @@ export function wrapMcpToolWithOutputHandler(
         {
           sessionId: options.sessionId,
           dataDir: options.dataDir,
-          state: options.contentReplacementState,
           config: options.toolOutputConfig,
         }
       )
@@ -122,7 +121,6 @@ export async function processMcpToolResult(
   return unifiedToolOutputHook(result, prefixedName, toolUseId, {
     sessionId: options.sessionId,
     dataDir: options.dataDir,
-    state: options.contentReplacementState,
     config: options.toolOutputConfig,
   })
 }

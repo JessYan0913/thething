@@ -4,6 +4,7 @@
 
 import { generateText } from 'ai';
 
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { extractMessageText, stripImagesFromMessages } from './token-counter';

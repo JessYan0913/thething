@@ -131,7 +131,6 @@ export function convertConnectorToolToAItool(
           {
             sessionId: options.sessionContext.sessionId,
             dataDir: options.sessionContext.dataDir,
-            state: options.sessionContext.contentReplacementState,
             config: options.sessionContext.toolOutputConfig,
           }
         )

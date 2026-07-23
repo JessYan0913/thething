@@ -6,7 +6,7 @@ import { getModelCapabilities } from "../../services/model";
  * 消息是否为 UIMessage(.parts 格式)。ModelMessage 用 .content,无 parts。
  * 通过后可安全按 UIMessage 访问 message.parts。
  */
-function hasParts(message: import('ai').ModelMessage): message is UIMessage {
+function hasParts(message: import('ai').ModelMessage): boolean {
   const parts = (message as unknown as Record<string, unknown>).parts;
   return Array.isArray(parts);
 }
@@ -104,7 +104,7 @@ export async function estimateMessageTokens(message: import('ai').ModelMessage, 
 
   // 提取所有文本内容（UIMessage 格式）
   const textParts: string[] = [];
-  for (const part of message.parts) {
+  for (const part of (message as unknown as { parts: any[] }).parts) {
     if (part.type === "text") {
       textParts.push(part.text);
     } else if (part.type === "reasoning") {
@@ -167,7 +167,7 @@ export function extractMessageText(message: import('ai').ModelMessage): string {
     }
     return '';
   }
-  return message.parts
+  return (message as unknown as { parts: any[] }).parts
     .filter((p) => p.type === "text" || p.type === "reasoning")
     .map((p) => (p.type === "text" || p.type === "reasoning" ? p.text : ""))
     .join("\n");
@@ -188,7 +188,7 @@ export function hasTextBlocks(message: import('ai').ModelMessage): boolean {
     }
     return false;
   }
-  return message.parts.some((p) => p.type === "text" && p.text.trim().length > 0);
+  return (message as unknown as { parts: any[] }).parts.some((p) => p.type === "text" && p.text.trim().length > 0);
 }
 
 export function stripImagesFromMessages(messages: import('ai').ModelMessage[]): import('ai').ModelMessage[] {
@@ -210,7 +210,7 @@ export function stripImagesFromMessages(messages: import('ai').ModelMessage[]): 
     }
     return {
       ...msg,
-      parts: msg.parts.map((part) => {
+      parts: (msg as unknown as { parts: any[] }).parts.map((part) => {
         if ((part as Record<string, unknown>).type === "file" || (part as Record<string, unknown>).type === "image") {
           return { type: "text" as const, text: "[image]" };
         }

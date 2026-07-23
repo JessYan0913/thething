@@ -249,7 +249,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   const modelName = modelConfig.modelName || behavior.modelAliases.default?.model
   const budgetCheck = await checkInitialBudget(
-    messagesWithAttachments,
+    messagesWithAttachments as unknown as import('ai').ModelMessage[],
     instructions,
     filteredTools,
     modelName,
@@ -316,7 +316,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         // Layer 2 压缩落盘可恢复:与 budget 模块共用存储目录(见主文档 B)
         storage: { sessionId: conversationId, dataDir: sessionState.layout.dataDir },
         // 传递 writer、tools、instructions，用于每步压缩后发送上下文水位
-        writer: options.writerRef?.current ? { write: (chunk: unknown) => options.writerRef!.current?.write?.(chunk) } : undefined,
+        writer: options.writerRef?.current ? { write: (chunk: unknown) => (options.writerRef!.current as { write?: (chunk: unknown) => void })?.write?.(chunk) } : undefined,
         tools: filteredTools,
         instructions,
       })

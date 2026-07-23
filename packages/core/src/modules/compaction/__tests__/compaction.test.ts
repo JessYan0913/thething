@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { UIMessage } from 'ai';
 import type { ModelMessage } from 'ai';
 import {
   estimateTextTokens,
@@ -29,11 +28,7 @@ describe('token-counter', () => {
   });
 
   it('should estimate message tokens', async () => {
-    const msg: ModelMessage = {
-      id: '1',
-      role: 'user',
-      parts: [{ type: 'text', text: 'Hello' }],
-    };
+    const msg = { role: 'user', parts: [{ type: 'text', text: 'Hello' }] } as unknown as ModelMessage;
     const tokens = await estimateMessageTokens(msg);
     expect(tokens).toBeGreaterThan(0);
   });
@@ -45,13 +40,13 @@ describe('token-counter', () => {
     const msgWithText = {
       role: 'assistant',
       content: [{ type: 'text', text: longText }],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
     const tokensWithText = await estimateMessageTokens(msgWithText);
 
     const msgWithoutText = {
       role: 'assistant',
       content: [{ type: 'text', text: '' }],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
     const tokensWithoutText = await estimateMessageTokens(msgWithoutText);
 
     // 有长文本的消息 token 应显著高于空文本
@@ -65,11 +60,11 @@ describe('token-counter', () => {
         { type: 'text', text: 'Let me search' },
         { type: 'tool-call', toolCallId: 'tc-1', toolName: 'grep', args: { pattern: 'extractToolMeta', path: '/repo/src' } },
       ],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
     const msgWithoutToolCall = {
       role: 'assistant',
       content: [{ type: 'text', text: 'Let me search' }],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
 
     const tokensWith = await estimateMessageTokens(msgWithToolCall);
     const tokensWithout = await estimateMessageTokens(msgWithoutToolCall);
@@ -79,36 +74,24 @@ describe('token-counter', () => {
   });
 
   it('should extract message text', () => {
-    const msg: ModelMessage = {
-      id: '1',
-      role: 'user',
-      parts: [{ type: 'text', text: 'Hello world' }],
-    };
+    const msg = { role: 'user', parts: [{ type: 'text', text: 'Hello world' }] } as unknown as ModelMessage;
     expect(extractMessageText(msg)).toBe('Hello world');
   });
 
   it('should detect text blocks', () => {
-    const msg: ModelMessage = {
-      id: '1',
-      role: 'user',
-      parts: [{ type: 'text', text: 'Hello' }],
-    };
+    const msg = { role: 'user', parts: [{ type: 'text', text: 'Hello' }] } as unknown as ModelMessage;
     expect(hasTextBlocks(msg)).toBe(true);
   });
 
   it('should strip images', () => {
-    const msg: ModelMessage = {
-      id: '1',
-      role: 'user',
-      parts: [
+    const msg = { role: 'user', parts: [
         { type: 'text', text: 'Hello' },
         { type: 'file', mimeType: 'image/png', data: 'base64data' } as any,
-      ],
-    };
+      ]} as unknown as ModelMessage;
     const stripped = stripImagesFromMessages([msg]);
-    expect((stripped[0] as ModelMessage).parts).toHaveLength(2);
-    expect(((stripped[0] as ModelMessage).parts[1] as any).type).toBe('text');
-    expect(((stripped[0] as ModelMessage).parts[1] as any).text).toBe('[image]');
+    expect((stripped[0] as unknown as { parts: any[] }).parts).toHaveLength(2);
+    expect(((stripped[0] as unknown as { parts: any[] }).parts[1] as any).type).toBe('text');
+    expect(((stripped[0] as unknown as { parts: any[] }).parts[1] as any).text).toBe('[image]');
   });
 });
 
@@ -130,7 +113,7 @@ describe('manageToolOutputLifecycle', () => {
           output: { type: 'json', value: output },
         },
       ],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
   }
 
   function createUserMessage(text: string): ModelMessage {
@@ -138,7 +121,7 @@ describe('manageToolOutputLifecycle', () => {
       id: `msg-${Date.now()}`,
       role: 'user',
       content: [{ type: 'text', text }],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
   }
 
   function getResultItem(msg: ModelMessage): any {
@@ -203,7 +186,7 @@ describe('manageToolOutputLifecycle', () => {
             _originalSize: 5000,
           },
         ],
-      } as ModelMessage,
+      } as unknown as ModelMessage,
     ];
 
     const result = manageToolOutputLifecycle(messages, DEFAULT_LIFECYCLE_CONFIG);
@@ -219,8 +202,7 @@ describe('manageToolOutputLifecycle', () => {
     const config: LifecycleConfig = {
       ...DEFAULT_LIFECYCLE_CONFIG,
       keepRecentSteps: 0,
-      protectedTools: new Set(['MyProtectedTool']),
-    };
+      protectedTools: new Set(['MyProtectedTool'])};
 
     const result = manageToolOutputLifecycle(messages, config);
     const item = getResultItem(result.messages[1] as ModelMessage);
@@ -303,7 +285,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
           output,
         },
       ],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
   }
 
   function createUIUserMessage(text: string): ModelMessage {
@@ -311,7 +293,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
       id: `msg-user-${text.length}`,
       role: 'user',
       parts: [{ type: 'text', text }],
-    } as ModelMessage;
+    } as unknown as ModelMessage;
   }
 
   function getUIPart(msg: unknown): any {
@@ -369,7 +351,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
         parts: [
           { type: 'tool-read_file', toolCallId: 'tc-p', state: 'input-available', input: { filePath: 'a.ts' } },
         ],
-      } as ModelMessage,
+      } as unknown as ModelMessage,
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(result.tokensFreed).toBe(0);
@@ -392,7 +374,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
             output: { result: 'x'.repeat(10000) },
           },
         ],
-      } as ModelMessage,
+      } as unknown as ModelMessage,
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const item = getUIPart(result.messages[1]);
@@ -417,7 +399,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
           },
           { type: 'text', text: 'done' },
         ],
-      } as ModelMessage,
+      } as unknown as ModelMessage,
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const parts = (result.messages[1] as unknown as Record<string, unknown>).parts as any[];

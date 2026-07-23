@@ -153,7 +153,7 @@ async function writeDotAgentsFile(filePath: string, servers: Map<string, McpServ
 export async function getMcpServerConfigs(cwd?: string, configDir?: string): Promise<McpServerConfig[]> {
   const { loadMcpServers } = await import('./loader');
   const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
-  return loadMcpServers({ cwd, homeDir: homedir(), configDir, configDirName });
+  return loadMcpServers({ cwd, homeDir: homedir(), configDir });
 }
 
 /**
@@ -240,8 +240,8 @@ export async function updateMcpServerConfig(
   cwd?: string,
   configDir?: string,
 ): Promise<McpServerConfigSource | null> {
-  const effectiveCwd = cwd ?? process.cwd();
   const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
+  const effectiveCwd = cwd ?? process.cwd();
   const paths: Array<{ source: 'user' | 'project'; filePath: string }> = [
     { source: 'project', filePath: getProjectMcpJsonPath(effectiveCwd, configDirName) },
     { source: 'user', filePath: getUserMcpJsonPath(configDir) },
@@ -274,8 +274,8 @@ export async function updateMcpServerConfig(
  * 先在项目级查找，再在用户级查找。
  */
 export async function deleteMcpServerConfig(name: string, cwd?: string, configDir?: string): Promise<boolean> {
-  const effectiveCwd = cwd ?? process.cwd();
   const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() : undefined;
+  const effectiveCwd = cwd ?? process.cwd();
   const paths = [
     getProjectMcpJsonPath(effectiveCwd, configDirName),
     getUserMcpJsonPath(configDir),

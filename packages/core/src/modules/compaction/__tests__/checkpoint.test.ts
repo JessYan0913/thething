@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ModelMessage } from 'ai';
 import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore, StoredSummary } from '../../../primitives/datastore/types';
@@ -10,8 +9,8 @@ import { applyCheckpointOnLoad, maybeCheckpointAfterRun, CHECKPOINT_SUMMARY_ID_P
 // 见 docs/compaction-execution-plan.md 步骤 8.5
 // ============================================================
 
-function msg(id: string, text: string): ModelMessage {
-  return { id, role: 'user', parts: [{ type: 'text', text }] } as ModelMessage;
+function msg(id: string, text: string): UIMessage {
+  return { id, role: 'user', parts: [{ type: 'text', text }] } as unknown as UIMessage;
 }
 
 function storeWith(summary: StoredSummary | null): DataStore {
@@ -35,7 +34,7 @@ function makeSummary(overrides: Partial<StoredSummary>): StoredSummary {
   };
 }
 
-const full = [msg('m1', 'a'), msg('m2', 'b'), msg('m3', 'c'), msg('m4', 'd')];
+const full: UIMessage[] = [msg('m1', 'a'), msg('m2', 'b'), msg('m3', 'c'), msg('m4', 'd')];
 
 describe('applyCheckpointOnLoad', () => {
   it('returns full history when there is no summary', () => {
@@ -103,8 +102,8 @@ function mockModel(summaryText: string | Error): LanguageModelV3 {
   } as unknown as LanguageModelV3;
 }
 
-function bigMsg(id: string, role: 'user' | 'assistant', size: number): ModelMessage {
-  return { id, role, parts: [{ type: 'text', text: 'x'.repeat(size) }] } as ModelMessage;
+function bigMsg(id: string, role: 'user' | 'assistant', size: number): UIMessage {
+  return { id, role, parts: [{ type: 'text', text: 'x'.repeat(size) }] } as unknown as UIMessage;
 }
 
 function checkpointStore(existing: StoredSummary | null) {

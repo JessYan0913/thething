@@ -17,6 +17,12 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleConfig = {
 
 export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
   lifecycle: DEFAULT_LIFECYCLE_CONFIG,
+  contextWindow: {
+    triggerPercent: 0.85,
+    targetPercent: 0.7,
+    contextHintMessages: 3,
+    incrementalSummary: false,
+  },
 };
 
 // ── Tool Output Compression ──
