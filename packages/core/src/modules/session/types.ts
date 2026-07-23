@@ -121,6 +121,9 @@ export interface SessionState {
   /** 跨步骤压缩视图（记录已被 L3 摘要覆盖的前缀） */
   compactionView: CompactionView;
 
+  /** 遥测收集器 */
+  telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
+
   /** 压缩消息 */
   compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;
   /** 中止会话 */

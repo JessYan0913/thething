@@ -48,13 +48,15 @@ export interface CompactionSummaryEntry {
  */
 export interface CompactionView {
   summary: CompactionSummaryEntry | null;
+  /** 遥测收集器（可选） */
+  telemetry?: CompactionTelemetry;
 }
 
 /**
  * 创建空视图
  */
-export function createCompactionView(): CompactionView {
-  return { summary: null };
+export function createCompactionView(telemetry?: CompactionTelemetry): CompactionView {
+  return { summary: null, telemetry };
 }
 
 // ============================================================
@@ -147,21 +149,59 @@ export function applyCompactionView(
   if (entry.anchorIndex >= messages.length) {
     logger.warn('CompactionView', `Anchor index ${entry.anchorIndex} >= messages.length ${messages.length}, invalidating view`);
     view.summary = null;
+
+    // 记录失效
+    view.telemetry?.recordViewInvalidated({
+      reason: 'anchor_out_of_range',
+      anchorIndex: entry.anchorIndex,
+      messagesLength: messages.length,
+    });
+
     return { messages, applied: false };
   }
 
   const anchorMsg = messages[entry.anchorIndex];
+  if (!anchorMsg) {
+    logger.warn('CompactionView', `Anchor message not found at index ${entry.anchorIndex}, invalidating view`);
+    view.summary = null;
+
+    // 记录失效
+    view.telemetry?.recordViewInvalidated({
+      reason: 'anchor_not_found',
+      anchorIndex: entry.anchorIndex,
+      messagesLength: messages.length,
+    });
+
+    return { messages, applied: false };
+  }
+
   const currentFingerprint = fingerprintMessage(anchorMsg);
 
   if (currentFingerprint !== entry.anchorFingerprint) {
     logger.warn('CompactionView', `Anchor fingerprint mismatch (expected: ${entry.anchorFingerprint.slice(0, 50)}..., got: ${currentFingerprint.slice(0, 50)}...), invalidating view`);
     view.summary = null;
+
+    // 记录失效
+    view.telemetry?.recordViewInvalidated({
+      reason: 'fingerprint_mismatch',
+      anchorIndex: entry.anchorIndex,
+      messagesLength: messages.length,
+    });
+
     return { messages, applied: false };
   }
 
   // 指纹匹配：替换前缀
   const compactedMessages = [entry.message, ...messages.slice(entry.anchorIndex + 1)];
   logger.info('CompactionView', `Applied view: ${messages.length} → ${compactedMessages.length} messages (anchor=${entry.anchorIndex})`);
+
+  // 记录视图应用
+  view.telemetry?.recordViewApplied({
+    messagesBeforeView: messages.length,
+    messagesAfterView: compactedMessages.length,
+    anchorIndex: entry.anchorIndex,
+    estimatedTimeSavedMs: 5000, // 假设 Layer 3 平均需要 5 秒
+  });
 
   return { messages: compactedMessages, applied: true };
 }

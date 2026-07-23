@@ -21,6 +21,7 @@ import {
 } from '../../services/config/defaults';
 import { DEFAULT_CONTEXT_LIMIT } from '../../services/model/constants';
 import { createCompactionView } from '../compaction/compaction-view';
+import { CompactionTelemetry } from '../compaction/compaction-telemetry';
 import { compactBeforeStep } from '../compaction';
 
 export type { SessionState, SessionStateOptions };
@@ -85,6 +86,9 @@ export function createSessionState(
   // 构建 压缩配置
   const compactionCfg: CompactionConfig | undefined = compactionConfig;
 
+  // 创建遥测收集器
+  const telemetry = new CompactionTelemetry();
+
   // 使用普通对象，简化状态管理
   const state: SessionState = {
     conversationId,
@@ -112,7 +116,8 @@ export function createSessionState(
     compactModel: undefined,
     fallbackModels: undefined,
     dataStore: dataStore,
-    compactionView: createCompactionView(),
+    telemetry,
+    compactionView: createCompactionView(telemetry),
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {
@@ -137,6 +142,7 @@ export function createSessionState(
         dataStore,
         contextLimit: maxContextTokens,
         compactionView: state.compactionView,  // 🔑 传递视图
+        telemetry: state.telemetry,  // 🆕 传递遥测
       });
 
       return {

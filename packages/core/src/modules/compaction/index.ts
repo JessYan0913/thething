@@ -22,6 +22,7 @@ import { emergencySummarize } from './emergency-summary';
 import { logger } from '../../primitives/logger';
 import { applyCompactionView, updateViewAfterL3 } from './compaction-view';
 import type { CompactionView } from './compaction-view';
+import type { CompactionTelemetry } from './compaction-telemetry';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -54,6 +55,8 @@ export async function compactBeforeStep(
     instructions?: string;
     /** 跨步骤压缩视图（记录已被 L3 摘要覆盖的前缀） */
     compactionView?: CompactionView;
+    /** 遥测收集器 */
+    telemetry?: CompactionTelemetry;
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
@@ -199,6 +202,15 @@ export async function applyEmergencyCompression(
       );
       logger.debug('Compaction', `View updated: anchorIndex=${summaryResult.anchorIndex}`);
     }
+
+    // 🆕 记录 Layer 3 遥测
+    const reason = !context.compactionView?.summary ? 'no_view' : 'budget_exceeded';
+    context.telemetry?.recordLayer3Triggered({
+      reason,
+      messagesBeforeCompaction: messages.length,
+      messagesAfterCompaction: current.length,
+      durationMs: 0, // TODO: 添加计时
+    });
 
     const afterSummary = await estimateFullRequest(
       current,
