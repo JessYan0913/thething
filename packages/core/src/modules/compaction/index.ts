@@ -167,6 +167,8 @@ export async function applyEmergencyCompression(
     tools: Record<string, Tool>;
     instructions: string;
     targetTokens: number;
+    compactionView?: CompactionView;
+    telemetry?: CompactionTelemetry;
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
