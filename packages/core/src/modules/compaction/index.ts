@@ -112,8 +112,10 @@ export async function compactBeforeStep(
 
 /**
  * 紧急压缩流程：Layer 2.5 → Layer 3 → 降级
+ *
+ * 导出供 budget-check 使用，确保初始预算检查和运行时压缩使用相同的紧急压缩逻辑
  */
-async function applyEmergencyCompression(
+export async function applyEmergencyCompression(
   messages: import('ai').ModelMessage[],
   context: {
     model: LanguageModelV3;

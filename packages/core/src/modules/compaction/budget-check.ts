@@ -8,6 +8,7 @@ import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { estimateFullRequest, estimateToolsTokens, estimateToolTokens, type FullRequestEstimation } from './token-counter';
 import { manageToolOutputLifecycle } from './lifecycle';
+import { applyEmergencyCompression } from './index';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 
 const CORE_TOOLS = new Set(['bash', 'read_file', 'write_file', 'edit_file', 'grep', 'glob']);
@@ -65,6 +66,32 @@ export async function checkInitialBudget(
       if (!currentEstimation.exceedsLimit) {
         return { passed: true, estimation: currentEstimation, actions, adjustedMessages: currentMessages };
       }
+    }
+  }
+
+  // Strategy 1.5: Emergency compression (Layer 2.5 → 3 → truncation)
+  // 如果 Layer 2 后仍超限且有 model 可用，应用完整紧急压缩管线
+  if (currentEstimation.exceedsLimit && context?.model) {
+    logger.info('Budget', `Layer 2 后仍超限，启动紧急压缩管线`);
+    try {
+      currentMessages = await applyEmergencyCompression(currentMessages, {
+        model: context.model,
+        fallbackModels: context.fallbackModels,
+        modelName,
+        contextLimit,
+        tools: currentTools,
+        instructions,
+        targetTokens: currentEstimation.modelLimit * 0.8,
+      });
+      actions.push(`Emergency compression applied (Layer 2.5→3→truncation)`);
+      currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
+      logger.debug('Budget', `After emergency compression: ${currentEstimation.totalTokens} tokens`);
+      if (!currentEstimation.exceedsLimit) {
+        return { passed: true, estimation: currentEstimation, actions, adjustedMessages: currentMessages };
+      }
+    } catch (err) {
+      logger.warn('Budget', 'Emergency compression failed:', err);
+      actions.push(`Emergency compression failed: ${err}`);
     }
   }
 
