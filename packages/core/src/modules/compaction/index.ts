@@ -90,7 +90,7 @@ export async function compactBeforeStep(
   // ── 预算检查：是否需要进一步压缩？ ──
   if (context.tools && context.instructions) {
     // 使用增量估算（如果有缓存）
-    const estimationResult = await estimateTokensIncremental(
+    const cachedEstimation = await estimateTokensIncremental(
       current,
       context.instructions,
       context.tools,
@@ -101,11 +101,17 @@ export async function compactBeforeStep(
       },
     );
 
-    const estimation = estimationResult.estimation;
+    // 从 CachedEstimation 构建 estimation
+    const estimation = {
+      totalTokens: cachedEstimation.totalTokens,
+      modelLimit: cachedEstimation.modelLimit,
+      utilizationPercent: cachedEstimation.utilizationPercent,
+      exceedsLimit: cachedEstimation.exceedsLimit,
+    };
 
     // 更新缓存
-    if (context.onEstimationUpdated && estimationResult.cached) {
-      context.onEstimationUpdated(estimationResult.cached);
+    if (context.onEstimationUpdated) {
+      context.onEstimationUpdated(cachedEstimation);
     }
 
     // 发送水位数据给前端
