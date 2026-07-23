@@ -35,22 +35,38 @@ function buildCheckpointSummaryMessage(summary: string): UIMessage {
 }
 
 /**
+ * Checkpoint 加载结果
+ */
+export interface CheckpointLoadResult {
+  /** 是否应用了 checkpoint */
+  applied: boolean;
+  /** 压缩后的消息列表 */
+  messages: UIMessage[];
+  /** 摘要消息（用于视图初始化） */
+  summaryMessage?: UIMessage;
+  /** 锚点索引（用于视图初始化） */
+  anchorIndex?: number;
+  /** 摘要正文（用于视图初始化） */
+  summaryText?: string;
+}
+
+/**
  * 应用 compaction checkpoint:若有可用 checkpoint,返回压缩后的历史;否则原样返回。
  *
  * @param fullMessages 全量历史消息(来自 DB)
  * @param conversationId 会话 id
  * @param dataStore 数据存储
- * @returns 压缩后的消息列表(或全量,若无可用 checkpoint)
+ * @returns Checkpoint 加载结果
  */
 export function applyCheckpointOnLoad(
   fullMessages: UIMessage[],
   conversationId: string,
   dataStore: DataStore,
-): UIMessage[] {
+): CheckpointLoadResult {
   try {
     const stored = dataStore.summaryStore.getSummaryByConversation(conversationId);
     if (!stored || !stored.summary || !stored.anchorMessageId) {
-      return fullMessages; // 无摘要或无锚点 → 全量
+      return { applied: false, messages: fullMessages }; // 无摘要或无锚点 → 全量
     }
 
     const anchorIndex = fullMessages.findIndex(
@@ -59,21 +75,27 @@ export function applyCheckpointOnLoad(
     // 锚点找不到(消息被删/id 变更),或锚点已是最后一条(无可保留的后段)→ 全量
     if (anchorIndex < 0) {
       logger.debug('Checkpoint', `anchor ${stored.anchorMessageId} not found, loading full history`);
-      return fullMessages;
+      return { applied: false, messages: fullMessages };
     }
 
     const newerMessages = fullMessages.slice(anchorIndex + 1);
     // 锚点之后没有新消息 → 没必要压缩,返回全量(避免只发一条摘要)
     if (newerMessages.length === 0) {
-      return fullMessages;
+      return { applied: false, messages: fullMessages };
     }
 
     const summaryMessage = buildCheckpointSummaryMessage(stored.summary);
-    return [summaryMessage, ...newerMessages];
+    return {
+      applied: true,
+      messages: [summaryMessage, ...newerMessages],
+      summaryMessage,
+      anchorIndex,
+      summaryText: stored.summary,
+    };
   } catch (err) {
     // 任何异常 → 回退全量,绝不丢历史
     logger.warn('Checkpoint', 'applyCheckpointOnLoad failed, loading full history:', err);
-    return fullMessages;
+    return { applied: false, messages: fullMessages };
   }
 }
 

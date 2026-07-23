@@ -214,6 +214,7 @@ export {
   isContextLengthError,
   applyCheckpointOnLoad,
   CHECKPOINT_SUMMARY_ID_PREFIX,
+  fingerprintMessage,
 } from './modules/compaction';
 
 // Todos

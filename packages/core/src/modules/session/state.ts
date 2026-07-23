@@ -20,6 +20,8 @@ import {
   DEFAULT_MAX_BUDGET_USD,
 } from '../../services/config/defaults';
 import { DEFAULT_CONTEXT_LIMIT } from '../../services/model/constants';
+import { createCompactionView } from '../compaction/compaction-view';
+import { compactBeforeStep } from '../compaction';
 
 export type { SessionState, SessionStateOptions };
 
@@ -110,15 +112,39 @@ export function createSessionState(
     compactModel: undefined,
     fallbackModels: undefined,
     dataStore: dataStore,
+    compactionView: createCompactionView(),
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {
         return { messages, executed: false, tokensFreed: 0, actions: [] };
       }
+
+      // 如果外部注入了 compactFn，使用它
       if (compactFn) {
         return compactFn(messages);
       }
-      return { messages, executed: false, tokensFreed: 0, actions: [] };
+
+      // 默认实现：调用 compactBeforeStep
+      if (!state.compactModel || !compactionCfg) {
+        return { messages, executed: false, tokensFreed: 0, actions: [] };
+      }
+
+      const compactedMessages = await compactBeforeStep(messages, compactionCfg, {
+        model: state.compactModel,
+        fallbackModels: state.fallbackModels,
+        modelName: state.model,
+        conversationId,
+        dataStore,
+        contextLimit: maxContextTokens,
+        compactionView: state.compactionView,  // 🔑 传递视图
+      });
+
+      return {
+        messages: compactedMessages,
+        executed: compactedMessages.length !== messages.length,
+        tokensFreed: 0,
+        actions: [],
+      };
     },
 
     abort() {

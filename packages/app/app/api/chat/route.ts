@@ -10,6 +10,7 @@ import {
   handleReactiveRetry,
   isContextLengthError,
   applyCheckpointOnLoad,
+  fingerprintMessage,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -115,7 +116,8 @@ export async function POST(request: Request) {
     // compaction checkpoint:有可用 checkpoint 时从锚点之后加载,否则回退全量。
     // 仅用于模型输入——落库路径是往树上追加节点,结构上不会触碰锚点前的历史。
     // (见 docs/context-compaction-analysis.md E)
-    const historyForModel = applyCheckpointOnLoad(existingMessages, conversationId, store);
+    const checkpointResult = applyCheckpointOnLoad(existingMessages, conversationId, store);
+    const historyForModel = checkpointResult.messages;
     const messages: UIMessage[] = [...historyForModel, activeMessages[activeMessages.length - 1]];
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
@@ -177,6 +179,20 @@ export async function POST(request: Request) {
     });
 
     console.log(`[Chat API] createAgent done: ${Date.now() - startTime}ms`);
+
+    // ── 初始化 CompactionView（如果 checkpoint 应用成功）──
+    if (checkpointResult.applied && checkpointResult.summaryMessage && checkpointResult.anchorIndex != null) {
+      const anchorMsg = existingMessages[checkpointResult.anchorIndex];
+      if (anchorMsg) {
+        sessionState.compactionView.summary = {
+          message: checkpointResult.summaryMessage as any, // UIMessage → ModelMessage
+          anchorIndex: checkpointResult.anchorIndex,
+          anchorFingerprint: fingerprintMessage(anchorMsg as any),
+          summaryText: checkpointResult.summaryText!,
+        };
+        console.log(`[Checkpoint] View initialized: anchorIndex=${checkpointResult.anchorIndex}`);
+      }
+    }
 
     const messagesWithAttachments = adjustedMessages ?? messages;
 

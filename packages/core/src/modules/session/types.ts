@@ -15,6 +15,7 @@ import type { PermissionRule } from '../../modules/permissions/types';
 import type { PricingResolver } from '../../services/model/pricing';
 import type { TodoStore } from '../todos/types';
 import type { GoalState } from '../../modules/goal/types';
+import type { CompactionView } from '../compaction/compaction-view';
 
 /**
  * Session 状态选项
@@ -116,6 +117,9 @@ export interface SessionState {
 
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
+
+  /** 跨步骤压缩视图（记录已被 L3 摘要覆盖的前缀） */
+  compactionView: CompactionView;
 
   /** 压缩消息 */
   compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;

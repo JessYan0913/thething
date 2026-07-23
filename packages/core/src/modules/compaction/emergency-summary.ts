@@ -27,6 +27,12 @@ export interface EmergencySummaryResult {
   success: boolean;
   /** 失败原因（如果失败） */
   error?: string;
+  /** 生成的摘要消息（用于视图更新） */
+  summaryMessage?: import('ai').ModelMessage;
+  /** 摘要覆盖到第几条原始消息（用于视图更新） */
+  anchorIndex?: number;
+  /** 摘要正文（用于视图更新） */
+  summaryText?: string;
 }
 
 /**
@@ -84,7 +90,7 @@ export async function emergencySummarize(
 
   try {
     // 1. 保留首尾，只压缩中间部分
-    const { firstUserMsg, recentMessages, middleMessages } = splitMessages(messages, config.targetPercent);
+    const { firstUserMsg, recentMessages, middleMessages, middleEnd } = splitMessages(messages, config.targetPercent);
 
     if (middleMessages.length < 5) {
       // 中间部分太短，不值得摘要
@@ -114,6 +120,9 @@ export async function emergencySummarize(
     return {
       messages: compressedMessages,
       success: true,
+      summaryMessage,
+      anchorIndex: middleEnd - 1,  // 摘要覆盖到 middleEnd-1 的位置
+      summaryText,
     };
   } catch (err: any) {
     logger.warn('EmergencySummary', '摘要失败:', err);
@@ -132,6 +141,7 @@ interface SplitResult {
   firstUserMsg: import('ai').ModelMessage;
   recentMessages: import('ai').ModelMessage[];
   middleMessages: import('ai').ModelMessage[];
+  middleEnd: number;  // 中间部分结束位置（用于 anchorIndex）
 }
 
 function splitMessages(messages: import('ai').ModelMessage[], targetPercent: number): SplitResult {
@@ -153,6 +163,7 @@ function splitMessages(messages: import('ai').ModelMessage[], targetPercent: num
     firstUserMsg,
     recentMessages,
     middleMessages,
+    middleEnd,
   };
 }
 

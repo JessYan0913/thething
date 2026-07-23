@@ -20,6 +20,8 @@ import type { Tool } from 'ai';
 import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
 import { emergencySummarize } from './emergency-summary';
 import { logger } from '../../primitives/logger';
+import { applyCompactionView, updateViewAfterL3 } from './compaction-view';
+import type { CompactionView } from './compaction-view';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -50,9 +52,24 @@ export async function compactBeforeStep(
     tools?: Record<string, Tool>;
     /** 系统提示词，用于估算 token */
     instructions?: string;
+    /** 跨步骤压缩视图（记录已被 L3 摘要覆盖的前缀） */
+    compactionView?: CompactionView;
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
+
+  // ══════════════════════════════════════════════════════════
+  // Layer 0: 应用跨步骤压缩视图（零 LLM 调用，O(1) 前缀替换）
+  // ══════════════════════════════════════════════════════════
+  if (context.compactionView) {
+    const viewResult = applyCompactionView(current, context.compactionView);
+    if (viewResult.applied) {
+      current = viewResult.messages;
+      logger.info('Compaction', `View applied: ${messages.length} → ${current.length} messages`);
+      // 视图生效，前缀已被摘要替换，跳过后续 Layer
+      return current;
+    }
+  }
 
   // ── Layer 2: 工具输出生命周期管理（同步，微秒级）──
   const lifecycle = manageToolOutputLifecycle(current, config.lifecycle, context.storage);
@@ -171,6 +188,18 @@ export async function applyEmergencyCompression(
   if (summaryResult.success) {
     current = summaryResult.messages;
 
+    // 🆕 更新视图（如果提供了 compactionView）
+    if (context.compactionView && summaryResult.summaryMessage && summaryResult.anchorIndex != null) {
+      updateViewAfterL3(
+        context.compactionView,
+        summaryResult.summaryMessage,
+        summaryResult.anchorIndex,
+        messages[summaryResult.anchorIndex],
+        summaryResult.summaryText!,
+      );
+      logger.debug('Compaction', `View updated: anchorIndex=${summaryResult.anchorIndex}`);
+    }
+
     const afterSummary = await estimateFullRequest(
       current,
       context.instructions,
@@ -213,3 +242,4 @@ export { handleReactiveRetry, isContextLengthError } from './retry';
 export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX } from './checkpoint';
 export { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
 export { emergencySummarize } from './emergency-summary';
+export { fingerprintMessage } from './compaction-view';
