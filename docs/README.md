@@ -4,6 +4,7 @@
 
 ### 上下文管理
 - [context-compaction-architecture.md](./context-compaction-architecture.md) - 上下文压缩机制完整架构（四层保证 + 后台 Checkpoint）
+- [model-driven-compaction-design.md](./model-driven-compaction-design.md) - 模型驱动压缩设计（实验性功能）
 
 ## 功能设计
 
