@@ -32,6 +32,12 @@ export interface CachedEstimation {
   toolsTokens: number;
   /** 总 token 数 */
   totalTokens: number;
+  /** 模型上下文限制 */
+  modelLimit: number;
+  /** 使用率百分比 */
+  utilizationPercent: number;
+  /** 是否超限 */
+  exceedsLimit: boolean;
   /** 消息计数（用于检测变化） */
   messagesCount: number;
   /** Instructions 指纹（用于检测变化） */
@@ -50,6 +56,8 @@ export interface IncrementalEstimationOptions {
   previousEstimation?: CachedEstimation;
   /** 是否强制重新估算 */
   forceRefresh?: boolean;
+  /** 上下文限制（用于计算使用率） */
+  contextLimit?: number;
 }
 
 /**
@@ -85,7 +93,7 @@ export async function estimateTokensIncremental(
   modelName: string,
   options: IncrementalEstimationOptions = {},
 ): Promise<CachedEstimation> {
-  const { previousEstimation, forceRefresh = false } = options;
+  const { previousEstimation, forceRefresh = false, contextLimit } = options;
 
   // 计算当前指纹
   const instructionsFp = fingerprint(instructions);
@@ -94,7 +102,7 @@ export async function estimateTokensIncremental(
 
   // 如果强制刷新，或没有之前的估算，全量估算
   if (forceRefresh || !previousEstimation) {
-    return estimateFull(messages, instructions, tools, modelName);
+    return estimateFull(messages, instructions, tools, modelName, contextLimit);
   }
 
   // 检查 Instructions 和 Tools 是否变化
@@ -103,7 +111,7 @@ export async function estimateTokensIncremental(
 
   // 如果 Instructions 或 Tools 变化，全量估算
   if (!instructionsUnchanged || !toolsUnchanged) {
-    return estimateFull(messages, instructions, tools, modelName);
+    return estimateFull(messages, instructions, tools, modelName, contextLimit);
   }
 
   // Instructions 和 Tools 未变，复用之前的估算
@@ -131,11 +139,20 @@ export async function estimateTokensIncremental(
     const messagesTokens = previousEstimation.messagesTokens + newMessagesTokens;
     const totalTokens = messagesTokens + instructionsTokens + toolsTokens;
 
+    // 重新计算使用率（使用之前的 modelLimit 或重新计算）
+    const { getModelCapabilities } = await import('../../services/model');
+    const modelLimit = contextLimit ?? previousEstimation.modelLimit ?? (await getModelCapabilities(modelName)).contextWindow;
+    const utilizationPercent = (totalTokens / modelLimit) * 100;
+    const exceedsLimit = utilizationPercent > 90;
+
     return {
       messagesTokens,
       instructionsTokens,
       toolsTokens,
       totalTokens,
+      modelLimit,
+      utilizationPercent,
+      exceedsLimit,
       messagesCount,
       instructionsFingerprint: instructionsFp,
       toolsFingerprint: toolsFp,
@@ -144,7 +161,7 @@ export async function estimateTokensIncremental(
   }
 
   // 消息变化较大，全量估算
-  return estimateFull(messages, instructions, tools, modelName);
+  return estimateFull(messages, instructions, tools, modelName, contextLimit);
 }
 
 /**
@@ -155,6 +172,7 @@ async function estimateFull(
   instructions: string,
   tools: Record<string, any> | string,
   modelName: string,
+  contextLimit?: number,
 ): Promise<CachedEstimation> {
   // 估算 messages
   const messagesTokens = await estimateMessagesTokens(messages, modelName);
@@ -174,11 +192,20 @@ async function estimateFull(
 
   const totalTokens = messagesTokens + instructionsTokens + toolsTokens;
 
+  // 计算模型限制和使用率
+  const { getModelCapabilities } = await import('../../services/model');
+  const modelLimit = contextLimit ?? (await getModelCapabilities(modelName)).contextWindow;
+  const utilizationPercent = (totalTokens / modelLimit) * 100;
+  const exceedsLimit = utilizationPercent > 90;
+
   return {
     messagesTokens,
     instructionsTokens,
     toolsTokens,
     totalTokens,
+    modelLimit,
+    utilizationPercent,
+    exceedsLimit,
     messagesCount: messages.length,
     instructionsFingerprint: fingerprint(instructions),
     toolsFingerprint: fingerprint(toolsJson),
