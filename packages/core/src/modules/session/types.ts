@@ -124,6 +124,9 @@ export interface SessionState {
   /** 遥测收集器 */
   telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 
+  /** 上次 token 估算结果（用于增量估算） */
+  lastEstimation?: import('../compaction/incremental-estimation').CachedEstimation;
+
   /** 压缩消息 */
   compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;
   /** 中止会话 */

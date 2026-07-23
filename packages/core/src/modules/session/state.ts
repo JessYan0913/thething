@@ -118,6 +118,7 @@ export function createSessionState(
     dataStore: dataStore,
     telemetry,
     compactionView: createCompactionView(telemetry),
+    lastEstimation: undefined,
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {
@@ -143,6 +144,11 @@ export function createSessionState(
         contextLimit: maxContextTokens,
         compactionView: state.compactionView,  // 🔑 传递视图
         telemetry: state.telemetry,  // 🆕 传递遥测
+        lastEstimation: state.lastEstimation,  // 🆕 传递上次估算
+        onEstimationUpdated: (estimation) => {
+          // 🆕 更新缓存
+          state.lastEstimation = estimation;
+        },
       });
 
       return {

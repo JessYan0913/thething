@@ -16,6 +16,7 @@ import type { DataStore } from '../../primitives/datastore/types';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
 import { estimateFullRequest } from './token-counter';
+import { estimateTokensIncremental, type CachedEstimation } from './incremental-estimation';
 import type { Tool } from 'ai';
 import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
 import { emergencySummarize } from './emergency-summary';
@@ -57,6 +58,10 @@ export async function compactBeforeStep(
     compactionView?: CompactionView;
     /** 遥测收集器 */
     telemetry?: CompactionTelemetry;
+    /** 上次估算结果（用于增量估算，避免重复计算未变化的部分） */
+    lastEstimation?: CachedEstimation;
+    /** 更新估算缓存的回调 */
+    onEstimationUpdated?: (estimation: CachedEstimation) => void;
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
@@ -84,13 +89,24 @@ export async function compactBeforeStep(
 
   // ── 预算检查：是否需要进一步压缩？ ──
   if (context.tools && context.instructions) {
-    const estimation = await estimateFullRequest(
+    // 使用增量估算（如果有缓存）
+    const estimationResult = await estimateTokensIncremental(
       current,
       context.instructions,
       context.tools,
       context.modelName,
-      context.contextLimit,
+      {
+        previousEstimation: context.lastEstimation,
+        contextLimit: context.contextLimit,
+      },
     );
+
+    const estimation = estimationResult.estimation;
+
+    // 更新缓存
+    if (context.onEstimationUpdated && estimationResult.cached) {
+      context.onEstimationUpdated(estimationResult.cached);
+    }
 
     // 发送水位数据给前端
     if (context.writer) {
