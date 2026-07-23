@@ -23,6 +23,7 @@
 import type { ModelMessage } from 'ai';
 import { extractMessageText } from './token-counter';
 import { logger } from '../../primitives/logger';
+import type { CompactionTelemetry } from './compaction-telemetry';
 
 // ============================================================
 // 类型定义
