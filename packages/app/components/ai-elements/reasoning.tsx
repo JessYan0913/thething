@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import {
@@ -50,6 +50,8 @@ export type ReasoningProps = ComponentProps<typeof Collapsible> & {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   duration?: number;
+  className?: string;
+  children?: React.ReactNode;
 };
 
 const AUTO_CLOSE_DELAY = 1000;

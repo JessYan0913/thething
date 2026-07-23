@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import {
   Conversation,
@@ -47,7 +47,7 @@ import type { ApprovalMode } from '@/components/chat-selectors';
 import { McpAppToolPart } from '@/components/mcp-app-tool-part';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
-import { linkifyFilePaths } from '@/lib/linkify-file-paths';
+import { cn } from '@/lib/utils';
 
 import { TShapeBlink } from '@/components/TShapeBlink';
 import { useRouter } from 'next/navigation';
@@ -1566,38 +1566,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                         )}
                         {message.parts.map((part, index) => {
                           if (part.type === 'text') {
-                            // 预处理文件路径，转换为 /api/preview?path= 链接
-                            //（前端拦截点击打开预览面板，直接访问则在 Finder 中打开）
-                            const processedText = linkifyFilePaths(part.text, projectPath);
                             return (
                               <MessageResponse
                                 key={`${message.id}-${index}`}
-                                components={{
-                                  a: ({ href, children, ...rest }: any) => {
-                                    if (href?.startsWith('/api/preview?path=')) {
-                                      const filePath = decodeURIComponent(href.slice('/api/preview?path='.length));
-                                      const fileName = filePath.split('/').pop() ?? filePath;
-                                      return (
-                                        <span
-                                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/70 cursor-pointer font-medium text-sm transition-colors align-middle mx-0.5"
-                                          role="button"
-                                          tabIndex={0}
-                                          title={`点击预览: ${filePath}`}
-                                          onClick={() => setPreviewFile({ path: filePath, content: '' })}
-                                          onKeyDown={(e) => e.key === 'Enter' && setPreviewFile({ path: filePath, content: '' })}
-                                        >
-                                          <FileTextIcon className="size-3.5" />
-                                          <span>{fileName}</span>
-                                          <span className="text-[10px] text-blue-400 dark:text-blue-500 font-normal">预览</span>
-                                        </span>
-                                      );
-                                    }
-                                    // 非预览链接，渲染为普通 a 标签
-                                    return <a href={href} {...rest}>{children}</a>;
-                                  },
-                                }}
                               >
-                                {processedText}
+                                {part.text}
                               </MessageResponse>
                             );
                           }
