@@ -4,6 +4,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { parseFrontmatterFile } from '../../primitives/parser';
 import { createMultiSourceLoader } from '../../services/scanner/multi-source-loader';
 import type { Skill, SkillLoaderConfig } from './types';
@@ -131,6 +132,10 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
 // Public API
 // ============================================================
 
+// 本文件位于 packages/core/src/modules/skills/，builtin skills 在 ../../skills-builtin/
+const _dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_BUILTIN_DIR = path.join(_dirname, '../../skills-builtin');
+
 export interface LoadSkillsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
@@ -147,7 +152,7 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     configDir: options?.configDir,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
-    builtinDir: options?.builtinDir,
+    builtinDir: options?.builtinDir ?? DEFAULT_BUILTIN_DIR,
   });
 
   const fileSkills = fileItems.map((s) => ({
