@@ -1,34 +1,9 @@
-import { getServerRuntime } from '@/lib/runtime';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
+import { resolveSkillByFolderName, synthesizeSkillMd } from '@/lib/skills';
 
 export const runtime = 'nodejs';
-
-async function getAllSkillsDirs(): Promise<string[]> {
-  const rt = await getServerRuntime();
-  return [...rt.layout.resources.skills];
-}
-
-/** 递归查找包含 SKILL.md 的子目录，目录名匹配 name */
-async function findSkillDirByName(dir: string, name: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-      const fullPath = path.join(dir, entry.name);
-      if (entry.name === name) {
-        try {
-          await fs.access(path.join(fullPath, 'SKILL.md'));
-          return fullPath;
-        } catch { /* 继续搜索子目录 */ }
-      }
-      const found = await findSkillDirByName(fullPath, name);
-      if (found) return found;
-    }
-  } catch { /* 目录不可读 */ }
-  return null;
-}
 
 export async function GET(request: Request) {
   try {
@@ -40,44 +15,30 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing name or path parameter' }, { status: 400 });
     }
 
-    const allDirs = await getAllSkillsDirs();
-    let resolvedPath = '';
-
-    // 先尝试顶层直接匹配
-    for (const dir of allDirs) {
-      const candidate = path.join(dir, skillName, filePath);
-      try {
-        await fs.access(candidate);
-        resolvedPath = candidate;
-        break;
-      } catch { /* continue */ }
+    const resolved = await resolveSkillByFolderName(skillName);
+    if (!resolved) {
+      return NextResponse.json({ error: 'Skill not found' }, { status: 404 });
     }
 
-    // 未找到则递归搜索（支持嵌套技能）
-    if (!resolvedPath) {
-      for (const dir of allDirs) {
-        const skillDir = await findSkillDirByName(dir, skillName);
-        if (skillDir) {
-          const candidate = path.join(skillDir, filePath);
-          try {
-            await fs.access(candidate);
-            resolvedPath = candidate;
-            break;
-          } catch { /* continue */ }
-        }
+    // 内联 bundled skill：合成虚拟 SKILL.md
+    if (!resolved.dir) {
+      if (filePath !== 'SKILL.md') {
+        return NextResponse.json({ error: 'File not found' }, { status: 404 });
       }
+      return NextResponse.json({ content: synthesizeSkillMd(resolved.skill), ext: '.md' });
     }
 
-    if (!resolvedPath) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 });
-    }
-
-    const isWithinSkillsDir = allDirs.some(dir => resolvedPath.startsWith(dir));
-    if (!isWithinSkillsDir) {
+    const resolvedPath = path.resolve(resolved.dir, filePath);
+    if (!resolvedPath.startsWith(resolved.dir + path.sep)) {
       return NextResponse.json({ error: 'Path not allowed' }, { status: 403 });
     }
 
-    const stat = await fs.stat(resolvedPath);
+    let stat;
+    try {
+      stat = await fs.stat(resolvedPath);
+    } catch {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    }
     if (!stat.isFile()) {
       return NextResponse.json({ error: 'Not a file' }, { status: 400 });
     }

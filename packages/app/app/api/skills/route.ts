@@ -1,5 +1,5 @@
-import { getServerRuntime, reloadServerContext } from '@/lib/runtime';
-import { loadSkills } from '@the-thing/core';
+import { reloadServerContext } from '@/lib/runtime';
+import { resolveSkillByFolderName, loadAllSkills } from '@/lib/skills';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
@@ -29,28 +29,19 @@ export async function GET(request: Request) {
     const folderName = searchParams.get('folderName');
 
     // 直接从磁盘读取，不依赖 context 缓存，确保新安装的技能立即可见
-    const rt = await getServerRuntime();
-    const diskSkills = await loadSkills({
-      configDir: rt.layout.configDir,
-      cwd: process.cwd(),
-      dirs: rt.layout.resources.skills,
-    });
-    const skills = diskSkills.map((skill) => {
-      const sourceDir = path.dirname(skill.sourcePath);
-      return {
-        name: skill.name,
-        folderName: path.basename(sourceDir),
-        description: skill.description,
-        whenToUse: skill.whenToUse,
-        allowedTools: skill.allowedTools,
-        model: skill.model,
-        effort: skill.effort,
-        context: skill.context,
-        paths: skill.paths,
-        sourcePath: skill.sourcePath,
-        source: skill.source ?? 'project',
-      };
-    });
+    const skills = (await loadAllSkills()).map(({ skill, folderName }) => ({
+      name: skill.name,
+      folderName,
+      description: skill.description,
+      whenToUse: skill.whenToUse,
+      allowedTools: skill.allowedTools,
+      model: skill.model,
+      effort: skill.effort,
+      context: skill.context,
+      paths: skill.paths,
+      sourcePath: skill.sourcePath,
+      source: skill.source ?? 'project',
+    }));
 
     // Single skill lookup
     if (folderName) {
@@ -123,6 +114,11 @@ export async function DELETE(request: Request) {
     const name = searchParams.get('name');
     if (!name) {
       return NextResponse.json({ error: 'Missing name parameter' }, { status: 400 });
+    }
+
+    const resolved = await resolveSkillByFolderName(name);
+    if (resolved?.skill.source === 'builtin') {
+      return NextResponse.json({ error: '内置技能不可删除' }, { status: 403 });
     }
 
     const skillsDir = await getPrimarySkillsDir();

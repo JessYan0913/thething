@@ -92,6 +92,8 @@ export default function SkillDetail({
   const handleBack =
     onBack ?? (() => router.push("/settings/skills"))
 
+  const isBuiltin = skill?.source === "builtin"
+
   // ── 未找到 ────────────────────────────────────────────────
   if (!skillLoading && !skill) {
     return (
@@ -130,15 +132,17 @@ export default function SkillDetail({
         ) : undefined}
         menuItems={menuItems}
         extraButtons={
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowChat(!showChat)}
-            className="shrink-0"
-          >
-            <SparklesIcon className="mr-1 size-4" />
-            AI 编辑
-          </Button>
+          isBuiltin ? undefined : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowChat(!showChat)}
+              className="shrink-0"
+            >
+              <SparklesIcon className="mr-1 size-4" />
+              AI 编辑
+            </Button>
+          )
         }
       />
 

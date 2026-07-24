@@ -241,6 +241,7 @@ function SkillCard({
   onDelete: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const isBuiltin = skill.source === "builtin"
 
   return (
     <div
@@ -278,6 +279,7 @@ function SkillCard({
         </button>
 
         {/* Actions menu */}
+        {!isBuiltin && (
         <div className="relative shrink-0">
           <Button
             variant="ghost"
@@ -309,6 +311,7 @@ function SkillCard({
             </>
           )}
         </div>
+        )}
       </div>
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground min-w-0">
