@@ -4,13 +4,13 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { parseFrontmatterFile } from '../../primitives/parser';
 import { createMultiSourceLoader } from '../../services/scanner/multi-source-loader';
 import type { Skill, SkillLoaderConfig } from './types';
 import { SkillFrontmatterSchema } from './types';
 import type { ConfigSource } from '../../primitives/constants';
 import { logger } from '../../primitives/logger';
+import { BUNDLED_SKILLS } from './bundled';
 
 // ============================================================
 // 扩展类型（带 source 字段）
@@ -132,10 +132,6 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
 // Public API
 // ============================================================
 
-// 本文件位于 packages/core/src/modules/skills/，builtin skills 在 ../../skills-builtin/
-const _dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_BUILTIN_DIR = path.join(_dirname, '../../skills-builtin');
-
 export interface LoadSkillsOptions {
   cwd?: string;
   sources?: ('user' | 'project')[];
@@ -146,13 +142,13 @@ export interface LoadSkillsOptions {
 }
 
 export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> {
-  // 1. 加载文件级 skills（user + project + builtin dir）
+  // 1. 加载文件级 skills（user + project + optional builtinDir）
   const fileItems = await skillsLoader.load({
     cwd: options?.cwd,
     configDir: options?.configDir,
     homeDir: options?.homeDir,
     dirs: options?.dirs,
-    builtinDir: options?.builtinDir ?? DEFAULT_BUILTIN_DIR,
+    builtinDir: options?.builtinDir,
   });
 
   const fileSkills = fileItems.map((s) => ({
@@ -168,7 +164,11 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     source: s.source,
   }));
 
-  return fileSkills;
+  // 2. 合并内置 skills（BUNDLED_SKILLS 优先级最低，被同名 file skill 覆盖）
+  const fileSkillNames = new Set(fileSkills.map(s => s.name));
+  const bundledToAdd = BUNDLED_SKILLS.filter(s => !fileSkillNames.has(s.name));
+
+  return [...fileSkills, ...bundledToAdd];
 }
 
 export async function loadSkillFile(

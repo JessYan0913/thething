@@ -37,8 +37,6 @@ export {
 // 统一加载
 // ============================================================
 
-import path from 'path';
-import { fileURLToPath } from 'url';
 import type { ResourceDirs } from '../../services/config/layout';
 import type { Skill } from '../../modules/skills/types';
 import type { AgentDefinition } from '../../modules/agent/types';
@@ -53,8 +51,6 @@ import {
   loadConnectors,
   loadPermissions,
 } from './index';
-
-const _dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface LoadAllOptions {
   cwd?: string;
@@ -104,7 +100,6 @@ export async function loadAll(options?: LoadAllOptions): Promise<LoadAllResult> 
       configDir,
       homeDir,
       dirs: resourceDirs?.skills,
-      builtinDir: options?.skills?.builtinDir ?? path.join(_dirname, '../../skills-builtin'),
       ...options?.skills,
     }),
     loadAgents({
