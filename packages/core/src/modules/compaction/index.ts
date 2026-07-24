@@ -15,7 +15,7 @@ import type { DataStore } from '../../primitives/datastore/types';
 
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
-import { estimateFullRequest, estimateMessagesTokens } from './token-counter';
+import { estimateFullRequest } from './token-counter';
 import { estimateTokensIncremental, type CachedEstimation } from './incremental-estimation';
 import type { Tool } from 'ai';
 import { agentCompress, findCompressionSplit, KEEP_PERCENT } from './agent-compress';
@@ -212,6 +212,7 @@ export async function applyEmergencyCompression(
       model: context.model,
       fallbackModels: context.fallbackModels,
       modelName: context.modelName,
+      contextLimit: context.contextLimit, // 分块预算按当前窗口 W 裁定
       conversationId: context.conversationId,
       dataStore: context.dataStore,
       anchorMessageId, // 有 .id 才落库(供重载)
@@ -222,12 +223,10 @@ export async function applyEmergencyCompression(
       break;
     }
 
-    // P4 ②: 记录 in->out,验证"输入按 W 裁定"不变式(in 应 ≤ W)。
-    const inTokens = await estimateMessagesTokens(olderMessages, context.modelName);
-    const invariant = inTokens > windowLimit ? `IN>W!!(${inTokens}>${windowLimit})` : `in=${inTokens}`;
+    // ② in->out 明细由 agentCompress 内部记([②] chunks=N in=..tok out=..);此处只记 round 级
     logger.info(
       'Compaction',
-      `[②] round=${round + 1} fired ${invariant} out=${result.summaryText.length}chars anchorIdx=${anchorIndex} persisted=${!!anchorMessageId} | conv=${context.conversationId ?? '?'}`,
+      `[round=${round + 1}] anchorIdx=${anchorIndex} persisted=${!!anchorMessageId} | conv=${context.conversationId ?? '?'}`,
     );
 
     const anchorMsg = current[anchorIndex];

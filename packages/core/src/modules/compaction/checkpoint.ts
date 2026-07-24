@@ -168,6 +168,7 @@ export async function maybeCheckpointAfterRun(
       model: context.model,
       fallbackModels: context.fallbackModels,
       modelName: context.modelName,
+      contextLimit: context.contextLimit, // 分块预算按当前窗口 W 裁定
       conversationId: context.conversationId,
       dataStore: context.dataStore,
       anchorMessageId, // Path A:落库供重载

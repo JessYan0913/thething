@@ -191,12 +191,13 @@ describe('集成测试：统一压缩管线', () => {
       contextLimit: 5000,
       compactionView: view,
     };
-    // 第一次：超限 -> Agent 压缩，更新 view
+    // 第一次：超限 -> Agent 压缩（分块时可能多次调用），更新 view
     await compactBeforeStep(msgs, undefined, ctx);
-    expect(mockGenerateText).toHaveBeenCalledTimes(1);
-    // 第二次：view 生效（前缀已被摘要替换），不再调 LLM
+    const callsAfterFirst = mockGenerateText.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+    // 第二次：view 生效（前缀已被摘要替换），不再调 LLM——调用数不增加
     await compactBeforeStep(msgs, undefined, ctx);
-    expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    expect(mockGenerateText.mock.calls.length).toBe(callsAfterFirst);
   });
 
   it('P4: Agent 压缩触发时记 ② in->out 决策日志', async () => {

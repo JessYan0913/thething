@@ -164,4 +164,50 @@ describe('agentCompress', () => {
     });
     expect(saveSpy).not.toHaveBeenCalled();
   });
+
+  it('分块折叠压缩：待压段超过单块预算时分多块，后续块前置【历史摘要】', async () => {
+    // contextLimit 2000 -> chunkBudget = max(0.6*2000, 1000) = 1200 tok;
+    // 每条 4000 chars(约 1000 tok)-> 每块只装得下 1 条 -> 5 条分 5 块
+    const msgs: ModelMessage[] = Array(5)
+      .fill(null)
+      .map((_, i) => assistantMsg(`第${i}段: ` + 'x'.repeat(4000)));
+    const result = await agentCompress(msgs, {
+      model: mockModel,
+      modelName: 'claude-opus-4',
+      contextLimit: 2000,
+      conversationId: 'c-chunk',
+      dataStore: makeDataStore(),
+    });
+    expect(result.success).toBe(true);
+    // 分了多块 -> 多次摘要调用(折叠)
+    expect(mockGenerateText.mock.calls.length).toBeGreaterThan(1);
+    // 每块输入都有界:不会把 5 条全塞进一次调用
+    for (const call of mockGenerateText.mock.calls) {
+      const messages = (call[0] as any).messages as ModelMessage[];
+      expect(messages.length).toBeLessThan(5);
+    }
+    // 第 2 块起,前置上一块的【历史摘要】(折叠语义)
+    const secondCall = mockGenerateText.mock.calls[1][0] as any;
+    const first = secondCall.messages[0];
+    expect(first.role).toBe('user');
+    expect(String(first.content)).toContain('【历史摘要】');
+  });
+
+  it('分块时某一块失败则整体失败（交闸门,不出半成品）', async () => {
+    mockGenerateText
+      .mockResolvedValueOnce({ text: SUMMARY_TEXT }) // 第 1 块成功
+      .mockRejectedValue(new Error('provider down')); // 后续块恒失败
+    const msgs: ModelMessage[] = Array(5)
+      .fill(null)
+      .map((_, i) => assistantMsg(`第${i}段: ` + 'x'.repeat(4000)));
+    const result = await agentCompress(msgs, {
+      model: mockModel,
+      modelName: 'claude-opus-4',
+      contextLimit: 2000,
+      conversationId: 'c-chunk-fail',
+      dataStore: makeDataStore(),
+    });
+    expect(result.success).toBe(false);
+    expect(result.summaryMessage).toBeUndefined();
+  });
 });
