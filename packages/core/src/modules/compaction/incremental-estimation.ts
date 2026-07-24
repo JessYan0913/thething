@@ -141,7 +141,7 @@ export async function estimateTokensIncremental(
 
     // 重新计算使用率（使用之前的 modelLimit 或重新计算）
     const { getModelCapabilities } = await import('../../services/model');
-    const modelLimit = contextLimit ?? previousEstimation.modelLimit ?? (await getModelCapabilities(modelName)).contextWindow;
+    const modelLimit = contextLimit ?? previousEstimation.modelLimit ?? (await getModelCapabilities(modelName)).contextLimit;
     const utilizationPercent = (totalTokens / modelLimit) * 100;
     const exceedsLimit = utilizationPercent > 90;
 
@@ -194,7 +194,7 @@ async function estimateFull(
 
   // 计算模型限制和使用率
   const { getModelCapabilities } = await import('../../services/model');
-  const modelLimit = contextLimit ?? (await getModelCapabilities(modelName)).contextWindow;
+  const modelLimit = contextLimit ?? (await getModelCapabilities(modelName)).contextLimit;
   const utilizationPercent = (totalTokens / modelLimit) * 100;
   const exceedsLimit = utilizationPercent > 90;
 

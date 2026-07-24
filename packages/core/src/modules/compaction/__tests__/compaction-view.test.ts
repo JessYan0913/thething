@@ -107,7 +107,7 @@ describe('CompactionView Integration', () => {
           type: 'tool-call',
           toolCallId: 'call-123',
           toolName: 'test-tool',
-          args: { arg: 'value' },
+          input: { arg: 'value' },
         },
       ],
     };
@@ -128,7 +128,7 @@ describe('CompactionView Integration', () => {
           type: 'tool-result',
           toolCallId: 'call-456',
           toolName: 'test-tool',
-          result: 'some result',
+          output: { type: 'text', value: 'some result' },
         },
       ],
     };

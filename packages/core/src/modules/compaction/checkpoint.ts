@@ -3,21 +3,21 @@
 // ============================================================
 // 加载会话历史时,如果存在 compaction checkpoint(已存摘要 + 锚点消息 id),
 // 直接返回 [摘要消息, ...锚点之后的消息],而非全量历史。这样:
-//   - 发给 API 的前缀稳定 → 改善 prompt cache 命中
+//   - 发给 API 的前缀稳定 -> 改善 prompt cache 命中
 //   - 无需每次请求重跑 LLM 摘要
 //
 // 安全前提:DB 始终保存全量历史(压缩只在内存中对模型请求生效)。
-// 因此本函数纯属叠加优化——锚点找不到 / 无摘要 / 任何异常,一律回退全量历史,
+// 因此本函数纯属叠加优化--锚点找不到 / 无摘要 / 任何异常,一律回退全量历史,
 // 绝不丢失消息。见 docs/context-compaction-analysis.md E。
 
-import type { UIMessage } from 'ai';
+import { convertToModelMessages, type UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 
 import { logger } from '../../primitives/logger';
-import { estimateMessageTokens, estimateMessagesTokens } from './token-counter';
+import { estimateMessagesTokens } from './token-counter';
 import { getModelContextLimit } from '../../services/model';
-import { generateAndPersistCheckpointSummary } from './context-window';
+import { agentCompress, findCompressionSplit } from './agent-compress';
 import { buildSummaryMessage } from './message-view';
 
 /**
@@ -66,20 +66,20 @@ export function applyCheckpointOnLoad(
   try {
     const stored = dataStore.summaryStore.getSummaryByConversation(conversationId);
     if (!stored || !stored.summary || !stored.anchorMessageId) {
-      return { applied: false, messages: fullMessages }; // 无摘要或无锚点 → 全量
+      return { applied: false, messages: fullMessages }; // 无摘要或无锚点 -> 全量
     }
 
     const anchorIndex = fullMessages.findIndex(
       (m) => (m as unknown as { id?: string }).id === stored.anchorMessageId,
     );
-    // 锚点找不到(消息被删/id 变更),或锚点已是最后一条(无可保留的后段)→ 全量
+    // 锚点找不到(消息被删/id 变更),或锚点已是最后一条(无可保留的后段)-> 全量
     if (anchorIndex < 0) {
       logger.debug('Checkpoint', `anchor ${stored.anchorMessageId} not found, loading full history`);
       return { applied: false, messages: fullMessages };
     }
 
     const newerMessages = fullMessages.slice(anchorIndex + 1);
-    // 锚点之后没有新消息 → 没必要压缩,返回全量(避免只发一条摘要)
+    // 锚点之后没有新消息 -> 没必要压缩,返回全量(避免只发一条摘要)
     if (newerMessages.length === 0) {
       return { applied: false, messages: fullMessages };
     }
@@ -93,7 +93,7 @@ export function applyCheckpointOnLoad(
       summaryText: stored.summary,
     };
   } catch (err) {
-    // 任何异常 → 回退全量,绝不丢历史
+    // 任何异常 -> 回退全量,绝不丢历史
     logger.warn('Checkpoint', 'applyCheckpointOnLoad failed, loading full history:', err);
     return { applied: false, messages: fullMessages };
   }
@@ -108,11 +108,11 @@ export function applyCheckpointOnLoad(
 //   3. 一旦失败,checkpoint 永远落不了库(历史 4 条摘要锚点全空)
 // 改为运行结束后异步判定:活跃路径超过水位线就在后台生成摘要 + 锚点落库,
 // 下次加载直接命中 applyCheckpointOnLoad,budget 检查天然通过。
+//
+// P2:摘要由统一的 agentCompress(主模型,真实消息)生成,与濒死路径(B)共用同一压缩器。
 
 /** 触发后台 checkpoint 的上下文占比水位线 */
 const CHECKPOINT_TRIGGER_PERCENT = 0.5;
-/** checkpoint 后保留完整消息的目标占比 */
-const CHECKPOINT_KEEP_PERCENT = 0.3;
 /** 锚点之后至少保留的消息条数 */
 const MIN_KEEP_MESSAGES = 2;
 
@@ -140,7 +140,7 @@ export async function maybeCheckpointAfterRun(
     const totalTokens = await estimateMessagesTokens(activeMessages as unknown as import('ai').ModelMessage[], context.modelName);
     if (totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
 
-    // 从已有 checkpoint 锚点之后开始摘要(增量);无锚点则从头开始
+    // 从已有 checkpoint 锚点之后开始(增量);无锚点则从头
     const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
     let startIndex = 0;
     if (stored?.anchorMessageId) {
@@ -148,42 +148,38 @@ export async function maybeCheckpointAfterRun(
       if (idx >= 0) startIndex = idx + 1;
     }
 
-    // 从末尾往前保留 ≈ KEEP_PERCENT 的 token,其余进入摘要段
-    const keepBudget = contextLimit * CHECKPOINT_KEEP_PERCENT;
-    let kept = 0;
-    let splitIndex = activeMessages.length;
-    for (let i = activeMessages.length - 1; i > startIndex; i--) {
-      kept += await estimateMessageTokens(activeMessages[i] as unknown as import('ai').ModelMessage, context.modelName);
-      if (kept >= keepBudget) { splitIndex = i; break; }
-      splitIndex = i;
-    }
-    // 尾部至少保留 MIN_KEEP_MESSAGES 条
-    splitIndex = Math.min(splitIndex, activeMessages.length - MIN_KEEP_MESSAGES);
-
+    // 共享切分:尾部保留,其余进摘要段(与濒死路径用同一 findCompressionSplit)
+    const splitIndex = await findCompressionSplit(
+      activeMessages as unknown as import('ai').ModelMessage[],
+      startIndex,
+      contextLimit,
+      context.modelName,
+    );
     const olderMessages = activeMessages.slice(startIndex, splitIndex);
     if (olderMessages.length === 0) return false;
 
     const anchorMessageId = olderMessages[olderMessages.length - 1].id;
     if (!anchorMessageId) return false;
 
-    const ok = await generateAndPersistCheckpointSummary(
-      olderMessages as unknown as import('ai').ModelMessage[],
-      {
-        model: context.model,
-        fallbackModels: context.fallbackModels,
-        conversationId: context.conversationId,
-        dataStore: context.dataStore,
-        anchorMessageId,
-      },
-    );
-    if (ok) {
+    // 转成 ModelMessage 喂给主模型(真实结构,不拍扁、不 slice)
+    const olderModelMessages = await convertToModelMessages(olderMessages);
+
+    const result = await agentCompress(olderModelMessages, {
+      model: context.model,
+      fallbackModels: context.fallbackModels,
+      modelName: context.modelName,
+      conversationId: context.conversationId,
+      dataStore: context.dataStore,
+      anchorMessageId, // Path A:落库供重载
+    });
+    if (result.success) {
       logger.info(
         'Checkpoint',
         `Background checkpoint saved for ${context.conversationId}: ` +
         `anchor=${anchorMessageId}, summarized ${olderMessages.length} messages (${totalTokens} tokens total)`,
       );
     }
-    return ok;
+    return result.success;
   } catch (err) {
     // 后台任务,失败无害,下次运行结束再试
     logger.warn('Checkpoint', 'maybeCheckpointAfterRun failed:', err);

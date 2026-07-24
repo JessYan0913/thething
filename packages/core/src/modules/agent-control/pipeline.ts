@@ -2,7 +2,7 @@ import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStep
 
 import type { PipelineContext } from '../session/interfaces';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
-import { getModelContextLimit } from '../../services/model';
+import { gateFromEstimation } from '../compaction/gate';
 import { logger } from '../../primitives/logger';
 import { estimateTaskComplexity } from '../session/task-complexity';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
@@ -179,20 +179,34 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       messages = compactResult.messages as ModelMessageType[];
     }
 
-    // Context usage progress bar
+    // Context usage progress bar + 闸门(复用同一次估算,零新增开销)
     if (config.instructions != null && config.tools) {
       const estimation = await estimateFullRequest(
         messages as import('ai').ModelMessage[],
         config.instructions,
         config.tools,
         sessionState.model,
+        config.contextLimit,
       );
-      const limit = config.contextLimit
-        ? getModelContextLimit(sessionState.model, config.contextLimit)
-        : estimation.modelLimit;
-      logger.info('Context', formatContextBar(estimation, limit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
+      logger.info('Context', formatContextBar(estimation, estimation.modelLimit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
       // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)
       sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);
+
+      // 闸门:压缩(含 forceTruncate 兜底)后仍超限 -> 抛 CONTEXT_BUDGET_EXCEEDED,
+      // 不静默发超标请求。复用上面的估算,不重复计算。pre-stream 闸门见 create.ts,
+      // 此处覆盖流式中上下文增长到超限的情况。
+      const gateResult = gateFromEstimation(estimation);
+      // P4 决策日志:闸门处汇总一条(trigger / 压缩 / gate),让"这次请求为什么长这样"可回溯。
+      const compactTag = compactResult.executed
+        ? `compact:freed=${compactResult.tokensFreed}`
+        : 'compact:none';
+      logger.info('Compaction', `[decision] trigger=B ${compactTag} | gate=${gateResult.decision} | conv=${sessionState.conversationId}`);
+      if (!gateResult.passed) {
+        throw new Error(`CONTEXT_BUDGET_EXCEEDED: ${gateResult.decision}`);
+      }
+    } else {
+      // P4:闸门跳过(无法估算)记原因,不静默降级(与现状一致,不新增风险)。
+      logger.debug('Compaction', `[decision] trigger=B gate=SKIP(no instructions/tools) | conv=${sessionState.conversationId}`);
     }
 
     return {

@@ -45,9 +45,9 @@ describe('Layer 2 压缩落盘可恢复', () => {
     const fullContent = 'x'.repeat(10000);
     const messages = [
       createUserMessage('Q1'),
-      createToolMessage('read_file', { path: 'src/big.ts', content: fullContent }, 'tc-1'),
+      createToolMessage('bash', { command: 'cat big.ts', stdout: fullContent, exitCode: 0 }, 'tc-1'),
       createUserMessage('Q2'),
-      createToolMessage('read_file', { path: 'src/recent.ts', content: 'y'.repeat(300) }, 'tc-2'),
+      createToolMessage('bash', { command: 'echo y', stdout: 'y'.repeat(300), exitCode: 0 }, 'tc-2'),
     ];
 
     const result = manageToolOutputLifecycle(
@@ -74,7 +74,7 @@ describe('Layer 2 压缩落盘可恢复', () => {
   it('does not persist when no storage is provided (lossy fallback)', () => {
     const messages = [
       createUserMessage('Q1'),
-      createToolMessage('read_file', { path: 'a.ts', content: 'x'.repeat(10000) }, 'tc-1'),
+      createToolMessage('bash', { command: 'cmd', stdout: 'x'.repeat(10000), exitCode: 0 }, 'tc-1'),
       createUserMessage('Q2'),
     ];
 
@@ -84,5 +84,28 @@ describe('Layer 2 压缩落盘可恢复', () => {
     const item = getResultItem(result.messages[1]);
     expect(item._compacted).toBe(true);
     expect(item.output.value).not.toContain('saved to:');
+  });
+
+  it('read_file 只留路径不落盘内容(原文件已在磁盘,避免两份)', async () => {
+    const fullContent = 'x'.repeat(10000);
+    const messages = [
+      createUserMessage('Q1'),
+      createToolMessage('read_file', { path: 'src/big.ts', content: fullContent }, 'tc-read'),
+      createUserMessage('Q2'),
+    ];
+
+    const result = manageToolOutputLifecycle(
+      messages,
+      { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 },
+      { sessionId, dataDir },
+    );
+
+    // read_file 被老化(meta 替换内容,腾出上下文),但不落盘内容(无 saved-to,无冗余副本)
+    expect(result.persistence).toBeUndefined();
+    const item = getResultItem(result.messages[1]);
+    expect(item._compacted).toBe(true);
+    expect(item.output.value).not.toContain('saved to:');
+    // meta 含原文件路径,模型可直接 re-read 原文件找回
+    expect(item.output.value).toContain('src/big.ts');
   });
 });

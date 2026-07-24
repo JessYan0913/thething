@@ -1,25 +1,25 @@
 // ============================================================
 // Compaction Module - Entry Point
 // ============================================================
-// 源头管理，每步自动替换旧工具输出为结构化元信息
+// 每步自动压缩 + 闸门强制。统一为 Agent 驱动的单一压缩路径(P2):
+//   Layer 0: 跨步压缩视图(前缀替换,O(1)) -- 已有摘要则直接套用
+//   Layer 2: 工具输出生命周期管理(老化 + 落盘找回,同步,微秒级)
+//   ② Agent 压缩(主模型,真实消息,按 W 裁定输入,默认成功)
+//   ③ 闸门:压缩后仍超限 -> 抛 CONTEXT_BUDGET_EXCEEDED(pipeline.ts 接,413)
 //
-// compactBeforeStep 执行顺序：
-// 1. Layer 2: 工具输出生命周期管理 (同步，微秒级)
-// 2. Layer 2.5: 确定性文本压缩 (若 Layer 2 后仍超限)
-// 3. Layer 3: 紧急 LLM 摘要 (若 Layer 2.5 后仍超限，带超时保护)
-// 4. 降级: 强制截断 (保底方案，保证永不返回 413)
-// 注: Layer 1 (compact_tool_result) 已删除。
+// forceTruncate 已删:它静默砍中间 prose(抖音式丢失),现由闸门显式 413 兜底。
+// 见 docs/context-compaction-redesign.md。
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
-import { estimateFullRequest } from './token-counter';
+import { estimateFullRequest, estimateMessagesTokens } from './token-counter';
 import { estimateTokensIncremental, type CachedEstimation } from './incremental-estimation';
 import type { Tool } from 'ai';
-import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
-import { emergencySummarize } from './emergency-summary';
+import { agentCompress, findCompressionSplit, KEEP_PERCENT } from './agent-compress';
+import { getModelContextLimit } from '../../services/model';
 import { logger } from '../../primitives/logger';
 import { applyCompactionView, updateViewAfterL3 } from './compaction-view';
 import type { CompactionView } from './compaction-view';
@@ -73,7 +73,7 @@ export async function compactBeforeStep(
     const viewResult = applyCompactionView(current, context.compactionView);
     if (viewResult.applied) {
       current = viewResult.messages;
-      logger.info('Compaction', `View applied: ${messages.length} → ${current.length} messages`);
+      logger.info('Compaction', `View applied: ${messages.length} -> ${current.length} messages`);
       // 视图生效，前缀已被摘要替换，跳过后续 Layer
       return current;
     }
@@ -133,11 +133,11 @@ export async function compactBeforeStep(
       }
     }
 
-    // 如果 Layer 2 后仍超限，启动紧急压缩流程
+    // 如果 Layer 2 后仍超限，启动 Agent 压缩（②）
     if (estimation.exceedsLimit) {
       logger.warn(
         'Compaction',
-        `Layer 2 后仍超限 (${estimation.utilizationPercent.toFixed(1)}%)，启动紧急压缩`,
+        `Layer 2 后仍超限 (${estimation.utilizationPercent.toFixed(1)}%)，启动 Agent 压缩`,
       );
 
       current = await applyEmergencyCompression(current, {
@@ -153,9 +153,10 @@ export async function compactBeforeStep(
 }
 
 /**
- * 紧急压缩流程：Layer 2.5 → Layer 3 → 降级
+ * Agent 压缩（②）：主模型读真实消息生成摘要,替换被压缩前缀。
  *
- * 导出供 budget-check 使用，确保初始预算检查和运行时压缩使用相同的紧急压缩逻辑
+ * 导出供 budget-check 使用，确保初始预算检查和运行时压缩使用相同逻辑。
+ * 失败 / 仍超限 -> 返回原消息,由闸门 413 兜底(不 forceTruncate)。
  */
 export async function applyEmergencyCompression(
   messages: import('ai').ModelMessage[],
@@ -163,6 +164,8 @@ export async function applyEmergencyCompression(
     model: LanguageModelV3;
     fallbackModels?: LanguageModelV3[];
     modelName: string;
+    conversationId?: string;
+    dataStore?: DataStore;
     contextLimit?: number;
     tools: Record<string, Tool>;
     instructions: string;
@@ -171,69 +174,81 @@ export async function applyEmergencyCompression(
     telemetry?: CompactionTelemetry;
   },
 ): Promise<import('ai').ModelMessage[]> {
-  let current = messages;
-
-  // ── Step 1: Layer 2.5 - 确定性文本压缩 ──
-  logger.info('Compaction', 'Step 1: Layer 2.5 - 确定性文本压缩');
-
-  const deterministicResult = await compressMessagesDeterministic(
-    current,
-    context.targetTokens,
-    context.modelName,
-  );
-
-  current = deterministicResult.messages;
-
-  const afterDeterministic = await estimateFullRequest(
-    current,
-    context.instructions,
-    context.tools,
-    context.modelName,
-    context.contextLimit,
-  );
-
-  if (!afterDeterministic.exceedsLimit) {
-    logger.info(
-      'Compaction',
-      `Layer 2.5 成功: 释放 ${deterministicResult.tokensFreed} tokens，降至 ${afterDeterministic.utilizationPercent.toFixed(1)}%`,
-    );
-    return current;
+  // 1. 找已有锚点(增量):只压锚点之后的新消息(仅首轮查 summaryStore)
+  let firstStartIndex = 0;
+  if (context.conversationId && context.dataStore) {
+    try {
+      const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
+      if (stored?.anchorMessageId) {
+        const idx = messages.findIndex(
+          (m) => (m as unknown as { id?: string }).id === stored.anchorMessageId,
+        );
+        if (idx >= 0) firstStartIndex = idx + 1;
+      }
+    } catch {
+      /* ignore, 按无锚点处理 */
+    }
   }
 
-  // ── Step 2: Layer 3 - 紧急 LLM 摘要 ──
-  logger.warn(
-    'Compaction',
-    `Layer 2.5 后仍超限 (${afterDeterministic.utilizationPercent.toFixed(1)}%)，启动 Layer 3`,
-  );
+  const windowLimit = getModelContextLimit(context.modelName, context.contextLimit);
 
-  const summaryResult = await emergencySummarize(current, {
-    model: context.model,
-    fallbackModels: context.fallbackModels,
-    targetPercent: 0.6, // 压缩到 60%
-  });
+  // 2. 多轮压缩:一轮压完仍超限就再压(每轮尾部保留 ≈30%,30% -> 9% -> 2.7% 快速收敛)。
+  //    只在能继续压(待压段 >= 2 条)且摘要成功时继续;否则停止,交闸门 413(不 forceTruncate)。
+  let current = messages;
+  let startIndex = firstStartIndex;
+  const MAX_ROUNDS = 3;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const splitIndex = await findCompressionSplit(current, startIndex, windowLimit, context.modelName, Math.pow(KEEP_PERCENT, round + 1));
+    const olderMessages = current.slice(startIndex, splitIndex);
+    if (olderMessages.length < 2) {
+      logger.warn('Compaction', `第 ${round + 1} 轮待压缩段不足 2 条,停止重压缩(交闸门)`);
+      break;
+    }
+    const anchorIndex = splitIndex - 1;
+    const anchorMessageId = (olderMessages[olderMessages.length - 1] as unknown as { id?: string }).id;
+    const beforeLen = current.length;
 
-  if (summaryResult.success) {
-    current = summaryResult.messages;
+    const result = await agentCompress(olderMessages, {
+      model: context.model,
+      fallbackModels: context.fallbackModels,
+      modelName: context.modelName,
+      conversationId: context.conversationId,
+      dataStore: context.dataStore,
+      anchorMessageId, // 有 .id 才落库(供重载)
+    });
 
-    // 🆕 更新视图（如果提供了 compactionView）
-    if (context.compactionView && summaryResult.summaryMessage && summaryResult.anchorIndex != null) {
-      updateViewAfterL3(
-        context.compactionView,
-        summaryResult.summaryMessage,
-        summaryResult.anchorIndex,
-        messages[summaryResult.anchorIndex],
-        summaryResult.summaryText!,
-      );
-      logger.debug('Compaction', `View updated: anchorIndex=${summaryResult.anchorIndex}`);
+    if (!result.success || !result.summaryMessage || !result.summaryText) {
+      logger.warn('Compaction', `第 ${round + 1} 轮摘要失败,停止重压缩(交闸门,不 forceTruncate)`);
+      break;
     }
 
-    // 🆕 记录 Layer 3 遥测
-    const reason = !context.compactionView?.summary ? 'no_view' : 'budget_exceeded';
+    // P4 ②: 记录 in->out,验证"输入按 W 裁定"不变式(in 应 ≤ W)。
+    const inTokens = await estimateMessagesTokens(olderMessages, context.modelName);
+    const invariant = inTokens > windowLimit ? `IN>W!!(${inTokens}>${windowLimit})` : `in=${inTokens}`;
+    logger.info(
+      'Compaction',
+      `[②] round=${round + 1} fired ${invariant} out=${result.summaryText.length}chars anchorIdx=${anchorIndex} persisted=${!!anchorMessageId} | conv=${context.conversationId ?? '?'}`,
+    );
+
+    const anchorMsg = current[anchorIndex];
+    current = [result.summaryMessage, ...current.slice(splitIndex)] as import('ai').ModelMessage[];
+
+    // 更新 compactionView(跨步前缀替换优化;多轮时末轮的摘要为最终态,last wins)
+    if (context.compactionView) {
+      updateViewAfterL3(
+        context.compactionView,
+        result.summaryMessage,
+        anchorIndex,
+        anchorMsg,
+        result.summaryText,
+      );
+    }
+
     context.telemetry?.recordLayer3Triggered({
-      reason,
-      messagesBeforeCompaction: messages.length,
+      reason: !context.compactionView?.summary ? 'no_view' : 'budget_exceeded',
+      messagesBeforeCompaction: beforeLen,
       messagesAfterCompaction: current.length,
-      durationMs: 0, // TODO: 添加计时
+      durationMs: 0,
     });
 
     const afterSummary = await estimateFullRequest(
@@ -245,24 +260,24 @@ export async function applyEmergencyCompression(
     );
 
     if (!afterSummary.exceedsLimit) {
-      logger.info(
-        'Compaction',
-        `Layer 3 成功: 降至 ${afterSummary.utilizationPercent.toFixed(1)}%`,
-      );
+      logger.info('Compaction', `Agent 压缩成功(${round + 1} 轮): 降至 ${afterSummary.utilizationPercent.toFixed(1)}%`);
       return current;
     }
+    // 非消息部分(指令/工具/输出预留)单独就占满窗口 -> 压缩消息无济于事,停止重压缩(交闸门)
+    if (afterSummary.totalTokens - afterSummary.messagesTokens >= windowLimit) {
+      logger.warn('Compaction', `第 ${round + 1} 轮后非消息部分已占满窗口(${afterSummary.totalTokens - afterSummary.messagesTokens} >= ${windowLimit}),压缩无法解,交闸门`);
+      break;
+    }
+    logger.warn(
+      'Compaction',
+      `第 ${round + 1} 轮后仍超限 (${afterSummary.utilizationPercent.toFixed(1)}%),${round + 1 < MAX_ROUNDS ? '继续重压缩' : '已达上限,交闸门'}`,
+    );
+    // 后续轮从 0 开始压:前一轮的摘要在 current[0],纳入再压(摘要的摘要)
+    startIndex = 0;
   }
 
-  // ── Step 3: 降级 - 强制截断 ──
-  logger.error('Compaction', '所有压缩策略失败，执行强制截断（保底方案）');
-
-  // 传入 modelName 和 targetTokens，确保强制截断后一定能满足预算
-  return await forceTruncateMessages(
-    current,
-    0.15,
-    context.modelName,
-    context.targetTokens,
-  );
+  logger.warn('Compaction', '重压缩后仍超限,交由闸门 413 兜底(不 forceTruncate)');
+  return current;
 }
 
 // ============================================================
@@ -276,6 +291,5 @@ export { estimateMessagesTokens } from './token-counter';
 export { generateConversationTitle } from './title-generator';
 export { handleReactiveRetry, isContextLengthError } from './retry';
 export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX } from './checkpoint';
-export { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
-export { emergencySummarize } from './emergency-summary';
+export { agentCompress, findCompressionSplit } from './agent-compress';
 export { fingerprintMessage } from './compaction-view';

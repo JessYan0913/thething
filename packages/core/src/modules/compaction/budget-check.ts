@@ -1,5 +1,6 @@
 // 简化版闸门：Agent 创建前检查预算，按优先级降级
 // 见 docs/context-invariant-architecture.md S6
+// P2:forceTruncate 已删--Strategy 3 不再截断消息,消息超限由闸门 413 显式兜底。
 
 import type { Tool } from 'ai';
 
@@ -69,29 +70,31 @@ export async function checkInitialBudget(
     }
   }
 
-  // Strategy 1.5: Emergency compression (Layer 2.5 → 3 → truncation)
-  // 如果 Layer 2 后仍超限且有 model 可用，应用完整紧急压缩管线
+  // Strategy 1.5: Agent 压缩(② 主模型,真实消息)
+  // 如果 Layer 2 后仍超限且有 model 可用，应用统一压缩管线
   if (currentEstimation.exceedsLimit && context?.model) {
-    logger.info('Budget', `Layer 2 后仍超限，启动紧急压缩管线`);
+    logger.info('Budget', `Layer 2 后仍超限，启动 Agent 压缩`);
     try {
       currentMessages = await applyEmergencyCompression(currentMessages, {
         model: context.model,
         fallbackModels: context.fallbackModels,
         modelName,
+        conversationId: context?.conversationId,
+        dataStore: context?.dataStore,
         contextLimit,
         tools: currentTools,
         instructions,
         targetTokens: currentEstimation.modelLimit * 0.8,
       });
-      actions.push(`Emergency compression applied (Layer 2.5→3→truncation)`);
+      actions.push(`Agent compression applied`);
       currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
-      logger.debug('Budget', `After emergency compression: ${currentEstimation.totalTokens} tokens`);
+      logger.debug('Budget', `After agent compression: ${currentEstimation.totalTokens} tokens`);
       if (!currentEstimation.exceedsLimit) {
         return { passed: true, estimation: currentEstimation, actions, adjustedMessages: currentMessages };
       }
     } catch (err) {
-      logger.warn('Budget', 'Emergency compression failed:', err);
-      actions.push(`Emergency compression failed: ${err}`);
+      logger.warn('Budget', 'Agent compression failed:', err);
+      actions.push(`Agent compression failed: ${err}`);
     }
   }
 
@@ -110,11 +113,11 @@ export async function checkInitialBudget(
     }
   }
 
-  // Strategy 3: 最激进模式 - 只保留核心工具 + 最小消息集
+  // Strategy 3: 最激进模式 - 只保留核心工具(不再 forceTruncate 消息)
+  // forceTruncate 静默砍中间 prose(抖音式丢失)已删;消息超限由闸门 413 显式兜底。
   if (currentEstimation.exceedsLimit) {
-    logger.warn('Budget', '常规策略均失败，启动最激进模式：只保留核心工具 + 最小消息');
+    logger.warn('Budget', '常规策略均失败，启动最激进模式：只保留核心工具');
 
-    // 只保留最核心的工具
     const minimalTools: Record<string, Tool> = {};
     for (const name of ['read_file', 'write_file', 'bash']) {
       if (currentTools[name]) {
@@ -122,18 +125,8 @@ export async function checkInitialBudget(
       }
     }
 
-    // 强制截断消息到极限
-    const { forceTruncateMessages } = await import('./message-compressor');
-    const targetMessagesTokens = Math.floor(currentEstimation.modelLimit * 0.3); // 只给 messages 30% 的预算
-    currentMessages = await forceTruncateMessages(
-      currentMessages,
-      0.05, // 只保留 5%
-      modelName,
-      targetMessagesTokens,
-    );
-
     currentTools = minimalTools;
-    actions.push(`Extreme mode: core tools only + minimal messages`);
+    actions.push(`Extreme mode: core tools only (messages untouched)`);
 
     currentEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
     logger.debug('Budget', `After extreme mode: ${currentEstimation.totalTokens} tokens`);
@@ -143,7 +136,7 @@ export async function checkInitialBudget(
     }
   }
 
-  // 所有策略已用尽
+  // 所有策略已用尽 -> 交给上层闸门抛 CONTEXT_BUDGET_EXCEEDED (413)
   const finalEstimation = await estimateFullRequest(currentMessages, instructions, currentTools, modelName, contextLimit);
   logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimit ? 'EXCEEDS' : 'OK'}`);
 

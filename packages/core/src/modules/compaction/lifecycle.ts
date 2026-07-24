@@ -143,7 +143,7 @@ function buildCompactionPatches(
 
     let summary = extractToolMeta(tr.toolName, tr.input, tr.output);
 
-    if (storage && tr.toolCallId) {
+    if (storage && tr.toolCallId && !isFileReadTool(tr.toolName)) {
       const isJson =
         tr.outputRaw.trim().startsWith('{') || tr.outputRaw.trim().startsWith('[');
       const filepath = getToolResultPath(
@@ -223,16 +223,22 @@ function applyCrossMessageBudget(
   for (const c of candidates) {
     if (totalSize <= budget) break;
 
-    const isJson = c.outputRaw.trim().startsWith('{') || c.outputRaw.trim().startsWith('[');
-    const filepath = getToolResultPath(c.toolCallId, storage.sessionId, storage.dataDir, isJson);
     const meta = extractToolMeta(c.toolName, undefined, c.outputRaw);
-    const summary = `${meta}\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
+    let summary: string;
+    if (isFileReadTool(c.toolName)) {
+      // read_file 输出已是磁盘文件,不落盘(meta 含路径,模型 re-read 原文件找回)
+      summary = meta;
+    } else {
+      const isJson = c.outputRaw.trim().startsWith('{') || c.outputRaw.trim().startsWith('[');
+      const filepath = getToolResultPath(c.toolCallId, storage.sessionId, storage.dataDir, isJson);
+      summary = `${meta}\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
 
-    persistTasks.push(
-      persistToolResult(c.outputRaw, c.toolCallId, storage.sessionId, storage.dataDir)
-        .then(() => undefined)
-        .catch((err) => logger.warn('Lifecycle', `Cross-msg persist ${c.toolCallId}:`, err)),
-    );
+      persistTasks.push(
+        persistToolResult(c.outputRaw, c.toolCallId, storage.sessionId, storage.dataDir)
+          .then(() => undefined)
+          .catch((err) => logger.warn('Lifecycle', `Cross-msg persist ${c.toolCallId}:`, err)),
+      );
+    }
 
     freed += c.size - summary.length;
     totalSize -= c.size; // 总额中移除
@@ -333,6 +339,12 @@ function findReferencedResults(views: ToolResultView[]): Set<number> {
 // ============================================================
 // Compactability Check
 // ============================================================
+
+/** read_file 类工具:输出本身就是磁盘上的文件,落盘相当于同一份文件存两份。
+ *  meta 已含原文件路径,模型可直接 re-read 原文件找回,不需要冗余副本。 */
+function isFileReadTool(toolName: string): boolean {
+  return toolName === 'read_file' || toolName === 'Read';
+}
 
 function isToolCompactable(view: ToolResultView, config: LifecycleConfig): boolean {
   const toolNames = new Set(view.toolResults.map((tr) => tr.toolName));
