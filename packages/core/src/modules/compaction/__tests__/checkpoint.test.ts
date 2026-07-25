@@ -231,7 +231,7 @@ describe('selfHealOrphanedCheckpoint', () => {
   it('no-op when there is no stored summary', async () => {
     const messages = [bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000)];
     const { store, saved } = storeWithMessages(null, messages);
-    const result = await selfHealOrphanedCheckpoint(messages, {
+    const result = await selfHealOrphanedCheckpoint(messages as unknown as import("ai").ModelMessage[], {
       conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
     });
     expect(result).toBe(messages);
@@ -242,7 +242,7 @@ describe('selfHealOrphanedCheckpoint', () => {
     const existing = makeSummary({ anchorMessageId: 'm2' });
     const messages = [bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000), bigMsg('m3', 'user', 200)];
     const { store, saved } = storeWithMessages(existing, messages);
-    const result = await selfHealOrphanedCheckpoint(messages, {
+    const result = await selfHealOrphanedCheckpoint(messages as unknown as import("ai").ModelMessage[], {
       conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
     });
     expect(result).toBe(messages); // 未触发自愈
@@ -258,7 +258,7 @@ describe('selfHealOrphanedCheckpoint', () => {
       bigMsg('m5', 'user', 200), bigMsg('m6', 'assistant', 200),
     ];
     const { store, saved } = storeWithMessages(existing, dbMessages);
-    const result = await selfHealOrphanedCheckpoint(dbMessages, {
+    const result = await selfHealOrphanedCheckpoint(dbMessages as unknown as import("ai").ModelMessage[], {
       conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
     });
     // 强制重建:saveSummary 被调用(新 anchor 落库)
@@ -276,7 +276,7 @@ describe('selfHealOrphanedCheckpoint', () => {
     const existing = makeSummary({ anchorMessageId: 'old-orphan' });
     const dbMessages = [bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000)];
     const { store, saved } = storeWithMessages(existing, dbMessages);
-    const result = await selfHealOrphanedCheckpoint(dbMessages, {
+    const result = await selfHealOrphanedCheckpoint(dbMessages as unknown as import("ai").ModelMessage[], {
       conversationId: 'c1', dataStore: store, model: mockModel(new Error('llm down')), modelName: 'test-model', contextLimit: 1000,
     });
     // LLM 失败 -> 不丢历史,回退全量
