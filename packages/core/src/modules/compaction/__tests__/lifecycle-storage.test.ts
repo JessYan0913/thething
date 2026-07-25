@@ -42,12 +42,13 @@ describe('Layer 2 压缩落盘可恢复', () => {
   });
 
   it('persists compacted output to disk and embeds the path in the meta', async () => {
+    // 用 bash 测落盘(bash 是瞬态输出,该落盘);read_file 不落盘(原文件已在磁盘,避免两份)
     const fullContent = 'x'.repeat(10000);
     const messages = [
       createUserMessage('Q1'),
-      createToolMessage('read_file', { path: 'src/big.ts', content: fullContent }, 'tc-1'),
+      createToolMessage('bash', { command: 'cat big.ts', stdout: fullContent, exitCode: 0 }, 'tc-1'),
       createUserMessage('Q2'),
-      createToolMessage('read_file', { path: 'src/recent.ts', content: 'y'.repeat(300) }, 'tc-2'),
+      createToolMessage('bash', { command: 'echo y', stdout: 'y'.repeat(300), exitCode: 0 }, 'tc-2'),
     ];
 
     const result = manageToolOutputLifecycle(

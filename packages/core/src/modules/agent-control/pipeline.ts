@@ -2,7 +2,6 @@ import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStep
 
 import type { PipelineContext } from '../session/interfaces';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
-import { getModelContextLimit } from '../../services/model';
 import { logger } from '../../primitives/logger';
 import { estimateTaskComplexity } from '../session/task-complexity';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
@@ -179,20 +178,26 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       messages = compactResult.messages as ModelMessageType[];
     }
 
-    // Context usage progress bar
+    // Context usage progress bar + 闸门(复用同一次估算,零新增开销)
     if (config.instructions != null && config.tools) {
       const estimation = await estimateFullRequest(
         messages as import('ai').ModelMessage[],
         config.instructions,
         config.tools,
         sessionState.model,
+        config.contextLimit,
       );
-      const limit = config.contextLimit
-        ? getModelContextLimit(sessionState.model, config.contextLimit)
-        : estimation.modelLimit;
-      logger.info('Context', formatContextBar(estimation, limit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
+      logger.info('Context', formatContextBar(estimation, estimation.modelLimit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
       // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)
       sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);
+
+      // 闸门:compact(含 forceTruncate 兜底)后仍超限 -> 抛 CONTEXT_BUDGET_EXCEEDED,
+      // 不静默发超标请求出去被 provider 拒。pre-stream 闸门见 create.ts;此处覆盖运行中增长。
+      if (estimation.exceedsLimit) {
+        const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve} = ${estimation.totalTokens} > ${estimation.modelLimit}`;
+        logger.warn('Gate', `[REJECT] 运行中压缩后仍超限: ${reason} | conv=${sessionState.conversationId}`);
+        throw new Error(`CONTEXT_BUDGET_EXCEEDED: 运行中压缩后仍超限(${reason})`);
+      }
     }
 
     return {
