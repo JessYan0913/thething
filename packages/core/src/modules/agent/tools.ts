@@ -19,6 +19,7 @@ import {
   createCronTool,
   createSaveWikiTool,
   createReadWikiPageTool,
+  createContextPinTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
@@ -71,6 +72,9 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     ask_user_question: askUserQuestionTool,
     skill: createSkillTool({
       skills: config.skills ?? [],
+    }),
+    context_pin: createContextPinTool({
+      ledger: config.sessionState.contextLedger,
     }),
   })
 

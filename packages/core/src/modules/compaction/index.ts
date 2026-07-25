@@ -24,6 +24,7 @@ import { logger } from '../../primitives/logger';
 import { applyCompactionView, updateViewAfterL3 } from './compaction-view';
 import type { CompactionView } from './compaction-view';
 import type { CompactionTelemetry } from './compaction-telemetry';
+import type { ContextLedger } from './context-ledger';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -58,6 +59,8 @@ export async function compactBeforeStep(
     compactionView?: CompactionView;
     /** 遥测收集器 */
     telemetry?: CompactionTelemetry;
+    /** 上下文台账 + pin 注册表（读循环熔断 / context_pin 工具共享） */
+    ledger?: ContextLedger;
     /** 上次估算结果（用于增量估算，避免重复计算未变化的部分） */
     lastEstimation?: CachedEstimation;
     /** 更新估算缓存的回调 */
@@ -80,7 +83,10 @@ export async function compactBeforeStep(
   }
 
   // ── Layer 2: 工具输出生命周期管理（同步，微秒级）──
-  const lifecycle = manageToolOutputLifecycle(current, config.lifecycle, context.storage);
+  const lifecycle = manageToolOutputLifecycle(current, config.lifecycle, context.storage, {
+    ledger: context.ledger,
+    telemetry: context.telemetry,
+  });
   current = lifecycle.messages;
   // 落盘异步进行,不阻塞主流程;等待写盘完成以保证元信息中的路径可读
   if (lifecycle.persistence) {
@@ -279,3 +285,4 @@ export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX } from './checkpoin
 export { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
 export { emergencySummarize } from './emergency-summary';
 export { fingerprintMessage } from './compaction-view';
+export { ContextLedger } from './context-ledger';

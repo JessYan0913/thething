@@ -36,6 +36,9 @@ export function isContextLengthError(error: unknown): boolean {
 // Reactive Retry
 // ============================================================
 
+/** 重试时的跨消息工具输出总额预算（比默认 100k 收紧至 30k） */
+const RETRY_MESSAGE_BUDGET = 30_000;
+
 export async function handleReactiveRetry(
   error: unknown,
   messages: import('ai').ModelMessage[],
@@ -53,10 +56,14 @@ export async function handleReactiveRetry(
 
   logger.warn('ReactiveRetry', 'Context length error detected, attempting recovery');
 
-  // 1. 激进 Layer 2：keepRecentSteps=1
+  // 1. 分配器缩预算重跑:老化窗口收到 1 step + messageBudget 收紧到 30k。
+  //    与旧"激进模式"的区别:分配器内部不变式保证当前步结果与 pin 的
+  //    最新读取不被 meta 化(感知-行动环不可断),其余按降级阶梯释放空间,
+  //    不会出现"越压越狠把模型刚读的内容也吃掉"的火上浇油。
   let current = manageToolOutputLifecycle(messages, {
     ...config.lifecycle,
     keepRecentSteps: 1,
+    messageBudget: RETRY_MESSAGE_BUDGET,
   }).messages;
 
   // 2. 同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。

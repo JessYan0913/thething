@@ -13,7 +13,8 @@ export type TelemetryEvent =
   | ViewInvalidatedEvent
   | Layer3TriggeredEvent
   | Layer2ExecutedEvent
-  | CheckpointLoadedEvent;
+  | CheckpointLoadedEvent
+  | ReadLoopDetectedEvent;
 
 /**
  * 视图应用事件
@@ -72,6 +73,22 @@ export interface CheckpointLoadedEvent {
   applied: boolean;
   anchorIndex?: number;
   messagesSkipped?: number;
+}
+
+/**
+ * 读循环检测事件（压缩副作用信号）
+ * 同一文件被反复读取说明压缩把模型要的内容吃掉了——
+ * 2026-07-25 事故：skill 文件被压成 meta 后模型连读 7/31 次。
+ */
+export interface ReadLoopDetectedEvent {
+  type: 'read_loop_detected';
+  timestamp: number;
+  /** 被反复读取的文件路径 */
+  path: string;
+  /** 读取次数 */
+  readCount: number;
+  /** 是否已自动 pin（最新读取豁免压缩） */
+  autoPinned: boolean;
 }
 
 /**
@@ -209,6 +226,25 @@ export class CompactionTelemetry {
     } else {
       logger.debug('CompactionTelemetry', 'Checkpoint not found or not applicable');
     }
+  }
+
+  /**
+   * 记录读循环检测（压缩副作用信号）
+   */
+  recordReadLoopDetected(data: Omit<ReadLoopDetectedEvent, 'type' | 'timestamp'>): void {
+    const event: ReadLoopDetectedEvent = {
+      type: 'read_loop_detected',
+      timestamp: Date.now(),
+      ...data,
+    };
+
+    this.events.push(event);
+    this.trimEvents();
+
+    logger.warn(
+      'CompactionTelemetry',
+      `Read loop: ${data.path} read ${data.readCount} times${data.autoPinned ? ' (auto-pinned)' : ''}`,
+    );
   }
 
   /**
