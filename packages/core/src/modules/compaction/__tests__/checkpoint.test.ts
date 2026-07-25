@@ -38,34 +38,34 @@ const full: UIMessage[] = [msg('m1', 'a'), msg('m2', 'b'), msg('m3', 'c'), msg('
 
 describe('applyCheckpointOnLoad', () => {
   it('returns full history when there is no summary', () => {
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(null))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(null)).messages).toBe(full);
   });
 
   it('returns full history when the summary has no anchor', () => {
     const s = makeSummary({ anchorMessageId: null });
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s)).messages).toBe(full);
   });
 
   it('returns full history when the anchor id is not found (never loses messages)', () => {
     const s = makeSummary({ anchorMessageId: 'does-not-exist' });
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s)).messages).toBe(full);
   });
 
   it('collapses history to [summary, ...after-anchor] when anchor matches', () => {
     const s = makeSummary({ anchorMessageId: 'm2' });
     const result = applyCheckpointOnLoad(full, 'c1', storeWith(s));
     // m1,m2 → summary; m3,m4 kept
-    expect(result.length).toBe(3);
-    expect((result[0] as any).id).toContain(CHECKPOINT_SUMMARY_ID_PREFIX);
+    expect(result.messages.length).toBe(3);
+    expect((result.messages[0] as any).id).toContain(CHECKPOINT_SUMMARY_ID_PREFIX);
     // 摘要消息必须是 UIMessage .parts 格式(route 层随后要过 validateUIMessages)
-    expect((result[0] as any).parts[0].text).toContain('previous work summary');
-    expect((result[1] as any).id).toBe('m3');
-    expect((result[2] as any).id).toBe('m4');
+    expect((result.messages[0] as any).parts[0].text).toContain('previous work summary');
+    expect((result.messages[1] as any).id).toBe('m3');
+    expect((result.messages[2] as any).id).toBe('m4');
   });
 
   it('returns full history when the anchor is the last message (nothing to keep)', () => {
     const s = makeSummary({ anchorMessageId: 'm4' });
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s)).messages).toBe(full);
   });
 
   it('falls back to full history when the store throws', () => {
@@ -74,7 +74,7 @@ describe('applyCheckpointOnLoad', () => {
         getSummaryByConversation: () => { throw new Error('db error'); },
       },
     } as unknown as DataStore;
-    expect(applyCheckpointOnLoad(full, 'c1', throwing)).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', throwing).messages).toBe(full);
   });
 });
 
