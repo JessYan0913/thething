@@ -131,6 +131,9 @@ export async function maybeCheckpointAfterRun(
     fallbackModels?: LanguageModelV3[];
     modelName: string;
     contextLimit?: number;
+    /** 强制生成 checkpoint,绕过 50% 水位线(孤儿自愈场景:旧锚点失效,
+     *  Layer 2 已把大输出 meta 化、in-memory token 变小,水位线判断不出需要重建) */
+    force?: boolean;
   },
 ): Promise<boolean> {
   try {
@@ -138,7 +141,8 @@ export async function maybeCheckpointAfterRun(
 
     const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
     const totalTokens = await estimateMessagesTokens(activeMessages as unknown as import('ai').ModelMessage[], context.modelName);
-    if (totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
+    // force 时绕过水位线(孤儿自愈:不管 in-memory 多小都要重建,因为旧摘要 anchor 已失效)
+    if (!context.force && totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
 
     // 从已有 checkpoint 锚点之后开始摘要(增量);无锚点则从头开始
     const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
@@ -188,5 +192,67 @@ export async function maybeCheckpointAfterRun(
     // 后台任务,失败无害,下次运行结束再试
     logger.warn('Checkpoint', 'maybeCheckpointAfterRun failed:', err);
     return false;
+  }
+}
+
+// ============================================================
+// 孤儿锚点自愈
+// ============================================================
+// regenerate/edit 会让旧 checkpoint 的 anchor 消失出活跃链(变成孤儿分支)。
+// applyCheckpointOnLoad 找不到 anchor -> 回退全量历史 -> Layer 2 把旧大输出(如
+// 1MB 的 read-loop 消息)meta 化成"Read X -> N lines [saved to: call-*.txt]"。
+// 这些 meta 行里的文件路径会污染模型上下文,把"这个项目"等歧义指令带偏。
+//
+// 50% 水位线判断不出这个问题:Layer 2 meta 化后 in-memory token 变小,水位线以下
+// 不会生成新 checkpoint,孤儿一直存在。自愈在 compactBeforeStep(有 model 访问、
+// 首轮 API 调用前)检测孤儿 -> 强制重建 checkpoint -> 应用,用语义摘要替换污染 meta。
+// 见 docs/context-compaction-architecture.md 读循环事故复盘。
+
+/**
+ * 检测并修复孤儿 checkpoint。无孤儿时原样返回;有孤儿时强制重建 checkpoint 并应用。
+ *
+ * 判定基于 DB 全量历史(而非传入的已压缩消息):applyCheckpointOnLoad 应用后,
+ * 传入消息已不含 anchor(被摘要替换),但 DB 全量里仍含 -> 不算孤儿,避免重入。
+ */
+export async function selfHealOrphanedCheckpoint(
+  fullMessages: import('ai').ModelMessage[],
+  context: {
+    conversationId: string;
+    dataStore: DataStore;
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    contextLimit?: number;
+  },
+): Promise<import('ai').ModelMessage[]> {
+  try {
+    const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
+    // 无 checkpoint 或无 anchor -> 无孤儿概念,走全量(由调用方正常流程处理)
+    if (!stored || !stored.anchorMessageId) return fullMessages;
+
+    // 用 DB 全量历史判定 anchor 是否还在活跃链(而非传入的已压缩消息)
+    const dbMessages = context.dataStore.messageStore.getMessagesByConversation(context.conversationId) as unknown as import('ai').ModelMessage[];
+    const anchorInDb = dbMessages.some((m) => (m as unknown as { id?: string }).id === stored.anchorMessageId);
+    if (anchorInDb) return fullMessages; // anchor 有效,无需自愈
+
+    // 孤儿:旧 anchor 不在活跃链(regenerate/edit 产生孤儿分支)。强制重建 checkpoint。
+    logger.info(
+      'Checkpoint',
+      `Orphan anchor ${stored.anchorMessageId} detected for ${context.conversationId} - self-healing (force checkpoint)`,
+    );
+    const ok = await maybeCheckpointAfterRun(dbMessages as unknown as UIMessage[], { ...context, force: true });
+    if (!ok) return fullMessages; // 重建失败(如 LLM 报错)-> 回退全量,不丢历史
+
+    // 重新应用 checkpoint:用新摘要替换污染的旧前缀
+    const result = applyCheckpointOnLoad(fullMessages as unknown as UIMessage[], context.conversationId, context.dataStore);
+    if (result.applied) {
+      logger.info('Checkpoint', `Self-heal applied: ${fullMessages.length} -> ${result.messages.length} messages`);
+      return result.messages as unknown as import('ai').ModelMessage[];
+    }
+    return fullMessages;
+  } catch (err) {
+    // 自愈失败不阻塞主流程,回退全量
+    logger.warn('Checkpoint', 'selfHealOrphanedCheckpoint failed:', err);
+    return fullMessages;
   }
 }

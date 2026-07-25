@@ -25,6 +25,7 @@ import { applyCompactionView, updateViewAfterL3 } from './compaction-view';
 import type { CompactionView } from './compaction-view';
 import type { CompactionTelemetry } from './compaction-telemetry';
 import type { ContextLedger } from './context-ledger';
+import { selfHealOrphanedCheckpoint } from './checkpoint';
 
 // ============================================================
 // Main Entry Point: compactBeforeStep
@@ -68,6 +69,22 @@ export async function compactBeforeStep(
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
+
+  // ══════════════════════════════════════════════════════════
+  // 孤儿锚点自愈:regenerate/edit 会让旧 checkpoint anchor 失效,applyCheckpointOnLoad
+  // 在 route 层回退全量历史 -> Layer 2 meta 化的旧文件路径污染上下文。此处有 model
+  // 访问(首轮 API 调用前),强制重建 checkpoint 用语义摘要替换污染 meta。
+  // ══════════════════════════════════════════════════════════
+  if (context.dataStore && context.model) {
+    current = await selfHealOrphanedCheckpoint(current, {
+      conversationId: context.conversationId,
+      dataStore: context.dataStore,
+      model: context.model,
+      fallbackModels: context.fallbackModels,
+      modelName: context.modelName,
+      contextLimit: context.contextLimit,
+    });
+  }
 
   // ══════════════════════════════════════════════════════════
   // Layer 0: 应用跨步骤压缩视图（零 LLM 调用，O(1) 前缀替换）
@@ -281,7 +298,7 @@ export { manageToolOutputLifecycle } from './lifecycle';
 export { estimateMessagesTokens } from './token-counter';
 export { generateConversationTitle } from './title-generator';
 export { handleReactiveRetry, isContextLengthError } from './retry';
-export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX } from './checkpoint';
+export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX, maybeCheckpointAfterRun, selfHealOrphanedCheckpoint } from './checkpoint';
 export { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
 export { emergencySummarize } from './emergency-summary';
 export { fingerprintMessage } from './compaction-view';
