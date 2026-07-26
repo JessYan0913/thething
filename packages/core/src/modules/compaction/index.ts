@@ -303,3 +303,4 @@ export { compressMessagesDeterministic, forceTruncateMessages } from './message-
 export { emergencySummarize } from './emergency-summary';
 export { fingerprintMessage } from './compaction-view';
 export { ContextLedger } from './context-ledger';
+export { extractActionLog, renderActionLog, renderKeysOnlyActionLog } from './action-log';

@@ -8,6 +8,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { extractMessageText, stripImagesFromMessages } from './token-counter';
+import { extractActionLog, renderActionLog, renderKeysOnlyActionLog } from './action-log';
 
 const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助手。对话即将因超出上下文窗口而被截断，你的摘要将作为唯一的记忆用于继续任务。目标不是复述对话，而是让接手者能无缝继续工作。
 
@@ -21,6 +22,7 @@ const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助
 
 ## 涉及的文件路径及改动
 列出读过/改过的文件路径，以及每个文件发生了什么改动。用路径原文，不要改写。
+**区分本地文件与远程来源**：web_fetch 抓取的文件是远程的（标注 URL 与"用 web_fetch 找回"），read_file 的是本地（标注路径与"用 read_file 找回"）。不要把远程文件当本地文件。
 
 ## 当前卡点 / 下一步计划
 当前遇到的问题，以及接下来打算做什么。
@@ -53,10 +55,10 @@ export async function generateAndPersistCheckpointSummary(
   },
 ): Promise<boolean> {
   const stripped = stripImagesFromMessages(olderMessages);
-  const conversationText = stripped.map((m) => {
-    const role = m.role === 'user' ? 'User' : 'Assistant';
-    return `${role}: ${extractMessageText(m)}`;
-  }).join('\n\n');
+  // 行动日志输入:key(工具调用输入,如 web_fetch url/read_file path)永远全文,
+  // value(输出)按降级状态渲染。替代丢 key 的 extractMessageText--LLM 摘要器
+  // 第一次能看到 provenance,不会再把远程文件当本地。
+  const conversationText = renderActionLog(extractActionLog(stripped));
 
   const existing = getExistingSummarySafe(context.conversationId, context.dataStore);
   const prompt = existing
@@ -68,15 +70,32 @@ export async function generateAndPersistCheckpointSummary(
     return false;
   }
 
+  // 机器生成 provenance 段:keys-only 行动日志。列出曾执行过的工具调用
+  // (web_fetch 的 URL / read_file 的 path / bash 的 command 等),让接手模型
+  // 知道"这些是远程文件/这些路径怎么找回",不靠 LLM 摘要保留 provenance。
+  const fullSummary = appendActionLogProvenance(summary, stripped);
+
   try {
     context.dataStore.summaryStore.saveSummary(
-      context.conversationId, summary, olderMessages.length - 1, 0, context.anchorMessageId,
+      context.conversationId, fullSummary, olderMessages.length - 1, 0, context.anchorMessageId,
     );
     return true;
   } catch (err) {
     logger.warn('ContextWindow', 'Failed to persist checkpoint summary:', err);
     return false;
   }
+}
+
+/** 行动日志 provenance 段上限(字符),超出截断并提示 */
+const ACTION_LOG_PROVENANCE_MAX = 2000;
+
+function appendActionLogProvenance(summary: string, messages: import('ai').ModelMessage[]): string {
+  const keys = renderKeysOnlyActionLog(extractActionLog(messages));
+  if (!keys) return summary;
+  const section = keys.length > ACTION_LOG_PROVENANCE_MAX
+    ? keys.slice(0, ACTION_LOG_PROVENANCE_MAX) + `\n... (+${keys.length - ACTION_LOG_PROVENANCE_MAX} chars, 已截断)`
+    : keys;
+  return `${summary}\n\n## 行动日志（provenance，机器生成）\n以下工具调用曾执行过,可据此判断文件来源(远程/本地)与找回方式:\n${section}`;
 }
 
 async function callWithFallback(

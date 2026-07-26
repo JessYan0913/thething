@@ -15,9 +15,9 @@
 // - 保证压缩后的消息总是小于目标 tokens
 
 
-import { extractMessageText } from './token-counter';
 import { buildSummaryMessage } from './message-view';
 import { estimateMessagesTokens, estimateMessageTokens } from './token-counter';
+import { extractActionLog } from './action-log';
 import { logger } from '../../primitives/logger';
 
 /**
@@ -144,54 +144,59 @@ async function extractKeyInformation(messages: import('ai').ModelMessage[]): Pro
     errors: [],
   };
 
-  for (const msg of messages) {
-    const text = extractMessageText(msg);
+  // 用行动日志替代丢 key 的 extractMessageText:tool-call 输入(filePath/url/command)
+  // 直接从 input 字段拿,比正则扫 lossy 文本可靠,且不会漏掉远程来源。
+  const entries = extractActionLog(messages);
+  const filePathPattern = /[\w\/\-\.]+\.(ts|tsx|js|jsx|py|md|json|yml|yaml|toml|lock|html|css|scss|vue|go|rs|java|kt|swift|c|cpp|h|hpp|sh|bash|ps1|txt|log|env|config|xml|sql|proto|graphql)/gi;
+  const urlPattern = /https?:\/\/[^\s"'`)]+/gi;
 
-    // 提取文件路径（常见扩展名）
-    const filePathPattern = /[\w\/\-\.]+\.(ts|tsx|js|jsx|py|md|json|yml|yaml|toml|lock|html|css|scss|vue|go|rs|java|kt|swift|c|cpp|h|hpp|sh|bash|ps1|txt|log|env|config|xml|sql|proto|graphql)/gi;
-    const filePaths = text.match(filePathPattern);
-    if (filePaths) {
-      filePaths.forEach((f) => info.files.add(f));
+  for (const e of entries) {
+    if (e.kind === 'tool') {
+      // key(工具调用输入)直接抽路径/URL/命令
+      const inputStr = e.input !== undefined && e.input !== null ? safeStringify(e.input) : '';
+      let m: RegExpMatchArray | null;
+      while ((m = filePathPattern.exec(inputStr)) !== null) info.files.add(m[0]);
+      while ((m = urlPattern.exec(inputStr)) !== null) info.files.add(m[0]);
+      if (e.toolName === 'bash' || e.toolName === 'Bash') {
+        const cmd = (e.input as Record<string, unknown> | null)?.command;
+        if (typeof cmd === 'string') info.commands.push(cmd.slice(0, 150));
+      }
+      if (e.isError) {
+        info.errors.push((e.outputRaw ?? '').slice(0, 200).trim());
+      }
+      // value 里也扫路径(结果回显可能含文件路径)
+      if (e.outputRaw) {
+        while ((m = filePathPattern.exec(e.outputRaw)) !== null) info.files.add(m[0]);
+      }
+      continue;
     }
 
-    // 提取命令执行结果
-    if (msg.role === 'tool') {
-      // 查找命令相关的关键词
-      if (text.includes('exit code') || text.includes('Command') || text.includes('executed')) {
-        const preview = text.slice(0, 150).trim();
-        info.commands.push(preview);
-      }
-
-      // 查找错误
-      if (
-        text.includes('error:') ||
-        text.includes('Error:') ||
-        text.includes('failed') ||
-        text.includes('Failed')
-      ) {
-        const errorPreview = text.slice(0, 200).trim();
-        info.errors.push(errorPreview);
-      }
-    }
-
-    // 提取关键决策（assistant 消息中的关键语句）
-    if (msg.role === 'assistant') {
+    // text 类:扫文件路径 + 决策模式
+    const text = e.text ?? '';
+    let m: RegExpMatchArray | null;
+    while ((m = filePathPattern.exec(text)) !== null) info.files.add(m[0]);
+    if (e.role === 'assistant') {
       const decisionPatterns = [
         /(?:decided to|选择|决定)[^。\n]{10,100}/gi,
         /(?:because|因为|由于)[^。\n]{10,100}/gi,
         /(?:will|将要|需要)[^。\n]{10,100}/gi,
       ];
-
       for (const pattern of decisionPatterns) {
         const matches = text.match(pattern);
-        if (matches) {
-          matches.slice(0, 2).forEach((m) => info.decisions.push(m.trim()));
-        }
+        if (matches) matches.slice(0, 2).forEach((d) => info.decisions.push(d.trim()));
       }
     }
   }
 
   return info;
+}
+
+function safeStringify(v: unknown): string {
+  try {
+    return JSON.stringify(v) ?? String(v);
+  } catch {
+    return String(v);
+  }
 }
 
 /**

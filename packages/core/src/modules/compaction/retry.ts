@@ -56,13 +56,11 @@ export async function handleReactiveRetry(
 
   logger.warn('ReactiveRetry', 'Context length error detected, attempting recovery');
 
-  // 1. 分配器缩预算重跑:老化窗口收到 1 step + messageBudget 收紧到 30k。
-  //    与旧"激进模式"的区别:分配器内部不变式保证当前步结果与 pin 的
-  //    最新读取不被 meta 化(感知-行动环不可断),其余按降级阶梯释放空间,
-  //    不会出现"越压越狠把模型刚读的内容也吃掉"的火上浇油。
+  // 1. 分配器缩预算重跑:messageBudget 收紧到 30k,强制降级更多 value。
+  //    不再下压 keepRecentSteps--key/value 不变式保证 key(工具调用输入)永不被驱逐,
+  //    只压 value(输出),模型不会失明。
   let current = manageToolOutputLifecycle(messages, {
     ...config.lifecycle,
-    keepRecentSteps: 1,
     messageBudget: RETRY_MESSAGE_BUDGET,
   }).messages;
 

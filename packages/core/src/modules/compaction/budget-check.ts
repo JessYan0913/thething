@@ -55,10 +55,10 @@ export async function checkInitialBudget(
   let currentEstimation = initialEstimation;
 
   // Strategy 1: Layer 2 分配器缩预算重跑
-  // 老化窗口收到 1 step + messageBudget 收紧;分配器不变式保证当前步
-  // 结果与 pin 的最新读取不被 meta 化,其余按降级阶梯释放。
+  // messageBudget 收紧;key/value 不变式保证 key(工具调用输入)永不被驱逐,
+  // 只压 value(输出),模型不会失明。不再下压 keepRecentSteps。
   if (currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
-    const aggressiveConfig = { ...config.lifecycle, keepRecentSteps: 1, messageBudget: 30_000 };
+    const aggressiveConfig = { ...config.lifecycle, messageBudget: 30_000 };
     const lifecycleResult = manageToolOutputLifecycle(currentMessages, aggressiveConfig);
     if (lifecycleResult.tokensFreed > 0) {
       currentMessages = lifecycleResult.messages;

@@ -13,7 +13,8 @@
 import { generateText } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 
-import { extractMessageText, stripImagesFromMessages } from './token-counter';
+import { stripImagesFromMessages } from './token-counter';
+import { extractActionLog, renderActionLog } from './action-log';
 import { buildSummaryMessage } from './message-view';
 import { logger } from '../../primitives/logger';
 
@@ -175,17 +176,9 @@ async function generateSummaryFast(
   model: LanguageModelV3,
   fallbackModels?: LanguageModelV3[],
 ): Promise<string | null> {
-  // 构建对话文本（限制每条消息的长度）
+  // 构建对话文本:行动日志(key 永远全文,value 按降级渲染),替代丢 key 的 extractMessageText
   const stripped = stripImagesFromMessages(messages);
-  const conversationText = stripped
-    .map((m) => {
-      const role = m.role === 'user' ? 'User' : 'Assistant';
-      const text = extractMessageText(m);
-      // 限制每条消息最多 800 字符，避免输入过大
-      const preview = text.length > 800 ? text.slice(0, 800) + '...' : text;
-      return `${role}: ${preview}`;
-    })
-    .join('\n\n');
+  const conversationText = renderActionLog(extractActionLog(stripped));
 
   // 尝试主模型 2 次
   for (let attempt = 0; attempt < 2; attempt++) {
