@@ -181,6 +181,28 @@ describe('maybeCheckpointAfterRun', () => {
     expect(['m3', 'm4']).toContain(anchorId);
   });
 
+  it('summarizes huge single messages instead of keeping them (root cause: msg#4 pollution)', async () => {
+    // 复现:中间一条超大消息(>= keepBudget)。旧逻辑 splitIndex 落在它身上,
+    // 把它留在 newerMessages(保留段),污染上下文。修复后它应进 olderMessages(摘要段)。
+    // contextLimit=1000 -> keepBudget=300。m2(2000 chars ~500 tokens)>=300 -> 超大。
+    const { store, saved } = checkpointStore(null);
+    const messages = [
+      bigMsg('m1', 'user', 200),      // 小
+      bigMsg('m2', 'assistant', 2000), // 超大(>= keepBudget)
+      bigMsg('m3', 'user', 200),      // 小
+      bigMsg('m4', 'assistant', 200), // 小
+      bigMsg('m5', 'user', 200),      // 小
+    ];
+    const ok = await maybeCheckpointAfterRun(messages, {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    expect(ok).toBe(true);
+    const anchorId = saved[0][4] as string;
+    // anchor 必须是 m2 或之后(m2 被摘要覆盖,而非留在保留段)
+    expect(['m2', 'm3', 'm4']).toContain(anchorId);
+    expect(anchorId).not.toBe('m1'); // 旧 bug:anchor=m1,m2 留在保留段
+  });
+
   it('never throws even when the store blows up', async () => {
     const store = {
       summaryStore: {

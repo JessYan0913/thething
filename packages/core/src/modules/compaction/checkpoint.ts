@@ -157,7 +157,15 @@ export async function maybeCheckpointAfterRun(
     let kept = 0;
     let splitIndex = activeMessages.length;
     for (let i = activeMessages.length - 1; i > startIndex; i--) {
-      kept += await estimateMessageTokens(activeMessages[i] as unknown as import('ai').ModelMessage, context.modelName);
+      const msgTokens = await estimateMessageTokens(activeMessages[i] as unknown as import('ai').ModelMessage, context.modelName);
+      // 单条超大消息(>= keepBudget,如 1MB 的 read-loop 产物):保留它等于保留巨量内容,
+      // 失去压缩意义,且其污染(本地 skill 路径等)会盖过用户指令。把它归入 olderMessages
+      // (摘要段),用语义摘要替换。否则 splitIndex 会落在它身上、把它留在保留段。
+      if (msgTokens >= keepBudget) {
+        splitIndex = i + 1; // 该消息作为 olderMessages 的最后一条
+        break;
+      }
+      kept += msgTokens;
       if (kept >= keepBudget) { splitIndex = i; break; }
       splitIndex = i;
     }
