@@ -279,12 +279,14 @@ export async function applyEmergencyCompression(
   // ── Step 3: 降级 - 强制截断 ──
   logger.error('Compaction', '所有压缩策略失败，执行强制截断（保底方案）');
 
-  // 传入 modelName 和 targetTokens，确保强制截断后一定能满足预算
+  // 传入原始 messages(truncated) 作为 provenance 源:forceTruncate 的输入 current
+  // 已被 Layer 2.5/3 压过(丢了 tool-call),但原始 messages 保留全部 key。
   return await forceTruncateMessages(
     current,
     0.15,
     context.modelName,
     context.targetTokens,
+    messages,
   );
 }
 

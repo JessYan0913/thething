@@ -14,7 +14,7 @@ import { generateText } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 
 import { stripImagesFromMessages } from './token-counter';
-import { extractActionLog, renderActionLog } from './action-log';
+import { extractActionLog, renderActionLog, appendActionLogProvenance } from './action-log';
 import { buildSummaryMessage } from './message-view';
 import { logger } from '../../primitives/logger';
 
@@ -113,7 +113,8 @@ export async function emergencySummarize(
     }
 
     // 3. 构建压缩后的消息
-    const summaryMessage = buildSummaryMessage(summaryText, 'ui') as import('ai').ModelMessage;
+    const fullSummaryText = appendActionLogProvenance(summaryText, middleMessages);
+    const summaryMessage = buildSummaryMessage(fullSummaryText, 'ui') as import('ai').ModelMessage;
     const compressedMessages = [firstUserMsg, summaryMessage, ...recentMessages];
 
     logger.info('EmergencySummary', `摘要成功: ${messages.length} → ${compressedMessages.length} 条消息`);
@@ -123,7 +124,7 @@ export async function emergencySummarize(
       success: true,
       summaryMessage,
       anchorIndex: middleEnd - 1,  // 摘要覆盖到 middleEnd-1 的位置
-      summaryText,
+      summaryText: fullSummaryText,
     };
   } catch (err: any) {
     logger.warn('EmergencySummary', '摘要失败:', err);

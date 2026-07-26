@@ -17,7 +17,7 @@
 
 import { buildSummaryMessage } from './message-view';
 import { estimateMessagesTokens, estimateMessageTokens } from './token-counter';
-import { extractActionLog } from './action-log';
+import { extractActionLog, appendActionLogProvenance } from './action-log';
 import { logger } from '../../primitives/logger';
 
 /**
@@ -259,6 +259,8 @@ export async function forceTruncateMessages(
   keepRatio: number = 0.15,
   modelName?: string,
   maxTokens?: number,
+  /** provenance 来源:优先用原始消息(调用方传入),否则用 messages(已是压缩后,可能丢 key) */
+  provenanceFrom?: import('ai').ModelMessage[],
 ): Promise<import('ai').ModelMessage[]> {
   if (messages.length === 0) return [];
 
@@ -271,10 +273,12 @@ export async function forceTruncateMessages(
   let keepTail = Math.max(5, Math.floor(messages.length * keepRatio));
   let recentMessages = messages.slice(-keepTail);
 
-  const warningMessage = buildSummaryMessage(
-    '[警告：由于对话过长，中间部分已省略。建议开始新会话以获得更好的上下文连贯性。]',
-    'ui',
-  ) as import('ai').ModelMessage;
+  // 兜底也要保 provenance:被截断的中间消息里的工具调用(URL/path)用行动日志段保留,
+  // 让模型至少知道"这些文件读过、怎么找回",不至于完全失忆。
+  // 用 provenanceFrom(原始消息)而非 messages(可能已被上游压缩丢了 tool-call)。
+  const warningText = '[警告：由于对话过长，中间部分已省略。建议开始新会话以获得更好的上下文连贯性。]';
+  const fullWarningText = appendActionLogProvenance(warningText, provenanceFrom ?? messages);
+  const warningMessage = buildSummaryMessage(fullWarningText, 'ui') as import('ai').ModelMessage;
 
   let result = [firstUserMsg, warningMessage, ...recentMessages];
 

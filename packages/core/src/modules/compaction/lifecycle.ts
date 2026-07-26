@@ -493,6 +493,12 @@ function detectReadLoops(views: ToolResultView[], opts?: LifecycleOptions): void
       const path = resolveReadPath(item);
       if (!path) continue;
       counts.set(path, (counts.get(path) ?? 0) + 1);
+      // 可观测闭环:re-read 一个曾被 meta 化的路径 = 压缩过头信号。
+      // 区别于读循环(按次数),这是"压缩删了模型要的内容,模型回头重读"。
+      if (ledger.wasCompacted(path) && ledger.recordReRead(path)) {
+        logger.warn('Lifecycle', `Overcompaction detected: ${path} re-read after meta-ization - auto-pinning`);
+        opts?.telemetry?.recordOvercompactionDetected({ path, autoPinned: true });
+      }
     }
   }
 

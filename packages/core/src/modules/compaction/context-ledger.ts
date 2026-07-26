@@ -37,6 +37,10 @@ export class ContextLedger {
   private reportedLoops = new Set<string>();
   /** 压缩记录（环形上限 MAX_RECORDS） */
   private records: CompactionRecord[] = [];
+  /** 被 meta 化(内容丢失)的路径集合--re-read 这些路径 = 压缩过头信号 */
+  private compactedPaths = new Set<string>();
+  /** 已上报过 overcompaction 的路径(遥测去重) */
+  private reportedOvercompaction = new Set<string>();
 
   /** 模型主动 pin：该路径的最新读取结果豁免压缩 */
   pin(path: string): void {
@@ -77,6 +81,28 @@ export class ContextLedger {
     if (this.records.length > MAX_RECORDS) {
       this.records = this.records.slice(-MAX_RECORDS);
     }
+    // meta 化(内容丢失)的路径登记--后续 re-read 即"压缩过头"信号。
+    // truncated 不算(内容仍可见,模型只是少看了一段)。
+    if (rec.action === 'meta' && rec.path) {
+      this.compactedPaths.add(rec.path);
+    }
+  }
+
+  /** 该路径是否曾被 meta 化(内容丢失)?re-read 它 = 压缩过头 */
+  wasCompacted(path: string): boolean {
+    return this.compactedPaths.has(path);
+  }
+
+  /**
+   * 记录一次 re-read。若该路径曾被 meta 化,即为"压缩过头"(overcompaction):
+   * 模型 re-read 说明压缩删了它需要的内容。返回是否 overcompaction。
+   * 首次 overcompaction 上报(去重),后续重复只计数不报。
+   */
+  recordReRead(path: string): boolean {
+    if (!this.wasCompacted(path)) return false;
+    // 压缩过头:模型在 re-read 一个被 meta 化的文件。自动 pin + 上报(首次)。
+    this.autoPin(path, 1); // 标记为已 pin,下次读取豁免压缩
+    return this.reportedOvercompaction.has(path) ? false : (this.reportedOvercompaction.add(path), true);
   }
 
   /** 台账文本（供 context_pin list 返回给模型） */

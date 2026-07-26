@@ -14,7 +14,8 @@ export type TelemetryEvent =
   | Layer3TriggeredEvent
   | Layer2ExecutedEvent
   | CheckpointLoadedEvent
-  | ReadLoopDetectedEvent;
+  | ReadLoopDetectedEvent
+  | OvercompactionDetectedEvent;
 
 /**
  * 视图应用事件
@@ -92,8 +93,18 @@ export interface ReadLoopDetectedEvent {
 }
 
 /**
- * 遥测统计
+ * 压缩过头检测事件（可观测闭环信号）
+ * 模型 re-read 了一个曾被 meta 化的文件,说明压缩删了模型需要的内容。
+ * 区别于 read_loop_detected:后者统计总读次数,本事件特指"压缩后 re-read"。
  */
+export interface OvercompactionDetectedEvent {
+  type: 'overcompaction_detected';
+  timestamp: number;
+  /** 被 re-read 的路径(此前被 meta 化) */
+  path: string;
+  /** 是否已自动 pin(防止再次被压) */
+  autoPinned: boolean;
+}
 export interface TelemetryStats {
   /** 总视图应用次数 */
   viewAppliedCount: number;
@@ -244,6 +255,24 @@ export class CompactionTelemetry {
     logger.warn(
       'CompactionTelemetry',
       `Read loop: ${data.path} read ${data.readCount} times${data.autoPinned ? ' (auto-pinned)' : ''}`,
+    );
+  }
+
+  /**
+   * 记录压缩过头检测（可观测闭环:压缩删了模型需要的内容,触发 re-read）
+   */
+  recordOvercompactionDetected(data: Omit<OvercompactionDetectedEvent, 'type' | 'timestamp'>): void {
+    const event: OvercompactionDetectedEvent = {
+      type: 'overcompaction_detected',
+      timestamp: Date.now(),
+      ...data,
+    };
+    this.events.push(event);
+    this.trimEvents();
+
+    logger.warn(
+      'CompactionTelemetry',
+      `Overcompaction: ${data.path} re-read after being meta-ized${data.autoPinned ? ' (auto-pinned)' : ''}`,
     );
   }
 

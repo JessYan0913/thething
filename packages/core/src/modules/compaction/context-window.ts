@@ -8,7 +8,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { extractMessageText, stripImagesFromMessages } from './token-counter';
-import { extractActionLog, renderActionLog, renderKeysOnlyActionLog } from './action-log';
+import { extractActionLog, renderActionLog, renderKeysOnlyActionLog, appendActionLogProvenance } from './action-log';
 
 const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助手。对话即将因超出上下文窗口而被截断，你的摘要将作为唯一的记忆用于继续任务。目标不是复述对话，而是让接手者能无缝继续工作。
 
@@ -84,18 +84,6 @@ export async function generateAndPersistCheckpointSummary(
     logger.warn('ContextWindow', 'Failed to persist checkpoint summary:', err);
     return false;
   }
-}
-
-/** 行动日志 provenance 段上限(字符),超出截断并提示 */
-const ACTION_LOG_PROVENANCE_MAX = 2000;
-
-function appendActionLogProvenance(summary: string, messages: import('ai').ModelMessage[]): string {
-  const keys = renderKeysOnlyActionLog(extractActionLog(messages));
-  if (!keys) return summary;
-  const section = keys.length > ACTION_LOG_PROVENANCE_MAX
-    ? keys.slice(0, ACTION_LOG_PROVENANCE_MAX) + `\n... (+${keys.length - ACTION_LOG_PROVENANCE_MAX} chars, 已截断)`
-    : keys;
-  return `${summary}\n\n## 行动日志（provenance，机器生成）\n以下工具调用曾执行过,可据此判断文件来源(远程/本地)与找回方式:\n${section}`;
 }
 
 async function callWithFallback(

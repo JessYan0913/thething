@@ -22,6 +22,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^7.0.7",
     "better-sqlite3": "^12.8.0",
+    "fast-check": "^4.9.0",
     "fast-glob": "^3.3.3",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",

@@ -127,6 +127,8 @@ export function extractActionLog(messages: ModelMessage[]): ActionLogEntry[] {
 /**
  * 把行动日志渲染成摘要器可读的文本。
  * **key(工具调用输入)永远全文**;value(输出)按 valueState + maxValueChars 限制。
+ * 工具调用标注来源类型 [remote]/[local]/[transient],帮助模型判断"远程文件用 web_fetch 找回,
+ * 本地文件用 read_file 找回",不再把远程文件当本地(见 docs/compaction-road-to-excellent.md 差距四)。
  */
 export function renderActionLog(entries: ActionLogEntry[], opts?: { maxValueChars?: number }): string {
   const maxValueChars = opts?.maxValueChars ?? 800;
@@ -144,12 +146,13 @@ export function renderActionLog(entries: ActionLogEntry[], opts?: { maxValueChar
 
     // tool 类
     const toolName = e.toolName ?? 'unknown';
+    const access = classifyToolAccess(toolName);
     // key:输入永远全文(小,是 provenance)
     const inputStr = e.input !== undefined && e.input !== null ? safeStringify(e.input) : '';
 
     if (e.outputRaw === undefined) {
       // 纯 key(ModelMessage tool-call 项)
-      lines.push(`Tool call: ${toolName}(${inputStr})`);
+      lines.push(`Tool call: ${toolName}(${inputStr}) [${access}]`);
       continue;
     }
 
@@ -160,7 +163,7 @@ export function renderActionLog(entries: ActionLogEntry[], opts?: { maxValueChar
     } else if (valueStr.length > maxValueChars) {
       valueStr = `${valueStr.slice(0, maxValueChars)}... [+${valueStr.length - maxValueChars} chars]`;
     }
-    lines.push(`Tool[${toolName}](${inputStr}) -> ${valueStr}`);
+    lines.push(`Tool[${toolName}](${inputStr}) -> ${valueStr} [${access}]`);
   }
 
   return lines.join('\n\n');
@@ -172,10 +175,24 @@ export function renderKeysOnlyActionLog(entries: ActionLogEntry[]): string {
   for (const e of entries) {
     if (e.kind !== 'tool') continue;
     const toolName = e.toolName ?? 'unknown';
+    const access = classifyToolAccess(toolName);
     const inputStr = e.input !== undefined && e.input !== null ? safeStringify(e.input) : '';
-    lines.push(`- ${toolName}(${inputStr})`);
+    lines.push(`- ${toolName}(${inputStr}) [${access}]`);
   }
   return lines.join('\n');
+}
+
+/**
+ * 分类工具的来源类型,引导模型用正确方式找回内容。
+ * - remote:web_fetch/WebSearch 等,内容来自远程,用 web_fetch 重取
+ * - local:read_file/Read/read_wiki_page,内容来自本地磁盘,用 read_file 重取
+ * - transient:bash/grep/glob 等,命令/搜索结果,无法按路径找回(落盘的除外)
+ */
+function classifyToolAccess(toolName: string): 'remote' | 'local' | 'transient' {
+  const t = toolName.toLowerCase();
+  if (t === 'web_fetch' || t === 'webfetch' || t === 'web_search' || t === 'websearch') return 'remote';
+  if (t === 'read_file' || t === 'read' || t === 'read_wiki_page' || t === 'readwikipage') return 'local';
+  return 'transient';
 }
 
 function safeStringify(v: unknown): string {
@@ -186,4 +203,26 @@ function safeStringify(v: unknown): string {
   } catch {
     return String(v);
   }
+}
+
+// ============================================================
+// provenance 段附加（checkpoint + 紧急摘要共享）
+// ============================================================
+// 机器生成 keys-only 行动日志,附加到 LLM 摘要末尾。provenance 由代码保证,
+// 不靠 LLM 听话。checkpoint(context-window.ts)和 Layer 3(emergency-summary.ts)都用。
+
+/** 行动日志 provenance 段上限(字符),超出截断并提示 */
+const ACTION_LOG_PROVENANCE_MAX = 2000;
+
+/**
+ * 在 LLM 摘要末尾附加机器生成的 keys-only 行动日志段。
+ * 保证 web_fetch URL / read_file path / bash command 等来源信息不丢。
+ */
+export function appendActionLogProvenance(summary: string, messages: import('ai').ModelMessage[]): string {
+  const keys = renderKeysOnlyActionLog(extractActionLog(messages));
+  if (!keys) return summary;
+  const section = keys.length > ACTION_LOG_PROVENANCE_MAX
+    ? keys.slice(0, ACTION_LOG_PROVENANCE_MAX) + `\n... (+${keys.length - ACTION_LOG_PROVENANCE_MAX} chars, 已截断)`
+    : keys;
+  return `${summary}\n\n## 行动日志（provenance，机器生成）\n以下工具调用曾执行过,可据此判断文件来源与找回方式。标签含义:[remote]=远程文件,用 web_fetch 重取;[local]=本地文件,用 read_file 重取;[transient]=命令/搜索结果,落盘的可 read_file 找回:\n${section}`;
 }
