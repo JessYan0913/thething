@@ -7,11 +7,11 @@
 // 格式归一化：消息的双轨格式（UIMessage .parts / ModelMessage .content）
 // 已收敛到 message-view.ts 的 extractToolResultView / applyCompactionPatches
 // 两个函数中。本模块所有决策逻辑通过 ToolResultView 操作，完全格式无关。
-// 见 docs/compaction-unification-design.md。
+// 见 docs/context-compaction-architecture.md。
 //
 // 老化按 step 计数而非 user 轮数：agentic 场景下单个 user 轮内
 // 可能有上百次工具调用,按轮数计算时它们永不老化。
-// 见 docs/context-compaction-analysis.md A。
+// 见 docs/context-compaction-architecture.md A。
 //
 // 2026-07-25 读循环事故后收敛为唯一分配器 + 降级阶梯：
 //   完整 → 可见截断(_truncated,保留头尾+找回提示) → meta(_compacted)
@@ -583,7 +583,7 @@ function isResultCompactable(toolName: string, config: LifecycleConfig): boolean
 // ============================================================
 // Tool Meta Extractors
 // ============================================================
-// 设计要点(见 docs/built-in-tools-compaction-analysis.md #1/#2):
+// 设计要点(见 docs/context-compaction-architecture.md #1/#2):
 // 1. 键名使用工具的实际注册名(snake_case,见 agent/tools.ts),
 //    同时保留首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字)。
 // 2. grep/glob/web_fetch 返回 JSON.stringify 后的字符串,先解析回对象。

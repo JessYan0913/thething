@@ -10,7 +10,7 @@ import { unifiedToolOutputHook } from '../../compaction/unified-output';
 
 // ============================================================
 // 8.8 agent 报告纳入 budget 持久化
-// 见 docs/compaction-execution-plan.md 步骤 8.8
+// 见 docs/context-compaction-architecture.md 步骤 8.8
 // ============================================================
 
 describe('agent report budget config', () => {

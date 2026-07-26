@@ -8,7 +8,7 @@
 //
 // 这是"做减法"重构的最后一道防线：
 // 任何压缩机制失效时，闸门保证不向模型发送超标请求。
-// 见 docs/context-invariant-architecture.md。
+// 见 docs/context-compaction-architecture.md。
 // ============================================================
 
 import type { Tool } from 'ai';

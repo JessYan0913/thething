@@ -194,7 +194,7 @@ async function searchWithNode(
 /**
  * per-file 上限:单个文件命中过多时(如搜常用符号),避免 100 条 limit
  * 全被一个文件吃掉。每文件最多保留 N 条,其余记入 omitted 提示,
- * 总量分给更多文件。见 docs/built-in-tools-compaction-analysis.md 三.D。
+ * 总量分给更多文件。见 docs/context-compaction-architecture.md 三.D。
  */
 function applyPerFileLimit(
   matches: GrepMatch[],
@@ -352,7 +352,7 @@ export function createGrepTool(options: { cwd: string }) {
       };
 
       // 有 context 时保留原多行上下文格式;否则默认用紧凑文本(file:line: content),
-      // 信息密度远高于 pretty-print JSON。见 docs/built-in-tools-compaction-analysis.md 三.B。
+      // 信息密度远高于 pretty-print JSON。见 docs/context-compaction-architecture.md 三.B。
       if (contextLines && contextLines > 0) {
         result.formattedOutput = formatMatches(matches, contextLines).join('\n');
       } else {

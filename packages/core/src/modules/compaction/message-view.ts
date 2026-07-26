@@ -16,7 +16,7 @@
 // 因为 UIMessage 的 part 类型是开放集合，穷举所有类型进行无损
 // 往返会产生"漏一种就静默丢数据"的同类错误模式。视图只需识别
 // compaction 关心的字段；不认识的 part/content 在补丁写回时
-// 原样保留——天然无损。见 docs/compaction-unification-design.md。
+// 原样保留——天然无损。见 docs/context-compaction-architecture.md。
 // ============================================================
 
 
@@ -377,7 +377,7 @@ function emptyView(msg: import('ai').ModelMessage, format: 'ui' | 'model'): Tool
 // 事故(2026-07-21):context-window.ts 用 .content 构造摘要，经
 // budgetCheck.adjustedMessages 泄漏到 route 层 → msg.parts
 // is not iterable 崩溃。收敛到一处，调用方显式声明目标格式。
-// 见 docs/compaction-unification-design.md §2。
+// 见 docs/context-compaction-architecture.md §2。
 // ============================================================
 
 const SUMMARY_ID_PREFIX = 'summary-';

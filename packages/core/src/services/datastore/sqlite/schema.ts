@@ -238,7 +238,7 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     // v9: compaction checkpoint anchor — stable message id the summary covers up to.
     // Uses message id (PRIMARY KEY, stable) rather than "order" (reassigned on every
     // saveMessages full-rewrite). Nullable; older summaries simply have no anchor and
-    // fall back to full-history loading. See docs/context-compaction-analysis.md E.
+    // fall back to full-history loading. See docs/context-compaction-architecture.md E.
     try {
       db.exec(`ALTER TABLE summaries ADD COLUMN anchor_message_id TEXT DEFAULT NULL`);
     } catch (e: any) {

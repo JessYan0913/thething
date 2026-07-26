@@ -6,7 +6,7 @@ import { applyCheckpointOnLoad, maybeCheckpointAfterRun, CHECKPOINT_SUMMARY_ID_P
 
 // ============================================================
 // 8.5 compaction checkpoint 持久化
-// 见 docs/compaction-execution-plan.md 步骤 8.5
+// 见 docs/context-compaction-architecture.md 步骤 8.5
 // ============================================================
 
 function msg(id: string, text: string): UIMessage {

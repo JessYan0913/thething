@@ -66,7 +66,7 @@ export async function handleReactiveRetry(
 
   // 2. 同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
   //    改为 Layer 2 激进压缩后若仍超限，直接抛出 CONTEXT_BUDGET_EXCEEDED。
-  //    见 docs/context-invariant-architecture.md。
+  //    见 docs/context-compaction-architecture.md。
 
   return { messages: current };
 }

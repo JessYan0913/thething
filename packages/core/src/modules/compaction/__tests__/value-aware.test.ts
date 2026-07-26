@@ -6,7 +6,7 @@ import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 
 // ============================================================
 // 8.3 价值感知压缩(error 保护 + 同文件去重 + 引用感知)
-// 见 docs/compaction-execution-plan.md 步骤 8.3
+// 见 docs/context-compaction-architecture.md 步骤 8.3
 // ============================================================
 
 function userMessage(text: string): ModelMessage {

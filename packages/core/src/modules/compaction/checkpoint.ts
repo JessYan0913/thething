@@ -8,7 +8,7 @@
 //
 // 安全前提:DB 始终保存全量历史(压缩只在内存中对模型请求生效)。
 // 因此本函数纯属叠加优化——锚点找不到 / 无摘要 / 任何异常,一律回退全量历史,
-// 绝不丢失消息。见 docs/context-compaction-analysis.md E。
+// 绝不丢失消息。见 docs/context-compaction-architecture.md E。
 
 import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
