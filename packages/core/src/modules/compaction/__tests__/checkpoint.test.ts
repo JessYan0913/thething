@@ -283,4 +283,28 @@ describe('selfHealOrphanedCheckpoint', () => {
     expect(result).toBe(dbMessages);
     expect(saved.length).toBe(0);
   });
+
+  it('heals stale summary missing provenance section (pre-4d461c0 format)', async () => {
+    const existing = makeSummary({
+      anchorMessageId: 'm1',
+      summary: '## 用户目标\n学习 douyin\n## 已完成\n读了 douyin_downloader.py',
+    });
+    // m2 是带 tool-call 的消息(key=web_fetch URL),action log 才非空
+    const toolMsgM2: UIMessage = {
+      id: 'm2', role: 'assistant',
+      parts: [{ type: 'tool-web_fetch' as any, toolCallId: 'tc-1', state: 'output-available', input: { url: 'https://raw.githubusercontent.com/yzfly/douyin-mcp-server/main/douyin_downloader.py' }, output: { type: 'text', value: 'def download(): ...' } }],
+    } as unknown as UIMessage;
+    const dbMessages = [
+      bigMsg('m1', 'user', 2000), toolMsgM2,
+      bigMsg('m3', 'user', 200), bigMsg('m4', 'assistant', 200),
+    ];
+    const { store, saved } = storeWithMessages(existing, dbMessages);
+    const result = await selfHealOrphanedCheckpoint(dbMessages as unknown as import("ai").ModelMessage[], {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    expect(saved.length).toBe(1);
+    const newSummary = saved[0][1] as string;
+    expect(newSummary).toContain('## 行动日志（provenance');
+    expect(result.length).toBeLessThan(dbMessages.length);
+  });
 });

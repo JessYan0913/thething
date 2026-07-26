@@ -209,7 +209,14 @@ export async function maybeCheckpointAfterRun(
 // 见 docs/context-compaction-architecture.md 读循环事故复盘。
 
 /**
- * 检测并修复孤儿 checkpoint。无孤儿时原样返回;有孤儿时强制重建 checkpoint 并应用。
+ * 检测并修复无效 checkpoint。有效时原样返回;无效时强制重建并应用。
+ *
+ * "无效"两种情况:
+ * 1. 孤儿 anchor:regenerate/edit 让 anchor 消失出活跃链。
+ * 2. 旧格式摘要:缺 "## 行动日志（provenance）" 段(commit 4d461c0 之前生成)。
+ *    旧摘要丢了工具调用输入(key),模型会把远程文件当本地。检测到即强制重建,
+ *    一次性把存量摘要升级到带 provenance 的新格式--不靠 50% 水位线(大上下文
+ *    模型 + Layer 2 meta 化后永不触发,存量摘要永远不会自动升级)。
  *
  * 判定基于 DB 全量历史(而非传入的已压缩消息):applyCheckpointOnLoad 应用后,
  * 传入消息已不含 anchor(被摘要替换),但 DB 全量里仍含 -> 不算孤儿,避免重入。
@@ -227,18 +234,24 @@ export async function selfHealOrphanedCheckpoint(
 ): Promise<import('ai').ModelMessage[]> {
   try {
     const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
-    // 无 checkpoint 或无 anchor -> 无孤儿概念,走全量(由调用方正常流程处理)
+    // 无 checkpoint 或无 anchor -> 无效概念,走全量(由调用方正常流程处理)
     if (!stored || !stored.anchorMessageId) return fullMessages;
 
     // 用 DB 全量历史判定 anchor 是否还在活跃链(而非传入的已压缩消息)
     const dbMessages = context.dataStore.messageStore.getMessagesByConversation(context.conversationId) as unknown as import('ai').ModelMessage[];
     const anchorInDb = dbMessages.some((m) => (m as unknown as { id?: string }).id === stored.anchorMessageId);
-    if (anchorInDb) return fullMessages; // anchor 有效,无需自愈
+    // 旧格式检测:缺 provenance 段的摘要(commit 4d461c0 之前)需要重建。
+    // 用部分匹配(无右括号),兼容 "（provenance）" 和 "（provenance，机器生成）" 两种标题。
+    const isStaleFormat = !stored.summary.includes('## 行动日志（provenance');
+    if (anchorInDb && !isStaleFormat) return fullMessages; // anchor 有效且新格式,无需自愈
 
-    // 孤儿:旧 anchor 不在活跃链(regenerate/edit 产生孤儿分支)。强制重建 checkpoint。
+    // 无效(孤儿 anchor 或旧格式):强制重建 checkpoint。
+    const reason = !anchorInDb
+      ? `orphan anchor ${stored.anchorMessageId}`
+      : 'stale summary (missing provenance section)';
     logger.info(
       'Checkpoint',
-      `Orphan anchor ${stored.anchorMessageId} detected for ${context.conversationId} - self-healing (force checkpoint)`,
+      `${reason} detected for ${context.conversationId} - self-healing (force checkpoint)`,
     );
     const ok = await maybeCheckpointAfterRun(dbMessages as unknown as UIMessage[], { ...context, force: true });
     if (!ok) return fullMessages; // 重建失败(如 LLM 报错)-> 回退全量,不丢历史
