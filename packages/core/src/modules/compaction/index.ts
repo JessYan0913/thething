@@ -100,14 +100,11 @@ export async function compactBeforeStep(
     if (context.writer) {
       try {
         context.writer.write({
-          type: 'custom',
-          kind: 'data.budget',
-          providerMetadata: {
-            budget: {
-              usagePercentage: result.cachedEstimation.utilizationPercent,
-              totalTokens: result.cachedEstimation.totalTokens,
-              modelLimit: result.cachedEstimation.modelLimit,
-            },
+          type: 'data-budget',
+          data: {
+            usagePercentage: result.cachedEstimation.utilizationPercent,
+            totalTokens: result.cachedEstimation.totalTokens,
+            modelLimit: result.cachedEstimation.modelLimit,
           },
         } as any);
       } catch {

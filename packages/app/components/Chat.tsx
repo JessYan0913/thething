@@ -909,7 +909,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role !== 'assistant') continue;
       const budgetPart = messages[i].parts?.find((p) => (p as { type: string }).type === 'data-budget');
-      if (budgetPart) return budgetPart as unknown as { usagePercentage: number; totalTokens: number; modelLimit: number };
+      if (budgetPart) {
+        const data = (budgetPart as { data?: { usagePercentage: number; totalTokens: number; modelLimit: number } }).data;
+        if (data) return data;
+      }
     }
     return null;
   }, [messages]);
