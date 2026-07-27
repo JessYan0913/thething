@@ -64,18 +64,18 @@ describe('2. All model selection points use unified alias resolution', () => {
     const behavior = buildBehaviorConfig({
       modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o' } },
     });
-    expect(behavior.modelAliases.fast).toBe('gpt-4o-mini');
-    expect(behavior.modelAliases.smart).toBe('gpt-4o');
-    expect(behavior.modelAliases.default).toBe('gpt-4o');
+    expect(behavior.modelAliases.fast.model).toBe('gpt-4o-mini');
+    expect(behavior.modelAliases.smart.model).toBe('gpt-4o');
+    expect(behavior.modelAliases.default.model).toBe('gpt-4o');
   });
 
   it('custom modelAliases override defaults in BehaviorConfig', () => {
     const behavior = buildBehaviorConfig({
       modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o-mini' } },
     });
-    expect(behavior.modelAliases.fast).toBe('gpt-4o-mini');
-    expect(behavior.modelAliases.smart).toBe('gpt-4o');
-    expect(behavior.modelAliases.default).toBe('gpt-4o-mini');
+    expect(behavior.modelAliases.fast.model).toBe('gpt-4o-mini');
+    expect(behavior.modelAliases.smart.model).toBe('gpt-4o');
+    expect(behavior.modelAliases.default.model).toBe('gpt-4o-mini');
   });
 
   describe('ModelSwapper alias keyword detection', () => {
@@ -204,10 +204,11 @@ describe('3. Unknown aliases do not produce silent wrong mappings', () => {
 // ============================================================
 
 describe('4. Fallback scenarios', () => {
-  it('resolveModelAlias returns empty string when no aliases provided', () => {
-    expect(resolveModelAlias('fast', undefined)).toBe('');
-    expect(resolveModelAlias('smart', undefined)).toBe('');
-    expect(resolveModelAlias('default', undefined)).toBe('');
+  it('resolveModelAlias returns the keyword unchanged when no aliases provided', () => {
+    // 无 aliases 时,关键词原样返回(由调用方决定如何处理)
+    expect(resolveModelAlias('fast', undefined)).toBe('fast');
+    expect(resolveModelAlias('smart', undefined)).toBe('smart');
+    expect(resolveModelAlias('default', undefined)).toBe('default');
   });
 
   it('createLanguageModel throws when modelName omitted', () => {

@@ -162,7 +162,7 @@ describe('config parameter passing', () => {
     expect(getPreviewSizeLimit(sessionConfig)).toBe(256);
     expect(getMessageBudgetLimit()).not.toBe(50_000);
 
-    const result = await unifiedToolOutputHook('a'.repeat(100), 'bash', 'tool-token-limit', {
+    const result = await unifiedToolOutputHook('a'.repeat(1000), 'bash', 'tool-token-limit', {
       sessionId: 'test-session',
       dataDir: '/tmp/test-data',
       config: sessionConfig,
@@ -181,7 +181,8 @@ describe('config parameter passing', () => {
   });
 
   it('resolves model aliases from explicit aliases', () => {
-    expect(resolveModelAlias('fast')).toBe('');
+    // 无 aliases 时关键词原样返回(由调用方处理)
+    expect(resolveModelAlias('fast')).toBe('fast');
     expect(resolveModelAlias('smart', {
       fast: { model: 'gpt-4o-mini' },
       smart: { model: 'gpt-4o' },

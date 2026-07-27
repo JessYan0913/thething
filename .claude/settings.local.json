@@ -73,7 +73,10 @@
       "Bash(cat ~/.npmrc 2>/dev/null; echo \"---\"; cat /Users/yanheng/Documents/work/thething/.npmrc 2>/dev/null)",
       "Read(//Users/yanheng/**)",
       "Bash(npx electron-rebuild *)",
-      "Bash(open http://localhost:3000/test-motion)"
+      "Bash(open http://localhost:3000/test-motion)",
+      "Bash(sed -n \"/async function createSkillFile/,/^}/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)",
+      "Bash(sed -n \"/empty dirs array means no resources/,/^    }\\);/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)",
+      "Bash(sed -n \"/async function createMcpJson/,/^}/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)"
     ]
   }
 }

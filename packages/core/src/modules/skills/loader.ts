@@ -164,7 +164,12 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     source: s.source,
   }));
 
-  // 2. 合并内置 skills（BUNDLED_SKILLS 优先级最低，被同名 file skill 覆盖）
+  // 2. 合并内置 skills（BUNDLED_SKILLS 优先级最低，被同名 file skill 覆盖）。
+  // 显式提供 dirs(含空数组)时跳过--调用方明确限定了加载范围
+  // (resource-dirs 隔离契约:显式 dirs 只加载文件级技能,空 dirs 加载 0 个)。
+  if (options?.dirs !== undefined) {
+    return fileSkills;
+  }
   const fileSkillNames = new Set(fileSkills.map(s => s.name));
   const bundledToAdd = BUNDLED_SKILLS.filter(s => !fileSkillNames.has(s.name));
 

@@ -54,11 +54,10 @@ describe('Skills Loader Integration', () => {
 
     const skills = await loadSkills({ cwd: root, configDir: path.join(os.homedir(), '.thething'), dirs: [project.skillDir] });
 
-    // 2 个文件级 skill + 1 个内置 research skill
-    expect(skills.length).toBe(3);
+    // 显式 dirs = 只加载文件级 skill(resource-dirs 隔离契约,不混入 bundled)
+    expect(skills.length).toBe(2);
     expect(skills.some(skill => skill.name === 'ai-sdk')).toBe(true);
     expect(skills.some(skill => skill.name === 'shadcn')).toBe(true);
-    expect(skills.some(skill => skill.name === 'research')).toBe(true);
   });
 
   it('returns complete skill metadata from parsed frontmatter and body', async () => {

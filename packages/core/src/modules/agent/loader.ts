@@ -33,7 +33,7 @@ function buildAgentDefinitionFromData(
     agentType: extractAgentType(mergedData as { name?: string; agentType?: string; displayName?: string }, filePath),
     displayName: mergedData.displayName as string | undefined,
     instructions: body,
-    model: mergedData.model as 'inherit' | 'fast' | 'smart' | string | undefined,
+    model: (mergedData.model as 'inherit' | 'fast' | 'smart' | string | undefined) ?? 'inherit',
     tools: parseToolsList(mergedData.tools as string[] | undefined),
     connectors: mergedData.connectors as boolean | undefined,
     skills: mergedData.skills as boolean | undefined,

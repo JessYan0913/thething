@@ -72,7 +72,9 @@ export function createMultiSourceLoader<T extends { source: string }>(
     let dirs: string[];
     let sourceByDir: Map<string, ConfigSource>;
 
-    if (options?.dirs && options.dirs.length > 0) {
+    if (options?.dirs !== undefined) {
+      // 显式提供 dirs(含空数组)→ 只用这些目录,不做 implicit scan。
+      // 空数组 = 调用方明确表示"该资源类型不加载任何目录"。
       dirs = [...options.dirs];
       const userBase = computeUserConfigDir(configDir, subcategory);
       sourceByDir = new Map(
