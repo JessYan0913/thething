@@ -42,8 +42,7 @@ import type { Tool } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
 import { emergencySummarize } from './emergency-summary';
-import { estimateFullRequest } from './token-counter';
-import { estimateTokensIncremental, type CachedEstimation } from './incremental-estimation';
+import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
 import { updateViewAfterL3, type CompactionView } from './compaction-view';
 
 // ============================================================
@@ -841,15 +840,14 @@ export interface CompactionContext {
   ledger?: ContextLedger;
   telemetry?: CompactionTelemetry;
   compactionView?: CompactionView;
-  lastEstimation?: CachedEstimation;
 }
 
 export interface ManageCompactionResult {
   messages: import('ai').ModelMessage[];
   tokensFreed: number;
   persistence?: Promise<void>;
-  /** 增量估算结果（供调用方发送水位 / 更新缓存） */
-  cachedEstimation?: CachedEstimation;
+  /** 全量估算结果（供调用方发送水位 / 更新缓存） */
+  estimation?: FullRequestEstimation;
 }
 
 /**
@@ -885,21 +883,17 @@ export async function manageCompaction(
     persistence = lifecycleResult.persistence;
   }
 
-  // 估算 + 按预算升档
-  let cachedEstimation: CachedEstimation | undefined;
+  // 估算 + 按预算升档(用 estimateFullRequest,不用增量缓存--压缩后缓存失效)
+  let estimation: FullRequestEstimation | undefined;
   if (context.tools && context.instructions) {
-    cachedEstimation = await estimateTokensIncremental(
-      current,
-      context.instructions,
-      context.tools,
-      context.modelName,
-      { previousEstimation: context.lastEstimation, contextLimit: context.contextLimit },
+    estimation = await estimateFullRequest(
+      current, context.instructions, context.tools, context.modelName, context.contextLimit,
     );
 
-    if (cachedEstimation.exceedsLimit && context.model) {
+    if (estimation.exceedsLimit && context.model) {
       logger.warn(
         'Compaction',
-        `Layer 2 后仍超限 (${cachedEstimation.utilizationPercent.toFixed(1)}%)，升档至紧急压缩`,
+        `Layer 2 后仍超限 (${estimation.utilizationPercent.toFixed(1)}%)，升档至紧急压缩`,
       );
       current = await applyEmergencyCompression(current, {
         model: context.model,
@@ -908,14 +902,14 @@ export async function manageCompaction(
         contextLimit: context.contextLimit,
         tools: context.tools,
         instructions: context.instructions,
-        targetTokens: cachedEstimation.modelLimit * 0.8,
+        targetTokens: estimation.modelLimit * 0.8,
         compactionView: context.compactionView,
         telemetry: context.telemetry,
       });
     }
   }
 
-  return { messages: current, tokensFreed, persistence, cachedEstimation };
+  return { messages: current, tokensFreed, persistence, estimation };
 }
 
 /**

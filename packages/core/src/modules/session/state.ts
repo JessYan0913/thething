@@ -150,11 +150,6 @@ export function createSessionState(
         compactionView: state.compactionView,  // 🔑 传递视图
         telemetry: state.telemetry,  // 🆕 传递遥测
         ledger: state.contextLedger,  // 传递台账（读循环熔断 + pin）
-        lastEstimation: state.lastEstimation,  // 🆕 传递上次估算
-        onEstimationUpdated: (estimation) => {
-          // 🆕 更新缓存
-          state.lastEstimation = estimation;
-        },
       });
 
       return {

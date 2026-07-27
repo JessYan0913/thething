@@ -17,7 +17,6 @@ import { applyCompactionView } from './compaction-view';
 import type { CompactionView } from './compaction-view';
 import type { CompactionTelemetry } from './compaction-telemetry';
 import type { ContextLedger } from './context-ledger';
-import type { CachedEstimation } from './incremental-estimation';
 import { selfHealOrphanedCheckpoint } from './checkpoint';
 
 // ============================================================
@@ -48,8 +47,6 @@ export async function compactBeforeStep(
     compactionView?: CompactionView;
     telemetry?: CompactionTelemetry;
     ledger?: ContextLedger;
-    lastEstimation?: CachedEstimation;
-    onEstimationUpdated?: (estimation: CachedEstimation) => void;
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
@@ -88,28 +85,22 @@ export async function compactBeforeStep(
     ledger: context.ledger,
     telemetry: context.telemetry,
     compactionView: context.compactionView,
-    lastEstimation: context.lastEstimation,
   });
   current = result.messages;
 
-  // 4. 副信号：发送水位给前端 + 更新估算缓存
-  if (result.cachedEstimation) {
-    if (context.onEstimationUpdated) {
-      context.onEstimationUpdated(result.cachedEstimation);
-    }
-    if (context.writer) {
-      try {
-        context.writer.write({
-          type: 'data-budget',
-          data: {
-            usagePercentage: result.cachedEstimation.utilizationPercent,
-            totalTokens: result.cachedEstimation.totalTokens,
-            modelLimit: result.cachedEstimation.modelLimit,
-          },
-        } as any);
-      } catch {
-        // 估算失败不阻塞主流程
-      }
+  // 4. 副信号：发送水位给前端
+  if (result.estimation && context.writer) {
+    try {
+      context.writer.write({
+        type: 'data-budget',
+        data: {
+          usagePercentage: result.estimation.utilizationPercent,
+          totalTokens: result.estimation.totalTokens,
+          modelLimit: result.estimation.modelLimit,
+        },
+      } as any);
+    } catch {
+      // 估算失败不阻塞主流程
     }
   }
 
