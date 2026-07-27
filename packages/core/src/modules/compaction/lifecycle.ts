@@ -38,6 +38,13 @@ import { persistToolResult, getToolResultPath } from '../budget/tool-result-stor
 import type { ContextLedger } from './context-ledger';
 import type { CompactionTelemetry } from './compaction-telemetry';
 import { logger } from '../../primitives/logger';
+import type { Tool } from 'ai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
+import { emergencySummarize } from './emergency-summary';
+import { estimateFullRequest } from './token-counter';
+import { estimateTokensIncremental, type CachedEstimation } from './incremental-estimation';
+import { updateViewAfterL3, type CompactionView } from './compaction-view';
 
 // ============================================================
 // Main Function
@@ -814,4 +821,186 @@ function findLastToolResultIndex(views: ToolResultView[]): number {
     }
   }
   return -1;
+}
+
+// ============================================================
+// 统一分配器入口（差距一：合并四层为一条降级阶梯）
+// ============================================================
+// manageCompaction 是压缩的唯一入口：Layer 2(value 降级) -> 估算 -> 按预算
+// 选档(确定性摘要 / LLM 摘要 / 强制截断)。不变式在入口统一强制,不再由
+// compactBeforeStep 编排多层独立 evictor。见 docs/compaction-road-to-excellent.md。
+
+export interface CompactionContext {
+  model?: LanguageModelV3;
+  fallbackModels?: LanguageModelV3[];
+  modelName: string;
+  contextLimit?: number;
+  instructions?: string;
+  tools?: Record<string, Tool>;
+  storage?: LifecycleStorage;
+  ledger?: ContextLedger;
+  telemetry?: CompactionTelemetry;
+  compactionView?: CompactionView;
+  lastEstimation?: CachedEstimation;
+}
+
+export interface ManageCompactionResult {
+  messages: import('ai').ModelMessage[];
+  tokensFreed: number;
+  persistence?: Promise<void>;
+  /** 增量估算结果（供调用方发送水位 / 更新缓存） */
+  cachedEstimation?: CachedEstimation;
+}
+
+/**
+ * 统一压缩分配器：按预算压力选档位，不变式贯穿所有档位。
+ *
+ * 降级阶梯（只作用于 value，key 永不降级）：
+ * 1. Layer 2：tool-result value 降级（截断/meta），key 保留。同步。
+ * 2. 估算超限 -> 确定性摘要（Layer 2.5 策略）：消息级降级，保留首尾含当前步。
+ * 3. 还超限 -> LLM 摘要（Layer 3 策略）：前缀替换，附 action log provenance。
+ * 4. 还超限 -> 强制截断：保底。
+ *
+ * 不变式（Layer 2 强制，2.5/3 策略遵守）：
+ * key 永不降级 / 当前步永不 meta/不摘要 / 语义类截断不 meta / 读循环熔断 autoPin。
+ */
+export async function manageCompaction(
+  messages: import('ai').ModelMessage[],
+  config: LifecycleConfig,
+  context: CompactionContext,
+): Promise<ManageCompactionResult> {
+  let current = messages;
+  let tokensFreed = 0;
+  let persistence: Promise<void> | undefined;
+
+  // 档位 1：Layer 2 - tool-result value 降级（同步，微秒级）
+  const lifecycleResult = manageToolOutputLifecycle(current, config, context.storage, {
+    ledger: context.ledger,
+    telemetry: context.telemetry,
+  });
+  current = lifecycleResult.messages;
+  tokensFreed += lifecycleResult.tokensFreed;
+  if (lifecycleResult.persistence) {
+    await lifecycleResult.persistence;
+    persistence = lifecycleResult.persistence;
+  }
+
+  // 估算 + 按预算升档
+  let cachedEstimation: CachedEstimation | undefined;
+  if (context.tools && context.instructions) {
+    cachedEstimation = await estimateTokensIncremental(
+      current,
+      context.instructions,
+      context.tools,
+      context.modelName,
+      { previousEstimation: context.lastEstimation, contextLimit: context.contextLimit },
+    );
+
+    if (cachedEstimation.exceedsLimit && context.model) {
+      logger.warn(
+        'Compaction',
+        `Layer 2 后仍超限 (${cachedEstimation.utilizationPercent.toFixed(1)}%)，升档至紧急压缩`,
+      );
+      current = await applyEmergencyCompression(current, {
+        model: context.model,
+        fallbackModels: context.fallbackModels,
+        modelName: context.modelName,
+        contextLimit: context.contextLimit,
+        tools: context.tools,
+        instructions: context.instructions,
+        targetTokens: cachedEstimation.modelLimit * 0.8,
+        compactionView: context.compactionView,
+        telemetry: context.telemetry,
+      });
+    }
+  }
+
+  return { messages: current, tokensFreed, persistence, cachedEstimation };
+}
+
+/**
+ * 紧急压缩：确定性摘要 -> LLM 摘要 -> 强制截断。
+ * 导出供 budget-check.ts 初始预算检查复用。
+ */
+export async function applyEmergencyCompression(
+  messages: import('ai').ModelMessage[],
+  context: {
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    contextLimit?: number;
+    tools: Record<string, Tool>;
+    instructions: string;
+    targetTokens: number;
+    compactionView?: CompactionView;
+    telemetry?: CompactionTelemetry;
+  },
+): Promise<import('ai').ModelMessage[]> {
+  let current = messages;
+
+  // 档位 2：确定性摘要（Layer 2.5 策略）
+  logger.info('Compaction', '档位 2: 确定性文本压缩');
+  const deterministicResult = await compressMessagesDeterministic(
+    current, context.targetTokens, context.modelName,
+  );
+  current = deterministicResult.messages;
+
+  const afterDeterministic = await estimateFullRequest(
+    current, context.instructions, context.tools, context.modelName, context.contextLimit,
+  );
+  if (!afterDeterministic.exceedsLimit) {
+    logger.info(
+      'Compaction',
+      `确定性摘要成功: 释放 ${deterministicResult.tokensFreed} tokens，降至 ${afterDeterministic.utilizationPercent.toFixed(1)}%`,
+    );
+    return current;
+  }
+
+  // 档位 3：LLM 摘要（Layer 3 策略）
+  logger.warn(
+    'Compaction',
+    `确定性摘要后仍超限 (${afterDeterministic.utilizationPercent.toFixed(1)}%)，升档至 LLM 摘要`,
+  );
+  const summaryResult = await emergencySummarize(current, {
+    model: context.model,
+    fallbackModels: context.fallbackModels,
+    targetPercent: 0.6,
+  });
+
+  if (summaryResult.success) {
+    current = summaryResult.messages;
+
+    if (context.compactionView && summaryResult.summaryMessage && summaryResult.anchorIndex != null) {
+      updateViewAfterL3(
+        context.compactionView,
+        summaryResult.summaryMessage,
+        summaryResult.anchorIndex,
+        messages[summaryResult.anchorIndex],
+        summaryResult.summaryText!,
+      );
+      logger.debug('Compaction', `View updated: anchorIndex=${summaryResult.anchorIndex}`);
+    }
+
+    const reason = !context.compactionView?.summary ? 'no_view' : 'budget_exceeded';
+    context.telemetry?.recordLayer3Triggered({
+      reason,
+      messagesBeforeCompaction: messages.length,
+      messagesAfterCompaction: current.length,
+      durationMs: 0,
+    });
+
+    const afterSummary = await estimateFullRequest(
+      current, context.instructions, context.tools, context.modelName, context.contextLimit,
+    );
+    if (!afterSummary.exceedsLimit) {
+      logger.info('Compaction', `LLM 摘要成功: 降至 ${afterSummary.utilizationPercent.toFixed(1)}%`);
+      return current;
+    }
+  }
+
+  // 档位 4：强制截断（保底）
+  logger.error('Compaction', '所有档位失败，执行强制截断（保底）');
+  return await forceTruncateMessages(
+    current, 0.15, context.modelName, context.targetTokens, messages,
+  );
 }

@@ -7,8 +7,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { estimateFullRequest, estimateToolsTokens, estimateToolTokens, type FullRequestEstimation } from './token-counter';
-import { manageToolOutputLifecycle } from './lifecycle';
-import { applyEmergencyCompression } from './index';
+import { manageToolOutputLifecycle, applyEmergencyCompression } from './lifecycle';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 
 const CORE_TOOLS = new Set(['bash', 'read_file', 'write_file', 'edit_file', 'grep', 'glob']);
