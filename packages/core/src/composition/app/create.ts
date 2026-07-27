@@ -7,6 +7,7 @@
 import type { ToolApprovalStatus, UIMessage } from 'ai';
 import { ToolLoopAgent, wrapLanguageModel, generateText } from 'ai'
 import type { LanguageModel, LanguageModelMiddleware } from 'ai'
+import type { LanguageModelV3 } from '@ai-sdk/provider'
 import type { SubAgentStreamWriter } from '../../modules/agent'
 import type { CompactionConfig } from '../../modules/compaction/types'
 import type { CreateAgentOptions, CreateAgentResult } from './types'
@@ -185,9 +186,20 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   }
 
   const modelInstance = createLanguageModel(modelConfig)
-  const provider = createModelProvider(modelConfig)
+  // provider 包装 costTrackingMiddleware:子 Agent 用自定义模型(fast/smart)时,
+  // provider(modelName) 创建的 model 也进成本统计。
+  const rawProvider = createModelProvider(modelConfig)
+  const provider = (modelName: string) => wrapLanguageModel({
+    model: rawProvider(modelName),
+    middleware: [costTrackingMiddleware(sessionState.costTracker)] as LanguageModelMiddleware[],
+  }) as unknown as LanguageModel
 
-  sessionState.compactModel = modelInstance
+  // compactModel 包 costTrackingMiddleware:紧急压缩 + selfHeal checkpoint 的
+  // token 用量也进成本统计(不包 telemetry,避免污染 agent 遥测指标)。
+  sessionState.compactModel = wrapLanguageModel({
+    model: modelInstance,
+    middleware: [costTrackingMiddleware(sessionState.costTracker)] as LanguageModelMiddleware[],
+  }) as unknown as LanguageModelV3
 
   const compactionCfg: CompactionConfig = sessionOptions.compactionConfig ?? DEFAULT_COMPACTION_CONFIG
 
