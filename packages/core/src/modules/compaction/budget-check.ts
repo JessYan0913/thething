@@ -1,5 +1,5 @@
 // 简化版闸门：Agent 创建前检查预算，按优先级降级
-// 见 docs/context-invariant-architecture.md S6
+// 见 docs/context-compaction-architecture.md S6
 
 import type { Tool } from 'ai';
 
@@ -7,8 +7,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { estimateFullRequest, estimateToolsTokens, estimateToolTokens, type FullRequestEstimation } from './token-counter';
-import { manageToolOutputLifecycle } from './lifecycle';
-import { applyEmergencyCompression } from './index';
+import { manageToolOutputLifecycle, applyEmergencyCompression } from './lifecycle';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 
 const CORE_TOOLS = new Set(['bash', 'read_file', 'write_file', 'edit_file', 'grep', 'glob']);
@@ -54,9 +53,11 @@ export async function checkInitialBudget(
   let currentTools = tools;
   let currentEstimation = initialEstimation;
 
-  // Strategy 1: Layer 2 激进压缩
+  // Strategy 1: Layer 2 分配器缩预算重跑
+  // messageBudget 收紧;key/value 不变式保证 key(工具调用输入)永不被驱逐,
+  // 只压 value(输出),模型不会失明。不再下压 keepRecentSteps。
   if (currentEstimation.messagesTokens > currentEstimation.modelLimit * 0.2) {
-    const aggressiveConfig = { ...config.lifecycle, keepRecentSteps: 1 };
+    const aggressiveConfig = { ...config.lifecycle, messageBudget: 30_000 };
     const lifecycleResult = manageToolOutputLifecycle(currentMessages, aggressiveConfig);
     if (lifecycleResult.tokensFreed > 0) {
       currentMessages = lifecycleResult.messages;

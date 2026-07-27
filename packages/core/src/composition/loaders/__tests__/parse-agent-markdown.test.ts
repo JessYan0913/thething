@@ -84,11 +84,11 @@ Instructions.
     expect(() => parseAgentMarkdown(mdContent)).toThrow(ParseError);
   });
 
-  it('should parse skills as string', () => {
+  it('should parse skills as boolean flag', () => {
     const mdContent = `---
 name: skills-agent
-description: Agent with skills
-skills: skill1, skill2, skill3
+description: Agent with skills enabled
+skills: true
 ---
 
 Instructions.
@@ -96,16 +96,13 @@ Instructions.
 
     const agent = parseAgentMarkdown(mdContent);
 
-    expect(agent.skills).toEqual(['skill1', 'skill2', 'skill3']);
+    expect(agent.skills).toBe(true);
   });
 
-  it('should parse skills as array', () => {
+  it('should default skills to true when not specified', () => {
     const mdContent = `---
-name: skills-array-agent
-description: Agent with array skills
-skills:
-  - skill-a
-  - skill-b
+name: skills-default-agent
+description: Agent with default skills
 ---
 
 Instructions.
@@ -113,6 +110,6 @@ Instructions.
 
     const agent = parseAgentMarkdown(mdContent);
 
-    expect(agent.skills).toEqual(['skill-a', 'skill-b']);
+    expect(agent.skills).toBeUndefined();
   });
 });

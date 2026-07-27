@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { PipelineMessage } from '../../../services/config/compaction-types';
+import type { ModelMessage } from 'ai';
 import { emergencySummarize } from '../emergency-summary';
 
 // ============================================================
@@ -13,12 +13,12 @@ vi.mock('ai', () => ({
   }),
 }));
 
-function userMsg(text: string): PipelineMessage {
-  return { role: 'user', content: text } as PipelineMessage;
+function userMsg(text: string): ModelMessage {
+  return { role: 'user', content: text } as ModelMessage;
 }
 
-function assistantMsg(text: string): PipelineMessage {
-  return { role: 'assistant', content: text } as PipelineMessage;
+function assistantMsg(text: string): ModelMessage {
+  return { role: 'assistant', content: text } as ModelMessage;
 }
 
 const mockModel = {
@@ -30,8 +30,8 @@ const mockModel = {
   doGenerate: vi.fn(),
 };
 
-function longConversation(count: number): PipelineMessage[] {
-  const msgs: PipelineMessage[] = [userMsg('任务目标：重构模块 A')];
+function longConversation(count: number): ModelMessage[] {
+  const msgs: ModelMessage[] = [userMsg('任务目标：重构模块 A')];
   for (let i = 0; i < count; i++) {
     msgs.push(assistantMsg(`第 ${i} 步分析结果`));
   }

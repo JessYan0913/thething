@@ -36,6 +36,9 @@ export function isContextLengthError(error: unknown): boolean {
 // Reactive Retry
 // ============================================================
 
+/** 重试时的跨消息工具输出总额预算（比默认 100k 收紧至 30k） */
+const RETRY_MESSAGE_BUDGET = 30_000;
+
 export async function handleReactiveRetry(
   error: unknown,
   messages: import('ai').ModelMessage[],
@@ -53,15 +56,17 @@ export async function handleReactiveRetry(
 
   logger.warn('ReactiveRetry', 'Context length error detected, attempting recovery');
 
-  // 1. 激进 Layer 2：keepRecentSteps=1
+  // 1. 分配器缩预算重跑:messageBudget 收紧到 30k,强制降级更多 value。
+  //    不再下压 keepRecentSteps--key/value 不变式保证 key(工具调用输入)永不被驱逐,
+  //    只压 value(输出),模型不会失明。
   let current = manageToolOutputLifecycle(messages, {
     ...config.lifecycle,
-    keepRecentSteps: 1,
+    messageBudget: RETRY_MESSAGE_BUDGET,
   }).messages;
 
   // 2. 同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
   //    改为 Layer 2 激进压缩后若仍超限，直接抛出 CONTEXT_BUDGET_EXCEEDED。
-  //    见 docs/context-invariant-architecture.md。
+  //    见 docs/context-compaction-architecture.md。
 
   return { messages: current };
 }

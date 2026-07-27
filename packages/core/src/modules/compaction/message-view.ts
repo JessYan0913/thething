@@ -16,7 +16,7 @@
 // 因为 UIMessage 的 part 类型是开放集合，穷举所有类型进行无损
 // 往返会产生"漏一种就静默丢数据"的同类错误模式。视图只需识别
 // compaction 关心的字段；不认识的 part/content 在补丁写回时
-// 原样保留——天然无损。见 docs/compaction-unification-design.md。
+// 原样保留——天然无损。见 docs/context-compaction-architecture.md。
 // ============================================================
 
 
@@ -44,6 +44,8 @@ export interface ToolResultItemView {
   isError: boolean;
   /** 是否已压缩 */
   isCompacted: boolean;
+  /** 是否已可见截断（保留头尾 + 省略标记；仍可进一步降级为 meta） */
+  isTruncated: boolean;
   /** 在原始消息数组中的位置索引（供 patching 回写） */
   refIndex: number;
 }
@@ -70,6 +72,8 @@ export interface CompactionPatch {
   refIndex: number;
   /** 替换后的摘要文本 */
   summary: string;
+  /** 标记方式：compacted = 完全 meta 化（默认）；truncated = 可见截断，仍可再降级 */
+  mode?: 'compacted' | 'truncated';
 }
 
 // ============================================================
@@ -167,6 +171,7 @@ function buildViewFromUIMessage(
         outputSize: outputStr.length,
         isError: detectError(unwrapOutput(p.output)),
         isCompacted: p._compacted === true,
+        isTruncated: p._truncated === true,
         refIndex: i,
       });
     }
@@ -228,6 +233,7 @@ function buildViewFromModelMessage(
         outputSize: outputStr.length,
         isError: detectError(unwrapOutput(c.output)),
         isCompacted: c._compacted === true,
+        isTruncated: c._truncated === true,
         refIndex: i,
       });
     }
@@ -252,25 +258,35 @@ function applyToUIMessage(
   parts: Record<string, unknown>[],
   patches: CompactionPatch[],
 ): { patched: import('ai').ModelMessage; freed: number } {
-  const patchMap = new Map(patches.map((p) => [p.refIndex, p.summary]));
+  const patchMap = new Map(patches.map((p) => [p.refIndex, p]));
   let freed = 0;
 
   const newParts = parts.map((part, i) => {
-    const summary = patchMap.get(i);
-    if (summary === undefined) return part;
+    const patch = patchMap.get(i);
+    if (patch === undefined) return part;
 
     const partType = (part.type as string) ?? '';
     if (!partType.startsWith('tool-') && partType !== 'dynamic-tool') return part;
     if (part.state !== 'output-available') return part;
 
     const resultStr = getToolOutputString(part.output);
-    freed += Math.max(0, resultStr.length - summary.length);
+    freed += Math.max(0, resultStr.length - patch.summary.length);
+
+    // truncated: 可见截断——不打 _compacted,后续仍可降级为 meta
+    if (patch.mode === 'truncated') {
+      return {
+        ...part,
+        output: { type: 'text', value: patch.summary },
+        _truncated: true,
+        _originalSize: (part._originalSize as number | undefined) ?? resultStr.length,
+      };
+    }
 
     return {
       ...part,
-      output: { type: 'text', value: summary },
+      output: { type: 'text', value: patch.summary },
       _compacted: true,
-      _originalSize: resultStr.length,
+      _originalSize: (part._originalSize as number | undefined) ?? resultStr.length,
     };
   });
 
@@ -285,23 +301,33 @@ function applyToModelMessage(
   content: Record<string, unknown>[],
   patches: CompactionPatch[],
 ): { patched: import('ai').ModelMessage; freed: number } {
-  const patchMap = new Map(patches.map((p) => [p.refIndex, p.summary]));
+  const patchMap = new Map(patches.map((p) => [p.refIndex, p]));
   let freed = 0;
 
   const newContent = content.map((item, i) => {
-    const summary = patchMap.get(i);
-    if (summary === undefined) return item;
+    const patch = patchMap.get(i);
+    if (patch === undefined) return item;
     if (item.type !== 'tool-result') return item;
     if (item._compacted === true) return item;
 
     const resultStr = getToolOutputString(item.output);
-    freed += Math.max(0, resultStr.length - summary.length);
+    freed += Math.max(0, resultStr.length - patch.summary.length);
+
+    // truncated: 可见截断——不打 _compacted,后续仍可降级为 meta
+    if (patch.mode === 'truncated') {
+      return {
+        ...item,
+        output: { type: 'text', value: patch.summary },
+        _truncated: true,
+        _originalSize: (item._originalSize as number | undefined) ?? resultStr.length,
+      };
+    }
 
     return {
       ...item,
-      output: { type: 'text', value: summary },
+      output: { type: 'text', value: patch.summary },
       _compacted: true,
-      _originalSize: resultStr.length,
+      _originalSize: (item._originalSize as number | undefined) ?? resultStr.length,
     };
   });
 
@@ -351,7 +377,7 @@ function emptyView(msg: import('ai').ModelMessage, format: 'ui' | 'model'): Tool
 // 事故(2026-07-21):context-window.ts 用 .content 构造摘要，经
 // budgetCheck.adjustedMessages 泄漏到 route 层 → msg.parts
 // is not iterable 崩溃。收敛到一处，调用方显式声明目标格式。
-// 见 docs/compaction-unification-design.md §2。
+// 见 docs/context-compaction-architecture.md §2。
 // ============================================================
 
 const SUMMARY_ID_PREFIX = 'summary-';

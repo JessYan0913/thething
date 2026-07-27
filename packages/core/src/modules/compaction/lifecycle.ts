@@ -7,27 +7,44 @@
 // 格式归一化：消息的双轨格式（UIMessage .parts / ModelMessage .content）
 // 已收敛到 message-view.ts 的 extractToolResultView / applyCompactionPatches
 // 两个函数中。本模块所有决策逻辑通过 ToolResultView 操作，完全格式无关。
-// 见 docs/compaction-unification-design.md。
+// 见 docs/context-compaction-architecture.md。
 //
 // 老化按 step 计数而非 user 轮数：agentic 场景下单个 user 轮内
 // 可能有上百次工具调用,按轮数计算时它们永不老化。
-// 见 docs/context-compaction-analysis.md A。
+// 见 docs/context-compaction-architecture.md A。
+//
+// 2026-07-25 读循环事故后收敛为唯一分配器 + 降级阶梯：
+//   完整 → 可见截断(_truncated,保留头尾+找回提示) → meta(_compacted)
+// 三条不变式：
+//   1. 感知-行动环不可断：当前步(最新一次工具结果)永不 meta 化,超大改可见截断
+//   2. 语义类工具(read_file 等"模型主动要看的内容")超大时截断而非 meta
+//   3. 读循环熔断：同文件被读 ≥3 次 → 自动 pin,最新读取保留完整
+// 见 docs/context-compaction-architecture.md。
 
 
 import {
   type LifecycleConfig,
-  type CompactedToolResult,
   DEFAULT_LIFECYCLE_CONFIG,
   DEFAULT_COMPACTABLE,
 } from './types';
 import {
   extractToolResultView,
   applyCompactionPatches,
+  type CompactionPatch,
   type ToolResultItemView,
   type ToolResultView,
 } from './message-view';
 import { persistToolResult, getToolResultPath } from '../budget/tool-result-storage';
+import type { ContextLedger } from './context-ledger';
+import type { CompactionTelemetry } from './compaction-telemetry';
 import { logger } from '../../primitives/logger';
+import type { Tool } from 'ai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
+import { emergencySummarize } from './emergency-summary';
+import { estimateFullRequest } from './token-counter';
+import { estimateTokensIncremental, type CachedEstimation } from './incremental-estimation';
+import { updateViewAfterL3, type CompactionView } from './compaction-view';
 
 // ============================================================
 // Main Function
@@ -38,16 +55,29 @@ export interface LifecycleStorage {
   dataDir: string;
 }
 
+/** 反馈闭环依赖（可选）：pin 注册表/台账 + 遥测 */
+export interface LifecycleOptions {
+  ledger?: ContextLedger;
+  telemetry?: CompactionTelemetry;
+}
+
+/** 低于此大小的输出不参与任何压缩 */
+const MIN_COMPACT_SIZE = 200;
+/** 读循环熔断阈值：同文件被读达到此次数 → 自动 pin */
+const READ_LOOP_THRESHOLD = 3;
+
 /**
- * 工具输出生命周期管理（Layer 2）
+ * 工具输出生命周期管理（Layer 2）——唯一预算分配器
  *
- * 在每步 API 调用前同步执行：
- * - 保留最近 K 个 step 的工具输出
- * - 更早的旧工具输出 → 替换为结构化元信息
- * - 超大工具输出（即使在最近 K 个 step 内）→ 也压缩
+ * 在每步 API 调用前同步执行，按优先级对每条工具结果决策：
+ * - 错误结果 / 小输出 / 不可压缩工具 / pin 的最新读取 → 保留完整
+ * - 同文件重复读的更早副本 → meta
+ * - 当前步结果 → 永不 meta；超大时可见截断（保留头尾 + 找回提示）
+ * - 超出最近 K step 且未被引用 → meta
+ * - 边界内超大：语义类（read_file）→ 可见截断；瞬态类 → meta + 落盘
  *
- * 提供 storage 时,压缩的原始输出异步落盘,元信息带 saved to 路径,
- * 模型可用 read_file 找回(见主文档 B)。函数本身保持同步;
+ * 提供 storage 时,压缩的瞬态输出异步落盘,元信息带 saved to 路径,
+ * 模型可用 read_file 找回。函数本身保持同步;
  * 落盘完成情况通过返回值的 persistence Promise 暴露。
  *
  * @returns 替换后的消息和释放的 token 数
@@ -56,12 +86,18 @@ export function manageToolOutputLifecycle(
   messages: import('ai').ModelMessage[],
   config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
   storage?: LifecycleStorage,
+  opts?: LifecycleOptions,
 ): { messages: import('ai').ModelMessage[]; tokensFreed: number; persistence?: Promise<void> } {
   // 预计算视图：价值感知信号需要全局扫描
   const views = messages.map(extractToolResultView);
-  const staleReadIndices = findStaleDuplicateReads(views);
+  const currentStepIndex = findLastToolResultIndex(views);
+  const { staleIndices, lastReadIndexByPath } = analyzeReads(views);
   const referencedIndices = findReferencedResults(views);
   const recentBoundary = findNthToolResultMessageFromEnd(views, config.keepRecentSteps);
+
+  // 读循环熔断：同文件读取次数达到阈值 → 自动 pin + 上报
+  detectReadLoops(views, opts);
+  const pinnedPaths = opts?.ledger?.pinnedPaths ?? new Set<string>();
 
   let tokensFreed = 0;
   const persistTasks: Promise<void>[] = [];
@@ -75,21 +111,53 @@ export function manageToolOutputLifecycle(
     // 已全部压缩 → 跳过
     if (v.toolResults.every((tr) => tr.isCompacted)) return msg;
 
-    // 老化判定
-    const totalSize = v.toolResults
-      .filter((tr) => !tr.isCompacted)
-      .reduce((sum, tr) => sum + tr.outputSize, 0);
-    const tooLarge = totalSize > config.largeOutputThreshold;
-    const isStaleDuplicate = staleReadIndices.has(i);
+    const isCurrentStep = i === currentStepIndex;
     // 被后续引用的结果延迟老化，仅豁免"超出最近 K step"这一条
     const beyondBoundary = i < recentBoundary && !referencedIndices.has(i);
-    const shouldCompact = isStaleDuplicate || tooLarge || beyondBoundary;
+    const msgHasStaleRead = staleIndices.has(i);
 
-    if (!shouldCompact) return msg;
-    if (!isToolCompactable(v, config)) return msg;
+    const patches: CompactionPatch[] = [];
+    for (const tr of v.toolResults) {
+      if (tr.isCompacted) continue;
+      if (tr.isError) continue;          // 错误保护：失败的工具输出不压缩
+      if (tr.outputSize < MIN_COMPACT_SIZE) continue;
+      if (!isResultCompactable(tr.toolName, config)) continue;
 
-    // 构建补丁
-    const patches = buildCompactionPatches(v, storage, persistTasks);
+      const readPath = resolveReadPath(tr);
+      const isLatestReadOfPath = readPath !== null && lastReadIndexByPath.get(readPath) === i;
+
+      // pin 保护：pin 路径的最新读取保留完整（模型主动 pin 或熔断自动 pin）
+      if (readPath && pinnedPaths.has(readPath) && isLatestReadOfPath) continue;
+
+      // 同文件重复读去重：更早的副本直接 meta（最新一份由后续规则保护）
+      if (msgHasStaleRead && readPath !== null && !isLatestReadOfPath) {
+        patches.push(buildMetaPatch(tr, storage, persistTasks, opts));
+        continue;
+      }
+
+      const tooLarge = !tr.isTruncated && tr.outputSize > config.largeOutputThreshold;
+
+      // 当前步豁免：最近一次行动的结果必须可感知——永不 meta，超大改可见截断
+      if (isCurrentStep) {
+        if (tooLarge) patches.push(buildTruncationPatch(tr, config, storage, persistTasks, opts));
+        continue;
+      }
+
+      if (beyondBoundary) {
+        patches.push(buildMetaPatch(tr, storage, persistTasks, opts));
+        continue;
+      }
+
+      if (tooLarge) {
+        // 语义类（模型主动要看的内容）：可见截断，永不直接 meta
+        if (isSemanticTool(tr.toolName)) {
+          patches.push(buildTruncationPatch(tr, config, storage, persistTasks, opts));
+        } else {
+          patches.push(buildMetaPatch(tr, storage, persistTasks, opts));
+        }
+      }
+    }
+
     if (patches.length === 0) return msg;
 
     const { patched, freed } = applyCompactionPatches(msg, patches);
@@ -98,10 +166,13 @@ export function manageToolOutputLifecycle(
   });
 
   // ── 跨消息超大输出扫描（吸收原 enforceToolResultBudget）──
-  // 当 messageBudget 配置时，对仍然未压缩的大工具输出做全局排序持久化。
-  if (config.messageBudget && config.messageBudget > 0 && storage) {
+  // 当 messageBudget 配置时，对仍然未 meta 的大工具输出做全局排序降级。
+  // storage 可选：无 storage 时瞬态输出降级为无找回路径的 meta（有损兜底）。
+  if (config.messageBudget && config.messageBudget > 0) {
     const { messages: scanResult, freed: scanFreed } = applyCrossMessageBudget(
       result, config.messageBudget, storage, persistTasks,
+      { currentStepIndex, pinnedPaths, lastReadIndexByPath },
+      opts,
     );
     return {
       messages: scanResult,
@@ -122,52 +193,120 @@ export function manageToolOutputLifecycle(
 }
 
 // ============================================================
-// Patch Building (replaces old compactToolResults)
+// Patch Building（降级阶梯的两级：truncate / meta）
 // ============================================================
 
+/** 截断后的首行 = 原 meta 头（供 truncated → meta 降级复用） */
+function firstLine(text: string): string {
+  const idx = text.indexOf('\n');
+  return idx >= 0 ? text.slice(0, idx) : text;
+}
+
 /**
- * 为一条消息中所有应压缩的工具结果构建补丁列表。
- * 格式无关——只操作视图和输出值。
+ * meta 化补丁：输出替换为结构化元信息。
+ * 瞬态工具 + storage → 原文落盘,meta 带 saved-to 找回路径。
+ * read_file 输出本身就是磁盘文件,落盘=同一份文件存两份;meta 已含原文件路径,模型可直接 re-read 找回。
  */
-function buildCompactionPatches(
-  view: ToolResultView,
-  storage?: LifecycleStorage,
-  persistTasks?: Promise<void>[],
-): { refIndex: number; summary: string }[] {
-  const patches: { refIndex: number; summary: string }[] = [];
+function buildMetaPatch(
+  tr: ToolResultItemView,
+  storage: LifecycleStorage | undefined,
+  persistTasks: Promise<void>[],
+  opts?: LifecycleOptions,
+): CompactionPatch {
+  // truncated → meta 降级：首行就是当初生成的 meta 头，不重新解析（截断后原始结构已丢失）
+  let summary = tr.isTruncated
+    ? firstLine(tr.outputRaw)
+    : extractToolMeta(tr.toolName, tr.input, tr.output);
+  let recovery: string | undefined;
 
-  for (const tr of view.toolResults) {
-    if (tr.isCompacted) continue;
-    if (tr.isError) continue;          // 错误保护：失败的工具输出不压缩
-    if (tr.outputSize < 200) continue;
-
-    let summary = extractToolMeta(tr.toolName, tr.input, tr.output);
-
-    // read_file 输出本身就是磁盘文件,落盘=同一份文件存两份;meta 已含原文件路径,模型可直接 re-read 找回。
-    // bash/grep/glob/web 等瞬态输出才落盘内容 + 带 saved-to 路径。
-    if (storage && tr.toolCallId && !isFileReadTool(tr.toolName)) {
-      const isJson =
-        tr.outputRaw.trim().startsWith('{') || tr.outputRaw.trim().startsWith('[');
-      const filepath = getToolResultPath(
-        tr.toolCallId,
-        storage.sessionId,
-        storage.dataDir,
-        isJson,
-      );
-      summary += `\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
-      persistTasks?.push(
-        persistToolResult(tr.outputRaw, tr.toolCallId, storage.sessionId, storage.dataDir)
-          .then(() => undefined)
-          .catch((err) => {
-            logger.warn('Lifecycle', `Failed to persist ${tr.toolCallId}:`, err);
-          }),
-      );
-    }
-
-    patches.push({ refIndex: tr.refIndex, summary });
+  if (isFileReadTool(tr.toolName)) {
+    recovery = 're-read the original file';
+  } else if (storage && tr.toolCallId && !tr.isTruncated) {
+    const isJson =
+      tr.outputRaw.trim().startsWith('{') || tr.outputRaw.trim().startsWith('[');
+    const filepath = getToolResultPath(
+      tr.toolCallId,
+      storage.sessionId,
+      storage.dataDir,
+      isJson,
+    );
+    summary += `\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
+    recovery = filepath;
+    persistTasks.push(
+      persistToolResult(tr.outputRaw, tr.toolCallId, storage.sessionId, storage.dataDir)
+        .then(() => undefined)
+        .catch((err) => {
+          logger.warn('Lifecycle', `Failed to persist ${tr.toolCallId}:`, err);
+        }),
+    );
   }
 
-  return patches;
+  opts?.ledger?.recordCompaction({
+    toolName: tr.toolName,
+    path: resolveReadPath(tr) ?? undefined,
+    toolCallId: tr.toolCallId,
+    action: 'meta',
+    originalSize: tr.outputSize,
+    recovery,
+  });
+
+  return { refIndex: tr.refIndex, summary };
+}
+
+/**
+ * 可见截断补丁：保留头尾 + 省略标记 + 找回提示。
+ * 与 meta 的本质区别：模型保留部分感知（知道看到了什么、缺了什么、怎么补），
+ * 不会陷入"读不到→再读"的循环。标记 _truncated（非 _compacted），
+ * 老化超出边界后仍可降级为 meta。
+ */
+function buildTruncationPatch(
+  tr: ToolResultItemView,
+  config: LifecycleConfig,
+  storage: LifecycleStorage | undefined,
+  persistTasks: Promise<void>[],
+  opts?: LifecycleOptions,
+): CompactionPatch {
+  const keep = Math.max(1000, config.largeOutputThreshold);
+  const headLen = Math.floor(keep * 0.6);
+  const tailLen = Math.floor(keep * 0.25);
+  const head = tr.outputRaw.slice(0, headLen);
+  const tail = tr.outputRaw.slice(-tailLen);
+  const omitted = tr.outputSize - headLen - tailLen;
+  const meta = extractToolMeta(tr.toolName, tr.input, tr.output);
+
+  let recoveryHint: string;
+  let recovery: string | undefined;
+  if (isFileReadTool(tr.toolName)) {
+    recoveryHint = '[Omitted range is NOT lost: re-read with read_file(filePath, offset, limit) to view specific lines]';
+    recovery = 're-read with offset/limit';
+  } else if (storage && tr.toolCallId) {
+    const isJson =
+      tr.outputRaw.trim().startsWith('{') || tr.outputRaw.trim().startsWith('[');
+    const filepath = getToolResultPath(tr.toolCallId, storage.sessionId, storage.dataDir, isJson);
+    recoveryHint = `[Full output saved to: ${filepath} — use read_file to recover]`;
+    recovery = filepath;
+    persistTasks.push(
+      persistToolResult(tr.outputRaw, tr.toolCallId, storage.sessionId, storage.dataDir)
+        .then(() => undefined)
+        .catch((err) => logger.warn('Lifecycle', `Truncation persist ${tr.toolCallId}:`, err)),
+    );
+  } else {
+    recoveryHint = '[Middle portion omitted to fit context budget]';
+  }
+
+  const summary =
+    `${meta}\n${head}\n\n[... ${omitted} chars omitted ...]\n${recoveryHint}\n\n${tail}`;
+
+  opts?.ledger?.recordCompaction({
+    toolName: tr.toolName,
+    path: resolveReadPath(tr) ?? undefined,
+    toolCallId: tr.toolCallId,
+    action: 'truncated',
+    originalSize: tr.outputSize,
+    recovery,
+  });
+
+  return { refIndex: tr.refIndex, summary, mode: 'truncated' };
 }
 
 // ============================================================
@@ -181,25 +320,39 @@ interface BudgetCandidate {
   toolName: string;
   outputRaw: string;
   size: number;
+  isTruncated: boolean;
+  input?: unknown;
+  output: unknown;
 }
 
 /**
- * 跨消息超大输出预算检查：收集所有未压缩工具结果，按大小排序，
- * 持久化最大的直到总额低于 budget。粒度与 message-budget.ts 一致。
+ * 跨消息超大输出预算检查：收集所有未 meta 的工具结果，按大小排序，
+ * 降级最大的直到总额低于 budget。当前步与 pin 的最新读取豁免。
  */
 function applyCrossMessageBudget(
   messages: import('ai').ModelMessage[],
   budget: number,
-  storage: LifecycleStorage,
+  storage: LifecycleStorage | undefined,
   persistTasks: Promise<void>[],
+  exempt: {
+    currentStepIndex: number;
+    pinnedPaths: Set<string>;
+    lastReadIndexByPath: Map<string, number>;
+  },
+  opts?: LifecycleOptions,
 ): { messages: import('ai').ModelMessage[]; freed: number } {
-  // 收集所有未压缩的非错误工具结果
+  // 收集所有未 meta 的非错误工具结果（含 truncated——可进一步降级）
   const candidates: BudgetCandidate[] = [];
   for (let i = 0; i < messages.length; i++) {
+    if (i === exempt.currentStepIndex) continue; // 当前步豁免
     const view = extractToolResultView(messages[i]);
     for (const tr of view.toolResults) {
       if (tr.isCompacted || tr.isError) continue;
       if (!tr.toolCallId) continue;
+      const readPath = resolveReadPath(tr);
+      if (readPath && exempt.pinnedPaths.has(readPath) && exempt.lastReadIndexByPath.get(readPath) === i) {
+        continue; // pin 的最新读取豁免
+      }
       candidates.push({
         msgIndex: i,
         refIndex: tr.refIndex,
@@ -207,6 +360,9 @@ function applyCrossMessageBudget(
         toolName: tr.toolName,
         outputRaw: tr.outputRaw,
         size: tr.outputSize,
+        isTruncated: tr.isTruncated,
+        input: tr.input,
+        output: tr.output,
       });
     }
   }
@@ -218,19 +374,21 @@ function applyCrossMessageBudget(
   // 按 size 降序排序
   candidates.sort((a, b) => b.size - a.size);
 
-  // 持久化最大的直到总额低于 budget
-  const patchesByMsg = new Map<number, { refIndex: number; summary: string }[]>();
+  // 降级最大的直到总额低于 budget
+  const patchesByMsg = new Map<number, CompactionPatch[]>();
   let freed = 0;
 
   for (const c of candidates) {
     if (totalSize <= budget) break;
 
-    const meta = extractToolMeta(c.toolName, undefined, c.outputRaw);
+    const meta = c.isTruncated
+      ? firstLine(c.outputRaw)
+      : extractToolMeta(c.toolName, c.input, c.output);
     let summary: string;
     if (isFileReadTool(c.toolName)) {
       // read_file 输出已是磁盘文件,不落盘(meta 含路径,模型 re-read 原文件找回)
       summary = meta;
-    } else {
+    } else if (storage && !c.isTruncated) {
       const isJson = c.outputRaw.trim().startsWith('{') || c.outputRaw.trim().startsWith('[');
       const filepath = getToolResultPath(c.toolCallId, storage.sessionId, storage.dataDir, isJson);
       summary = `${meta}\n[Full output saved to: ${filepath}]\n[To recover: use read_file with this path]`;
@@ -239,10 +397,20 @@ function applyCrossMessageBudget(
           .then(() => undefined)
           .catch((err) => logger.warn('Lifecycle', `Cross-msg persist ${c.toolCallId}:`, err)),
       );
+    } else {
+      // 无 storage / 已截断过的瞬态输出：有损降级为纯 meta
+      summary = meta;
     }
 
     freed += c.size - summary.length;
     totalSize -= c.size; // 总额中移除
+
+    opts?.ledger?.recordCompaction({
+      toolName: c.toolName,
+      toolCallId: c.toolCallId,
+      action: 'meta',
+      originalSize: c.size,
+    });
 
     const list = patchesByMsg.get(c.msgIndex) ?? [];
     list.push({ refIndex: c.refIndex, summary });
@@ -260,45 +428,98 @@ function applyCrossMessageBudget(
 }
 
 // ============================================================
+// Read Analysis（去重 / pin / 熔断共享）
+// ============================================================
 
-/** 取一条 read_file 结果回显的文件路径(用于去重),非 read 或无路径返回 null */
-function readResultPath(item: ToolResultItemView): string | null {
-  const toolName = item.toolName;
-  if (toolName !== 'read_file' && toolName !== 'Read') return null;
+/**
+ * 解析一条工具结果对应的文件路径（read 类工具）。
+ * 依次尝试：输出对象的 path 回显 → 输入参数 → meta/截断文本首行解析。
+ * 后两者保证 meta 化/截断后的结果仍可参与去重和熔断计数。
+ */
+function resolveReadPath(item: ToolResultItemView): string | null {
+  if (item.toolName !== 'read_file' && item.toolName !== 'Read') return null;
   const r = asRecord(item.output);
-  const path = r?.path;
-  return typeof path === 'string' && path.length > 0 ? path : null;
+  if (typeof r?.path === 'string' && r.path.length > 0) return r.path;
+  const inp = asRecord(item.input);
+  const fromInput = firstString(inp?.filePath, inp?.file_path, inp?.path);
+  if (fromInput) return fromInput;
+  if (typeof item.output === 'string') {
+    const m = item.output.match(/^Read (.+?) → /);
+    if (m && m[1].length > 0) return m[1];
+  }
+  return null;
 }
 
 /**
- * 同文件重复读取去重:同一文件被 read_file 多次,只保留最后一次完整输出,
- * 更早的直接进压缩集。返回应压缩的消息索引集合。
+ * 读取分析：同文件重复读的更早副本进 stale 集（只保留最后一次完整输出）,
+ * 并返回每个路径最后一次读取所在的消息索引（供 pin / 去重判定）。
  */
-function findStaleDuplicateReads(views: ToolResultView[]): Set<number> {
-  const lastReadIndex = new Map<string, number>();
+function analyzeReads(views: ToolResultView[]): {
+  staleIndices: Set<number>;
+  lastReadIndexByPath: Map<string, number>;
+} {
+  const lastReadIndexByPath = new Map<string, number>();
   const perPathIndices = new Map<string, number[]>();
 
   views.forEach((v, i) => {
     if (v.toolResults.length === 0) return;
     if (v.toolResults.every((tr) => tr.isCompacted)) return;
     for (const item of v.toolResults) {
-      const path = readResultPath(item);
+      if (item.isCompacted) continue;
+      const path = resolveReadPath(item);
       if (!path) continue;
-      lastReadIndex.set(path, i);
+      lastReadIndexByPath.set(path, i);
       const list = perPathIndices.get(path) ?? [];
       list.push(i);
       perPathIndices.set(path, list);
     }
   });
 
-  const stale = new Set<number>();
+  const staleIndices = new Set<number>();
   for (const [path, indices] of perPathIndices) {
-    const keep = lastReadIndex.get(path);
+    const keep = lastReadIndexByPath.get(path);
     for (const idx of indices) {
-      if (idx !== keep) stale.add(idx);
+      if (idx !== keep) staleIndices.add(idx);
     }
   }
-  return stale;
+  return { staleIndices, lastReadIndexByPath };
+}
+
+/**
+ * 读循环熔断：统计每个文件的读取总次数（含已 meta 化的历史副本——
+ * 它们正是循环的证据），达到阈值 → 自动 pin + 遥测上报（每文件一次）。
+ * 压缩系统对自身副作用的最小反馈闭环。
+ */
+function detectReadLoops(views: ToolResultView[], opts?: LifecycleOptions): void {
+  const ledger = opts?.ledger;
+  if (!ledger) return;
+
+  const counts = new Map<string, number>();
+  for (const v of views) {
+    for (const item of v.toolResults) {
+      const path = resolveReadPath(item);
+      if (!path) continue;
+      counts.set(path, (counts.get(path) ?? 0) + 1);
+      // 可观测闭环:re-read 一个曾被 meta 化的路径 = 压缩过头信号。
+      // 区别于读循环(按次数),这是"压缩删了模型要的内容,模型回头重读"。
+      if (ledger.wasCompacted(path) && ledger.recordReRead(path)) {
+        logger.warn('Lifecycle', `Overcompaction detected: ${path} re-read after meta-ization - auto-pinning`);
+        opts?.telemetry?.recordOvercompactionDetected({ path, autoPinned: true });
+      }
+    }
+  }
+
+  for (const [path, count] of counts) {
+    if (count < READ_LOOP_THRESHOLD) continue;
+    ledger.autoPin(path, count);
+    if (ledger.shouldReportLoop(path)) {
+      logger.warn(
+        'Lifecycle',
+        `Read loop detected: ${path} read ${count} times — auto-pinned (latest read kept in full)`,
+      );
+      opts?.telemetry?.recordReadLoopDetected({ path, readCount: count, autoPinned: true });
+    }
+  }
 }
 
 /**
@@ -347,25 +568,27 @@ function isFileReadTool(toolName: string): boolean {
   return toolName === 'read_file' || toolName === 'Read';
 }
 
-function isToolCompactable(view: ToolResultView, config: LifecycleConfig): boolean {
-  const toolNames = new Set(view.toolResults.map((tr) => tr.toolName));
+/** 语义类工具:输出是模型主动要看的内容(而非命令回显等瞬态输出),
+ *  超大时可见截断而非 meta 化——meta 化等于把模型要的信息抹掉。 */
+function isSemanticTool(toolName: string): boolean {
+  return (
+    isFileReadTool(toolName) ||
+    toolName === 'read_wiki_page' ||
+    toolName === 'ReadWikiPage'
+  );
+}
 
-  for (const name of toolNames) {
-    if (config.protectedTools.has(name)) return false;
-  }
+/** 单条工具结果是否可压缩（按工具名判定） */
+function isResultCompactable(toolName: string, config: LifecycleConfig): boolean {
+  if (config.protectedTools.has(toolName)) return false;
 
   if (config.compactableTools !== null) {
-    for (const name of toolNames) {
-      if (config.compactableTools.has(name)) return true;
-    }
-    return false;
+    return config.compactableTools.has(toolName);
   }
 
-  for (const name of toolNames) {
-    if (DEFAULT_COMPACTABLE.has(name)) return true;
-    if (name.startsWith('mcp_') || name.startsWith('MCP_')) return true;
-    if (name.startsWith('connector_') || name.startsWith('Connector_')) return true;
-  }
+  if (DEFAULT_COMPACTABLE.has(toolName)) return true;
+  if (toolName.startsWith('mcp_') || toolName.startsWith('MCP_')) return true;
+  if (toolName.startsWith('connector_') || toolName.startsWith('Connector_')) return true;
 
   return false;
 }
@@ -373,7 +596,7 @@ function isToolCompactable(view: ToolResultView, config: LifecycleConfig): boole
 // ============================================================
 // Tool Meta Extractors
 // ============================================================
-// 设计要点(见 docs/built-in-tools-compaction-analysis.md #1/#2):
+// 设计要点(见 docs/context-compaction-architecture.md #1/#2):
 // 1. 键名使用工具的实际注册名(snake_case,见 agent/tools.ts),
 //    同时保留首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字)。
 // 2. grep/glob/web_fetch 返回 JSON.stringify 后的字符串,先解析回对象。
@@ -584,4 +807,200 @@ function findNthToolResultMessageFromEnd(views: ToolResultView[], k: number): nu
     }
   }
   return 0;
+}
+
+/**
+ * 最后一条含未压缩 tool-result 的消息索引（= 当前步的结果）。
+ * 感知-行动环保护的对象；无工具结果时返回 -1。
+ */
+function findLastToolResultIndex(views: ToolResultView[]): number {
+  for (let i = views.length - 1; i >= 0; i--) {
+    const v = views[i];
+    if (v.toolResults.length > 0 && v.toolResults.some((tr) => !tr.isCompacted)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// ============================================================
+// 统一分配器入口（差距一：合并四层为一条降级阶梯）
+// ============================================================
+// manageCompaction 是压缩的唯一入口：Layer 2(value 降级) -> 估算 -> 按预算
+// 选档(确定性摘要 / LLM 摘要 / 强制截断)。不变式在入口统一强制,不再由
+// compactBeforeStep 编排多层独立 evictor。见 docs/compaction-road-to-excellent.md。
+
+export interface CompactionContext {
+  model?: LanguageModelV3;
+  fallbackModels?: LanguageModelV3[];
+  modelName: string;
+  contextLimit?: number;
+  instructions?: string;
+  tools?: Record<string, Tool>;
+  storage?: LifecycleStorage;
+  ledger?: ContextLedger;
+  telemetry?: CompactionTelemetry;
+  compactionView?: CompactionView;
+  lastEstimation?: CachedEstimation;
+}
+
+export interface ManageCompactionResult {
+  messages: import('ai').ModelMessage[];
+  tokensFreed: number;
+  persistence?: Promise<void>;
+  /** 增量估算结果（供调用方发送水位 / 更新缓存） */
+  cachedEstimation?: CachedEstimation;
+}
+
+/**
+ * 统一压缩分配器：按预算压力选档位，不变式贯穿所有档位。
+ *
+ * 降级阶梯（只作用于 value，key 永不降级）：
+ * 1. Layer 2：tool-result value 降级（截断/meta），key 保留。同步。
+ * 2. 估算超限 -> 确定性摘要（Layer 2.5 策略）：消息级降级，保留首尾含当前步。
+ * 3. 还超限 -> LLM 摘要（Layer 3 策略）：前缀替换，附 action log provenance。
+ * 4. 还超限 -> 强制截断：保底。
+ *
+ * 不变式（Layer 2 强制，2.5/3 策略遵守）：
+ * key 永不降级 / 当前步永不 meta/不摘要 / 语义类截断不 meta / 读循环熔断 autoPin。
+ */
+export async function manageCompaction(
+  messages: import('ai').ModelMessage[],
+  config: LifecycleConfig,
+  context: CompactionContext,
+): Promise<ManageCompactionResult> {
+  let current = messages;
+  let tokensFreed = 0;
+  let persistence: Promise<void> | undefined;
+
+  // 档位 1：Layer 2 - tool-result value 降级（同步，微秒级）
+  const lifecycleResult = manageToolOutputLifecycle(current, config, context.storage, {
+    ledger: context.ledger,
+    telemetry: context.telemetry,
+  });
+  current = lifecycleResult.messages;
+  tokensFreed += lifecycleResult.tokensFreed;
+  if (lifecycleResult.persistence) {
+    await lifecycleResult.persistence;
+    persistence = lifecycleResult.persistence;
+  }
+
+  // 估算 + 按预算升档
+  let cachedEstimation: CachedEstimation | undefined;
+  if (context.tools && context.instructions) {
+    cachedEstimation = await estimateTokensIncremental(
+      current,
+      context.instructions,
+      context.tools,
+      context.modelName,
+      { previousEstimation: context.lastEstimation, contextLimit: context.contextLimit },
+    );
+
+    if (cachedEstimation.exceedsLimit && context.model) {
+      logger.warn(
+        'Compaction',
+        `Layer 2 后仍超限 (${cachedEstimation.utilizationPercent.toFixed(1)}%)，升档至紧急压缩`,
+      );
+      current = await applyEmergencyCompression(current, {
+        model: context.model,
+        fallbackModels: context.fallbackModels,
+        modelName: context.modelName,
+        contextLimit: context.contextLimit,
+        tools: context.tools,
+        instructions: context.instructions,
+        targetTokens: cachedEstimation.modelLimit * 0.8,
+        compactionView: context.compactionView,
+        telemetry: context.telemetry,
+      });
+    }
+  }
+
+  return { messages: current, tokensFreed, persistence, cachedEstimation };
+}
+
+/**
+ * 紧急压缩：确定性摘要 -> LLM 摘要 -> 强制截断。
+ * 导出供 budget-check.ts 初始预算检查复用。
+ */
+export async function applyEmergencyCompression(
+  messages: import('ai').ModelMessage[],
+  context: {
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    contextLimit?: number;
+    tools: Record<string, Tool>;
+    instructions: string;
+    targetTokens: number;
+    compactionView?: CompactionView;
+    telemetry?: CompactionTelemetry;
+  },
+): Promise<import('ai').ModelMessage[]> {
+  let current = messages;
+
+  // 档位 2：确定性摘要（Layer 2.5 策略）
+  logger.info('Compaction', '档位 2: 确定性文本压缩');
+  const deterministicResult = await compressMessagesDeterministic(
+    current, context.targetTokens, context.modelName,
+  );
+  current = deterministicResult.messages;
+
+  const afterDeterministic = await estimateFullRequest(
+    current, context.instructions, context.tools, context.modelName, context.contextLimit,
+  );
+  if (!afterDeterministic.exceedsLimit) {
+    logger.info(
+      'Compaction',
+      `确定性摘要成功: 释放 ${deterministicResult.tokensFreed} tokens，降至 ${afterDeterministic.utilizationPercent.toFixed(1)}%`,
+    );
+    return current;
+  }
+
+  // 档位 3：LLM 摘要（Layer 3 策略）
+  logger.warn(
+    'Compaction',
+    `确定性摘要后仍超限 (${afterDeterministic.utilizationPercent.toFixed(1)}%)，升档至 LLM 摘要`,
+  );
+  const summaryResult = await emergencySummarize(current, {
+    model: context.model,
+    fallbackModels: context.fallbackModels,
+    targetPercent: 0.6,
+  });
+
+  if (summaryResult.success) {
+    current = summaryResult.messages;
+
+    if (context.compactionView && summaryResult.summaryMessage && summaryResult.anchorIndex != null) {
+      updateViewAfterL3(
+        context.compactionView,
+        summaryResult.summaryMessage,
+        summaryResult.anchorIndex,
+        messages[summaryResult.anchorIndex],
+        summaryResult.summaryText!,
+      );
+      logger.debug('Compaction', `View updated: anchorIndex=${summaryResult.anchorIndex}`);
+    }
+
+    const reason = !context.compactionView?.summary ? 'no_view' : 'budget_exceeded';
+    context.telemetry?.recordLayer3Triggered({
+      reason,
+      messagesBeforeCompaction: messages.length,
+      messagesAfterCompaction: current.length,
+      durationMs: 0,
+    });
+
+    const afterSummary = await estimateFullRequest(
+      current, context.instructions, context.tools, context.modelName, context.contextLimit,
+    );
+    if (!afterSummary.exceedsLimit) {
+      logger.info('Compaction', `LLM 摘要成功: 降至 ${afterSummary.utilizationPercent.toFixed(1)}%`);
+      return current;
+    }
+  }
+
+  // 档位 4：强制截断（保底）
+  logger.error('Compaction', '所有档位失败，执行强制截断（保底）');
+  return await forceTruncateMessages(
+    current, 0.15, context.modelName, context.targetTokens, messages,
+  );
 }

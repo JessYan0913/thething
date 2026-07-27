@@ -83,7 +83,8 @@ describe('V2 compaction module semantics', () => {
       createToolMessage('mcp_server', { result: 'x'.repeat(10000) }),
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
-    expect(getResultItem(result.messages[1])._compacted).toBe(true);
+    // 当前步豁免 meta -> 可见截断(mcp_ 仍被识别为可压缩,仅降级方式不同)
+    expect(getResultItem(result.messages[1])._truncated).toBe(true);
   });
 
   it('connector_ tools are compactable by default', () => {
@@ -92,6 +93,7 @@ describe('V2 compaction module semantics', () => {
       createToolMessage('connector_api', { data: 'x'.repeat(10000) }),
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
-    expect(getResultItem(result.messages[1])._compacted).toBe(true);
+    // 当前步豁免 meta -> 可见截断(connector_ 仍被识别为可压缩)
+    expect(getResultItem(result.messages[1])._truncated).toBe(true);
   });
 });

@@ -124,6 +124,9 @@ export interface SessionState {
   /** 遥测收集器 */
   telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 
+  /** 上下文台账 + pin 注册表（读循环熔断 / context_pin 工具共享） */
+  contextLedger: import('../compaction/context-ledger').ContextLedger;
+
   /** 上次 token 估算结果（用于增量估算） */
   lastEstimation?: import('../compaction/incremental-estimation').CachedEstimation;
 

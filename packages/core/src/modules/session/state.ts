@@ -22,6 +22,7 @@ import {
 import { DEFAULT_CONTEXT_LIMIT } from '../../services/model/constants';
 import { createCompactionView } from '../compaction/compaction-view';
 import { CompactionTelemetry } from '../compaction/compaction-telemetry';
+import { ContextLedger } from '../compaction/context-ledger';
 import { compactBeforeStep } from '../compaction';
 
 export type { SessionState, SessionStateOptions };
@@ -89,6 +90,9 @@ export function createSessionState(
   // 创建遥测收集器
   const telemetry = new CompactionTelemetry();
 
+  // 上下文台账 + pin 注册表（会话级，读循环熔断与 context_pin 工具共享）
+  const contextLedger = new ContextLedger();
+
   // 使用普通对象，简化状态管理
   const state: SessionState = {
     conversationId,
@@ -117,6 +121,7 @@ export function createSessionState(
     fallbackModels: undefined,
     dataStore: dataStore,
     telemetry,
+    contextLedger,
     compactionView: createCompactionView(telemetry),
     lastEstimation: undefined,
 
@@ -144,6 +149,7 @@ export function createSessionState(
         contextLimit: maxContextTokens,
         compactionView: state.compactionView,  // 🔑 传递视图
         telemetry: state.telemetry,  // 🆕 传递遥测
+        ledger: state.contextLedger,  // 传递台账（读循环熔断 + pin）
         lastEstimation: state.lastEstimation,  // 🆕 传递上次估算
         onEstimationUpdated: (estimation) => {
           // 🆕 更新缓存

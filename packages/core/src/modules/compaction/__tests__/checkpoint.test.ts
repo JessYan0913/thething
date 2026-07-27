@@ -6,7 +6,7 @@ import { applyCheckpointOnLoad, maybeCheckpointAfterRun, CHECKPOINT_SUMMARY_ID_P
 
 // ============================================================
 // 8.5 compaction checkpoint 持久化
-// 见 docs/compaction-execution-plan.md 步骤 8.5
+// 见 docs/context-compaction-architecture.md 步骤 8.5
 // ============================================================
 
 function msg(id: string, text: string): UIMessage {
@@ -38,34 +38,34 @@ const full: UIMessage[] = [msg('m1', 'a'), msg('m2', 'b'), msg('m3', 'c'), msg('
 
 describe('applyCheckpointOnLoad', () => {
   it('returns full history when there is no summary', () => {
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(null))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(null)).messages).toBe(full);
   });
 
   it('returns full history when the summary has no anchor', () => {
     const s = makeSummary({ anchorMessageId: null });
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s)).messages).toBe(full);
   });
 
   it('returns full history when the anchor id is not found (never loses messages)', () => {
     const s = makeSummary({ anchorMessageId: 'does-not-exist' });
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s)).messages).toBe(full);
   });
 
   it('collapses history to [summary, ...after-anchor] when anchor matches', () => {
     const s = makeSummary({ anchorMessageId: 'm2' });
     const result = applyCheckpointOnLoad(full, 'c1', storeWith(s));
     // m1,m2 → summary; m3,m4 kept
-    expect(result.length).toBe(3);
-    expect((result[0] as any).id).toContain(CHECKPOINT_SUMMARY_ID_PREFIX);
+    expect(result.messages.length).toBe(3);
+    expect((result.messages[0] as any).id).toContain(CHECKPOINT_SUMMARY_ID_PREFIX);
     // 摘要消息必须是 UIMessage .parts 格式(route 层随后要过 validateUIMessages)
-    expect((result[0] as any).parts[0].text).toContain('previous work summary');
-    expect((result[1] as any).id).toBe('m3');
-    expect((result[2] as any).id).toBe('m4');
+    expect((result.messages[0] as any).parts[0].text).toContain('previous work summary');
+    expect((result.messages[1] as any).id).toBe('m3');
+    expect((result.messages[2] as any).id).toBe('m4');
   });
 
   it('returns full history when the anchor is the last message (nothing to keep)', () => {
     const s = makeSummary({ anchorMessageId: 'm4' });
-    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s))).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', storeWith(s)).messages).toBe(full);
   });
 
   it('falls back to full history when the store throws', () => {
@@ -74,7 +74,7 @@ describe('applyCheckpointOnLoad', () => {
         getSummaryByConversation: () => { throw new Error('db error'); },
       },
     } as unknown as DataStore;
-    expect(applyCheckpointOnLoad(full, 'c1', throwing)).toBe(full);
+    expect(applyCheckpointOnLoad(full, 'c1', throwing).messages).toBe(full);
   });
 });
 
@@ -181,6 +181,28 @@ describe('maybeCheckpointAfterRun', () => {
     expect(['m3', 'm4']).toContain(anchorId);
   });
 
+  it('summarizes huge single messages instead of keeping them (root cause: msg#4 pollution)', async () => {
+    // 复现:中间一条超大消息(>= keepBudget)。旧逻辑 splitIndex 落在它身上,
+    // 把它留在 newerMessages(保留段),污染上下文。修复后它应进 olderMessages(摘要段)。
+    // contextLimit=1000 -> keepBudget=300。m2(2000 chars ~500 tokens)>=300 -> 超大。
+    const { store, saved } = checkpointStore(null);
+    const messages = [
+      bigMsg('m1', 'user', 200),      // 小
+      bigMsg('m2', 'assistant', 2000), // 超大(>= keepBudget)
+      bigMsg('m3', 'user', 200),      // 小
+      bigMsg('m4', 'assistant', 200), // 小
+      bigMsg('m5', 'user', 200),      // 小
+    ];
+    const ok = await maybeCheckpointAfterRun(messages, {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    expect(ok).toBe(true);
+    const anchorId = saved[0][4] as string;
+    // anchor 必须是 m2 或之后(m2 被摘要覆盖,而非留在保留段)
+    expect(['m2', 'm3', 'm4']).toContain(anchorId);
+    expect(anchorId).not.toBe('m1'); // 旧 bug:anchor=m1,m2 留在保留段
+  });
+
   it('never throws even when the store blows up', async () => {
     const store = {
       summaryStore: {
@@ -195,5 +217,116 @@ describe('maybeCheckpointAfterRun', () => {
       conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
     });
     expect(ok).toBe(false);
+  });
+});
+
+// ============================================================
+// 孤儿锚点自愈
+// ============================================================
+// regenerate/edit 让旧 checkpoint anchor 失效 -> applyCheckpointOnLoad 回退全量 ->
+// Layer 2 meta 化的旧文件路径污染上下文。selfHealOrphanedCheckpoint 检测孤儿并强制重建。
+
+/** 带 messageStore 的 mock:summaryStore + messageStore.getMessagesByConversation */
+function storeWithMessages(existing: StoredSummary | null, dbMessages: UIMessage[]) {
+  const saved: unknown[][] = [];
+  let current = existing;
+  const store = {
+    summaryStore: {
+      getSummaryByConversation: () => current,
+      saveSummary: (conversationId: string, summary: string, lastOrder: number, tokenCount: number, anchorId?: string | null) => {
+        saved.push([conversationId, summary, lastOrder, tokenCount, anchorId]);
+        // 更新 current,使后续 getSummaryByConversation 返回新摘要(模拟真实落库)
+        current = makeSummary({ summary, anchorMessageId: anchorId ?? null, lastMessageOrder: lastOrder, preCompactTokenCount: tokenCount });
+        return {} as StoredSummary;
+      },
+    },
+    messageStore: {
+      getMessagesByConversation: () => dbMessages,
+    },
+  } as unknown as DataStore;
+  return { store, saved };
+}
+
+import { selfHealOrphanedCheckpoint } from '../checkpoint';
+
+describe('selfHealOrphanedCheckpoint', () => {
+  it('no-op when there is no stored summary', async () => {
+    const messages = [bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000)];
+    const { store, saved } = storeWithMessages(null, messages);
+    const result = await selfHealOrphanedCheckpoint(messages as unknown as import("ai").ModelMessage[], {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    expect(result).toBe(messages);
+    expect(saved.length).toBe(0);
+  });
+
+  it('no-op when anchor is valid (in active DB messages)', async () => {
+    const existing = makeSummary({ anchorMessageId: 'm2' });
+    const messages = [bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000), bigMsg('m3', 'user', 200)];
+    const { store, saved } = storeWithMessages(existing, messages);
+    const result = await selfHealOrphanedCheckpoint(messages as unknown as import("ai").ModelMessage[], {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    expect(result).toBe(messages); // 未触发自愈
+    expect(saved.length).toBe(0);
+  });
+
+  it('heals when anchor is orphaned: forces checkpoint + applies new summary prefix', async () => {
+    // 旧 anchor 'old-orphan' 不在 DB 活跃消息里(被 regenerate 替换)
+    const existing = makeSummary({ anchorMessageId: 'old-orphan', summary: 'stale summary' });
+    const dbMessages = [
+      bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000),
+      bigMsg('m3', 'user', 2000), bigMsg('m4', 'assistant', 2000),
+      bigMsg('m5', 'user', 200), bigMsg('m6', 'assistant', 200),
+    ];
+    const { store, saved } = storeWithMessages(existing, dbMessages);
+    const result = await selfHealOrphanedCheckpoint(dbMessages as unknown as import("ai").ModelMessage[], {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    // 强制重建:saveSummary 被调用(新 anchor 落库)
+    expect(saved.length).toBe(1);
+    // 新 anchor 必须是当前活跃消息之一(非孤儿)
+    const newAnchor = saved[0][4] as string;
+    expect(dbMessages.some((m) => (m as unknown as { id: string }).id === newAnchor)).toBe(true);
+    // 自愈后用摘要替换污染前缀:消息数减少
+    expect(result.length).toBeLessThan(dbMessages.length);
+    // 首条是摘要消息
+    expect((result[0] as any).parts[0].text).toContain('previous conversation');
+  });
+
+  it('falls back to full when LLM fails (no history lost)', async () => {
+    const existing = makeSummary({ anchorMessageId: 'old-orphan' });
+    const dbMessages = [bigMsg('m1', 'user', 2000), bigMsg('m2', 'assistant', 2000)];
+    const { store, saved } = storeWithMessages(existing, dbMessages);
+    const result = await selfHealOrphanedCheckpoint(dbMessages as unknown as import("ai").ModelMessage[], {
+      conversationId: 'c1', dataStore: store, model: mockModel(new Error('llm down')), modelName: 'test-model', contextLimit: 1000,
+    });
+    // LLM 失败 -> 不丢历史,回退全量
+    expect(result).toBe(dbMessages);
+    expect(saved.length).toBe(0);
+  });
+
+  it('heals stale summary missing provenance section (pre-4d461c0 format)', async () => {
+    const existing = makeSummary({
+      anchorMessageId: 'm1',
+      summary: '## 用户目标\n学习 douyin\n## 已完成\n读了 douyin_downloader.py',
+    });
+    // m2 是带 tool-call 的消息(key=web_fetch URL),action log 才非空
+    const toolMsgM2: UIMessage = {
+      id: 'm2', role: 'assistant',
+      parts: [{ type: 'tool-web_fetch' as any, toolCallId: 'tc-1', state: 'output-available', input: { url: 'https://raw.githubusercontent.com/yzfly/douyin-mcp-server/main/douyin_downloader.py' }, output: { type: 'text', value: 'def download(): ...' } }],
+    } as unknown as UIMessage;
+    const dbMessages = [
+      bigMsg('m1', 'user', 2000), toolMsgM2,
+      bigMsg('m3', 'user', 200), bigMsg('m4', 'assistant', 200),
+    ];
+    const { store, saved } = storeWithMessages(existing, dbMessages);
+    const result = await selfHealOrphanedCheckpoint(dbMessages as unknown as import("ai").ModelMessage[], {
+      conversationId: 'c1', dataStore: store, model: mockModel(VALID_SUMMARY), modelName: 'test-model', contextLimit: 1000,
+    });
+    expect(saved.length).toBe(1);
+    const newSummary = saved[0][1] as string;
+    expect(newSummary).toContain('## 行动日志（provenance');
+    expect(result.length).toBeLessThan(dbMessages.length);
   });
 });

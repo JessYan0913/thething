@@ -4,7 +4,7 @@
 // 所有工具（内置/MCP/Connector/Skill）执行后经过同一处理入口。
 // 收编原 processToolOutput (tool-output-manager.ts) 的内联截断
 // 和 budget/message-budget.ts 的跨消息预算检查。
-// 见 docs/context-invariant-architecture.md §7。
+// 见 docs/context-compaction-architecture.md §7。
 // ============================================================
 
 import {

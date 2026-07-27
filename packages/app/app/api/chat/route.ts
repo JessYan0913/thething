@@ -111,14 +111,12 @@ export async function POST(request: Request) {
 
     // 模型输入基线 = 落库后的活跃路径（截断/编辑已由 head 移动体现）
     const activeMessages = store.messageStore.getMessagesByConversation(conversationId);
-    const existingMessages = activeMessages.slice(0, -1);
 
-    // compaction checkpoint:有可用 checkpoint 时从锚点之后加载,否则回退全量。
-    // 仅用于模型输入——落库路径是往树上追加节点,结构上不会触碰锚点前的历史。
-    // (见 docs/context-compaction-analysis.md E)
-    const checkpointResult = applyCheckpointOnLoad(existingMessages, conversationId, store);
-    const historyForModel = checkpointResult.messages;
-    const messages: UIMessage[] = [...historyForModel, activeMessages[activeMessages.length - 1]];
+    // 全量(含本次 user 消息)交给 applyCheckpointOnLoad:本次 user 消息落在锚点之后,
+    // 作为 newerMessages 保留,避免"锚点之后无新消息 -> 返回全量"的 guard 误触发
+    // 导致 checkpoint 不生效、旧大输出(如 read-loop 污染)原样进上下文。
+    const checkpointResult = applyCheckpointOnLoad(activeMessages, conversationId, store);
+    const messages: UIMessage[] = checkpointResult.messages;
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
     const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);
@@ -182,7 +180,7 @@ export async function POST(request: Request) {
 
     // ── 初始化 CompactionView（如果 checkpoint 应用成功）──
     if (checkpointResult.applied && checkpointResult.summaryMessage && checkpointResult.anchorIndex != null) {
-      const anchorMsg = existingMessages[checkpointResult.anchorIndex];
+      const anchorMsg = activeMessages[checkpointResult.anchorIndex];
       if (anchorMsg) {
         sessionState.compactionView.summary = {
           message: checkpointResult.summaryMessage as any, // UIMessage → ModelMessage

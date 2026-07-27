@@ -12,7 +12,7 @@ export class TokenBudgetTracker {
   private _sessionOutputTokens = 0;
   private _sessionCachedReadTokens = 0;
   private _lastCompactionTokens = 0;
-  // usage 反馈校准(见 docs/context-compaction-analysis.md F):
+  // usage 反馈校准(见 docs/context-compaction-architecture.md F):
   // 实际 input tokens / 估算 tokens 的滑动平均,用于修正后续估算
   private _calibration = 1;
   private _pendingEstimate: number | null = null;

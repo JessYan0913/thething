@@ -8,7 +8,7 @@
 //
 // 安全前提:DB 始终保存全量历史(压缩只在内存中对模型请求生效)。
 // 因此本函数纯属叠加优化——锚点找不到 / 无摘要 / 任何异常,一律回退全量历史,
-// 绝不丢失消息。见 docs/context-compaction-analysis.md E。
+// 绝不丢失消息。见 docs/context-compaction-architecture.md E。
 
 import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
@@ -131,6 +131,9 @@ export async function maybeCheckpointAfterRun(
     fallbackModels?: LanguageModelV3[];
     modelName: string;
     contextLimit?: number;
+    /** 强制生成 checkpoint,绕过 50% 水位线(孤儿自愈场景:旧锚点失效,
+     *  Layer 2 已把大输出 meta 化、in-memory token 变小,水位线判断不出需要重建) */
+    force?: boolean;
   },
 ): Promise<boolean> {
   try {
@@ -138,7 +141,8 @@ export async function maybeCheckpointAfterRun(
 
     const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
     const totalTokens = await estimateMessagesTokens(activeMessages as unknown as import('ai').ModelMessage[], context.modelName);
-    if (totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
+    // force 时绕过水位线(孤儿自愈:不管 in-memory 多小都要重建,因为旧摘要 anchor 已失效)
+    if (!context.force && totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
 
     // 从已有 checkpoint 锚点之后开始摘要(增量);无锚点则从头开始
     const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
@@ -153,7 +157,15 @@ export async function maybeCheckpointAfterRun(
     let kept = 0;
     let splitIndex = activeMessages.length;
     for (let i = activeMessages.length - 1; i > startIndex; i--) {
-      kept += await estimateMessageTokens(activeMessages[i] as unknown as import('ai').ModelMessage, context.modelName);
+      const msgTokens = await estimateMessageTokens(activeMessages[i] as unknown as import('ai').ModelMessage, context.modelName);
+      // 单条超大消息(>= keepBudget,如 1MB 的 read-loop 产物):保留它等于保留巨量内容,
+      // 失去压缩意义,且其污染(本地 skill 路径等)会盖过用户指令。把它归入 olderMessages
+      // (摘要段),用语义摘要替换。否则 splitIndex 会落在它身上、把它留在保留段。
+      if (msgTokens >= keepBudget) {
+        splitIndex = i + 1; // 该消息作为 olderMessages 的最后一条
+        break;
+      }
+      kept += msgTokens;
       if (kept >= keepBudget) { splitIndex = i; break; }
       splitIndex = i;
     }
@@ -188,5 +200,80 @@ export async function maybeCheckpointAfterRun(
     // 后台任务,失败无害,下次运行结束再试
     logger.warn('Checkpoint', 'maybeCheckpointAfterRun failed:', err);
     return false;
+  }
+}
+
+// ============================================================
+// 孤儿锚点自愈
+// ============================================================
+// regenerate/edit 会让旧 checkpoint 的 anchor 消失出活跃链(变成孤儿分支)。
+// applyCheckpointOnLoad 找不到 anchor -> 回退全量历史 -> Layer 2 把旧大输出(如
+// 1MB 的 read-loop 消息)meta 化成"Read X -> N lines [saved to: call-*.txt]"。
+// 这些 meta 行里的文件路径会污染模型上下文,把"这个项目"等歧义指令带偏。
+//
+// 50% 水位线判断不出这个问题:Layer 2 meta 化后 in-memory token 变小,水位线以下
+// 不会生成新 checkpoint,孤儿一直存在。自愈在 compactBeforeStep(有 model 访问、
+// 首轮 API 调用前)检测孤儿 -> 强制重建 checkpoint -> 应用,用语义摘要替换污染 meta。
+// 见 docs/context-compaction-architecture.md 读循环事故复盘。
+
+/**
+ * 检测并修复无效 checkpoint。有效时原样返回;无效时强制重建并应用。
+ *
+ * "无效"两种情况:
+ * 1. 孤儿 anchor:regenerate/edit 让 anchor 消失出活跃链。
+ * 2. 旧格式摘要:缺 "## 行动日志（provenance）" 段(commit 4d461c0 之前生成)。
+ *    旧摘要丢了工具调用输入(key),模型会把远程文件当本地。检测到即强制重建,
+ *    一次性把存量摘要升级到带 provenance 的新格式--不靠 50% 水位线(大上下文
+ *    模型 + Layer 2 meta 化后永不触发,存量摘要永远不会自动升级)。
+ *
+ * 判定基于 DB 全量历史(而非传入的已压缩消息):applyCheckpointOnLoad 应用后,
+ * 传入消息已不含 anchor(被摘要替换),但 DB 全量里仍含 -> 不算孤儿,避免重入。
+ */
+export async function selfHealOrphanedCheckpoint(
+  fullMessages: import('ai').ModelMessage[],
+  context: {
+    conversationId: string;
+    dataStore: DataStore;
+    model: LanguageModelV3;
+    fallbackModels?: LanguageModelV3[];
+    modelName: string;
+    contextLimit?: number;
+  },
+): Promise<import('ai').ModelMessage[]> {
+  try {
+    const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);
+    // 无 checkpoint 或无 anchor -> 无效概念,走全量(由调用方正常流程处理)
+    if (!stored || !stored.anchorMessageId) return fullMessages;
+
+    // 用 DB 全量历史判定 anchor 是否还在活跃链(而非传入的已压缩消息)
+    const dbMessages = context.dataStore.messageStore.getMessagesByConversation(context.conversationId) as unknown as import('ai').ModelMessage[];
+    const anchorInDb = dbMessages.some((m) => (m as unknown as { id?: string }).id === stored.anchorMessageId);
+    // 旧格式检测:缺 provenance 段的摘要(commit 4d461c0 之前)需要重建。
+    // 用部分匹配(无右括号),兼容 "（provenance）" 和 "（provenance，机器生成）" 两种标题。
+    const isStaleFormat = !stored.summary.includes('## 行动日志（provenance');
+    if (anchorInDb && !isStaleFormat) return fullMessages; // anchor 有效且新格式,无需自愈
+
+    // 无效(孤儿 anchor 或旧格式):强制重建 checkpoint。
+    const reason = !anchorInDb
+      ? `orphan anchor ${stored.anchorMessageId}`
+      : 'stale summary (missing provenance section)';
+    logger.info(
+      'Checkpoint',
+      `${reason} detected for ${context.conversationId} - self-healing (force checkpoint)`,
+    );
+    const ok = await maybeCheckpointAfterRun(dbMessages as unknown as UIMessage[], { ...context, force: true });
+    if (!ok) return fullMessages; // 重建失败(如 LLM 报错)-> 回退全量,不丢历史
+
+    // 重新应用 checkpoint:用新摘要替换污染的旧前缀
+    const result = applyCheckpointOnLoad(fullMessages as unknown as UIMessage[], context.conversationId, context.dataStore);
+    if (result.applied) {
+      logger.info('Checkpoint', `Self-heal applied: ${fullMessages.length} -> ${result.messages.length} messages`);
+      return result.messages as unknown as import('ai').ModelMessage[];
+    }
+    return fullMessages;
+  } catch (err) {
+    // 自愈失败不阻塞主流程,回退全量
+    logger.warn('Checkpoint', 'selfHealOrphanedCheckpoint failed:', err);
+    return fullMessages;
   }
 }

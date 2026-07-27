@@ -3,7 +3,7 @@ import { estimateTokensFromChars, estimateTokensFromObject } from '../token-esti
 
 // ============================================================
 // 8.1 估算系数统一 + CJK 校准
-// 见 docs/compaction-execution-plan.md 步骤 8.1
+// 见 docs/context-compaction-architecture.md 步骤 8.1
 // ============================================================
 
 describe('estimateTokensFromChars', () => {

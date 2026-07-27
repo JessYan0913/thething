@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { PipelineMessage } from '../../../services/config/compaction-types';
+import type { ModelMessage } from 'ai';
 import { compactBeforeStep } from '../index';
 import { compressMessagesDeterministic, forceTruncateMessages } from '../message-compressor';
 import { emergencySummarize } from '../emergency-summary';
@@ -8,20 +8,20 @@ import { emergencySummarize } from '../emergency-summary';
 // 集成测试：4 层压缩流程保证永不返回 413
 // ============================================================
 
-function userMsg(text: string): PipelineMessage {
-  return { role: 'user', content: text } as PipelineMessage;
+function userMsg(text: string): ModelMessage {
+  return { role: 'user', content: text } as ModelMessage;
 }
 
-function assistantMsg(text: string): PipelineMessage {
-  return { role: 'assistant', content: text } as PipelineMessage;
+function assistantMsg(text: string): ModelMessage {
+  return { role: 'assistant', content: text } as ModelMessage;
 }
 
-function toolMsg(output: string): PipelineMessage {
-  return { role: 'tool', content: output } as PipelineMessage;
+function toolMsg(output: string): ModelMessage {
+  return { role: 'tool', content: output } as unknown as ModelMessage;
 }
 
-function generateLongConversation(length: number): PipelineMessage[] {
-  const msgs: PipelineMessage[] = [userMsg('任务目标：请分析项目架构并提出优化建议。')];
+function generateLongConversation(length: number): ModelMessage[] {
+  const msgs: ModelMessage[] = [userMsg('任务目标：请分析项目架构并提出优化建议。')];
   for (let i = 0; i < length; i++) {
     const t = `分析 ${i}: ${'代码优化建议'.repeat(50)}`;
     msgs.push(assistantMsg(t));

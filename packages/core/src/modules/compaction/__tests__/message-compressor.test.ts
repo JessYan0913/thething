@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { PipelineMessage } from '../../../services/config/compaction-types';
+import type { ModelMessage } from 'ai';
 import {
   compressMessagesDeterministic,
   forceTruncateMessages,
@@ -10,16 +10,16 @@ import { extractMessageText } from '../token-counter';
 // Layer 2.5: 确定性文本压缩测试
 // ============================================================
 
-function userMsg(text: string): PipelineMessage {
-  return { role: 'user', content: text } as PipelineMessage;
+function userMsg(text: string): ModelMessage {
+  return { role: 'user', content: text } as ModelMessage;
 }
 
-function assistantMsg(text: string): PipelineMessage {
-  return { role: 'assistant', content: text } as PipelineMessage;
+function assistantMsg(text: string): ModelMessage {
+  return { role: 'assistant', content: text } as ModelMessage;
 }
 
-function toolMsg(output: string): PipelineMessage {
-  return { role: 'tool', content: output } as PipelineMessage;
+function toolMsg(output: string): ModelMessage {
+  return { role: 'tool', content: output } as unknown as ModelMessage;
 }
 
 // 生成辅助测试用的长消息
@@ -35,7 +35,7 @@ describe('compressMessagesDeterministic', () => {
   });
 
   it('无 user 消息时原样返回', async () => {
-    const msgs: PipelineMessage[] = [
+    const msgs: ModelMessage[] = [
       assistantMsg('Hello'),
       assistantMsg('World'),
     ];
@@ -45,7 +45,7 @@ describe('compressMessagesDeterministic', () => {
   });
 
   it('保留首条 user 消息', async () => {
-    const msgs: PipelineMessage[] = [
+    const msgs: ModelMessage[] = [
       userMsg('任务目标：请分析项目架构'),
       assistantMsg('分析结果...'),
       toolMsg('grep result: found 10 matches'),
@@ -58,7 +58,7 @@ describe('compressMessagesDeterministic', () => {
   });
 
   it('消息太少时不做压缩', async () => {
-    const msgs: PipelineMessage[] = [
+    const msgs: ModelMessage[] = [
       userMsg('任务'),
       assistantMsg('完成'),
     ];
@@ -68,7 +68,7 @@ describe('compressMessagesDeterministic', () => {
   });
 
   it('中间消息被压缩为摘要', async () => {
-    const msgs: PipelineMessage[] = [
+    const msgs: ModelMessage[] = [
       userMsg('任务目标'),
       assistantMsg('第 1 步分析：文件 src/index.ts'),
       toolMsg('Reading src/index.ts...'),
@@ -94,7 +94,7 @@ describe('compressMessagesDeterministic', () => {
   });
 
   it('压缩大量工具调用消息', async () => {
-    const msgs: PipelineMessage[] = [
+    const msgs: ModelMessage[] = [
       userMsg('大任务'),
       ...Array(100).fill(null).map((_, i) =>
         toolMsg(`executed command npm run build -- --scope=pkg${i}`)
@@ -110,25 +110,25 @@ describe('compressMessagesDeterministic', () => {
 });
 
 describe('forceTruncateMessages', () => {
-  it('空数组返回空', () => {
-    const result = forceTruncateMessages([]);
+  it('空数组返回空', async () => {
+    const result = await forceTruncateMessages([]);
     expect(result).toHaveLength(0);
   });
 
-  it('无 user 消息时保留最后 5 条', () => {
-    const msgs: PipelineMessage[] = Array(20).fill(null).map((_, i) =>
+  it('无 user 消息时保留最后 5 条', async () => {
+    const msgs: ModelMessage[] = Array(20).fill(null).map((_, i) =>
       assistantMsg(`msg ${i}`)
     );
-    const result = forceTruncateMessages(msgs);
+    const result = await forceTruncateMessages(msgs);
     expect(result).toHaveLength(5);
   });
 
-  it('保留首条 user 消息和尾部消息', () => {
-    const msgs: PipelineMessage[] = Array(50).fill(null).map((_, i) => {
+  it('保留首条 user 消息和尾部消息', async () => {
+    const msgs: ModelMessage[] = Array(50).fill(null).map((_, i) => {
       if (i === 0) return userMsg('目标');
       return i % 2 === 0 ? assistantMsg(`step ${i}`) : toolMsg(`tool ${i}`);
     });
-    const result = forceTruncateMessages(msgs, 0.15);
+    const result = await forceTruncateMessages(msgs, 0.15);
     // 首条 + 摘要 + 尾部 ~8 条
     expect(result[0].role).toBe('user');
     expect(result.length).toBeGreaterThanOrEqual(3);

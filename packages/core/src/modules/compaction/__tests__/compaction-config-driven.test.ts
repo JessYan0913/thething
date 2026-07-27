@@ -91,8 +91,10 @@ describe('config-driven lifecycle behavior', () => {
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     expect(result.tokensFreed).toBeGreaterThan(0);
+    // 旧输出(index 1)meta 化
     expect(getResultItem(result.messages[1] as ModelMessage)._compacted).toBe(true);
-    expect(getResultItem(result.messages[3] as ModelMessage)._compacted).toBe(true);
+    // 当前步(index 3)豁免 meta,改可见截断(感知-行动环不可断)
+    expect(getResultItem(result.messages[3] as ModelMessage)._truncated).toBe(true);
   });
 
   it('largeOutputThreshold triggers compression for big outputs', () => {

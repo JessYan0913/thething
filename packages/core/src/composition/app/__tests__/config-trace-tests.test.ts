@@ -120,9 +120,9 @@ describe('traceResolvedAgentConfig', () => {
     const trace = traceResolvedAgentConfig(options, resolved);
 
     expect(resolved.sessionOptions.modelAliases).toEqual({
-      fast: 'fast-x',
-      smart: 'smart-x',
-      default: 'default-x',
+      fast: { model: 'fast-x' },
+      smart: { model: 'smart-x' },
+      default: { model: 'default-x' },
     });
     expect(resolved.toolOutputConfig).toEqual({
       maxResultSizeChars: 12_000,
@@ -139,7 +139,7 @@ describe('traceResolvedAgentConfig', () => {
     const resolved = resolveAgentConfig(createBaseOptions());
 
     expect(resolved.behavior.availableModels).toEqual([]);
-    expect(resolved.behavior.modelAliases).toEqual({ fast: '', smart: '', default: '' });
+    expect(resolved.behavior.modelAliases).toEqual({ fast: { model: '' }, smart: { model: '' }, default: { model: '' } });
     expect(resolved.layout.dataDir).toBe('/tmp/test-data');
     expect(resolved.layout.contextFileNames).toEqual(['THING.md']);
   });

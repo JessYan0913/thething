@@ -19,11 +19,10 @@ describe('Skills Mechanism (Progressive Disclosure)', () => {
     // 技能加载功能应该正常工作
     expect(skills.length).toBeGreaterThanOrEqual(0);
 
-    // 每个技能应该有必要的元数据
+    // 每个技能应该有必要的元数据(body 可选--bulk load 时 undefined,按需加载)
     for (const skill of skills) {
       expect(skill.name).toBeDefined();
       expect(skill.sourcePath).toBeDefined();
-      expect(skill.body).toBeDefined();
     }
   });
 
@@ -59,9 +58,9 @@ describe('Skills Mechanism (Progressive Disclosure)', () => {
     expect(result.includedSections).toContain('skill-matching');
 
     const matchSection = result.sections.find(s => s.name === 'skill-matching');
-    // 无技能时应该显示"无额外技能"的提示
-    expect(matchSection?.content).toContain('No additional skills');
+    // 无技能时应该显示"无额外技能"的提示(已 i18n 为中文)
+    expect(matchSection?.content).toContain('暂无可用技能');
     // 不应该有技能列表（因为没有技能）
-    expect(matchSection?.content).not.toContain('Available Skills');
+    expect(matchSection?.content).not.toContain('可用技能列表');
   });
 });

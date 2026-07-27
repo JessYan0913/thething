@@ -222,6 +222,11 @@ async function loadDotAgentsMcpJson(
 }
 
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
+  // 显式提供 dirs(含空数组)→ 只扫描这些目录下的 {name}.json 单文件,
+  // 跳过 mcp.json 聚合文件的 implicit 查找(resource-dirs 隔离契约)。
+  if (options?.dirs !== undefined) {
+    return loadMcpServersFromDirs(options.dirs);
+  }
   const configDir = options?.configDir;
   const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() ?? '.agents' : '.agents';
   return loadDotAgentsMcpJson({
@@ -230,6 +235,49 @@ export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServ
     homeDir: options?.homeDir,
     cwd: options?.cwd,
   });
+}
+
+/** 从显式目录列表扫描 {name}.json 单文件格式的 MCP 配置 */
+async function loadMcpServersFromDirs(dirs: readonly string[]): Promise<McpServerConfig[]> {
+  if (dirs.length === 0) return [];
+
+  const _path = 'path';
+  const _fs = 'fs/promises';
+  const { default: fs } = await import(/* webpackIgnore: true */ _fs);
+  const { default: path } = await import(/* webpackIgnore: true */ _path);
+
+  const configs: McpServerConfig[] = [];
+  for (const dir of dirs) {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(dir);
+    } catch {
+      continue; // 目录不存在 → 跳过
+    }
+    for (const entry of entries) {
+      if (!entry.endsWith('.json')) continue;
+      const filePath = path.join(dir, entry);
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+        if (!parsed.name || !parsed.transport) continue;
+        configs.push({
+          name: parsed.name as string,
+          transport: parsed.transport as McpServerConfig['transport'],
+          enabled: parsed.enabled !== false,
+          autoConnect: parsed.autoConnect as boolean | undefined,
+          alwaysLoad: parsed.alwaysLoad as boolean | undefined,
+          connectionTimeout: parsed.connectionTimeout as number | undefined,
+          tools: parsed.tools as { include?: string[]; exclude?: string[] } | undefined,
+          elicitation: parsed.elicitation as { enabled: boolean } | undefined,
+          sourcePath: filePath,
+        });
+      } catch (error) {
+        logger.warn('McpLoader', `Failed to parse ${filePath}: ${(error as Error).message}`);
+      }
+    }
+  }
+  return configs;
 }
 
 /**

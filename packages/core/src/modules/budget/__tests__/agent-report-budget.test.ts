@@ -10,7 +10,7 @@ import { unifiedToolOutputHook } from '../../compaction/unified-output';
 
 // ============================================================
 // 8.8 agent 报告纳入 budget 持久化
-// 见 docs/compaction-execution-plan.md 步骤 8.8
+// 见 docs/context-compaction-architecture.md 步骤 8.8
 // ============================================================
 
 describe('agent report budget config', () => {
@@ -29,7 +29,6 @@ describe('agent report budget config', () => {
   it('an oversized agent report is persisted to disk with a preview', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-budget-'));
     try {
-      const state = createContentReplacementState();
       const hugeReport = { success: true, summary: 'x'.repeat(60_000) };
       const result = await unifiedToolOutputHook(hugeReport, 'agent', 'agent-2', {
         sessionId: 'sess-1',
@@ -39,7 +38,6 @@ describe('agent report budget config', () => {
       expect(result.filepath).toBeTruthy();
       // 上下文里只留预览/元信息,远小于原始大小
       expect(result.content.length).toBeLessThan(result.originalSize);
-      expect(state.replacements.has('agent-2')).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

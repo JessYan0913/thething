@@ -166,7 +166,8 @@ describe('manageToolOutputLifecycle', () => {
     const result = manageToolOutputLifecycle(messages, DEFAULT_LIFECYCLE_CONFIG);
 
     const item = getResultItem(result.messages[1] as ModelMessage);
-    expect(item._compacted).toBe(true);
+    // 当前步超大 -> 可见截断(感知-行动环不可断),非 meta
+    expect(item._truncated).toBe(true);
     expect(item._originalSize).toBeGreaterThan(0);
   });
 
@@ -217,11 +218,12 @@ describe('manageToolOutputLifecycle', () => {
 
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const item = ((result.messages[1] as unknown as Record<string, unknown>).content as any[])[0];
-    expect(item._compacted).toBe(true);
+    // 当前步超大 -> 可见截断(mcp_ 仍被识别为可压缩)
+    expect(item._truncated).toBe(true);
   });
 
   // ── 步骤 6 验收:单 user 轮内按 step 老化 ──
-  // 见 docs/compaction-execution-plan.md 步骤 6
+  // 见 docs/context-compaction-architecture.md 步骤 6
   it('ages tool outputs by step count within a single user turn', () => {
     // 单个 user 轮 + 50 次工具调用(每次输出 300 字符,低于 largeOutputThreshold)
     const messages: ModelMessage[] = [createUserMessage('One big agentic task')];
@@ -337,7 +339,8 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
     ];
     const result = manageToolOutputLifecycle(messages, DEFAULT_LIFECYCLE_CONFIG);
     const item = getUIPart(result.messages[1]);
-    expect(item._compacted).toBe(true);
+    // 当前步超大 -> 可见截断(感知-行动环不可断),非 meta
+    expect(item._truncated).toBe(true);
     expect(item._originalSize).toBeGreaterThan(0);
     expect(result.tokensFreed).toBeGreaterThan(0);
   });
@@ -378,7 +381,8 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
     ];
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const item = getUIPart(result.messages[1]);
-    expect(item._compacted).toBe(true);
+    // 当前步超大 -> 可见截断(dynamic-tool 经 .toolName 识别,仍可压缩)
+    expect(item._truncated).toBe(true);
     expect(result.tokensFreed).toBeGreaterThan(0);
   });
 
@@ -404,7 +408,8 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
     const result = manageToolOutputLifecycle(messages, { ...DEFAULT_LIFECYCLE_CONFIG, keepRecentSteps: 0 });
     const parts = (result.messages[1] as unknown as Record<string, unknown>).parts as any[];
     expect(parts[0]).toEqual({ type: 'reasoning', text: 'thinking...' });
-    expect(parts[1]._compacted).toBe(true);
+    // 当前步超大 -> 可见截断(非 meta);text/reasoning 仍原样保留
+    expect(parts[1]._truncated).toBe(true);
     expect(parts[2]).toEqual({ type: 'text', text: 'done' });
   });
 
@@ -422,7 +427,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
 // Tool Meta Extractors Tests
 // ============================================================
 // 用例覆盖内置工具的真实输出格式(输入回显、JSON 字符串),
-// 见 docs/built-in-tools-compaction-analysis.md #1/#2。
+// 见 docs/context-compaction-architecture.md #1/#2。
 describe('extractToolMeta', () => {
   // ── 注册名(snake_case)+ 真实输出格式:args 恒为 null 也要能提取 ──
 

@@ -10,7 +10,7 @@ import { getToolResultPath } from '../../budget/tool-result-storage';
 
 // ============================================================
 // 步骤 7 验收:Layer 2 压缩落盘可恢复
-// 见 docs/compaction-execution-plan.md 步骤 7
+// 见 docs/context-compaction-architecture.md 步骤 7
 // ============================================================
 
 function createUserMessage(text: string): ModelMessage {
@@ -83,7 +83,8 @@ describe('Layer 2 压缩落盘可恢复', () => {
 
     expect(result.persistence).toBeUndefined();
     const item = getResultItem(result.messages[1]);
-    expect(item._compacted).toBe(true);
+    // 当前步豁免 meta -> 可见截断(read_file 无 storage 时不落盘,仅省略中段)
+    expect(item._truncated).toBe(true);
     expect(item.output.value).not.toContain('saved to:');
   });
 });

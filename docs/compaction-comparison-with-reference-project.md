@@ -1,6 +1,7 @@
 # 上下文压缩机制对比分析：thething vs 某项目
 
 > 分析时间：2026-07-23
+> 状态：**历史分析快照**。下文"thething (当前实现)"反映 2026-07-23 的状态，此后已大幅重构（见 [context-compaction-architecture.md](./context-compaction-architecture.md)）。保留作为对比参考，不代表当前实现。
 > 目的：从 某项目 借鉴优秀设计，改进 thething 的上下文压缩机制
 
 ## 架构对比

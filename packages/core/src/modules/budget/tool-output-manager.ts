@@ -116,7 +116,7 @@ export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
   },
   // sub-agent 报告是"结论"性输出,压缩需谨慎,但超大报告应走持久化路径
   // (预览留在上下文,全文落盘可 read_file 找回)。阈值放宽,只兜超大情况。
-  // 见 docs/built-in-tools-compaction-analysis.md 二.5。
+  // 见 docs/context-compaction-architecture.md 二.5。
   'agent': {
     maxResultSizeChars: 50_000,
   },
@@ -210,7 +210,7 @@ export function cloneContentReplacementState(
 
 /**
  * 估算字符串内容的 Token 数量
- * 统一走 CJK 校准的字符级估算(见 docs/context-compaction-analysis.md #5)
+ * 统一走 CJK 校准的字符级估算(见 docs/context-compaction-architecture.md #5)
  */
 export function estimateContentTokens(content: string): number {
   return estimateTokensFromChars(content)
@@ -241,5 +241,5 @@ export function calculateOutputSize(output: unknown): number {
 // ============================================================
 // processToolOutput 已迁至 compaction/unified-output.ts 作为 unifiedToolOutputHook。
 // 本模块保留配置查找、状态管理、内容估算等共用工具。
-// 见 docs/context-invariant-architecture.md §7。
+// 见 docs/context-compaction-architecture.md §7。
 // ============================================================
