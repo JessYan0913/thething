@@ -1,18 +1,18 @@
 # 压缩系统：从"可用"到"优秀"的路线图
 
-> 2026-07-26 状态评估；2026-07-26 实施 gaps 2/4/5 + gap 3 场景测试 + 修 forceTruncate provenance 缺口。
-> 当前：经过实战检验、有不变式保障、可用（及格偏上）。性质测试 + 可观测闭环已落地。
-> 目标：优秀
+> 2026-07-26 状态评估；2026-07-26 实施 gaps 2/4/5 + gap 3 场景测试；2026-07-27 实施 gap 1（合并四层）。
+> 当前：经过实战检验、有不变式保障、统一分配器。性质测试 + 可观测闭环 + 四层合并已落地。
+> 目标：优秀（仅差 gap 3 真实 DB 回放）
 
-## 实施进度（2026-07-26）
+## 实施进度（2026-07-27）
 
 | 差距 | 状态 | 说明 |
 |---|---|---|
 | 二（性质测试） | ✅ 已实施 | `__tests__/property/invariant-property.test.ts`，fast-check 50 轮 × 4 不变式 |
 | 五（可观测闭环） | ✅ 已实施 | ContextLedger.wasCompacted + recordReRead + overcompaction_detected 遥测 + 自动 pin |
-| 四（模型引导） | ✅ 已实施 | renderActionLog/renderKeysOnlyActionLog 标注 [remote]/[local]/[transient] + provenance 段说明 |
-| 一（合并四层） | 🟡 核心完成 | 单一分配器(lifecycle)早已落地；全合并 Layer 3 入 lifecycle 高风险延期（需改 sync->async、model 依赖，波及子 Agent 路径） |
-| 三（多场景验证） | 🟡 场景完成 | `__tests__/scenario-invariants.test.ts` 4 场景（短/中/长/超大单条）；真实 DB 抽样回放延期 |
+| 四（模型引导） | ✅ 已实施 | renderActionLog 标注 [remote]/[local]/[transient] + provenance 段说明 |
+| 一（合并四层） | ✅ 已实施 | manageCompaction 统一分配器（lifecycle.ts），compactBeforeStep 调一次，四层收敛为一条降级阶梯 |
+| 三（多场景验证） | 🟡 场景完成 | `__tests__/scenario-invariants.test.ts` 4 场景；真实 DB 抽样回放延期 |
 
 **附带修复**：场景测试抓到 forceTruncate/emergencySummarize 丢 provenance 的缺口（Layer 2.5/3/兜底都没附行动日志段），已统一用 `appendActionLogProvenance` 修复。这是性质/场景测试的价值--抓未知 bug。
 
