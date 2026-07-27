@@ -12,7 +12,7 @@
 | 五（可观测闭环） | ✅ 已实施 | ContextLedger.wasCompacted + recordReRead + overcompaction_detected 遥测 + 自动 pin |
 | 四（模型引导） | ✅ 已实施 | renderActionLog 标注 [remote]/[local]/[transient] + provenance 段说明 |
 | 一（合并四层） | ✅ 已实施 | manageCompaction 统一分配器（lifecycle.ts），compactBeforeStep 调一次，四层收敛为一条降级阶梯 |
-| 三（多场景验证） | 🟡 场景完成 | `__tests__/scenario-invariants.test.ts` 4 场景；真实 DB 抽样回放延期 |
+| 三（多场景验证） | ✅ 已实施 | `__tests__/scenario-invariants.test.ts` 4 场景 + `__tests__/db-replay.test.ts` 真实 DB 抽样回放 |
 
 **附带修复**：场景测试抓到 forceTruncate/emergencySummarize 丢 provenance 的缺口（Layer 2.5/3/兜底都没附行动日志段），已统一用 `appendActionLogProvenance` 修复。这是性质/场景测试的价值--抓未知 bug。
 
