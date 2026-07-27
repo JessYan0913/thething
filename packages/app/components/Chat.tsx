@@ -909,7 +909,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role !== 'assistant') continue;
       const budgetPart = messages[i].parts?.find((p) => (p as { type: string }).type === 'data-budget');
-      if (budgetPart) return budgetPart as unknown as { usagePercentage: number; totalTokens: number; remainingTokens: number };
+      if (budgetPart) return budgetPart as unknown as { usagePercentage: number; totalTokens: number; modelLimit: number };
     }
     return null;
   }, [messages]);
@@ -2177,11 +2177,14 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   />
                 </div>
                 <span className={cn(
-                  'text-xs tabular-nums',
+                  'text-xs tabular-nums whitespace-nowrap',
                   contextBudget.usagePercentage > 80 ? 'text-destructive' :
                   contextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
                 )}>
                   {contextBudget.usagePercentage.toFixed(0)}%
+                  <span className="text-muted-foreground/60 ml-1">
+                    · {contextBudget.totalTokens >= 1000 ? `${(contextBudget.totalTokens / 1000).toFixed(0)}K` : contextBudget.totalTokens}/{contextBudget.modelLimit >= 1000 ? `${(contextBudget.modelLimit / 1000).toFixed(0)}K` : contextBudget.modelLimit}
+                  </span>
                 </span>
               </div>
             )}
