@@ -1442,6 +1442,32 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               {showAgentSelector && <AgentSelector value={selectedAgent} onChange={handleAgentChange} />}
               <ModelSelector value={selectedModel} onChange={handleModelChange} />
               <ApprovalModeSelector value={approvalMode} onChange={handleApprovalModeChange} />
+              {contextBudget && (
+                <div
+                  className="flex items-center gap-1"
+                  title={`上下文窗口: ${contextBudget.usagePercentage.toFixed(0)}% (${contextBudget.totalTokens >= 1000 ? `${(contextBudget.totalTokens / 1000).toFixed(0)}K` : contextBudget.totalTokens}/${contextBudget.modelLimit >= 1000 ? `${(contextBudget.modelLimit / 1000).toFixed(0)}K` : contextBudget.modelLimit})`}
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" className="-rotate-90 shrink-0">
+                    <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted/25" />
+                    <circle
+                      cx="10" cy="10" r="8" fill="none" strokeWidth="2.5" strokeLinecap="round"
+                      strokeDasharray={`${(Math.min(100, contextBudget.usagePercentage) / 100) * 50.27} 50.27`}
+                      className={cn(
+                        'transition-all duration-700',
+                        contextBudget.usagePercentage > 80 ? 'text-destructive' :
+                        contextBudget.usagePercentage > 60 ? 'text-yellow-500' : 'text-primary/60',
+                      )}
+                    />
+                  </svg>
+                  <span className={cn(
+                    'text-xs tabular-nums',
+                    contextBudget.usagePercentage > 80 ? 'text-destructive' :
+                    contextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
+                  )}>
+                    {contextBudget.usagePercentage.toFixed(0)}%
+                  </span>
+                </div>
+              )}
             </PromptInputTools>
             <PromptInputSubmit status={status} onStop={handleStop} />
           </PromptInputFooter>
@@ -2167,30 +2193,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               />
             )}
 
-            {contextBudget && !questionPanel && approvalRequests.length === 0 && (
-              <div className="px-4 pb-1 flex items-center gap-2.5">
-                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all duration-700',
-                      contextBudget.usagePercentage > 80 ? 'bg-destructive' :
-                      contextBudget.usagePercentage > 60 ? 'bg-yellow-500' : 'bg-primary/40',
-                    )}
-                    style={{ width: `${Math.min(100, contextBudget.usagePercentage)}%` }}
-                  />
-                </div>
-                <span className={cn(
-                  'text-xs tabular-nums whitespace-nowrap',
-                  contextBudget.usagePercentage > 80 ? 'text-destructive' :
-                  contextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
-                )}>
-                  {contextBudget.usagePercentage.toFixed(0)}%
-                  <span className="text-muted-foreground/60 ml-1">
-                    · {contextBudget.totalTokens >= 1000 ? `${(contextBudget.totalTokens / 1000).toFixed(0)}K` : contextBudget.totalTokens}/{contextBudget.modelLimit >= 1000 ? `${(contextBudget.modelLimit / 1000).toFixed(0)}K` : contextBudget.modelLimit}
-                  </span>
-                </span>
-              </div>
-            )}
             {!questionPanel && approvalRequests.length === 0 && inputCard}
           </div>
         </div>
