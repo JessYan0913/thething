@@ -140,7 +140,9 @@ function formatSkillOutput(skill: Skill, dirTree: string | undefined, args?: str
 
   lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   lines.push('');
-  lines.push('⚠️ IMPORTANT: You MUST follow the skill instructions above. Do NOT ignore or skip any steps.');
+  lines.push('⚠️ IMPORTANT: The instructions above tell you WHAT to do.');
+  lines.push('→ Use bash, write_file, read_file and other tools to EXECUTE each step.');
+  lines.push('→ Do NOT call the skill tool again for the same skill — that only re-loads the same instructions.');
 
   return lines.join('\n');
 }

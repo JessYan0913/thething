@@ -65,25 +65,25 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
   const wikiConfig = config.config || DEFAULT_WIKI_CONFIG
 
   return tool({
-    description: `保存知识到你的长期知识库（Wiki）。
+    description: `保存通用知识到你的长期知识库（Wiki）。Wiki 是持久化的事实、规则、决策和领域知识的存储。
 
-Wiki 是你跨会话记忆的唯一机制。不保存的知识会永远丢失。
+⚠️ 重要边界 — Wiki 不是配置注册表：
+- 技能（skill）有自己的注册机制（~/.thething/skills/<name>/SKILL.md），不要保存到 Wiki
+- MCP 配置、connector 配置各有自己的注册位置，也不属于 Wiki
+- Wiki 存储的是"关于某个主题的知识"，不是"如何配置某个工具的说明"
+- 例如：保存"抖音视频下载使用 ttwid cookie 鉴权" → 可以存 Wiki
+- 例如：保存"douyin-video-downloader 的使用方法" → 不要存 Wiki（skill 自带 SKILL.md）
 
-从外部来源获取信息后，必须保存到知识库。
+何时保存：
+- 搜索外部来源后，将整理的事实和知识保存到 Wiki
+- 有价值的分析、研究发现或决策
 
-index.md 和 log.md 会自动维护，你只需创建/更新页面。
+何时不保存：
+- 技能、MCP、connector 的配置或使用说明（它们有自己的存储位置）
+- 简单的事实查询
+- 已存在于知识库中的内容
 
-自动验证：
-- 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在，缺失时返回警告
-- 矛盾检测：update/replace 时检测新内容与旧内容是否矛盾，矛盾时返回警告
-
-参数说明：
-- action: 操作类型（create/update/merge/replace）
-- category: 知识分类（user/agent/project/domain/entity）
-- name: 页面名称
-- description: 一行摘要
-- content: 编译后的知识（可包含 [[页面名称]] 引用相关页面，建立知识网络）
-- target: 目标文件名（可选，update/replace 时如果不提供，会自动根据 name 查找）`,
+index.md 和 log.md 会自动维护。`,
     inputSchema: z.object({
       actions: z
         .array(wikiActionSchema)

@@ -120,7 +120,7 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
         ? formatSkillsWithinBudget(skills)
         : '';
 
-      const skillCreationNote = '技能是配置目录中的标准 SKILL.md 文件（不是 .py 脚本、不是 Wiki 页面）。标准 frontmatter 必须包含 name 和 description；启动时只索引这两个元数据，匹配后再按需加载正文和资源。要创建技能，调用 create-skill 技能。';
+      const skillCreationNote = '技能是配置目录中的标准 SKILL.md 文件（不是 .py 脚本、不是 Wiki 页面）。标准 frontmatter 必须包含 name 和 description；启动时只索引这两个元数据，匹配后再按需加载正文和资源。\n\n⚠️ 技能创建规则（CRITICAL）：\n- 用户提到「创建技能」「封装为skill」「新建skill」「做个skill」时，必须调用 create-skill 技能\n- create-skill 会引导你运行 scripts/init-skill.sh 脚本，生成带完整 frontmatter 的模板\n- 禁止直接手写 SKILL.md 文件 — 缺少 YAML frontmatter 的文件会被加载器静默丢弃，/ 面板无法发现\n- 禁止用 write_file 在 skills 目录下创建文件 — 必须通过 create-skill 技能的标准流程';
 
       const content = listing
         ? `## 技能\n\n${listing}\n\n如果有技能匹配用户需求，使用该技能。否则，按正常方式处理。\n\n${skillCreationNote}`
