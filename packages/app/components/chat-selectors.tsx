@@ -59,14 +59,14 @@ const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string; hint: string }
 export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorProps) {
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
-      <PromptInputSelectTrigger className="gap-1.5 text-xs">
+      <PromptInputSelectTrigger className="min-w-0 max-w-32 gap-1.5 text-xs [&_[data-select-secondary]]:hidden [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
         <PromptInputSelectValue placeholder="Mode" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
         {Object.entries(APPROVAL_MODE_CONFIG).map(([key, config]) => (
           <PromptInputSelectItem key={key} value={key}>
             <span className="font-medium">{config.label}</span>
-            <span className="ml-1.5 text-muted-foreground text-xs">
+            <span data-select-secondary className="ml-1.5 text-muted-foreground text-xs">
               {config.hint}
             </span>
           </PromptInputSelectItem>
@@ -102,7 +102,10 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
 
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
-      <PromptInputSelectTrigger className="gap-1.5 text-xs">
+      <PromptInputSelectTrigger
+        className="min-w-0 max-w-56 gap-1.5 text-xs [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate"
+        title={availableModels.find(([key]) => key === value)?.[1].model}
+      >
         <PromptInputSelectValue placeholder="Model" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
@@ -169,13 +172,13 @@ export function AgentSelector({ value, onChange }: AgentSelectorProps) {
 
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
-      <PromptInputSelectTrigger className="gap-1.5 text-xs">
+      <PromptInputSelectTrigger className="min-w-0 max-w-32 gap-1.5 text-xs [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
         <PromptInputSelectValue placeholder="Agent" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
         <PromptInputSelectItem value="auto">
           <span className="font-medium">Auto</span>
-          <span className="ml-1.5 text-muted-foreground text-xs">自动路由</span>
+          <span data-select-secondary className="ml-1.5 text-muted-foreground text-xs">自动路由</span>
         </PromptInputSelectItem>
         {agents.map((agent) => (
           <PromptInputSelectItem key={agent.agentType} value={agent.agentType}>
