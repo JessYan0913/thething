@@ -34,6 +34,8 @@ export interface CompactedToolResult {
   _compacted: true;
   /** 原始输出大小（chars），用于遥测 */
   _originalSize: number;
+  /** 压缩发生的步数（用于 TTL 老化），0 表示步数不可用 */
+  _compactedAt: number;
 }
 
 // ── Default Compactable Tools ──

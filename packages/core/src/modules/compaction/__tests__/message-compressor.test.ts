@@ -2,8 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import type { ModelMessage } from 'ai';
 import {
   compressMessagesDeterministic,
+} from '../deterministic-compressor';
+import {
   forceTruncateMessages,
-} from '../message-compressor';
+} from '../force-truncate';
 import { extractMessageText } from '../token-counter';
 
 // ============================================================

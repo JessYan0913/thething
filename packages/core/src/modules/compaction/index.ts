@@ -47,6 +47,8 @@ export async function compactBeforeStep(
     compactionView?: CompactionView;
     telemetry?: CompactionTelemetry;
     ledger?: ContextLedger;
+    /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
+    compactionStep?: { current: number };
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
@@ -85,6 +87,7 @@ export async function compactBeforeStep(
     ledger: context.ledger,
     telemetry: context.telemetry,
     compactionView: context.compactionView,
+    compactionStep: context.compactionStep,
   });
   current = result.messages;
 
@@ -102,7 +105,8 @@ export { estimateMessagesTokens } from './token-counter';
 export { generateConversationTitle } from './title-generator';
 export { handleReactiveRetry, isContextLengthError } from './retry';
 export { applyCheckpointOnLoad, CHECKPOINT_SUMMARY_ID_PREFIX, maybeCheckpointAfterRun, selfHealOrphanedCheckpoint } from './checkpoint';
-export { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
+export { compressMessagesDeterministic } from './deterministic-compressor';
+export { forceTruncateMessages } from './force-truncate';
 export { emergencySummarize } from './emergency-summary';
 export { fingerprintMessage } from './compaction-view';
 export { ContextLedger } from './context-ledger';

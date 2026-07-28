@@ -133,6 +133,9 @@ export interface SessionState {
   /** 上下文台账 + pin 注册表（读循环熔断 / context_pin 工具共享） */
   contextLedger: import('../compaction/context-ledger').ContextLedger;
 
+  /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
+  compactionStepCounter: { current: number };
+
   /** 上次 token 估算结果（用于增量估算） */
   lastEstimation?: import('../compaction/incremental-estimation').CachedEstimation;
 

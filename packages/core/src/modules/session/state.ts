@@ -93,6 +93,9 @@ export function createSessionState(
   // 上下文台账 + pin 注册表（会话级，读循环熔断与 context_pin 工具共享）
   const contextLedger = new ContextLedger();
 
+  // 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化
+  const compactionStepCounter = { current: 0 };
+
   // 使用普通对象，简化状态管理
   const state: SessionState = {
     conversationId,
@@ -122,6 +125,7 @@ export function createSessionState(
     dataStore: dataStore,
     telemetry,
     contextLedger,
+    compactionStepCounter,
     compactionView: createCompactionView(telemetry),
     lastEstimation: undefined,
 
@@ -150,6 +154,7 @@ export function createSessionState(
         compactionView: state.compactionView,  // 🔑 传递视图
         telemetry: state.telemetry,  // 🆕 传递遥测
         ledger: state.contextLedger,  // 传递台账（读循环熔断 + pin）
+        compactionStep: state.compactionStepCounter,  // 传递 TTL 步数计数器
       });
 
       return {

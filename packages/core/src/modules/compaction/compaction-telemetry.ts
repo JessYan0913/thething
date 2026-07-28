@@ -105,6 +105,26 @@ export interface OvercompactionDetectedEvent {
   /** 是否已自动 pin(防止再次被压) */
   autoPinned: boolean;
 }
+
+/**
+ * UI 通知事件 — 用于在对话流中插入系统消息
+ */
+export interface CompactionUINotification {
+  /** 触发的压缩层 */
+  layer: 'lifecycle' | 'emergency';
+  /** 受影响的消息数量 */
+  messagesAffected: number;
+  /** 释放的 token 数量（估算） */
+  tokensSaved: number;
+  /** 压缩策略 */
+  strategy: 'meta' | 'truncate' | 'summarize' | 'force-truncate' | 'ttl-stub' | 'ttl-evict';
+  /** 压缩耗时（毫秒） */
+  durationMs: number;
+}
+
+/** UI 通知回调类型 */
+export type CompactionUICallback = (notification: CompactionUINotification) => void;
+
 export interface TelemetryStats {
   /** 总视图应用次数 */
   viewAppliedCount: number;
@@ -130,6 +150,24 @@ export interface TelemetryStats {
 export class CompactionTelemetry {
   private events: TelemetryEvent[] = [];
   private maxEvents = 1000; // 保留最近 1000 个事件
+  private uiCallbacks: CompactionUICallback[] = [];
+
+  /**
+   * 注册 UI 通知回调（每次压缩完成后推送）
+   */
+  onCompactionUI(cb: CompactionUICallback): void {
+    this.uiCallbacks.push(cb);
+  }
+
+  /**
+   * 推送 UI 通知（仅当 messagesAffected > 0 时）
+   */
+  notifyUI(notification: CompactionUINotification): void {
+    if (notification.messagesAffected <= 0) return;
+    for (const cb of this.uiCallbacks) {
+      try { cb(notification); } catch { /* UI 回调不应影响压缩管道 */ }
+    }
+  }
 
   /**
    * 记录视图应用

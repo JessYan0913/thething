@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { ModelMessage } from 'ai';
 import { compactBeforeStep } from '../index';
-import { compressMessagesDeterministic, forceTruncateMessages } from '../message-compressor';
 import { emergencySummarize } from '../emergency-summary';
 
 // ============================================================

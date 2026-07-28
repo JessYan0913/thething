@@ -40,7 +40,8 @@ import type { CompactionTelemetry } from './compaction-telemetry';
 import { logger } from '../../primitives/logger';
 import type { Tool } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
-import { compressMessagesDeterministic, forceTruncateMessages } from './message-compressor';
+import { compressMessagesDeterministic } from './deterministic-compressor';
+import { forceTruncateMessages } from './force-truncate';
 import { emergencySummarize } from './emergency-summary';
 import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
 import { updateViewAfterL3, type CompactionView } from './compaction-view';
@@ -58,12 +59,18 @@ export interface LifecycleStorage {
 export interface LifecycleOptions {
   ledger?: ContextLedger;
   telemetry?: CompactionTelemetry;
+  /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
+  compactionStep?: { current: number };
 }
 
 /** 低于此大小的输出不参与任何压缩 */
 const MIN_COMPACT_SIZE = 200;
 /** 读循环熔断阈值：同文件被读达到此次数 → 自动 pin */
 const READ_LOOP_THRESHOLD = 3;
+/** TTL 老化：meta 消息保持满格式的最大步数年龄 */
+const TTL_FULL_AGE = 20;
+/** TTL 老化：meta 消息降级为占位符的最大步数年龄（超出则移除） */
+const TTL_STUB_AGE = 40;
 
 /**
  * 工具输出生命周期管理（Layer 2）——唯一预算分配器
@@ -100,6 +107,9 @@ export function manageToolOutputLifecycle(
 
   let tokensFreed = 0;
   const persistTasks: Promise<void>[] = [];
+  /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
+  const step = opts?.compactionStep ?? { current: 0 };
+  const nextStep = () => step.current++;
 
   const result = messages.map((msg, i) => {
     const v = views[i];
@@ -107,8 +117,40 @@ export function manageToolOutputLifecycle(
     // 无工具结果 → 原样
     if (v.toolResults.length === 0) return msg;
 
-    // 已全部压缩 → 跳过
-    if (v.toolResults.every((tr) => tr.isCompacted)) return msg;
+    // 已全部压缩 → TTL 老化检查
+    if (v.toolResults.every((tr) => tr.isCompacted)) {
+      const ages = v.toolResults.map((tr) => step.current - tr.compactedAt).filter((a) => a >= 0);
+      if (ages.length === 0) return msg; // 无有效年龄，保持原样
+      const minAge = Math.min(...ages);
+
+      if (minAge > TTL_STUB_AGE) {
+        // Level 3: 从上下文移除，写台账
+        for (const tr of v.toolResults) {
+          const readPath = resolveReadPath(tr);
+          opts?.ledger?.recordEviction(tr.toolName, readPath ?? undefined);
+        }
+        tokensFreed += 50; // 估算占位符 token 释放
+        return null; // 返回 null 表示从数组中移除
+      }
+
+      if (minAge > TTL_FULL_AGE) {
+        // Level 2: 替换为一行占位符
+        const toolNames = [...new Set(v.toolResults.map((tr) => tr.toolName))].join(', ');
+        const stubSummary = `[TTL ${minAge} steps: compacted ${toolNames} output — archived, use context_pin to review]`;
+        const patches: CompactionPatch[] = v.toolResults.map((tr) => ({
+          refIndex: tr.refIndex,
+          summary: stubSummary,
+          mode: 'compacted' as const,
+          compactedAt: step.current,
+        }));
+        const { patched, freed } = applyCompactionPatches(msg, patches);
+        tokensFreed += freed;
+        return patched;
+      }
+
+      // Level 1: age <= TTL_FULL_AGE，保持当前格式
+      return msg;
+    }
 
     const isCurrentStep = i === currentStepIndex;
     // 被后续引用的结果延迟老化，仅豁免"超出最近 K step"这一条
@@ -130,7 +172,7 @@ export function manageToolOutputLifecycle(
 
       // 同文件重复读去重：更早的副本直接 meta（最新一份由后续规则保护）
       if (msgHasStaleRead && readPath !== null && !isLatestReadOfPath) {
-        patches.push(buildMetaPatch(tr, storage, persistTasks, opts));
+        patches.push(buildMetaPatch(tr, storage, persistTasks, opts, nextStep()));
         continue;
       }
 
@@ -138,21 +180,21 @@ export function manageToolOutputLifecycle(
 
       // 当前步豁免：最近一次行动的结果必须可感知——永不 meta，超大改可见截断
       if (isCurrentStep) {
-        if (tooLarge) patches.push(buildTruncationPatch(tr, config, storage, persistTasks, opts));
+        if (tooLarge) patches.push(buildTruncationPatch(tr, config, storage, persistTasks, opts, nextStep()));
         continue;
       }
 
       if (beyondBoundary) {
-        patches.push(buildMetaPatch(tr, storage, persistTasks, opts));
+        patches.push(buildMetaPatch(tr, storage, persistTasks, opts, nextStep()));
         continue;
       }
 
       if (tooLarge) {
         // 语义类（模型主动要看的内容）：可见截断，永不直接 meta
         if (isSemanticTool(tr.toolName)) {
-          patches.push(buildTruncationPatch(tr, config, storage, persistTasks, opts));
+          patches.push(buildTruncationPatch(tr, config, storage, persistTasks, opts, nextStep()));
         } else {
-          patches.push(buildMetaPatch(tr, storage, persistTasks, opts));
+          patches.push(buildMetaPatch(tr, storage, persistTasks, opts, nextStep()));
         }
       }
     }
@@ -164,12 +206,15 @@ export function manageToolOutputLifecycle(
     return patched;
   });
 
+  // 过滤 TTL 老化移除的消息
+  const filteredResult = result.filter((m): m is import('ai').ModelMessage => m !== null);
+
   // ── 跨消息超大输出扫描（吸收原 enforceToolResultBudget）──
   // 当 messageBudget 配置时，对仍然未 meta 的大工具输出做全局排序降级。
   // storage 可选：无 storage 时瞬态输出降级为无找回路径的 meta（有损兜底）。
   if (config.messageBudget && config.messageBudget > 0) {
     const { messages: scanResult, freed: scanFreed } = applyCrossMessageBudget(
-      result, config.messageBudget, storage, persistTasks,
+      filteredResult, config.messageBudget, storage, persistTasks,
       { currentStepIndex, pinnedPaths, lastReadIndexByPath },
       opts,
     );
@@ -183,7 +228,7 @@ export function manageToolOutputLifecycle(
   }
 
   return {
-    messages: result,
+    messages: filteredResult,
     tokensFreed,
     persistence: persistTasks.length > 0
       ? Promise.all(persistTasks).then(() => undefined)
@@ -211,6 +256,7 @@ function buildMetaPatch(
   storage: LifecycleStorage | undefined,
   persistTasks: Promise<void>[],
   opts?: LifecycleOptions,
+  compactedAt?: number,
 ): CompactionPatch {
   // truncated → meta 降级：首行就是当初生成的 meta 头，不重新解析（截断后原始结构已丢失）
   let summary = tr.isTruncated
@@ -249,7 +295,7 @@ function buildMetaPatch(
     recovery,
   });
 
-  return { refIndex: tr.refIndex, summary };
+  return { refIndex: tr.refIndex, summary, compactedAt };
 }
 
 /**
@@ -264,6 +310,7 @@ function buildTruncationPatch(
   storage: LifecycleStorage | undefined,
   persistTasks: Promise<void>[],
   opts?: LifecycleOptions,
+  compactedAt?: number,
 ): CompactionPatch {
   const keep = Math.max(1000, config.largeOutputThreshold);
   const headLen = Math.floor(keep * 0.6);
@@ -305,7 +352,7 @@ function buildTruncationPatch(
     recovery,
   });
 
-  return { refIndex: tr.refIndex, summary, mode: 'truncated' };
+  return { refIndex: tr.refIndex, summary, mode: 'truncated', compactedAt };
 }
 
 // ============================================================
@@ -412,7 +459,9 @@ function applyCrossMessageBudget(
     });
 
     const list = patchesByMsg.get(c.msgIndex) ?? [];
-    list.push({ refIndex: c.refIndex, summary });
+    const ca = opts?.compactionStep?.current ?? 0;
+    if (opts?.compactionStep) opts.compactionStep.current++;
+    list.push({ refIndex: c.refIndex, summary, compactedAt: ca });
     patchesByMsg.set(c.msgIndex, list);
   }
 
@@ -840,6 +889,8 @@ export interface CompactionContext {
   ledger?: ContextLedger;
   telemetry?: CompactionTelemetry;
   compactionView?: CompactionView;
+  /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
+  compactionStep?: { current: number };
 }
 
 export interface ManageCompactionResult {
@@ -870,11 +921,13 @@ export async function manageCompaction(
   let current = messages;
   let tokensFreed = 0;
   let persistence: Promise<void> | undefined;
+  const startTime = Date.now();
 
   // 档位 1：Layer 2 - tool-result value 降级（同步，微秒级）
   const lifecycleResult = manageToolOutputLifecycle(current, config, context.storage, {
     ledger: context.ledger,
     telemetry: context.telemetry,
+    compactionStep: context.compactionStep,
   });
   current = lifecycleResult.messages;
   tokensFreed += lifecycleResult.tokensFreed;
@@ -882,6 +935,15 @@ export async function manageCompaction(
     await lifecycleResult.persistence;
     persistence = lifecycleResult.persistence;
   }
+
+  // Layer 2 UI 通知
+  context.telemetry?.notifyUI({
+    layer: 'lifecycle',
+    messagesAffected: tokensFreed > 0 ? 1 : 0, // Layer 2 是整体操作，有释放就算有影响
+    tokensSaved: tokensFreed,
+    strategy: 'meta',
+    durationMs: Date.now() - startTime,
+  });
 
   // 估算 + 按预算升档(用 estimateFullRequest,不用增量缓存--压缩后缓存失效)
   let estimation: FullRequestEstimation | undefined;
@@ -931,6 +993,7 @@ export async function applyEmergencyCompression(
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
+  const startTime = Date.now();
 
   // 档位 2：确定性摘要（Layer 2.5 策略）
   logger.info('Compaction', '档位 2: 确定性文本压缩');
@@ -947,6 +1010,13 @@ export async function applyEmergencyCompression(
       'Compaction',
       `确定性摘要成功: 释放 ${deterministicResult.tokensFreed} tokens，降至 ${afterDeterministic.utilizationPercent.toFixed(1)}%`,
     );
+    context.telemetry?.notifyUI({
+      layer: 'emergency',
+      messagesAffected: deterministicResult.messagesCompressed,
+      tokensSaved: deterministicResult.tokensFreed,
+      strategy: 'summarize',
+      durationMs: Date.now() - startTime,
+    });
     return current;
   }
 
@@ -988,13 +1058,28 @@ export async function applyEmergencyCompression(
     );
     if (!afterSummary.exceedsLimit) {
       logger.info('Compaction', `LLM 摘要成功: 降至 ${afterSummary.utilizationPercent.toFixed(1)}%`);
+      context.telemetry?.notifyUI({
+        layer: 'emergency',
+        messagesAffected: messages.length - current.length,
+        tokensSaved: afterSummary.availableBudget,
+        strategy: 'summarize',
+        durationMs: Date.now() - startTime,
+      });
       return current;
     }
   }
 
   // 档位 4：强制截断（保底）
   logger.error('Compaction', '所有档位失败，执行强制截断（保底）');
-  return await forceTruncateMessages(
+  const truncated = await forceTruncateMessages(
     current, 0.15, context.modelName, context.targetTokens, messages,
   );
+  context.telemetry?.notifyUI({
+    layer: 'emergency',
+    messagesAffected: current.length - truncated.length,
+    tokensSaved: 0, // 截断场景下 token 估算不稳定，不报具体数字
+    strategy: 'force-truncate',
+    durationMs: Date.now() - startTime,
+  });
+  return truncated;
 }

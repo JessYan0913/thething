@@ -1439,7 +1439,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   <svg width="18" height="18" viewBox="0 0 20 20" className="-rotate-90 shrink-0">
                     <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted/25" />
                     <circle
-                      cx="10" cy="10" r="8" fill="none" strokeWidth="2.5" strokeLinecap="round"
+                      cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
                       strokeDasharray={`${(Math.min(100, contextBudget.usagePercentage) / 100) * 50.27} 50.27`}
                       className={cn(
                         'transition-all duration-700',

@@ -34,6 +34,10 @@ export interface FinalizeAgentRunOptions {
     modelName: string
     contextLimit?: number
     fallbackModels?: LanguageModelV3[]
+    /** 当前步数（用于步数触发 checkpoint，>20 步触发） */
+    stepCount?: number
+    /** 本会话压缩次数（用于压缩次数触发 checkpoint，>3 次触发） */
+    compactionCount?: number
   }
 }
 
@@ -76,6 +80,8 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
           fallbackModels: opts.checkpoint.fallbackModels,
           modelName: opts.checkpoint.modelName,
           contextLimit: opts.checkpoint.contextLimit,
+          stepCount: opts.checkpoint.stepCount,
+          compactionCount: opts.checkpoint.compactionCount,
         }).catch(e => logger.warn('FinalizeAgentRun', `Background checkpoint failed: ${e}`))
       }
 

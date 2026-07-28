@@ -18,8 +18,8 @@ export interface CompactionRecord {
   path?: string;
   /** 工具调用 ID */
   toolCallId?: string;
-  /** 压缩动作：meta = 替换为元信息；truncated = 可见截断 */
-  action: 'meta' | 'truncated';
+  /** 压缩动作：meta = 替换为元信息；truncated = 可见截断；eviction = TTL 移除 */
+  action: 'meta' | 'truncated' | 'eviction';
   /** 原始输出大小（chars） */
   originalSize: number;
   /** 找回方式（落盘路径 / re-read 提示） */
@@ -129,5 +129,19 @@ export class ContextLedger {
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * 记录 TTL 老化移除的消息概要。
+   * 被移除的工具结果可通过 context_pin list 查询台账找回。
+   */
+  recordEviction(toolName: string, path?: string): void {
+    this.recordCompaction({
+      toolName,
+      path,
+      action: 'eviction',
+      originalSize: 0,
+      recovery: path ? `re-read with read_file` : 'use context_pin to query ledger',
+    });
   }
 }

@@ -46,6 +46,8 @@ export interface ToolResultItemView {
   isCompacted: boolean;
   /** 是否已可见截断（保留头尾 + 省略标记；仍可进一步降级为 meta） */
   isTruncated: boolean;
+  /** 压缩发生的步数（用于 TTL 老化），0 表示不可用 */
+  compactedAt: number;
   /** 在原始消息数组中的位置索引（供 patching 回写） */
   refIndex: number;
 }
@@ -74,6 +76,8 @@ export interface CompactionPatch {
   summary: string;
   /** 标记方式：compacted = 完全 meta 化（默认）；truncated = 可见截断，仍可再降级 */
   mode?: 'compacted' | 'truncated';
+  /** 压缩发生时的步数（用于 TTL 老化） */
+  compactedAt?: number;
 }
 
 // ============================================================
@@ -172,6 +176,7 @@ function buildViewFromUIMessage(
         isError: detectError(unwrapOutput(p.output)),
         isCompacted: p._compacted === true,
         isTruncated: p._truncated === true,
+        compactedAt: (p._compactedAt as number) ?? 0,
         refIndex: i,
       });
     }
@@ -234,6 +239,7 @@ function buildViewFromModelMessage(
         isError: detectError(unwrapOutput(c.output)),
         isCompacted: c._compacted === true,
         isTruncated: c._truncated === true,
+        compactedAt: (c._compactedAt as number) ?? 0,
         refIndex: i,
       });
     }
@@ -279,6 +285,7 @@ function applyToUIMessage(
         output: { type: 'text', value: patch.summary },
         _truncated: true,
         _originalSize: (part._originalSize as number | undefined) ?? resultStr.length,
+        _compactedAt: patch.compactedAt ?? 0,
       };
     }
 
@@ -287,6 +294,7 @@ function applyToUIMessage(
       output: { type: 'text', value: patch.summary },
       _compacted: true,
       _originalSize: (part._originalSize as number | undefined) ?? resultStr.length,
+      _compactedAt: patch.compactedAt ?? 0,
     };
   });
 
@@ -320,6 +328,7 @@ function applyToModelMessage(
         output: { type: 'text', value: patch.summary },
         _truncated: true,
         _originalSize: (item._originalSize as number | undefined) ?? resultStr.length,
+        _compactedAt: patch.compactedAt ?? 0,
       };
     }
 
@@ -328,6 +337,7 @@ function applyToModelMessage(
       output: { type: 'text', value: patch.summary },
       _compacted: true,
       _originalSize: (item._originalSize as number | undefined) ?? resultStr.length,
+      _compactedAt: patch.compactedAt ?? 0,
     };
   });
 

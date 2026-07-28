@@ -112,9 +112,13 @@ export function applyCheckpointOnLoad(
 /** 触发后台 checkpoint 的上下文占比水位线 */
 const CHECKPOINT_TRIGGER_PERCENT = 0.5;
 /** checkpoint 后保留完整消息的目标占比 */
-const CHECKPOINT_KEEP_PERCENT = 0.3;
+const CHECKPOINT_KEEP_PERCENT = 0.5; // 步数触发比水位线更早，保留更多上下文
 /** 锚点之后至少保留的消息条数 */
 const MIN_KEEP_MESSAGES = 2;
+/** 步数阈值：超过此步数触发 checkpoint */
+const CHECKPOINT_STEP_THRESHOLD = 20;
+/** 压缩次数阈值：本会话压缩超过此次数触发 checkpoint */
+const CHECKPOINT_COMPACTION_THRESHOLD = 3;
 
 /**
  * 运行结束后判定并生成 checkpoint(供 finalize/onEnd 后台调用)。
@@ -131,18 +135,33 @@ export async function maybeCheckpointAfterRun(
     fallbackModels?: LanguageModelV3[];
     modelName: string;
     contextLimit?: number;
-    /** 强制生成 checkpoint,绕过 50% 水位线(孤儿自愈场景:旧锚点失效,
-     *  Layer 2 已把大输出 meta 化、in-memory token 变小,水位线判断不出需要重建) */
+    /** 强制生成 checkpoint,绕过所有触发条件(孤儿自愈场景) */
     force?: boolean;
+    /** 当前步数(用于步数触发) */
+    stepCount?: number;
+    /** 本会话压缩次数(用于压缩次数触发) */
+    compactionCount?: number;
   },
 ): Promise<boolean> {
   try {
     if (activeMessages.length < MIN_KEEP_MESSAGES + 2) return false;
 
     const contextLimit = getModelContextLimit(context.modelName, context.contextLimit);
+    // 预计算 totalTokens（日志和触发判断都需要）
     const totalTokens = await estimateMessagesTokens(activeMessages as unknown as import('ai').ModelMessage[], context.modelName);
-    // force 时绕过水位线(孤儿自愈:不管 in-memory 多小都要重建,因为旧摘要 anchor 已失效)
-    if (!context.force && totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
+
+    // 触发条件：force(自愈) OR 步数触发 OR 压缩次数触发 OR 水位线触发(兜底)
+    if (!context.force) {
+      // 步数估算：未提供 stepCount 时从消息数量粗略推算（每步 ≈ 2 条消息）
+      const effectiveStepCount = context.stepCount ?? Math.floor(activeMessages.length / 2);
+      const stepTriggered = effectiveStepCount > CHECKPOINT_STEP_THRESHOLD;
+      const compactionTriggered = (context.compactionCount ?? 0) > CHECKPOINT_COMPACTION_THRESHOLD;
+
+      // 水位线只在其他条件都不满足时作为兜底
+      if (!stepTriggered && !compactionTriggered) {
+        if (totalTokens < contextLimit * CHECKPOINT_TRIGGER_PERCENT) return false;
+      }
+    }
 
     // 从已有 checkpoint 锚点之后开始摘要(增量);无锚点则从头开始
     const stored = context.dataStore.summaryStore.getSummaryByConversation(context.conversationId);

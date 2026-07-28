@@ -124,7 +124,7 @@ export async function checkInitialBudget(
     }
 
     // 强制截断消息到极限
-    const { forceTruncateMessages } = await import('./message-compressor');
+    const { forceTruncateMessages } = await import('./force-truncate');
     const targetMessagesTokens = Math.floor(currentEstimation.modelLimit * 0.3); // 只给 messages 30% 的预算
     currentMessages = await forceTruncateMessages(
       currentMessages,
