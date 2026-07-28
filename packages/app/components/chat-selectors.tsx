@@ -44,8 +44,9 @@ const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string; hint: string }
 export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorProps) {
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
-      <PromptInputSelectTrigger className="min-w-0 max-w-32 gap-1.5 text-xs [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
-        <PromptInputSelectValue placeholder="Mode" />
+      <PromptInputSelectTrigger className="min-w-0 max-w-32 gap-1.5 text-xs">
+        <span className="truncate">{APPROVAL_MODE_CONFIG[value]?.label ?? 'Mode'}</span>
+        <PromptInputSelectValue placeholder="Mode" className="sr-only" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
         {Object.entries(APPROVAL_MODE_CONFIG).map(([key, config]) => (
