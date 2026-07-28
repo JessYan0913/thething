@@ -35,10 +35,10 @@ interface ApprovalModeSelectorProps {
   onChange: (value: ApprovalMode) => void;
 }
 
-const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string }> = {
-  'smart':    { label: '默认权限' },
-  'auto-review': { label: '帮我审批' },
-  'full-trust':  { label: '全部授权' },
+const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string; hint: string }> = {
+  'smart':    { label: '默认权限',    hint: '智能判断，需要时请求确认' },
+  'auto-review': { label: '帮我审批', hint: 'Agent 自动审查后批准常规操作' },
+  'full-trust':  { label: '全部授权', hint: '完全信任，所有操作无需确认' },
 };
 
 export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorProps) {
@@ -50,7 +50,10 @@ export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorPr
       <PromptInputSelectContent>
         {Object.entries(APPROVAL_MODE_CONFIG).map(([key, config]) => (
           <PromptInputSelectItem key={key} value={key}>
-            <span className="font-medium">{config.label}</span>
+            <div className="flex flex-col py-0.5">
+              <span className="font-medium">{config.label}</span>
+              <span className="text-xs text-muted-foreground">{config.hint}</span>
+            </div>
           </PromptInputSelectItem>
         ))}
       </PromptInputSelectContent>
