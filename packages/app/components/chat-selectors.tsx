@@ -24,12 +24,6 @@ interface ModelSelectorProps {
   onChange: (value: string) => void;
 }
 
-const MODEL_LABELS: Record<string, string> = {
-  default: 'Default',
-  fast: 'Fast',
-  smart: 'Smart',
-};
-
 // ============================================================
 // Approval Mode Selector
 // ============================================================
@@ -41,34 +35,22 @@ interface ApprovalModeSelectorProps {
   onChange: (value: ApprovalMode) => void;
 }
 
-const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string; hint: string }> = {
-  'smart': {
-    label: 'Smart',
-    hint: '智能审批',
-  },
-  'auto-review': {
-    label: 'Auto-review',
-    hint: 'Agent 审批',
-  },
-  'full-trust': {
-    label: 'Full trust',
-    hint: '完全信任',
-  },
+const APPROVAL_MODE_CONFIG: Record<ApprovalMode, { label: string }> = {
+  'smart':    { label: '默认权限' },
+  'auto-review': { label: '帮我审批' },
+  'full-trust':  { label: '全部授权' },
 };
 
 export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorProps) {
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
-      <PromptInputSelectTrigger className="min-w-0 max-w-32 gap-1.5 text-xs [&_[data-select-secondary]]:hidden [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
+      <PromptInputSelectTrigger className="min-w-0 max-w-32 gap-1.5 text-xs [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
         <PromptInputSelectValue placeholder="Mode" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
         {Object.entries(APPROVAL_MODE_CONFIG).map(([key, config]) => (
           <PromptInputSelectItem key={key} value={key}>
             <span className="font-medium">{config.label}</span>
-            <span data-select-secondary className="ml-1.5 text-muted-foreground text-xs">
-              {config.hint}
-            </span>
           </PromptInputSelectItem>
         ))}
       </PromptInputSelectContent>
@@ -112,9 +94,6 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
         {availableModels.map(([key, config]) => (
           <PromptInputSelectItem key={key} value={key}>
             <span className="font-medium max-w-30 truncate" title={config.model}>{config.model.split('/').pop()}</span>
-            <span className="ml-1.5 text-muted-foreground text-xs shrink-0">
-              {MODEL_LABELS[key] ?? key}
-            </span>
           </PromptInputSelectItem>
         ))}
       </PromptInputSelectContent>
@@ -178,7 +157,6 @@ export function AgentSelector({ value, onChange }: AgentSelectorProps) {
       <PromptInputSelectContent>
         <PromptInputSelectItem value="auto">
           <span className="font-medium">Auto</span>
-          <span data-select-secondary className="ml-1.5 text-muted-foreground text-xs">自动路由</span>
         </PromptInputSelectItem>
         {agents.map((agent) => (
           <PromptInputSelectItem key={agent.agentType} value={agent.agentType}>
