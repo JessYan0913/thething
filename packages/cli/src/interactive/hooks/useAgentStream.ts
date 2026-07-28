@@ -1,7 +1,7 @@
 import { useReducer, useRef, useCallback, useEffect } from 'react'
 import { createAgentUIStream, type UIMessage } from 'ai'
 import type { AppContext, CreateAgentResult } from '@the-thing/core'
-import { createAgent } from '@the-thing/core'
+import { agentStreamOnError, createAgent } from '@the-thing/core'
 import type { StreamState, ApprovalRequest, ApprovalResponse, ToolCallState, StreamPart } from '../lib/types.js'
 import { applyApprovalResponses, computeApprovalScope, formatToolInputSummary } from '../lib/approval-logic.js'
 
@@ -231,6 +231,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
         uiMessages: currentMessages,
         abortSignal: abort.signal,
         sendReasoning: true,
+        onError: agentStreamOnError,
         onEnd: ({ messages }) => {
           finishedMessages = messages
         },

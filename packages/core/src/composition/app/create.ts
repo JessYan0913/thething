@@ -189,10 +189,17 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // provider 包装 costTrackingMiddleware:子 Agent 用自定义模型(fast/smart)时,
   // provider(modelName) 创建的 model 也进成本统计。
   const rawProvider = createModelProvider(modelConfig)
-  const provider = (modelName: string) => wrapLanguageModel({
+  const createTrackedModel = (modelName: string, includeTelemetry: boolean): LanguageModel => wrapLanguageModel({
     model: rawProvider(modelName),
-    middleware: [costTrackingMiddleware(sessionState.costTracker)] as LanguageModelMiddleware[],
+    middleware: [
+      ...(includeTelemetry
+        ? [telemetryMiddleware({ debugEnabled: Boolean(context.runtime.env.DEBUG) })]
+        : []),
+      costTrackingMiddleware(sessionState.costTracker),
+    ] as LanguageModelMiddleware[],
   }) as unknown as LanguageModel
+  const provider = (modelName: string) => createTrackedModel(modelName, false)
+  const resolveStepModel = (modelName: string) => createTrackedModel(modelName, true)
 
   // compactModel 包 costTrackingMiddleware:紧急压缩 + selfHeal checkpoint 的
   // token 用量也进成本统计(不包 telemetry,避免污染 agent 遥测指标)。
@@ -229,6 +236,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     mcpRegistry: context.mcpRegistry,
     debugEnabled: Boolean(context.runtime.env.DEBUG),
     modelAliases: behavior.modelAliases,
+    availableModels: behavior.availableModels.map(model => model.id),
     dynamicReload: resolved.dynamicReload,
     // 子 Agent 上下文注入：createAgent 每请求重建，此快照即当前完整历史
     parentMessages: messagesWithAttachments,
@@ -367,6 +375,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     tools: finalTools,
     contextLimit: sessionOptions.maxContextTokens,
     triggerPercent: compactionCfg.contextWindow.triggerPercent,
+    resolveModel: resolveStepModel,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

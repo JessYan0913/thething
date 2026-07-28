@@ -21,6 +21,8 @@ export interface ReadFileOperations {
   readFile: (absolutePath: string) => Promise<Buffer>;
   /** Check if file is readable (throw if not) */
   access: (absolutePath: string) => Promise<void>;
+  /** Read file metadata */
+  stat: (absolutePath: string) => Promise<{ isFile: () => boolean }>;
   /** Detect image MIME type from file. Return null for non-image files. */
   detectImageMimeType?: (absolutePath: string) => Promise<string | null>;
 }
@@ -28,6 +30,7 @@ export interface ReadFileOperations {
 const defaultReadFileOperations: ReadFileOperations = {
   readFile: (path) => fs.readFile(path),
   access: (path) => fs.access(path),
+  stat: (path) => fs.stat(path),
   detectImageMimeType,
 };
 
@@ -245,9 +248,24 @@ export function createReadFileTool(options: FileToolOptions & {
       };
 
       // Check if it's an image
-      const mimeType = ops.detectImageMimeType
-        ? await ops.detectImageMimeType(absolutePath)
-        : null;
+      let mimeType: string | null;
+      try {
+        mimeType = ops.detectImageMimeType
+          ? await ops.detectImageMimeType(absolutePath)
+          : null;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        const reason = code === 'ENOENT' ? 'File not found'
+          : code === 'EACCES' ? 'Permission denied'
+          : code === 'EISDIR' ? 'Path is a directory, not a file'
+          : code === 'ENOTDIR' ? 'A path component is not a directory'
+          : 'Cannot inspect file type';
+        return {
+          error: true,
+          path: filePath,
+          message: `${reason}: ${filePath}`,
+        };
+      }
       throwIfAborted();
 
       if (mimeType) {
@@ -268,15 +286,60 @@ export function createReadFileTool(options: FileToolOptions & {
       }
 
       // Text file
-      await ops.access(absolutePath);
+      try {
+        await ops.access(absolutePath);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        const reason = code === 'ENOENT' ? 'File not found'
+          : code === 'EACCES' ? 'Permission denied'
+          : 'Cannot access file';
+        return {
+          error: true,
+          path: filePath,
+          message: `${reason}: ${filePath}`,
+        };
+      }
       throwIfAborted();
 
-      const stat = await fs.stat(absolutePath);
+      let stat: Awaited<ReturnType<ReadFileOperations['stat']>>;
+      try {
+        stat = await ops.stat(absolutePath);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        const reason = code === 'ENOENT' ? 'File not found'
+          : code === 'EACCES' ? 'Permission denied'
+          : code === 'ENOTDIR' ? 'A path component is not a directory'
+          : 'Cannot inspect file';
+        return {
+          error: true,
+          path: filePath,
+          message: `${reason}: ${filePath}`,
+        };
+      }
       if (!stat.isFile()) {
-        throw new Error(`Path is not a file: ${filePath}`);
+        return {
+          error: true,
+          path: filePath,
+          message: `Path is a directory, not a file: ${filePath}`,
+        };
       }
 
-      const buffer = await ops.readFile(absolutePath);
+      let buffer: Buffer;
+      try {
+        buffer = await ops.readFile(absolutePath);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        const reason = code === 'ENOENT' ? 'File not found'
+          : code === 'EACCES' ? 'Permission denied'
+          : code === 'EISDIR' ? 'Path is a directory, not a file'
+          : code === 'ENOTDIR' ? 'A path component is not a directory'
+          : 'Cannot read file';
+        return {
+          error: true,
+          path: filePath,
+          message: `${reason}: ${filePath}`,
+        };
+      }
       throwIfAborted();
 
       const content = buffer.toString('utf-8');
@@ -287,7 +350,11 @@ export function createReadFileTool(options: FileToolOptions & {
       const startLine = offset ? Math.max(0, offset - 1) : 0;
 
       if (startLine >= totalLines) {
-        throw new Error(`Offset ${offset} is beyond end of file (${totalLines} lines total)`);
+        return {
+          error: true,
+          path: filePath,
+          message: `Offset ${offset} is beyond end of file (${totalLines} lines total)`,
+        };
       }
 
       // Select range

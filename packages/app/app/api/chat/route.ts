@@ -1,6 +1,7 @@
 import path from 'path'
 import { nanoid } from 'nanoid';
 import { getServerRuntime, getServerContext, getProjectContext, getModelConfig } from '@/lib/runtime';
+import { agentStreamOnError } from '@/lib/agent-stream-on-error';
 import { convertFileToText } from '@/lib/file-convert';
 import { getStreamManager, registerAbortController, unregisterAbortController, abortChat } from '@/lib/stream-manager';
 import {
@@ -334,6 +335,7 @@ export async function POST(request: Request) {
                   uiMessages: finalMessages,
                   abortSignal: abortController.signal,
                   sendReasoning: true,
+                  onError: agentStreamOnError,
                   onEnd: createOnEnd(finalMessages.length),
                 });
               } catch (streamErr) {
@@ -358,6 +360,7 @@ export async function POST(request: Request) {
                       uiMessages: retryResult.messages,
                       abortSignal: abortController.signal,
                       sendReasoning: true,
+                      onError: agentStreamOnError,
                       onEnd: createOnEnd(retryResult.messages.length),
                     });
                   } catch (retryErr) {

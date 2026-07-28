@@ -120,9 +120,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
         ? formatSkillsWithinBudget(skills)
         : '';
 
+      const skillCreationNote = '技能是配置目录中的标准 SKILL.md 文件（不是 .py 脚本、不是 Wiki 页面）。标准 frontmatter 必须包含 name 和 description；启动时只索引这两个元数据，匹配后再按需加载正文和资源。要创建技能，调用 create-skill 技能。';
+
       const content = listing
-        ? `## 技能\n\n${listing}\n\n如果有技能匹配用户需求，使用该技能。否则，按正常方式处理。`
-        : `## 技能\n\n暂无可用技能。按正常方式处理。`;
+        ? `## 技能\n\n${listing}\n\n如果有技能匹配用户需求，使用该技能。否则，按正常方式处理。\n\n${skillCreationNote}`
+        : `## 技能\n\n暂无可用技能。按正常方式处理。\n\n${skillCreationNote}`;
 
       return {
         name: "skill-matching",

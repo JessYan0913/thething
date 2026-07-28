@@ -1,5 +1,33 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DenialTracker } from '../../session/denial-tracking';
+import { getSkillStepOverrides } from '../pipeline';
+
+describe('skill step overrides', () => {
+  it('returns a concrete model and reasoning effort for subsequent steps', () => {
+    const model = { modelId: 'smart-model' } as any;
+    const resolveModel = (name: string) => {
+      expect(name).toBe('smart-model');
+      return model;
+    };
+
+    const result = getSkillStepOverrides({
+      skillTurnOverride: {
+        skillName: 'smart-skill',
+        model: 'smart-model',
+        effort: 'xhigh',
+      },
+    }, resolveModel);
+
+    expect(result.model).toBe(model);
+    expect(result.providerOptions).toEqual({
+      openai: { reasoningEffort: 'xhigh' },
+    });
+  });
+
+  it('does not synthesize overrides when no skill activated one', () => {
+    expect(getSkillStepOverrides({})).toEqual({});
+  });
+});
 
 // ============================================================
 // Denial Tracking Tests

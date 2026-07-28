@@ -1,60 +1,75 @@
 ---
 name: create-skill
-description: Create a new skill — generates a properly structured SKILL.md and writes it to the user skill directory
-whenToUse: When the user wants to create a new skill, package a workflow as a reusable command, or types /create-skill
-allowedTools:
-  - bash
-  - write_file
-  - ask_user_question
-context: fork
-effort: medium
+description: Creates an Anthropic Agent Skills-compatible SKILL.md when the user wants to create a reusable skill, package a workflow, or define a slash-command skill.
 ---
 
-You are helping the user create a new Skill. A Skill is a reusable workflow defined in a `SKILL.md` file that can be invoked with `/<name>` in any conversation.
+Create a new Agent Skill as a directory containing a required `SKILL.md` and optional bundled resources.
 
-## Step 1: Get the target skills directory
+## 1. Resolve the target directory
 
-Run this bash command to get the exact absolute path (do NOT use `~` in write_file — it is blocked by the security layer):
+Run this command to obtain the absolute user skills directory. Do not pass `~` to file tools.
 
 ```bash
 node -e "const os=require('os'),path=require('path'); console.log(path.join(os.homedir(),'.thething','skills'))"
 ```
 
-## Step 2: Collect skill information
+Write the Skill to `<skillsDir>/<name>/SKILL.md`.
 
-If the user provided a name via arguments, use it directly: **$ARGUMENTS**
+## 2. Collect the required information
 
-Use `ask_user_question` to collect any missing details (skip what the user already provided):
+Use **$ARGUMENTS** as the requested name or topic when provided. Ask only for missing information:
 
-- **name**: kebab-case slug used as the slash command trigger, e.g. `code-review`
-- **description**: one sentence — what this skill does
-- **whenToUse** (optional): when should the agent automatically invoke this skill
-- **allowedTools**: which tools the skill needs (e.g. `write_file`, `bash`, `read_file`, `ask_user_question`)
-- **context**: `inline` (inject instructions into current conversation, for quick focused tasks) or `fork` (run as an independent sub-agent, for complex multi-step workflows)
-- **body**: the actual step-by-step instructions the agent will follow when this skill is invoked — be specific and thorough
+- `name`: slash-command identifier and directory name.
+- `description`: one concise sentence covering both what the Skill does and when it should be used.
+- Body: executable instructions, expected inputs and outputs, constraints, and examples where useful.
 
-## Step 3: Write the SKILL.md
+Validate the standard metadata before writing:
 
-Write to `<skillsDir>/<name>/SKILL.md` using the absolute path obtained in Step 1. The file format:
+- `name` is required and at most 64 characters.
+- `name` contains only lowercase ASCII letters, digits, and hyphens.
+- `name` does not contain XML tags or the reserved words `anthropic` or `claude`.
+- `description` is required, non-empty, and at most 1024 characters.
+- `description` does not contain XML tags.
+- Phrase the description in third person and include concrete trigger terms when possible.
 
-```
+## 3. Design for progressive disclosure
+
+Keep `SKILL.md` focused on the core workflow, preferably below 500 lines.
+
+- Put detailed documentation in `references/`.
+- Put deterministic reusable programs in `scripts/`.
+- Put templates and output assets in `assets/`.
+- Reference bundled files directly from `SKILL.md`; avoid deep chains of references.
+- Add a table of contents to reference files longer than 100 lines.
+- Use `/` in relative paths on every platform.
+- Load or execute bundled resources only when the workflow needs them.
+
+## 4. Write the standard SKILL.md
+
+Default to the cross-product Agent Skills standard. Do not emit product-specific fields unless the user explicitly requests them.
+
+```markdown
 ---
 name: <name>
-description: <description>
-whenToUse: <whenToUse — omit this line entirely if not provided>
-allowedTools:
-  - <tool1>
-  - <tool2>
-context: <inline|fork>
-effort: medium
+description: <what the Skill does and when to use it>
 ---
 
-<body — the full instructions for the agent>
+<imperative, step-by-step instructions>
 ```
 
-## Step 4: Confirm
+TheThing may parse optional compatibility extensions such as `model`, `effort`, `context`, `agent`, `background`, `allowedTools`, `whenToUse`, and `paths`. Treat these as TheThing or Claude Code compatibility extensions, not as fields required by the portable Agent Skills standard. Add them only when the requested behavior needs them.
 
-Tell the user:
-- Skill created at: `<absolute path to the SKILL.md>`
-- Invoke it in any conversation with: `/<name>`
-- To edit: open `<skillsDir>/<name>/SKILL.md` directly
+Runtime semantics:
+- `model` applies after activation for the remaining steps of the current user turn. It accepts aliases or a concrete model ID; `inherit` keeps the current model. A configured model allowlist is enforced.
+- `effort` applies for the remaining steps of the current turn and accepts `low`, `medium`, `high`, `xhigh`, or `max`.
+- `context: fork` runs the Skill body in an isolated sub-agent without parent conversation history. Use `agent` to select its type.
+- Fork execution is currently synchronous and requires `background: false`; persistent background fork runs are not available yet.
+
+## 5. Confirm
+
+Report:
+
+- The absolute path of the created `SKILL.md`.
+- How to invoke it with `/<name>`.
+- Any bundled `scripts/`, `references/`, or `assets/` created.
+- Any non-standard compatibility extensions intentionally added.

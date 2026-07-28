@@ -143,26 +143,62 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
     if (mode === 'append') {
       try {
         existingContent = await fs.readFile(absolutePath, 'utf-8');
-      } catch {
-        // 文件可能不存在，忽略错误
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') {
+          const reason = code === 'EACCES' ? 'Permission denied'
+            : code === 'EISDIR' ? 'Path is a directory'
+            : code === 'ENOTDIR' ? 'A path component is not a directory'
+            : 'Cannot read existing file';
+          return {
+            error: true,
+            path: filePath,
+            message: `${reason}: ${filePath}`,
+          };
+        }
       }
     }
-
-    await fs.mkdir(dir, { recursive: true });
 
     if (mode === 'create') {
       try {
         await fs.access(absolutePath);
-        throw new Error(`文件已存在，无法以 create 模式创建: ${filePath}`);
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('文件已存在')) {
-          throw error;
+        return {
+          error: true,
+          path: filePath,
+          message: `文件已存在，无法以 create 模式创建: ${filePath}`,
+        };
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') {
+          const reason = code === 'EACCES' ? 'Permission denied'
+            : code === 'ENOTDIR' ? 'A path component is not a directory'
+            : 'Cannot check whether file exists';
+          return {
+            error: true,
+            path: filePath,
+            message: `${reason}: ${filePath}`,
+          };
         }
       }
     }
 
     const flag = mode === 'append' ? 'a' : 'w';
-    await fs.writeFile(absolutePath, content, { encoding: 'utf-8', flag });
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(absolutePath, content, { encoding: 'utf-8', flag });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const reason = code === 'EACCES' ? 'Permission denied'
+        : code === 'EISDIR' ? 'Path is a directory'
+        : code === 'ENOTDIR' ? 'A path component is not a directory'
+        : code === 'ENOSPC' ? 'Disk full'
+        : 'Failed to write file';
+      return {
+        error: true,
+        path: filePath,
+        message: `${reason}: ${filePath}`,
+      };
+    }
 
     const bytesWritten = Buffer.byteLength(content, 'utf-8');
     const isNewFile = mode !== 'append' && existingContent.length === 0;

@@ -16,7 +16,12 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import * as path from 'path';
-import type { Skill } from '../../modules/skills/types';
+import type { Skill, SkillEffort } from '../../modules/skills/types';
+import type { SessionState } from '../../modules/session/types';
+import type { ModelAliases } from '../../services/model';
+import type { AgentExecutionResult, AgentToolConfig } from '../../modules/agent/types';
+import { resolveModelAlias } from '../../services/model/alias';
+import { executeAgentTask } from '../../modules/agent/agent-tool';
 import { generateSkillDirTree, readSkillBody } from '../../modules/skills/loader';
 import { logger } from '../../primitives/logger';
 
@@ -28,7 +33,7 @@ const SkillToolInputSchema = z.object({
   skill: z
     .string()
     .min(1)
-    .max(50)
+    .max(64)
     .describe('The exact skill name to invoke'),
   args: z
     .string()
@@ -46,12 +51,31 @@ interface SkillToolResult {
   skillPath?: string;
   allowedTools: string[];
   model?: string;
-  effort?: 'low' | 'medium' | 'high';
+  effort?: SkillEffort;
+  forked?: boolean;
+  background?: boolean;
+  summary?: string;
   error?: string;
 }
 
 function findSkill(skillName: string, skills: readonly Skill[]): Skill | null {
   return skills.find(skill => skill.name === skillName) ?? null;
+}
+
+function resolveSkillModelOverride(
+  model: string | undefined,
+  aliases: ModelAliases | undefined,
+  availableModels: readonly string[],
+): string | undefined {
+  if (!model || model === 'inherit') return undefined;
+
+  const resolved = resolveModelAlias(model, aliases);
+  if (availableModels.length > 0 && !availableModels.includes(resolved)) {
+    logger.debug('SkillTool', `Ignoring unavailable model override: ${resolved}`);
+    return undefined;
+  }
+
+  return resolved;
 }
 
 /**
@@ -125,7 +149,20 @@ function formatSkillOutput(skill: Skill, dirTree: string | undefined, args?: str
 // Skill Tool 定义
 // ============================================================
 
-export function createSkillTool(options: { skills: readonly Skill[] }) {
+export function createSkillTool(options: {
+  skills: readonly Skill[];
+  /** 未命中时从磁盘重扫（让会话中途新建的技能立即可用）。不传则不重扫。 */
+  reloadSkills?: () => Promise<readonly Skill[]>;
+  /** 请求内会话状态，用于记录仅在当前用户 turn 生效的 Skill 覆盖。 */
+  sessionState?: Pick<SessionState, 'skillTurnOverride'>;
+  modelAliases?: ModelAliases;
+  /** 解析后的模型 ID 白名单。空数组表示没有显式限制。 */
+  availableModels?: readonly string[];
+  /** fork Skill 复用现有子代理执行器。 */
+  agentConfig?: AgentToolConfig;
+  /** 测试或替代运行时可注入相同契约的 fork 执行器。 */
+  executeFork?: typeof executeAgentTask;
+}) {
   return tool({
     description: `Invoke a skill by its exact name. Use when the Available Skills section in the system prompt lists a skill matching the user's request.
 
@@ -148,19 +185,32 @@ Matching Guide:
 
     inputSchema: SkillToolInputSchema,
 
-    execute: async ({ skill, args }) => {
+    execute: async ({ skill, args }, executionOptions) => {
       const trimmedSkill = skill.trim().replace(/^\/+/, '');
 
       logger.debug('SkillTool', `Invoking skill: ${trimmedSkill}${args ? ` with args: ${args}` : ''}`);
 
-      const skillData = findSkill(trimmedSkill, options.skills);
+      let skillData = findSkill(trimmedSkill, options.skills);
+
+      // 未命中且提供了 reload -> 从磁盘重扫，让会话中途新建的技能立即可用
+      if (!skillData && options.reloadSkills) {
+        try {
+          const fresh = await options.reloadSkills();
+          skillData = findSkill(trimmedSkill, fresh);
+          if (skillData) {
+            logger.debug('SkillTool', `Reloaded skills from disk, found "${trimmedSkill}"`);
+          }
+        } catch (err) {
+          logger.warn('SkillTool', `Skill reload failed: ${err}`);
+        }
+      }
 
       if (!skillData) {
         return {
           success: false,
           skillName: trimmedSkill,
           allowedTools: [],
-          error: `Unknown skill: "${trimmedSkill}". Check the Available Skills section in the system prompt for valid skill names.`,
+          error: `Unknown skill: "${trimmedSkill}". Check the Available Skills section in the system prompt for valid skill names.\n\nIf you intended to CREATE a new skill, invoke the "create-skill" skill instead — it guides you to write a SKILL.md under ~/.thething/skills/<name>/. Note: writing a script file (e.g. .py) or saving a page to the Wiki does NOT register a slash-command skill; only a SKILL.md in the skills config directory is recognized.`,
         } as SkillToolResult;
       }
 
@@ -176,6 +226,72 @@ Matching Guide:
       }
 
       const output = formatSkillOutput(skillData, dirTree, args);
+
+      if (skillData.context === 'fork') {
+        if (skillData.background !== false) {
+          return {
+            success: false,
+            skillName: skillData.name,
+            skillPath: skillData.sourcePath,
+            allowedTools: skillData.allowedTools || [],
+            forked: true,
+            background: true,
+            error: 'Background fork execution is not available yet because no persistent run handle exists. Set background: false to run this forked skill synchronously.',
+          } as SkillToolResult;
+        }
+        if (!options.agentConfig) {
+          return {
+            success: false,
+            skillName: skillData.name,
+            skillPath: skillData.sourcePath,
+            allowedTools: skillData.allowedTools || [],
+            forked: true,
+            background: false,
+            error: 'Fork execution is unavailable in this runtime.',
+          } as SkillToolResult;
+        }
+
+        const result: AgentExecutionResult = await (options.executeFork ?? executeAgentTask)({
+          agentType: skillData.agent,
+          task: output,
+          config: options.agentConfig,
+          toolCallId: executionOptions.toolCallId ?? `skill-${Date.now()}`,
+          abortSignal: executionOptions.abortSignal,
+          includeParentMessages: false,
+          modelOverride: resolveSkillModelOverride(
+            skillData.model,
+            options.modelAliases,
+            options.availableModels ?? [],
+          ),
+        });
+        return {
+          success: result.success,
+          skillName: skillData.name,
+          skillPath: skillData.sourcePath,
+          allowedTools: skillData.allowedTools || [],
+          model: skillData.model,
+          effort: skillData.effort,
+          forked: true,
+          background: false,
+          summary: result.summary,
+          error: result.error,
+        } as SkillToolResult;
+      }
+
+      if (options.sessionState) {
+        const model = resolveSkillModelOverride(
+          skillData.model,
+          options.modelAliases,
+          options.availableModels ?? [],
+        );
+        if (model || skillData.effort) {
+          options.sessionState.skillTurnOverride = {
+            skillName: skillData.name,
+            model,
+            effort: skillData.effort,
+          };
+        }
+      }
 
       logger.debug('SkillTool', `Skill loaded: ${skillData.name} (${skillData.body?.length || 0} chars)`);
       logger.debug('SkillTool', `Allowed tools: ${skillData.allowedTools?.join(', ') || 'none'}`);
@@ -196,6 +312,9 @@ Matching Guide:
         const result = output as SkillToolResult & { _skillOutput?: string };
         if (result.success && result._skillOutput) {
           return { type: 'text' as const, value: result._skillOutput };
+        }
+        if (result.success && result.forked && result.summary) {
+          return { type: 'text' as const, value: result.summary };
         }
         if (!result.success && result.error) {
           return { type: 'text' as const, value: `❌ ${result.error}` };

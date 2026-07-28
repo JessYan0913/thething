@@ -206,7 +206,22 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
 
       return withFileMutationQueue(absolutePath, async () => {
         // 1. Read and normalize
-        const buffer = await ops.readFile(absolutePath);
+        let buffer: Buffer;
+        try {
+          buffer = await ops.readFile(absolutePath);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          const reason = code === 'ENOENT' ? 'File not found'
+            : code === 'EACCES' ? 'Permission denied'
+            : code === 'EISDIR' ? 'Path is a directory, not a file'
+            : code === 'ENOTDIR' ? 'A path component is not a directory'
+            : 'Cannot read file';
+          return {
+            error: true,
+            path: filePath,
+            message: `${reason}: ${filePath}`,
+          };
+        }
         const rawContent = buffer.toString('utf-8');
         const { bom, text: strippedContent } = stripBom(rawContent);
         const originalEnding = detectLineEnding(strippedContent);
@@ -220,7 +235,16 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
         throwIfAborted();
 
         // 2. Validate edits against normalized content
-        const validated = validateEdits(normalizedContent, edits, filePath);
+        let validated: ReturnType<typeof validateEdits>;
+        try {
+          validated = validateEdits(normalizedContent, edits, filePath);
+        } catch (err) {
+          return {
+            error: true,
+            path: filePath,
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
 
         throwIfAborted();
 
@@ -229,14 +253,32 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
 
         // 4. Safety check
         if (newNormalized === normalizedContent) {
-          throw new Error('All edits completed but file content did not change. This is likely a matching issue.');
+          return {
+            error: true,
+            path: filePath,
+            message: 'All edits completed but file content did not change. This is likely a matching issue.',
+          };
         }
 
         // 5. Restore line endings + BOM
         const finalContent = bom + restoreLineEndings(newNormalized, originalEnding);
 
         // 6. Write file
-        await ops.writeFile(absolutePath, finalContent);
+        try {
+          await ops.writeFile(absolutePath, finalContent);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          const reason = code === 'EACCES' ? 'Permission denied'
+            : code === 'EISDIR' ? 'Path is a directory'
+            : code === 'ENOTDIR' ? 'A path component is not a directory'
+            : code === 'ENOSPC' ? 'Disk full'
+            : 'Failed to write file';
+          return {
+            error: true,
+            path: filePath,
+            message: `${reason}: ${filePath}`,
+          };
+        }
 
         throwIfAborted();
 

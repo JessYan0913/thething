@@ -1,4 +1,5 @@
 import { getServerContext, getServerDataStore, reloadServerContext, getModelConfig } from '@/lib/runtime';
+import { agentStreamOnError } from '@/lib/agent-stream-on-error';
 import {
   createAgent,
   finalizeAgentRun,
@@ -240,6 +241,7 @@ async function handleChat(mode: 'config' | 'debug', request: Request) {
           uiMessages: messagesWithAttachments,
           abortSignal: abortController.signal,
           sendReasoning: true,
+          onError: agentStreamOnError,
           onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
               const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length);

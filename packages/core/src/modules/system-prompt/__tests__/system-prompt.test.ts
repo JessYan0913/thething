@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SystemPromptSection, ConversationMeta } from '../types';
-import { buildSimpleSystemPrompt, buildTitleGenerationPrompt, getAvailableSections } from '../builder';
+import { buildSimpleSystemPrompt, buildSystemPrompt, buildTitleGenerationPrompt, getAvailableSections } from '../builder';
 
 // ============================================================
 // System Prompt Tests
@@ -82,6 +82,19 @@ describe('system-prompt', () => {
         const prompt = buildTitleGenerationPrompt();
         expect(prompt).toContain('标题');
         expect(prompt).toContain('生成');
+      });
+    });
+
+    describe('skill creation guidance', () => {
+      it('explains the canonical skill format even when no skills are loaded', async () => {
+        const { prompt } = await buildSystemPrompt({ skills: [], includeProjectContext: false });
+        expect(prompt).toContain('SKILL.md');
+        expect(prompt).toContain('不是 .py 脚本');
+        expect(prompt).toContain('不是 Wiki 页面');
+        expect(prompt).toContain('create-skill');
+        expect(prompt).toContain('name 和 description');
+        expect(prompt).toContain('启动时只索引');
+        expect(prompt).toContain('按需加载正文和资源');
       });
     });
 

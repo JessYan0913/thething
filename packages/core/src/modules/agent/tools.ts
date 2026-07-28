@@ -26,6 +26,7 @@ import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAg
 import { createMcpRegistry, type McpRegistry, wrapMcpToolWithOutputHandler } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
 import type { LoadToolsConfig } from './types'
+import { loadSkills } from '../skills/loader'
 
 export interface LoadedToolsResult {
   tools: Record<string, Tool>
@@ -70,9 +71,6 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       cwd: config.sessionState.projectRoot,
     }),
     ask_user_question: askUserQuestionTool,
-    skill: createSkillTool({
-      skills: config.skills ?? [],
-    }),
     context_pin: createContextPinTool({
       ledger: config.sessionState.contextLedger,
     }),
@@ -134,6 +132,19 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   // 3. 创建统一的 agent 工具
   tools.agent = createAgentTool(agentToolConfig)
+
+  // Skill fork 与普通 agent 工具共享同一执行配置；此时 tools 已包含完整父工具池。
+  tools.skill = createSkillTool({
+    skills: config.skills ?? [],
+    reloadSkills: async () => loadSkills({
+      cwd: config.sessionState.projectRoot,
+      configDir: config.sessionState.layout.configDir,
+    }),
+    sessionState: config.sessionState,
+    modelAliases: config.modelAliases,
+    availableModels: config.availableModels,
+    agentConfig: agentToolConfig,
+  })
 
   // 4. 创建并行 agent 工具（多子 Agent 同时执行）
   tools.parallel_agent = createParallelAgentTool(agentToolConfig)

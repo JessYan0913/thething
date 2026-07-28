@@ -1,4 +1,5 @@
 import { getServerContext, getServerDataStore, getServerRuntime, reloadServerContext, getModelConfig } from '@/lib/runtime';
+import { agentStreamOnError } from '@/lib/agent-stream-on-error';
 import {
   createAgent,
   finalizeAgentRun,
@@ -83,7 +84,7 @@ Skill 执行时，Agent 可以使用以下工具：
     sections.push('\n### 已有 Skills');
     sections.push('平台中已有以下 Skills，新 Skill 可以通过 `use_skill` 工具调用它们，也可以参考它们的设计：\n');
     for (const skill of context.skills) {
-      const tools = skill.allowedTools.length > 0 ? ` [工具: ${skill.allowedTools.join(', ')}]` : '';
+      const tools = skill.allowedTools?.length ? ` [工具: ${skill.allowedTools.join(', ')}]` : '';
       sections.push(`- **${skill.name}**: ${skill.description}${tools}`);
     }
   }
@@ -129,31 +130,37 @@ const WORKBENCH_SYSTEM_PROMPT = `你是一个专业的 Skill 开发助手，运�
 
 \`\`\`
 skill-name/
-├── SKILL.md        (必须) — 主指令文件
-└── references/     (可选) — 参考文档、模板、脚本
-    ├── template.md
-    └── examples.md
+├── SKILL.md        (必须) — 元数据与核心指令
+├── references/     (可选) — 按需加载的详细参考资料
+├── scripts/        (可选) — 可按需执行的确定性程序
+└── assets/         (可选) — 模板、图标等输出资源
 \`\`\`
+
+遵循渐进披露：启动时只加载 \`name\` 和 \`description\`；匹配后加载 SKILL.md 正文；其他资源仅在需要时读取或执行。
 
 ## SKILL.md 格式规范
 
+默认生成跨产品通用标准，只包含两个必填 frontmatter 字段：
+
 \`\`\`markdown
 ---
-name: 技能名称
-description: 触发条件和功能描述（一句话，但要具体）
+name: skill-name
+description: 说明 Skill 做什么，以及用户在什么场景或使用哪些关键词时应调用它
 ---
 
 [Markdown 正文 — Agent 执行此 Skill 时遵循的指令]
 \`\`\`
 
-### Frontmatter 字段
+### 官方标准字段
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| name | ✅ | 显示名称，≤50 字符 |
-| description | ✅ | 触发描述。要稍微"主动"一点——宁可多触发也不要漏触发 |
-| allowedTools | 可选 | 限制 Skill 只能使用的工具列表。留空则不限制 |
-| effort | 可选 | 推理力度：low / medium / high（默认 medium） |
+| name | 是 | ≤64 字符；仅小写英文字母、数字和连字符；不得包含 XML 标签、\`anthropic\` 或 \`claude\` |
+| description | 是 | 非空且 ≤1024 字符；不得包含 XML 标签；同时说明“做什么”和“何时使用” |
+
+### 可选兼容扩展
+
+TheThing 可以解析 \`model\`、\`effort\`、\`context\`、\`allowedTools\`、\`whenToUse\` 和 \`paths\` 等扩展字段。它们不是跨产品 Agent Skills 标准的必填字段，不要在默认模板中生成；只有用户明确需要且运行时语义清楚时才添加，并说明这是 TheThing/Claude Code 兼容扩展。
 
 ### Body 编写原则
 
@@ -162,7 +169,10 @@ description: 触发条件和功能描述（一句话，但要具体）
 3. **结构化** — 用标题、编号列表组织步骤
 4. **定义输出格式** — 如果有固定格式，给出模板
 5. **包含示例** — 用 Example 展示预期行为
-6. **\`$ARGUMENTS\` 占位符** — 运行时被用户参数替换
+6. **控制长度** — SKILL.md 正文建议少于 500 行，细节拆到 references/
+7. **资源按需加载** — 引用文件直接从 SKILL.md 链接，避免多层嵌套引用
+8. **统一路径** — 相对路径使用 \`/\`，不要使用 Windows 反斜杠
+9. **\`$ARGUMENTS\` 占位符** — 运行时被用户参数替换
 
 ### description 编写技巧
 
@@ -207,16 +217,20 @@ const EDIT_SYSTEM_PROMPT = `你是一个专业的 Skill 开发助手，运行在
 
 ## Skill 文件格式参考
 
+默认保持官方最小 frontmatter：
+
 \`\`\`markdown
 ---
-name: 技能名称
-description: 触发条件和功能描述
-allowedTools: [tool1, tool2]  # 可选，限制可用工具
-effort: medium                # 可选，推理力度
+name: skill-name
+description: 说明 Skill 做什么，以及什么时候使用
 ---
 
 [Markdown 正文 — Agent 执行此 Skill 时遵循的指令]
 \`\`\`
+
+\`name\` 必须 ≤64 字符且仅包含小写英文字母、数字、连字符；\`description\` 必须非空且 ≤1024 字符。二者都不得包含 XML 标签，\`name\` 还不得包含 \`anthropic\` 或 \`claude\`。
+
+现有 Skill 中的 \`model\`、\`effort\`、\`context\`、\`allowedTools\`、\`whenToUse\`、\`paths\` 属于可选兼容扩展。编辑时可以保留，但不要把它们描述成跨产品标准字段，也不要在无关修改中主动添加。
 
 ## 编辑原则
 
@@ -514,6 +528,7 @@ export async function POST(request: Request) {
           uiMessages: messagesWithAttachments,
           abortSignal: abortController.signal,
           sendReasoning: true,
+          onError: agentStreamOnError,
           onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
               const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length);

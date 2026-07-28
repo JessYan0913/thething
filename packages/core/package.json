@@ -5,9 +5,11 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "typecheck": "pnpm check:skills-generated && tsc --noEmit",
+    "test": "pnpm check:skills-generated && vitest run",
     "test:watch": "vitest",
+    "generate:skills": "node scripts/generate-bundled-skills.mjs",
+    "check:skills-generated": "node scripts/generate-bundled-skills.mjs --check",
     "check:circular": "npx madge --circular --extensions ts ./src",
     "check:layers": "node scripts/check-layer-deps.mjs",
     "check:interfaces": "node scripts/check-interface-isolation.mjs",

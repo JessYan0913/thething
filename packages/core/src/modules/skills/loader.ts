@@ -101,15 +101,22 @@ export async function readSkillBody(sourcePath: string): Promise<string> {
 const skillsLoader = createMultiSourceLoader<SkillWithSource>({
   subcategory: 'skills',
   filePattern: 'SKILL.md',
-  filePatterns: ['SKILL.md', 'skill.md'],
   scanMode: 'configDir',
   dirPattern: '*',
   priorityOrder: ['project', 'user', 'builtin'],
   parse: async (filePath, source) => {
+    // macOS 默认文件系统通常大小写不敏感，stat("SKILL.md") 可能命中
+    // 实际名为 skill.md 的文件；显式检查目录项以执行标准文件名约束。
+    const siblingNames = await fs.readdir(path.dirname(filePath));
+    if (!siblingNames.includes('SKILL.md')) {
+      return null;
+    }
+
     const result = await parseFrontmatterFile(filePath, SkillFrontmatterSchema);
 
-    // 协议兼容：id 作为技能标识，fallback 到 name
-    const skillName = result.data.id ?? result.data.name;
+    // Anthropic Agent Skills 标准以 frontmatter.name 作为唯一技能标识。
+    // `id` 仅作为可解析的旧版扩展保留，不得覆盖标准名称。
+    const skillName = result.data.name;
 
     // 两阶段加载：bulk load 时不返回 body，仅保留 frontmatter 索引
     return {
@@ -120,6 +127,8 @@ const skillsLoader = createMultiSourceLoader<SkillWithSource>({
       model: result.data.model,
       effort: result.data.effort,
       context: result.data.context,
+      agent: result.data.agent,
+      background: result.data.background,
       paths: result.data.paths,
       sourcePath: result.filePath,
       source,
@@ -159,6 +168,8 @@ export async function loadSkills(options?: LoadSkillsOptions): Promise<Skill[]> 
     model: s.model,
     effort: s.effort,
     context: s.context,
+    agent: s.agent,
+    background: s.background,
     paths: s.paths,
     sourcePath: s.sourcePath,
     source: s.source,
@@ -190,6 +201,8 @@ export async function loadSkillFile(
     model: result.data.model,
     effort: result.data.effort,
     context: result.data.context,
+    agent: result.data.agent,
+    background: result.data.background,
     paths: result.data.paths,
     sourcePath: result.filePath,
     body: result.body,
@@ -211,6 +224,8 @@ export async function loadSkill(skillPath: string): Promise<Skill> {
     model: result.model,
     effort: result.effort,
     context: result.context,
+    agent: result.agent,
+    background: result.background,
     paths: result.paths,
     body: result.body,
     sourcePath: result.sourcePath,

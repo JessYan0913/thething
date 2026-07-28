@@ -4,7 +4,7 @@
 
 import type { UIMessage } from 'ai';
 import type { CompactionResult} from '../../services/config/compaction-types';
-import type { Skill } from '../../modules/skills/types';
+import type { Skill, SkillEffort } from '../../modules/skills/types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { DataStore } from '../../primitives/datastore/types';
 import type { ModelSpec, CompactionConfig } from '../../services/config/behavior';
@@ -88,6 +88,12 @@ export interface SessionState {
   loadedSkills: Map<string, Skill>;
   /** 当前模型 */
   model: string;
+  /** 当前请求内由 Skill 激活的临时覆盖；新用户消息会重建 SessionState，因此不会持久化。 */
+  skillTurnOverride?: {
+    skillName: string;
+    model?: string;
+    effort?: SkillEffort;
+  };
   /** 是否中止 */
   aborted: boolean;
   /** 项目根目录 */

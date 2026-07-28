@@ -290,6 +290,18 @@ export interface AgentToolConfig {
   maxTotalTokens?: number;
 }
 
+export interface AgentTaskExecutionOptions {
+  agentType?: string;
+  task: string;
+  config: AgentToolConfig;
+  toolCallId: string;
+  abortSignal?: AbortSignal;
+  /** fork Skill 不继承父对话历史。 */
+  includeParentMessages?: boolean;
+  /** Skill 显式模型覆盖优先于 Agent definition.model。 */
+  modelOverride?: string;
+}
+
 // ============================================================
 // Agent Route Decision
 // ============================================================
@@ -375,6 +387,8 @@ export interface LoadToolsConfig {
   mcps?: McpServerConfig[]
   /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
   modelAliases?: BehaviorConfig['modelAliases']
+  /** Skill model 覆盖允许使用的模型 ID；空数组表示无显式限制。 */
+  availableModels?: string[]
   /** 预加载的 skills（来自 AppContext 快照） */
   skills?: Skill[]
   /** WebSearch API Key（由应用层显式传入） */

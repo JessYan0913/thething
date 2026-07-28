@@ -1,4 +1,4 @@
-import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
+import type { LanguageModel, ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
 
 import type { PipelineContext } from '../session/interfaces';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
@@ -34,10 +34,38 @@ export interface AgentPipelineConfig {
   tools?: Record<string, Tool>;
   contextLimit?: number;
   triggerPercent?: number;
+  /** 将模型名解析为已经套好遥测/成本中间件的实际模型。 */
+  resolveModel?: (modelName: string) => LanguageModel;
+}
+
+export function getSkillStepOverrides(
+  sessionState: Pick<PipelineContext, 'skillTurnOverride'>,
+  resolveModel?: (modelName: string) => LanguageModel,
+): Pick<NonNullable<PrepareStepResult<ToolSet>>, 'model' | 'providerOptions'> {
+  const override = sessionState.skillTurnOverride;
+  return {
+    ...(override?.model && resolveModel
+      ? { model: resolveModel(override.model) }
+      : {}),
+    ...(override?.effort
+      ? {
+          providerOptions: {
+            openai: {
+              reasoningEffort: override.effort,
+            },
+          },
+        }
+      : {}),
+  };
 }
 
 export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipelineConfig): PrepareStepFunction<TOOLS> {
   const { sessionState, debugEnabled } = config;
+
+  const withSkillOverrides = (messages: ModelMessageType[]): PrepareStepResult<TOOLS> => ({
+    messages,
+    ...getSkillStepOverrides(sessionState, config.resolveModel),
+  }) as PrepareStepResult<TOOLS>;
 
   const prepareStep: PrepareStepFunction<TOOLS> = async ({ stepNumber, messages, steps }) => {
     if (sessionState.aborted) {
@@ -77,9 +105,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       const injectMsg = sessionState.denialTracker.getInjectMessage();
       if (injectMsg) {
         debugLog(debugEnabled, `[Agent] Denial threshold exceeded, injecting warning message`);
-        return {
-          messages: [...messages, injectMsg as ModelMessageType],
-        } as PrepareStepResult<TOOLS>;
+        return withSkillOverrides([...messages, injectMsg as ModelMessageType]);
       }
     }
 
@@ -116,12 +142,10 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       if (sessionState.consecutiveReasoningOnlySteps >= REASONING_LOOP_THRESHOLD) {
         debugLog(debugEnabled, `[Agent] Reasoning loop detected: ${sessionState.consecutiveReasoningOnlySteps} consecutive reasoning-only steps`);
         sessionState.consecutiveReasoningOnlySteps = 0;
-        return {
-          messages: [...messages, {
-            role: 'user',
-            content: '你已经连续多次推理但没有采取行动。请立即调用工具执行操作，或者如果不确定，请调用 ask_user_question 询问用户。',
-          } as ModelMessageType],
-        } as PrepareStepResult<TOOLS>;
+        return withSkillOverrides([...messages, {
+          role: 'user',
+          content: '你已经连续多次推理但没有采取行动。请立即调用工具执行操作，或者如果不确定，请调用 ask_user_question 询问用户。',
+        } as ModelMessageType]);
       }
     }
 
@@ -201,7 +225,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     }
 
     return {
-      messages,
+      ...withSkillOverrides(messages),
       continue: true,
     } as unknown as PrepareStepResult<TOOLS>;
   };

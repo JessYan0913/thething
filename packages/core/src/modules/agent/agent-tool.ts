@@ -6,7 +6,115 @@ import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from './loader';
 import { logger } from '../../primitives/logger';
-import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput } from './types';
+import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput, AgentTaskExecutionOptions } from './types';
+
+export async function executeAgentTask({
+  agentType,
+  task,
+  config,
+  toolCallId,
+  abortSignal,
+  includeParentMessages = true,
+  modelOverride,
+}: AgentTaskExecutionOptions): Promise<AgentExecutionResult> {
+  const startTime = Date.now();
+  const cwd = config.cwd ?? process.cwd();
+  const writer = config.writerRef?.current ?? null;
+  const agentRegistry = config.agentRegistry ?? new AgentRegistry();
+
+  for (const agent of config.agents ?? []) {
+    if (!agentRegistry.has(agent.agentType)) {
+      agentRegistry.register(agent);
+    }
+  }
+
+  try {
+    if (config.dynamicReload && agentType && !agentRegistry.has(agentType)) {
+      const customAgents = await scanAgentDirs(cwd, { dirs: config.agentsLayoutDirs });
+      for (const agent of customAgents) {
+        if (!agentRegistry.has(agent.agentType)) {
+          agentRegistry.register(agent);
+        }
+      }
+    }
+
+    writer?.write({
+      type: 'data-sub-open',
+      id: toolCallId,
+      data: { agentType: agentType ?? 'auto', task },
+    });
+
+    const context: AgentExecutionContext = {
+      parentTools: config.parentTools,
+      parentModel: config.parentModel,
+      parentSystemPrompt: config.parentSystemPrompt,
+      parentMessages: includeParentMessages ? config.parentMessages : [],
+      writerRef: config.writerRef,
+      abortSignal: abortSignal ?? new AbortController().signal,
+      toolCallId,
+      todoStore: config.todoStore,
+      todoId: config.todoId,
+      provider: config.provider,
+      modelAliases: config.modelAliases,
+      cwd,
+      agentRegistry,
+      compactionConfig: config.compactionConfig,
+      maxTotalTokens: config.maxTotalTokens,
+    };
+
+    const routeDecision = resolveAgentRoute({ agentType, task }, context);
+    const definition = modelOverride && modelOverride !== 'inherit'
+      ? { ...routeDecision.definition, model: modelOverride }
+      : routeDecision.definition;
+
+    logger.debug(
+      'AgentTool',
+      `Routing to ${routeDecision.type} (${definition.agentType}) | Reason: ${routeDecision.reason}`,
+    );
+
+    const result = await executeRoutedAgent(definition, context, task);
+
+    writer?.write({
+      type: 'data-sub-done',
+      id: toolCallId,
+      data: {
+        success: result.success,
+        durationMs: result.durationMs,
+        agentType: definition.agentType,
+        stepsExecuted: result.stepsExecuted,
+        toolsUsed: result.toolsUsed,
+        tokenUsage: result.tokenUsage,
+        status: result.status,
+      },
+    });
+
+    return result;
+  } catch (error) {
+    const isAborted = error instanceof Error && error.name === 'AbortError';
+    const errorMsg = error instanceof Error ? error.message : String(error);
+
+    writer?.write({
+      type: 'data-sub-done',
+      id: toolCallId,
+      data: {
+        success: false,
+        durationMs: Date.now() - startTime,
+        error: errorMsg,
+        status: isAborted ? 'aborted' : 'failed',
+      },
+    });
+
+    return {
+      success: false,
+      summary: `Agent ${isAborted ? 'aborted' : 'failed'}: ${errorMsg}`,
+      durationMs: Date.now() - startTime,
+      stepsExecuted: 0,
+      toolsUsed: [],
+      error: errorMsg,
+      status: isAborted ? 'aborted' : 'failed',
+    };
+  }
+}
 
 // ============================================================
 // Agent Tool Factory
@@ -65,110 +173,13 @@ Usage example: When user says "use test-agent to verify", call this tool with {a
 If no agentType specified, will auto-route based on task keywords (find→explore, research→research, plan→plan).`,
     inputSchema: AgentToolInputSchema,
 
-    execute: async ({ agentType, task }: AgentToolInput, options) => {
-      const startTime = Date.now();
-      const toolCallId = options.toolCallId ?? `agent-${Date.now()}`;
-      const abortSignal = options.abortSignal;
-      const writer = config.writerRef?.current ?? null;
-
-      try {
-        // 嵌套防护说明：一层子 Agent 由结构保证——resolveToolsForAgent
-        // 无条件剔除 agent/parallel_agent，子 Agent 无法再派生，
-        // 不需要运行时深度计数。
-
-        // 动态加载 Agent（显式开启 dynamicReload 时才重新扫描）
-        if (config.dynamicReload && agentType && !agentRegistry.has(agentType)) {
-          const customAgents = await scanAgentDirs(cwd, { dirs: config.agentsLayoutDirs });
-          for (const agent of customAgents) {
-            if (!agentRegistry.has(agent.agentType)) {
-              agentRegistry.register(agent);
-            }
-          }
-        }
-
-        // 广播开始事件
-        writer?.write({
-          type: 'data-sub-open',
-          id: toolCallId,
-          data: { agentType: agentType ?? 'auto', task },
-        });
-
-        // 构建执行上下文
-        const context: AgentExecutionContext = {
-          parentTools: config.parentTools,
-          parentModel: config.parentModel,
-          parentSystemPrompt: config.parentSystemPrompt,
-          parentMessages: config.parentMessages,
-          writerRef: config.writerRef,
-          abortSignal: abortSignal ?? new AbortController().signal,
-          toolCallId,
-          todoStore: config.todoStore,
-          todoId: config.todoId,
-          provider: config.provider,
-          modelAliases: config.modelAliases,
-          cwd,
-          agentRegistry,
-          compactionConfig: config.compactionConfig,
-          maxTotalTokens: config.maxTotalTokens,
-        };
-
-        // 路由决策
-        const routeDecision = resolveAgentRoute({ agentType, task }, context);
-
-        logger.debug(
-          'AgentTool',
-          `Routing to ${routeDecision.type} (${routeDecision.definition.agentType}) | Reason: ${routeDecision.reason}`
-        );
-
-        // 执行 Agent
-        const result = await executeRoutedAgent(
-          routeDecision.definition,
-          context,
-          task
-        );
-
-        // 广播完成事件
-        writer?.write({
-          type: 'data-sub-done',
-          id: toolCallId,
-          data: {
-            success: result.success,
-            durationMs: result.durationMs,
-            agentType: routeDecision.definition.agentType,
-            stepsExecuted: result.stepsExecuted,
-            toolsUsed: result.toolsUsed,
-            tokenUsage: result.tokenUsage,
-            status: result.status,
-          },
-        });
-
-        return result;
-      } catch (error) {
-        const isAborted = error instanceof Error && error.name === 'AbortError';
-        const errorMsg = error instanceof Error ? error.message : String(error);
-
-        writer?.write({
-          type: 'data-sub-done',
-          id: toolCallId,
-          data: {
-            success: false,
-            durationMs: Date.now() - startTime,
-            error: errorMsg,
-            status: isAborted ? 'aborted' : 'failed',
-          },
-        });
-
-        return {
-          success: false,
-          summary: `Agent ${isAborted ? 'aborted' : 'failed'}: ${errorMsg}`,
-          durationMs: Date.now() - startTime,
-          stepsExecuted: 0,
-          toolsUsed: [],
-          error: errorMsg,
-          status: isAborted ? 'aborted' : 'failed',
-        } as AgentExecutionResult;
-      }
-    },
+    execute: async ({ agentType, task }: AgentToolInput, options) => executeAgentTask({
+      agentType,
+      task,
+      config: { ...config, agentRegistry },
+      toolCallId: options.toolCallId ?? `agent-${Date.now()}`,
+      abortSignal: options.abortSignal,
+    }),
 
     toModelOutput: ({ output }) => {
       if (output && typeof output === 'object' && 'summary' in output) {

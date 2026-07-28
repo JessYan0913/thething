@@ -1,4 +1,5 @@
 import { getServerContext, reloadServerContext, getModelConfig } from '@/lib/runtime';
+import { agentStreamOnError } from '@/lib/agent-stream-on-error';
 import { createAgent, finalizeAgentRun } from '@the-thing/core';
 import {
   createAgentUIStream,
@@ -177,6 +178,7 @@ export async function POST(request: Request) {
           uiMessages: messagesWithAttachments,
           abortSignal: abortController.signal,
           sendReasoning: true,
+          onError: agentStreamOnError,
           onEnd: async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
             try {
               const newAssistantMessages = completedMessages.slice(messagesWithAttachments.length);
