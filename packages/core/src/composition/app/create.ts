@@ -335,8 +335,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         toolsTokens: overheadTools,
         // Layer 2 压缩落盘可恢复:与 budget 模块共用存储目录(见主文档 B)
         storage: { sessionId: conversationId, dataDir: sessionState.layout.dataDir },
-        // 传递 writer、tools、instructions，用于每步压缩后发送上下文水位
-        writer: options.writerRef?.current ? { write: (chunk: unknown) => (options.writerRef!.current as { write?: (chunk: unknown) => void })?.write?.(chunk) } : undefined,
+        // 上下文水位改为通过 updateContextBudget → 会话数据库传递，不再走 stream
         tools: filteredTools,
         instructions,
       })
@@ -360,6 +359,15 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       actions: result.tokensFreed > 0 ? [`Layer 2: freed ${result.tokensFreed} tokens`] : [],
     }
   }
+
+  // 上下文水位：pipeline 每步估算后写入会话数据库，前端直接读取
+  sessionState.updateContextBudget = (estimation) => {
+    dataStore.conversationStore.updateContextBudget(conversationId, {
+      usagePercentage: estimation.utilizationPercent,
+      totalTokens: estimation.totalTokens,
+      modelLimit: estimation.modelLimit,
+    });
+  };
 
   // ============================================================
   // Agent pipeline + ToolLoopAgent

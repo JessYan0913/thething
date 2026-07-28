@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -317,6 +317,24 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     }
   }
 
+  if (currentVersion < 12) {
+    // v12: add context budget fields to conversations (for frontend display).
+    // context_usage = utilization percent, context_total = estimated total tokens,
+    // context_limit = model context window cap.
+    for (const col of [
+      'context_usage REAL DEFAULT NULL',
+      'context_total INTEGER DEFAULT NULL',
+      'context_limit INTEGER DEFAULT NULL',
+    ]) {
+      try {
+        db.exec(`ALTER TABLE conversations ADD COLUMN ${col}`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
+    logger.debug('Schema', 'Migrated to v12: added context_usage/context_total/context_limit to conversations');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -328,11 +346,14 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
 export function initializeSchema(db: SqliteDatabase): void {
   db.exec(`
     -- Conversations table (base v1 schema; v5 adds source/source_id/channel_id,
-    -- v6 adds project_id, v11 adds head_message_id)
+    -- v6 adds project_id, v11 adds head_message_id, v12 adds context_usage/context_total/context_limit)
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       title TEXT DEFAULT 'New Conversation',
       head_message_id TEXT DEFAULT NULL,
+      context_usage REAL DEFAULT NULL,
+      context_total INTEGER DEFAULT NULL,
+      context_limit INTEGER DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

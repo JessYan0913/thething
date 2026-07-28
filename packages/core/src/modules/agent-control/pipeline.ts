@@ -215,6 +215,9 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)
       sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);
 
+      // 将权威水位写入会话数据库，前端直接读取
+      sessionState.updateContextBudget?.(estimation);
+
       // 闸门:compact(含 forceTruncate 兜底)后仍超限 -> 抛 CONTEXT_BUDGET_EXCEEDED,
       // 不静默发超标请求出去被 provider 拒。pre-stream 闸门见 create.ts;此处覆盖运行中增长。
       if (estimation.exceedsLimit) {

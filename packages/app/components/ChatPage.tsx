@@ -6,12 +6,18 @@ import { useChatContext } from "./ChatLayout";
 import { useParams, useSearchParams } from "next/navigation";
 
 export default function ChatPage() {
-  const { handleRefreshConversations } = useChatContext();
+  const { handleRefreshConversations, conversations } = useChatContext();
   const params = useParams<{ projectId?: string; source?: string; chatId?: string }>();
   const searchParams = useSearchParams();
   const conversationId = params?.chatId ? decodeURIComponent(params.chatId as string) : null;
   const projectId = params?.projectId;
   const initialMessage = searchParams.get("msg") || undefined;
+
+  // 从会话列表中取得当前会话的上下文水位
+  const conversation = conversations.find(c => c.id === conversationId);
+  const contextBudget = conversation && conversation.contextUsage != null
+    ? { usagePercentage: conversation.contextUsage, totalTokens: conversation.contextTotal ?? 0, modelLimit: conversation.contextLimit ?? 0 }
+    : null;
 
   // 根据 projectId 获取项目根路径，用于将 Agent 返回的相对路径补全为绝对路径
   const [projectPath, setProjectPath] = useState<string | undefined>(undefined);
@@ -54,6 +60,7 @@ export default function ChatPage() {
       onTitleUpdated={handleRefreshConversations}
       initialMessage={initialMessage}
       projectPath={projectPath}
+      contextBudget={contextBudget}
     />
   );
 }

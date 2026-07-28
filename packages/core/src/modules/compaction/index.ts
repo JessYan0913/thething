@@ -5,6 +5,7 @@
 // 编排简化为三步：selfHeal -> applyCompactionView -> manageCompaction(一次)。
 // 压缩决策（Layer 2 + 紧急压缩）收敛进 lifecycle.ts 的 manageCompaction
 // 统一分配器，不再由本文件编排多层。见 docs/compaction-road-to-excellent.md 差距一。
+// 上下文水位改为通过会话数据库字段传递，见 pipeline.ts。
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
@@ -41,7 +42,6 @@ export async function compactBeforeStep(
     toolsTokens?: number;
     contextLimit?: number;
     storage?: { sessionId: string; dataDir: string };
-    writer?: { write: (chunk: unknown) => void };
     tools?: Record<string, Tool>;
     instructions?: string;
     compactionView?: CompactionView;
@@ -87,22 +87,6 @@ export async function compactBeforeStep(
     compactionView: context.compactionView,
   });
   current = result.messages;
-
-  // 4. 副信号：发送水位给前端
-  if (result.estimation && context.writer) {
-    try {
-      context.writer.write({
-        type: 'data-budget',
-        data: {
-          usagePercentage: result.estimation.utilizationPercent,
-          totalTokens: result.estimation.totalTokens,
-          modelLimit: result.estimation.modelLimit,
-        },
-      } as any);
-    } catch {
-      // 估算失败不阻塞主流程
-    }
-  }
 
   return current;
 }

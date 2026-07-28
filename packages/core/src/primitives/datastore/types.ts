@@ -86,6 +86,12 @@ export interface Conversation {
   sourceId: string | null;
   channelId: string | null;
   projectId: string | null;
+  /** 上下文水位百分比 (0-100)。朝前端展示用。 */
+  contextUsage: number | null;
+  /** 当前估算总 token 数 */
+  contextTotal: number | null;
+  /** 模型上下文窗口上限 token 数 */
+  contextLimit: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -184,6 +190,12 @@ export interface ConversationStore {
    * List conversations with no project
    */
   listConversationsWithoutProject(): Conversation[];
+
+  /**
+   * 更新会话的上下文水位信息。在 pipeline 每步估算后写入，
+   * 前端直接读取展示，无需通过 stream event 传递。
+   */
+  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number }): void;
 }
 
 /**
@@ -692,6 +704,9 @@ export interface ConversationRow {
   source_id: string | null;
   channel_id: string | null;
   project_id: string | null;
+  context_usage: number | null;
+  context_total: number | null;
+  context_limit: number | null;
   created_at: string;
   updated_at: string;
 }

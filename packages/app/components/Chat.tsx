@@ -377,9 +377,11 @@ export interface ChatProps {
   showAgentSelector?: boolean;
   /** 项目根目录绝对路径，用于将 Agent 返回的相对路径补全为绝对路径 */
   projectPath?: string;
+  /** 上下文水位数据，从会话数据库读取传入，不再通过 stream event 传递 */
+  contextBudget?: { usagePercentage: number; totalTokens: number; modelLimit: number } | null;
 }
 
-export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath }: ChatProps) {
+export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath, contextBudget }: ChatProps) {
   const { t } = useTranslation('chat');
   const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(propConversationId ?? null);
@@ -902,19 +904,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages]);
-
-  // 从最新的 assistant 消息中提取上下文水位数据
-  const contextBudget = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role !== 'assistant') continue;
-      const budgetPart = messages[i].parts?.find((p) => (p as { type: string }).type === 'data-budget');
-      if (budgetPart) {
-        const data = (budgetPart as { data?: { usagePercentage: number; totalTokens: number; modelLimit: number } }).data;
-        if (data) return data;
-      }
-    }
-    return null;
   }, [messages]);
 
   // 处理问题收集完成

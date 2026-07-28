@@ -61,9 +61,19 @@ export class SQLiteConversationStore implements ConversationStore {
       sourceId: row.source_id,
       channelId: row.channel_id,
       projectId: row.project_id,
+      contextUsage: row.context_usage,
+      contextTotal: row.context_total,
+      contextLimit: row.context_limit,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+  }
+
+  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number }): void {
+    const stmt = this.db.prepare(
+      `UPDATE conversations SET context_usage = ?, context_total = ?, context_limit = ?, updated_at = datetime('now') WHERE id = ?`
+    );
+    stmt.run(budget.usagePercentage, budget.totalTokens, budget.modelLimit, id);
   }
 
   listConversationsByProject(projectId: string): Conversation[] {

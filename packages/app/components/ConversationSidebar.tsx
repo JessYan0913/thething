@@ -170,6 +170,12 @@ export interface ConversationItem {
   createdAt: string;
   updatedAt: string;
   runStatus?: 'running' | 'paused_approval' | 'completed' | 'failed' | null;
+  /** 上下文水位百分比 (0-100) */
+  contextUsage?: number | null;
+  /** 当前估算总 token 数 */
+  contextTotal?: number | null;
+  /** 模型上下文窗口上限 token 数 */
+  contextLimit?: number | null;
 }
 
 export interface ProjectItem {
