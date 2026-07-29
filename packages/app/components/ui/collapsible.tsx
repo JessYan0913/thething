@@ -1,33 +1,48 @@
 "use client"
 
-import { Collapsible as CollapsiblePrimitive } from "radix-ui"
+import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
+import type { CSSProperties, ReactNode } from "react"
 
-function Collapsible({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
-  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />
+type CollapsibleProps = {
+  children?: ReactNode
+  className?: string
+  defaultOpen?: boolean
+  disabled?: boolean
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
+  style?: CSSProperties
 }
 
-function CollapsibleTrigger({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleTrigger>) {
-  return (
-    <CollapsiblePrimitive.CollapsibleTrigger
-      data-slot="collapsible-trigger"
-      {...props}
-    />
-  )
+type CollapsibleTriggerProps = {
+  asChild?: boolean
+  children?: ReactNode
+  className?: string
+  disabled?: boolean
+  onClick?: () => void
+  style?: CSSProperties
 }
 
-function CollapsibleContent({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
-  return (
-    <CollapsiblePrimitive.CollapsibleContent
-      data-slot="collapsible-content"
-      {...props}
-    />
-  )
+type CollapsibleContentProps = {
+  children?: ReactNode
+  className?: string
+  forceMount?: true
+  style?: CSSProperties
+}
+
+const Root = CollapsiblePrimitive.Root as unknown as React.ComponentType<CollapsibleProps>
+const Trigger = CollapsiblePrimitive.Trigger as unknown as React.ComponentType<CollapsibleTriggerProps>
+const Content = CollapsiblePrimitive.Content as unknown as React.ComponentType<CollapsibleContentProps>
+
+function Collapsible(props: CollapsibleProps) {
+  return <Root data-slot="collapsible" {...props} />
+}
+
+function CollapsibleTrigger(props: CollapsibleTriggerProps) {
+  return <Trigger data-slot="collapsible-trigger" {...props} />
+}
+
+function CollapsibleContent(props: CollapsibleContentProps) {
+  return <Content data-slot="collapsible-content" {...props} />
 }
 
 export { Collapsible, CollapsibleTrigger, CollapsibleContent }

@@ -50,15 +50,18 @@ const CATEGORY_LABELS: Record<string, string> = {
 // Dynamic import (SSR not supported by canvas-based library)
 // ============================================================
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full text-muted-foreground">
-      <Loader2Icon className="size-4 animate-spin mr-2" />
-      <span className="text-xs">加载图谱引擎...</span>
-    </div>
-  ),
-})
+const ForceGraph2D = dynamic(
+  () => import("react-force-graph-2d").then((module) => module.default as unknown as React.ComponentType<any>),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <Loader2Icon className="size-4 animate-spin mr-2" />
+        <span className="text-xs">加载图谱引擎...</span>
+      </div>
+    ),
+  },
+)
 
 // ============================================================
 // Custom node object for canvas rendering

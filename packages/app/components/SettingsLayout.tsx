@@ -30,7 +30,7 @@ import { usePathname } from "next/navigation"
 import { useTranslation } from "react-i18next"
 
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default function SettingsLayout({ children }: { children: unknown }) {
   const { t } = useTranslation('settings')
   const pathname = usePathname()
   const activePath = pathname
@@ -132,7 +132,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               <h1 className="text-sm font-semibold">{activeItem.label}</h1>
             )}
           </div>
-          {children}
+          {children as React.ReactNode}
         </SidebarInset>
       </div>
     </SidebarProvider>
