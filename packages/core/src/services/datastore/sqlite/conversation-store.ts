@@ -64,6 +64,8 @@ export class SQLiteConversationStore implements ConversationStore {
       contextUsage: row.context_usage,
       contextTotal: row.context_total,
       contextLimit: row.context_limit,
+      revision: row.revision,
+      activeBranchId: row.active_branch_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

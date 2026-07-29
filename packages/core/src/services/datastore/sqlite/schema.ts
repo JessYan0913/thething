@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 14;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -335,6 +335,117 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v12: added context_usage/context_total/context_limit to conversations');
   }
 
+  if (currentVersion < 13) {
+    // v13: monotonic projection revision for message-tree synchronization.
+    try {
+      db.exec(`ALTER TABLE conversations ADD COLUMN revision INTEGER NOT NULL DEFAULT 0`);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column name')) throw e;
+    }
+    logger.debug('Schema', 'Migrated to v13: added conversations.revision');
+  }
+
+  if (currentVersion < 14) {
+    // v14: first-class branches and immutable run history.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS conversation_branches (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        parent_branch_id TEXT,
+        fork_message_id TEXT,
+        tip_message_id TEXT,
+        name TEXT,
+        status TEXT NOT NULL DEFAULT 'active'
+          CHECK(status IN ('candidate', 'active', 'archived')),
+        is_pinned INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_branch_id) REFERENCES conversation_branches(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS conversation_branch_selections (
+        conversation_id TEXT NOT NULL,
+        parent_message_id TEXT NOT NULL,
+        selected_child_id TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (conversation_id, parent_message_id),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS conversation_runs (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        branch_id TEXT,
+        anchor_message_id TEXT,
+        expected_tip_id TEXT,
+        result_tip_id TEXT,
+        model TEXT,
+        agent_type TEXT,
+        status TEXT NOT NULL DEFAULT 'running'
+          CHECK(status IN ('running', 'committed', 'superseded', 'aborted', 'failed')),
+        error TEXT,
+        started_at TEXT DEFAULT (datetime('now')),
+        finished_at TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY (branch_id) REFERENCES conversation_branches(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_branches_conversation
+        ON conversation_branches(conversation_id, status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_runs_conversation
+        ON conversation_runs(conversation_id, started_at DESC);
+    `);
+
+    for (const col of [
+      'active_branch_id TEXT DEFAULT NULL',
+      'branch_id TEXT DEFAULT NULL',
+    ]) {
+      try {
+        if (col.startsWith('active_branch_id')) {
+          db.exec(`ALTER TABLE conversations ADD COLUMN ${col}`);
+        } else {
+          db.exec(`ALTER TABLE messages ADD COLUMN ${col}`);
+        }
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
+    try {
+      db.exec(`ALTER TABLE summaries ADD COLUMN branch_id TEXT DEFAULT NULL`);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column name')) throw e;
+    }
+
+    const conversations = db.prepare('SELECT id, head_message_id FROM conversations').all() as {
+      id: string; head_message_id: string | null;
+    }[];
+    const insertBranch = db.prepare(
+      `INSERT OR IGNORE INTO conversation_branches
+         (id, conversation_id, fork_message_id, tip_message_id, name, status, created_by)
+       VALUES (?, ?, NULL, ?, '主分支', 'active', 'migration')`
+    );
+    const updateConversation = db.prepare(
+      'UPDATE conversations SET active_branch_id = ? WHERE id = ? AND active_branch_id IS NULL'
+    );
+    const updateMessages = db.prepare(
+      'UPDATE messages SET branch_id = ? WHERE conversation_id = ? AND branch_id IS NULL'
+    );
+    const updateSummaries = db.prepare(
+      'UPDATE summaries SET branch_id = ? WHERE conversation_id = ? AND branch_id IS NULL'
+    );
+    for (const conversation of conversations) {
+      const branchId = `main:${conversation.id}`;
+      insertBranch.run(branchId, conversation.id, conversation.head_message_id);
+      updateConversation.run(branchId, conversation.id);
+      updateMessages.run(branchId, conversation.id);
+      updateSummaries.run(branchId, conversation.id);
+    }
+    logger.debug('Schema', 'Migrated to v14: added branches, selections, and run history');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -346,7 +457,8 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
 export function initializeSchema(db: SqliteDatabase): void {
   db.exec(`
     -- Conversations table (base v1 schema; v5 adds source/source_id/channel_id,
-    -- v6 adds project_id, v11 adds head_message_id, v12 adds context_usage/context_total/context_limit)
+    -- v6 adds project_id, v11 adds head_message_id, v12 adds context fields,
+    -- v13 adds revision)
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       title TEXT DEFAULT 'New Conversation',
@@ -354,6 +466,8 @@ export function initializeSchema(db: SqliteDatabase): void {
       context_usage REAL DEFAULT NULL,
       context_total INTEGER DEFAULT NULL,
       context_limit INTEGER DEFAULT NULL,
+      revision INTEGER NOT NULL DEFAULT 0,
+      active_branch_id TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -367,6 +481,7 @@ export function initializeSchema(db: SqliteDatabase): void {
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
       parent_id TEXT,
+      branch_id TEXT DEFAULT NULL,
       role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
       content TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
@@ -386,6 +501,7 @@ export function initializeSchema(db: SqliteDatabase): void {
       last_message_order INTEGER NOT NULL,
       pre_compact_token_count INTEGER NOT NULL,
       anchor_message_id TEXT DEFAULT NULL,
+      branch_id TEXT DEFAULT NULL,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
 

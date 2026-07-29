@@ -124,6 +124,16 @@ describe('SQLiteMessageStore (immutable tree)', () => {
       expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a1', 'u2'])
     })
 
+    it('rejects an append anchor from another conversation', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.commitUserMessage('conv-2', msg('u2', 'user', 'q2'))
+
+      expect(() =>
+        store.messageStore.appendMessages(CONV, [msg('a-cross', 'assistant', 'invalid')], 'u2')
+      ).toThrow('does not belong to conversation')
+      expect(store.messageStore.getConversationTree(CONV).nodes.map((node) => node.id)).toEqual(['u1'])
+    })
+
     it('empty append is a no-op returning true', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
       expect(store.messageStore.appendMessages(CONV, [])).toBe(true)
@@ -280,6 +290,53 @@ describe('SQLiteMessageStore (immutable tree)', () => {
 
       store.messageStore.switchHead(CONV, 'a1', false) // u2 离开活跃路径
       expect(store.summaryStore.getSummaryByConversation(CONV)).toBeNull()
+    })
+  })
+
+  describe('conversation tree projection and revision', () => {
+    it('returns every branch node with active-path flags and previews', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'question'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'first answer')])
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'question'))
+      store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'second answer')], 'u1')
+
+      const tree = store.messageStore.getConversationTree(CONV)
+      expect(tree.activeTipId).toBe('a2')
+      expect(tree.nodes.map((node) => node.id)).toEqual(['u1', 'a1', 'a2'])
+      expect(tree.nodes.find((node) => node.id === 'u1')).toMatchObject({
+        preview: 'question',
+        childCount: 2,
+        isActivePath: true,
+      })
+      expect(tree.nodes.find((node) => node.id === 'a1')?.isActivePath).toBe(false)
+      expect(tree.nodes.find((node) => node.id === 'a2')).toMatchObject({
+        preview: 'second answer',
+        isActivePath: true,
+      })
+    })
+
+    it('increments revision for head changes and orphan branch inserts', () => {
+      expect(store.messageStore.getConversationTree(CONV).revision).toBe(0)
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      const afterUser = store.messageStore.getConversationTree(CONV).revision
+      expect(afterUser).toBe(1)
+
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')], 'u1')
+      const afterAnswer = store.messageStore.getConversationTree(CONV).revision
+      expect(afterAnswer).toBe(afterUser + 1)
+
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
+      const beforeStale = store.messageStore.getConversationTree(CONV).revision
+      expect(store.messageStore.appendMessages(CONV, [msg('a-stale', 'assistant', 'stale')], 'u1')).toBe(false)
+      expect(store.messageStore.getConversationTree(CONV).revision).toBe(beforeStale + 1)
+    })
+
+    it('returns an empty projection for an unknown conversation', () => {
+      expect(store.messageStore.getConversationTree('missing')).toEqual({
+        revision: 0,
+        activeTipId: null,
+        nodes: [],
+      })
     })
   })
 

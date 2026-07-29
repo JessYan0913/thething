@@ -112,7 +112,7 @@ export function useChatContext(): ChatContextValue {
 // The sidebar persists across route changes within /chat/*
 // ============================================================================
 
-export default function ChatLayout({ children }: { children: React.ReactNode }) {
+export default function ChatLayout({ children }: { children: unknown }) {
   const router = useRouter();
   const params = useParams<{ source?: string; projectId?: string; chatId?: string }>();
   const urlSearchParams = useSearchParams();
@@ -503,6 +503,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                <div id="branch-panel-toggle" />
                 {showFilter && (
                   <SourceFilter
                     filterOptions={filterOptions}
@@ -513,7 +514,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
             {/* Children renders child routes */}
-            {children}
+            {children as React.ReactNode}
           </SidebarInset>
         </div>
       </SidebarProvider>

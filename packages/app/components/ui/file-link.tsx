@@ -1,14 +1,14 @@
 'use client'
 
 import { ExternalLinkIcon, CopyIcon, FolderOpenIcon } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface FileLinkProps {
   /** 完整的文件路径 */
   href: string
   /** 链接显示文本 */
-  children: React.ReactNode
+  children: unknown
   /** 额外类名 */
   className?: string
 }
@@ -83,7 +83,7 @@ export function FileLink({ href, children, className }: FileLinkProps) {
           handleOpenInFinder(e)
         }}
       >
-        {children}
+        {children as ReactNode}
         <ExternalLinkIcon className="size-3 opacity-0 group-hover/file-link:opacity-100 transition-opacity" />
       </a>
 

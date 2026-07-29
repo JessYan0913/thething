@@ -517,7 +517,18 @@ export class AgentInboundHandler implements InboundEventHandler {
 
     // Persist the inbound user turn before agent execution so suspend paths
     // can append approval prompts without losing the user message.
-    store.messageStore.commitUserMessage(conversationId, userMessage)
+    const branch = store.branchStore?.ensureMainBranch(conversationId)
+    const anchorMessageId = store.messageStore.commitUserMessage(conversationId, userMessage)
+    const runId = nanoid()
+    store.conversationRunStore?.createRun({
+      id: runId,
+      conversationId,
+      branchId: store.branchStore?.getProjection(conversationId).activeBranchId ?? branch?.id ?? null,
+      anchorMessageId,
+      expectedTipId: anchorMessageId,
+      model: this.config.modelConfig?.modelName ?? null,
+      agentType: event.agentType ?? null,
+    })
 
     const { agent, sessionState, adjustedMessages, model, dispose, mcpRegistry } = await this.createAgentInstance(
       conversationId,
@@ -544,6 +555,8 @@ export class AgentInboundHandler implements InboundEventHandler {
       { allSteps: [], responseText: '', writtenFiles: [], approvedTools: [] },
       isFirstMessage,
       startTime,
+      runId,
+      anchorMessageId,
     )
   }
 
@@ -565,7 +578,20 @@ export class AgentInboundHandler implements InboundEventHandler {
       parts: [{ type: 'text', text: event.message.text || '' }],
     }
     const uiMessagesForSave = [...existingMessages, approvalReplyMsg]
-    store.messageStore.appendMessages(conversationId, [approvalReplyMsg])
+    const branch = store.branchStore?.ensureMainBranch(conversationId)
+    const anchorMessageId = store.messageStore.appendMessages(conversationId, [approvalReplyMsg])
+      ? approvalReplyMsg.id
+      : store.branchStore?.getProjection(conversationId).activeTipId ?? null
+    const runId = nanoid()
+    store.conversationRunStore?.createRun({
+      id: runId,
+      conversationId,
+      branchId: store.branchStore?.getProjection(conversationId).activeBranchId ?? branch?.id ?? null,
+      anchorMessageId,
+      expectedTipId: anchorMessageId,
+      model: this.config.modelConfig?.modelName ?? null,
+      agentType: event.agentType ?? 'approval-resume',
+    })
 
     // 在挂起点追加 approval-response，继续执行
     const resumeModelMessages: ModelMessage[] = [
@@ -614,6 +640,8 @@ export class AgentInboundHandler implements InboundEventHandler {
       },
       isFirstMessage,
       startTime,
+      runId,
+      anchorMessageId,
     )
   }
 
@@ -635,6 +663,8 @@ export class AgentInboundHandler implements InboundEventHandler {
     accumulated: AccumulatedState,
     isFirstMessage: boolean,
     startTime: number,
+    runId: string,
+    anchorMessageId: string | null,
   ): Promise<InboundEventResult> {
     let currentMessages = initialModelMessages
     let { allSteps, responseText, writtenFiles, approvedTools } = accumulated
@@ -869,7 +899,13 @@ export class AgentInboundHandler implements InboundEventHandler {
             ...toolApprovalParts,
           ],
         }
-        store.messageStore.appendMessages(conversationId, [approvalAskMsg])
+        const headMoved = store.messageStore.appendMessages(conversationId, [approvalAskMsg], anchorMessageId ?? undefined)
+        store.conversationRunStore?.finishRun(runId, {
+          status: headMoved ? 'committed' : 'superseded',
+          resultTipId: headMoved
+            ? store.branchStore?.getProjection(conversationId).activeTipId ?? approvalAskMsg.id
+            : approvalAskMsg.id,
+        })
 
         await dispose().catch((err: Error) => logger.error('AgentDispose', 'Error:', err))
 
@@ -942,7 +978,17 @@ export class AgentInboundHandler implements InboundEventHandler {
       parts: [...messageParts, { type: 'text', text: finalResponse }],
     }
 
-    store.messageStore.appendMessages(conversationId, [assistantMessage])
+    const headMoved = store.messageStore.appendMessages(
+      conversationId,
+      [assistantMessage],
+      anchorMessageId ?? undefined,
+    )
+    store.conversationRunStore?.finishRun(runId, {
+      status: headMoved ? 'committed' : 'superseded',
+      resultTipId: headMoved
+        ? store.branchStore?.getProjection(conversationId).activeTipId ?? assistantMessage.id
+        : assistantMessage.id,
+    })
 
     const messagesToSave = this.filterInjectedMessages(uiMessagesForSave)
     const finalMessages = [...messagesToSave, assistantMessage]
@@ -964,6 +1010,7 @@ export class AgentInboundHandler implements InboundEventHandler {
         modelName: sessionState.model,
         fallbackModels: sessionState.fallbackModels,
       },
+      commitConversationState: headMoved,
     })
 
     logger.debug('AgentInboundHandler', `COMPLETE: responseLen=${finalResponse.length} conversation=${conversationId} durationMs=${Date.now() - startTime}`)

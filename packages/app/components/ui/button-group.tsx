@@ -1,3 +1,4 @@
+import type { CSSProperties, MouseEventHandler, ReactNode } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"
 
@@ -21,11 +22,18 @@ const buttonGroupVariants = cva(
   }
 )
 
+type ButtonGroupBaseProps = {
+  children?: ReactNode
+  className?: string
+  onClick?: MouseEventHandler<HTMLDivElement>
+  style?: CSSProperties
+}
+
 function ButtonGroup({
   className,
   orientation,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof buttonGroupVariants>) {
+}: ButtonGroupBaseProps & VariantProps<typeof buttonGroupVariants>) {
   return (
     <div
       role="group"
@@ -41,7 +49,7 @@ function ButtonGroupText({
   className,
   asChild = false,
   ...props
-}: React.ComponentProps<"div"> & {
+}: ButtonGroupBaseProps & {
   asChild?: boolean
 }) {
   const Comp = asChild ? Slot.Root : "div"

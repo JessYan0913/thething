@@ -296,7 +296,7 @@ export const MessageBranchNext = ({
   );
 };
 
-export type MessageBranchPageProps = HTMLAttributes<HTMLSpanElement>;
+export type MessageBranchPageProps = HTMLAttributes<HTMLDivElement>;
 
 export const MessageBranchPage = ({
   className,

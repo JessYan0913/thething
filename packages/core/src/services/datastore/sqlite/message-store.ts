@@ -14,16 +14,25 @@
 //   replaceConversation 开发工具语义：整会话重建为线性链（丢弃分支）
 
 import type { UIMessage } from 'ai';
-import type { SqliteDatabase } from '../../../primitives/datastore/types';
-import type { MessageStore } from '../../../primitives/datastore/types';
+import type {
+  ConversationStore,
+  ConversationTree,
+  MessageStore,
+  SqliteDatabase,
+} from '../../../primitives/datastore/types';
 import { nanoid } from 'nanoid';
-import type { ConversationStore } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
 interface MessageRow {
   id: string;
   parent_id: string | null;
   content: string;
+}
+
+interface TreeMessageRow extends MessageRow {
+  role: 'user' | 'assistant' | 'system';
+  created_at: string;
+  child_count: number;
 }
 
 /**
@@ -59,6 +68,53 @@ export class SQLiteMessageStore implements MessageStore {
     return path.reverse();
   }
 
+  getConversationTree(conversationId: string): ConversationTree {
+    const transaction = this.db.transaction(() => {
+      const conversation = this.db
+        .prepare('SELECT head_message_id, revision FROM conversations WHERE id = ?')
+        .get(conversationId) as { head_message_id: string | null; revision: number } | undefined;
+      if (!conversation) return { revision: 0, activeTipId: null, nodes: [] };
+
+      const rows = this.db
+        .prepare(
+          `SELECT m.id, m.parent_id, m.role, m.content, m.created_at,
+                  COUNT(c.id) AS child_count
+             FROM messages m
+             LEFT JOIN messages c
+               ON c.conversation_id = m.conversation_id AND c.parent_id = m.id
+            WHERE m.conversation_id = ?
+            GROUP BY m.id
+            ORDER BY m.rowid ASC`
+        )
+        .all(conversationId) as unknown as TreeMessageRow[];
+
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const activeIds = new Set<string>();
+      let cursor = conversation.head_message_id;
+      while (cursor) {
+        const row = byId.get(cursor);
+        if (!row) break;
+        activeIds.add(cursor);
+        cursor = row.parent_id;
+      }
+
+      return {
+        revision: conversation.revision,
+        activeTipId: conversation.head_message_id,
+        nodes: rows.map((row) => ({
+          id: row.id,
+          parentId: row.parent_id,
+          role: row.role,
+          preview: this.getMessagePreview(row.content),
+          createdAt: row.created_at,
+          childCount: Number(row.child_count),
+          isActivePath: activeIds.has(row.id),
+        })),
+      };
+    });
+    return transaction();
+  }
+
   commitUserMessage(conversationId: string, message: UIMessage): string {
     const transaction = this.db.transaction(() => {
       this.ensureConversation(conversationId, [message]);
@@ -84,6 +140,8 @@ export class SQLiteMessageStore implements MessageStore {
       }
 
       this.setHead(conversationId, headId);
+      this.updateActiveBranchTip(conversationId, headId);
+      this.bumpRevision(conversationId);
       this.invalidateSummaryIfAnchorOffPath(conversationId);
       return headId;
     });
@@ -97,6 +155,7 @@ export class SQLiteMessageStore implements MessageStore {
       const anchor = afterMessageId ?? this.getHead(conversationId);
 
       let parentId: string | null = anchor;
+      let treeChanged = false;
       for (const message of messages) {
         const msg = { ...message, id: message.id || nanoid() };
 
@@ -109,6 +168,7 @@ export class SQLiteMessageStore implements MessageStore {
         }
 
         this.insertNode(conversationId, msg, parentId);
+        treeChanged = true;
         parentId = msg.id;
       }
 
@@ -116,6 +176,7 @@ export class SQLiteMessageStore implements MessageStore {
       // 被顶替的旧运行到这里 head 早已移走 → 新写入的链只是孤儿分支，直接返回 false。
       const currentHead = this.getHead(conversationId);
       if (currentHead !== anchor) {
+        if (treeChanged) this.bumpRevision(conversationId);
         logger.debug(
           'MessageStore',
           `appendMessages: head moved (${anchor} → ${currentHead}), new chain left as orphan branch`
@@ -123,6 +184,8 @@ export class SQLiteMessageStore implements MessageStore {
         return false;
       }
       this.setHead(conversationId, parentId);
+      this.updateActiveBranchTip(conversationId, parentId);
+      if (treeChanged || currentHead !== parentId) this.bumpRevision(conversationId);
       return true;
     });
     return transaction();
@@ -147,6 +210,8 @@ export class SQLiteMessageStore implements MessageStore {
         parentId = msg.id;
       }
       this.setHead(conversationId, parentId);
+      this.updateActiveBranchTip(conversationId, parentId);
+      this.bumpRevision(conversationId);
       this.invalidateSummaryIfAnchorOffPath(conversationId);
     });
     transaction();
@@ -163,24 +228,36 @@ export class SQLiteMessageStore implements MessageStore {
     if (!head) return { branches, headChildId: null };
 
     const activePath = this.getMessagesByConversation(conversationId);
-    // 兄弟按 rowid（插入顺序）排列，created_at 秒级精度在快速重发时会并列
+    const activeBranchId = this.getActiveBranchId(conversationId);
+
+    // 查 siblings 时带上 branch_id，用于区分 fork（不同分支的 user 消息不应显示为版本）
     const siblingsStmt = this.db.prepare(
-      `SELECT id FROM messages
-         WHERE conversation_id = ? AND parent_id IS ? ORDER BY rowid ASC`
+      `SELECT m.id, m.role, m.branch_id FROM messages m
+         WHERE m.conversation_id = ? AND m.parent_id IS ? ORDER BY m.rowid ASC`
     );
 
     let parentOfCurrent: string | null = null;
     for (const msg of activePath) {
-      const siblings = (siblingsStmt.all(conversationId, parentOfCurrent) as unknown as { id: string }[])
-        .map((r) => r.id);
-      if (siblings.length > 1) {
-        branches[msg.id] = siblings;
+      const allSiblings = (siblingsStmt.all(conversationId, parentOfCurrent) as unknown as {
+        id: string; role: string; branch_id: string | null;
+      }[]);
+
+      // 对 user 消息按 branch_id 过滤：fork 产生的不同分支消息不应显示为版本切换
+      // 对 assistant 消息保留全部：regenerate 产生的候选回答应该可切换
+      const filtered = msg.role === 'user' && activeBranchId
+        ? allSiblings.filter((s) => s.branch_id === activeBranchId || s.branch_id == null)
+        : allSiblings;
+
+      if (filtered.length > 1) {
+        branches[msg.id] = filtered.map((s) => s.id);
       }
       parentOfCurrent = msg.id;
     }
 
     // head 处于分叉点（非叶子）时，给出回到"之后消息"的入口：head 的最新孩子
-    const headChildren = (siblingsStmt.all(conversationId, head) as unknown as { id: string }[]);
+    const headChildren = (this.db.prepare(
+      `SELECT id FROM messages WHERE conversation_id = ? AND parent_id = ? ORDER BY rowid ASC`
+    ).all(conversationId, head) as unknown as { id: string }[]);
     const headChildId = headChildren.length > 0 ? headChildren[headChildren.length - 1].id : null;
 
     return { branches, headChildId };
@@ -197,8 +274,14 @@ export class SQLiteMessageStore implements MessageStore {
       if (descendToTip) {
         // 沿"每层最新的孩子"下行到叶子——恢复该分支上最后的对话位置
         const childStmt = this.db.prepare(
-          `SELECT id FROM messages
-             WHERE conversation_id = ? AND parent_id = ? ORDER BY rowid DESC LIMIT 1`
+          `SELECT m.id FROM messages m
+             LEFT JOIN conversation_branch_selections s
+               ON s.conversation_id = m.conversation_id
+              AND s.parent_message_id = m.parent_id
+              AND s.selected_child_id = m.id
+            WHERE m.conversation_id = ? AND m.parent_id = ?
+            ORDER BY CASE WHEN s.selected_child_id IS NOT NULL THEN 0 ELSE 1 END,
+                     m.rowid DESC LIMIT 1`
         );
         for (;;) {
           const child = childStmt.get(conversationId, tip) as { id: string } | undefined;
@@ -208,6 +291,9 @@ export class SQLiteMessageStore implements MessageStore {
       }
 
       this.setHead(conversationId, tip);
+      this.updateActiveBranchTip(conversationId, tip);
+      this.saveSelectedPath(conversationId, tip);
+      this.bumpRevision(conversationId);
       this.invalidateSummaryIfAnchorOffPath(conversationId);
       return true;
     });
@@ -217,11 +303,20 @@ export class SQLiteMessageStore implements MessageStore {
   // ── private helpers ─────────────────────────────────────────
 
   private insertNode(conversationId: string, msg: UIMessage, parentId: string | null): void {
+    if (parentId) {
+      const parent = this.db
+        .prepare('SELECT id FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(conversationId, parentId);
+      if (!parent) {
+        throw new Error(`Parent message ${parentId} does not belong to conversation ${conversationId}`);
+      }
+    }
+    const activeBranch = this.getActiveBranchId(conversationId);
     this.db
       .prepare(
-        'INSERT INTO messages (id, conversation_id, parent_id, role, content) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO messages (id, conversation_id, parent_id, branch_id, role, content) VALUES (?, ?, ?, ?, ?, ?)'
       )
-      .run(msg.id, conversationId, parentId, msg.role, JSON.stringify(msg));
+      .run(msg.id, conversationId, parentId, activeBranch, msg.role, JSON.stringify(msg));
   }
 
   /** 同 parent 下查同内容消息，用于 appendMessages 去重 */
@@ -261,22 +356,98 @@ export class SQLiteMessageStore implements MessageStore {
       .run(messageId, conversationId);
   }
 
+  private updateActiveBranchTip(conversationId: string, tipMessageId: string | null): void {
+    this.db.prepare(
+      `UPDATE conversation_branches SET tip_message_id = ?, updated_at = datetime('now')
+       WHERE id = (SELECT active_branch_id FROM conversations WHERE id = ?)`
+    ).run(tipMessageId, conversationId);
+  }
+
+  private saveSelectedPath(conversationId: string, tipMessageId: string): void {
+    const rows = this.db.prepare(
+      'SELECT id, parent_id FROM messages WHERE conversation_id = ?'
+    ).all(conversationId) as unknown as { id: string; parent_id: string | null }[];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const pairs: Array<{ parentId: string; childId: string }> = [];
+    let cursor: string | null = tipMessageId;
+    while (cursor) {
+      const row = byId.get(cursor);
+      if (!row) break;
+      if (row.parent_id) pairs.push({ parentId: row.parent_id, childId: row.id });
+      cursor = row.parent_id;
+    }
+    const statement = this.db.prepare(
+      `INSERT INTO conversation_branch_selections
+         (conversation_id, parent_message_id, selected_child_id)
+       VALUES (?, ?, ?)
+       ON CONFLICT(conversation_id, parent_message_id)
+       DO UPDATE SET selected_child_id = excluded.selected_child_id, updated_at = datetime('now')`
+    );
+    for (const pair of pairs) statement.run(conversationId, pair.parentId, pair.childId);
+  }
+
+  private getActiveBranchId(conversationId: string): string | null {
+    const row = this.db.prepare('SELECT active_branch_id FROM conversations WHERE id = ?')
+      .get(conversationId) as { active_branch_id: string | null } | undefined;
+    return row?.active_branch_id ?? null;
+  }
+
+  private bumpRevision(conversationId: string): void {
+    this.db
+      .prepare('UPDATE conversations SET revision = revision + 1 WHERE id = ?')
+      .run(conversationId);
+  }
+
+  private getMessagePreview(content: string): string {
+    try {
+      const message = JSON.parse(content) as UIMessage;
+      const text = message.parts
+        ?.filter((part) => part.type === 'text')
+        .map((part) => part.type === 'text' ? part.text : '')
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text) return text.slice(0, 160);
+      const file = message.parts?.find((part) => part.type === 'file') as { filename?: string } | undefined;
+      if (file) return file.filename ? `附件：${file.filename}` : '附件';
+      return message.role === 'assistant' ? '助手消息' : message.role === 'user' ? '用户消息' : '系统消息';
+    } catch {
+      return '无法预览的消息';
+    }
+  }
+
   /** compaction 摘要锚点已不在活跃路径上 → 删除摘要（防"幽灵历史"混入增量摘要） */
   private invalidateSummaryIfAnchorOffPath(conversationId: string): void {
     try {
-      const summary = this.db
-        .prepare(
-          `SELECT anchor_message_id FROM summaries
-             WHERE conversation_id = ? ORDER BY compacted_at DESC LIMIT 1`
-        )
-        .get(conversationId) as { anchor_message_id: string | null } | undefined;
+      const activeBranchId = this.getActiveBranchId(conversationId);
+      const summary = activeBranchId
+        ? this.db
+            .prepare(
+              `SELECT anchor_message_id FROM summaries
+                 WHERE conversation_id = ? AND branch_id = ?
+                 ORDER BY compacted_at DESC LIMIT 1`
+            )
+            .get(conversationId, activeBranchId) as { anchor_message_id: string | null } | undefined
+        : this.db
+            .prepare(
+              `SELECT anchor_message_id FROM summaries
+                 WHERE conversation_id = ? AND branch_id IS NULL
+                 ORDER BY compacted_at DESC LIMIT 1`
+            )
+            .get(conversationId) as { anchor_message_id: string | null } | undefined;
       if (!summary?.anchor_message_id) return;
 
       const activeIds = new Set(
         this.getMessagesByConversation(conversationId).map((m) => m.id)
       );
       if (!activeIds.has(summary.anchor_message_id)) {
-        this.db.prepare('DELETE FROM summaries WHERE conversation_id = ?').run(conversationId);
+        if (activeBranchId) {
+          this.db.prepare('DELETE FROM summaries WHERE conversation_id = ? AND branch_id = ?')
+            .run(conversationId, activeBranchId);
+        } else {
+          this.db.prepare('DELETE FROM summaries WHERE conversation_id = ? AND branch_id IS NULL')
+            .run(conversationId);
+        }
         logger.debug(
           'MessageStore',
           `Invalidated compaction summary for ${conversationId}: anchor ${summary.anchor_message_id} off active path`

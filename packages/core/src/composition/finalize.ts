@@ -29,6 +29,12 @@ export interface FinalizeAgentRunOptions {
   wikiBaseDir?: string
   /** 用户 ID */
   userId?: string
+  /**
+   * Whether this run still owns the active conversation path. Superseded runs
+   * still persist their own cost and release resources, but must not update
+   * title/checkpoint or other active-conversation projections.
+   */
+  commitConversationState?: boolean
   /** 后台 checkpoint 摘要参数（提供时，活跃路径超水位线则在后台生成摘要落库） */
   checkpoint?: {
     modelName: string
@@ -56,12 +62,13 @@ export interface FinalizeAgentRunOptions {
  */
 export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<void> {
   const { dataStore, messages, conversationId, costTracker, mcpRegistry } = opts
+  const commitConversationState = opts.commitConversationState ?? true
 
   // 后台任务
   setImmediate(async () => {
     try {
       // 首次对话生成标题
-      if (opts.isNewConversation) {
+      if (commitConversationState && opts.isNewConversation) {
         generateConversationTitle(messages, opts.model)
           .then(title => {
             dataStore.conversationStore.updateConversationTitle(conversationId, title)
@@ -71,7 +78,7 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
 
       // 后台 checkpoint:活跃路径超水位线时生成摘要 + 锚点落库,
       // 下次加载走 applyCheckpointOnLoad,避免濒死时刻同步摘要(见 checkpoint.ts)
-      if (opts.checkpoint && opts.model) {
+      if (commitConversationState && opts.checkpoint && opts.model) {
         const activeMessages = dataStore.messageStore.getMessagesByConversation(conversationId)
         maybeCheckpointAfterRun(activeMessages, {
           conversationId,

@@ -37,7 +37,14 @@ export async function POST(
 
     const messages = store.messageStore.getMessagesByConversation(conversationId);
     const { branches, headChildId } = store.messageStore.getBranchInfo(conversationId);
-    return NextResponse.json({ success: true, messages, branches, headChildId });
+    const tree = store.messageStore.getConversationTree(conversationId);
+    return NextResponse.json({
+      success: true,
+      messages,
+      branches,
+      headChildId,
+      revision: tree.revision,
+    });
   } catch (error) {
     console.error('[Branch API] POST error:', error);
     return NextResponse.json({ error: 'Failed to switch branch' }, { status: 500 });

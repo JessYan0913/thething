@@ -1,6 +1,13 @@
+import type { CSSProperties, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
-function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
+type SkeletonProps = {
+  children?: ReactNode
+  className?: string
+  style?: CSSProperties
+}
+
+function Skeleton({ className, ...props }: SkeletonProps) {
   return (
     <div
       data-slot="skeleton"

@@ -16,6 +16,7 @@
 
 import { getServerRuntime, getServerContext, getModelConfig } from '@/lib/runtime';
 import { createAgent, finalizeAgentRun } from '@the-thing/core';
+import type { ModelMessage } from 'ai';
 import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 
@@ -54,11 +55,23 @@ export async function POST(request: Request) {
         parts: [{ type: 'text' as const, text: '用户已批准工具操作' }],
       };
       const uiMessagesForSave = [...existingMessages, approvalReplyMsg];
+      store.branchStore.ensureMainBranch(conversationId);
       store.messageStore.appendMessages(conversationId, [approvalReplyMsg]);
+      const activeBranch = store.branchStore.getProjection(conversationId).activeBranchId;
+      const resumedRunId = nanoid();
+      store.conversationRunStore.createRun({
+        id: resumedRunId,
+        conversationId,
+        branchId: activeBranch,
+        anchorMessageId: approvalReplyMsg.id,
+        expectedTipId: approvalReplyMsg.id,
+        model: getModelConfig().modelName ?? null,
+        agentType: 'approval-resume',
+      });
 
       // 3a. 构建恢复用 ModelMessages：挂起消息 + approval-response
-      const resumeModelMessages = [
-        ...(suspended.pausedModelMessages as Array<{ role: string; content: unknown }>),
+      const resumeModelMessages: ModelMessage[] = [
+        ...(suspended.pausedModelMessages as ModelMessage[]),
         {
           role: 'tool',
           content: (suspended.pendingApprovals as Array<{ approvalId: string }>).map(
@@ -68,7 +81,7 @@ export async function POST(request: Request) {
               approved: true,
             }),
           ),
-        },
+        } as ModelMessage,
       ];
 
       // 4a. 创建 Agent
@@ -121,8 +134,8 @@ export async function POST(request: Request) {
         }
       }
 
-      const finishReason = await (streamResult as { finishReason: Promise<string> }).finishReason;
-      const steps = await (streamResult as { steps: Promise<unknown[]> }).steps;
+      const finishReason = await streamResult.finishReason;
+      await streamResult.steps;
 
       // 没有文本输出时使用 finishReason 兜底
       if (!responseText) {
@@ -145,24 +158,33 @@ export async function POST(request: Request) {
       };
 
       const messagesToSave = [...uiMessagesForSave, assistantMsg];
-      store.messageStore.appendMessages(conversationId, [assistantMsg]);
+      const headMoved = store.messageStore.appendMessages(conversationId, [assistantMsg], approvalReplyMsg.id);
+      store.conversationRunStore.finishRun(resumedRunId, {
+        status: headMoved ? 'committed' : 'superseded',
+        resultTipId: headMoved
+          ? store.branchStore.getProjection(conversationId).activeTipId
+          : assistantMsg.id,
+      });
 
       // 7a. 收尾：成本持久化 + 标题生成 + MCP 断开
       store.agentRunStore.completeRun(conversationId);
 
-      await finalizeAgentRun({
-        dataStore: store,
-        messages: messagesToSave,
-        conversationId,
-        costTracker: sessionState.costTracker,
-        mcpRegistry,
-        model,
-        isNewConversation: false,
-        userId: 'web-ui',
-        wikiBaseDir,
-      }).catch((err: unknown) =>
-        console.error('[SuspendedApprove] finalizeAgentRun:', err),
-      );
+      try {
+        await finalizeAgentRun({
+          dataStore: store,
+          messages: messagesToSave,
+          conversationId,
+          costTracker: sessionState.costTracker,
+          mcpRegistry,
+          model,
+          isNewConversation: false,
+          userId: 'web-ui',
+          wikiBaseDir,
+          commitConversationState: headMoved,
+        });
+      } catch (err: unknown) {
+        console.error('[SuspendedApprove] finalizeAgentRun:', err);
+      }
 
       await dispose().catch((err: unknown) =>
         console.error('[SuspendedApprove] dispose:', err),

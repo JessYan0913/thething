@@ -19,6 +19,7 @@ import {
   createAgentUIStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  type ModelMessage,
   type UIMessage,
 } from 'ai';
 import { NextResponse } from 'next/server';
@@ -39,7 +40,15 @@ export async function GET(request: Request) {
     const messages = rt.dataStore.messageStore.getMessagesByConversation(conversationId);
     // 分支元信息：活跃路径上每个多版本位置的兄弟列表 + head 分叉时的前进入口
     const { branches, headChildId } = rt.dataStore.messageStore.getBranchInfo(conversationId);
-    return NextResponse.json({ messages, branches, headChildId });
+    const projection = rt.dataStore.branchStore.getProjection(conversationId);
+    return NextResponse.json({
+      messages,
+      branches,
+      headChildId,
+      revision: projection.revision,
+      activeBranchId: projection.activeBranchId,
+      branchSummaries: projection.branches,
+    });
   } catch (error) {
     console.error('[Chat API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load messages' }, { status: 500 });
@@ -60,12 +69,18 @@ export async function POST(request: Request) {
       systemPrompt?: string;
       approvalMode?: string;
       trigger?: string; // 'submit-message' | 'regenerate-message'（来自 AI SDK transport）
+      branchId?: string;
+      expectedTipId?: string | null;
+      operation?: 'append' | 'regenerate' | 'edit';
     };
 
-    const { message, conversationId, userId: messageUserId, modelName, agentType, enableConnectors, systemPrompt, approvalMode, trigger } = body;
+    const { message, conversationId, userId: messageUserId, modelName, agentType, enableConnectors, systemPrompt, approvalMode, trigger, branchId, expectedTipId, operation } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
+    }
+    if (!message) {
+      return NextResponse.json({ error: 'Missing message' }, { status: 400 });
     }
 
     console.log(`[Chat API] POST start: conversationId=${conversationId} trigger=${trigger ?? 'submit-message'}`);
@@ -108,7 +123,30 @@ export async function POST(request: Request) {
     //   新 id → 普通发送（head 下追加）；
     //   已知 id + 内容未变 → regenerate（head 移回该消息，旧回答成为孤儿分支）；
     //   已知 id + 内容变化 → 编辑重发（同 parent 插入新节点，旧版本保留）。
-    const headMessageId = store.messageStore.commitUserMessage(conversationId, message);
+    const currentBranch = store.branchStore.ensureMainBranch(conversationId);
+    let activeBranchId = branchId ?? currentBranch.id;
+    let headMessageId: string;
+    if (operation === 'edit') {
+      // 编辑：原地修改，不创建分支。走 commitUserMessage 内部编辑路径
+      // （同 id + 不同内容 → 同 parent 下插新节点，head 自动转移）
+      headMessageId = store.messageStore.commitUserMessage(conversationId, message);
+    } else if (branchId && operation === 'append') {
+      const result = store.branchStore.executeCommand(conversationId, { type: 'append', branchId, message, expectedTipId: expectedTipId ?? null });
+      activeBranchId = result.branchId;
+      headMessageId = result.headMessageId!;
+    } else {
+      headMessageId = store.messageStore.commitUserMessage(conversationId, message);
+    }
+    const activeBranch = store.branchStore.getBranch(activeBranchId) ?? currentBranch;
+    store.conversationRunStore.createRun({
+      id: runId,
+      conversationId,
+      branchId: activeBranch.id,
+      anchorMessageId: headMessageId,
+      expectedTipId: headMessageId,
+      model: modelName ?? null,
+      agentType: agentType ?? null,
+    });
 
     // 模型输入基线 = 落库后的活跃路径（截断/编辑已由 head 移动体现）
     const activeMessages = store.messageStore.getMessagesByConversation(conversationId);
@@ -277,6 +315,7 @@ export async function POST(request: Request) {
           .filter((m) => m.role === 'assistant' && m.parts && m.parts.length > 0);
 
         if (newAssistantMessages.length === 0) {
+          store.conversationRunStore.finishRun(runId, { status: 'failed', error: 'No assistant messages produced' });
           console.warn(
             `[Chat API] Stream produced no valid assistant messages, skipping save.\n` +
             `  Conversation: ${conversationId}\n` +
@@ -290,6 +329,13 @@ export async function POST(request: Request) {
         const headMoved = store.messageStore.appendMessages(
           conversationId, newAssistantMessages, headMessageId,
         );
+        const resultTipId = headMoved
+          ? store.branchStore.getProjection(conversationId).activeTipId
+          : newAssistantMessages.at(-1)?.id ?? null;
+        store.conversationRunStore.finishRun(runId, {
+          status: headMoved ? 'committed' : 'superseded',
+          resultTipId,
+        });
         console.log(
           `[Storage] Appended ${newAssistantMessages.length} assistant messages after ${headMessageId} (headMoved=${headMoved})`,
         );
@@ -309,12 +355,17 @@ export async function POST(request: Request) {
           isNewConversation: isFirstMessage,
           userId,
           wikiBaseDir,
+          commitConversationState: headMoved,
           checkpoint: {
             modelName: sessionState.model,
             fallbackModels: sessionState.fallbackModels,
           },
         });
       } catch (err) {
+        store.conversationRunStore.finishRun(runId, {
+          status: abortController.signal.aborted ? 'aborted' : 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
         console.error('[Chat API] onFinish error:', err);
       }
     };
@@ -345,7 +396,7 @@ export async function POST(request: Request) {
                   try {
                     const retryResult = await handleReactiveRetry(
                       streamErr,
-                      finalMessages,
+                      finalMessages as unknown as ModelMessage[],
                       undefined, // 使用默认 compaction config
                       {
                         model: model!,

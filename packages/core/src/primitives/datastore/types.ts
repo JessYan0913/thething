@@ -92,6 +92,9 @@ export interface Conversation {
   contextTotal: number | null;
   /** 模型上下文窗口上限 token 数 */
   contextLimit: number | null;
+  /** Monotonic revision for message-tree/projection changes. */
+  revision: number;
+  activeBranchId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,6 +134,7 @@ export interface StoredSummary {
   preCompactTokenCount: number;
   /** compaction checkpoint 锚点:摘要覆盖到的最后一条消息 id(稳定,不随 order 重排)。可空 */
   anchorMessageId?: string | null;
+  branchId?: string | null;
 }
 
 /**
@@ -198,6 +202,128 @@ export interface ConversationStore {
   updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number }): void;
 }
 
+export interface ConversationTreeNode {
+  id: string;
+  parentId: string | null;
+  role: 'user' | 'assistant' | 'system';
+  preview: string;
+  createdAt: string;
+  childCount: number;
+  isActivePath: boolean;
+}
+
+export interface ConversationTree {
+  revision: number;
+  activeTipId: string | null;
+  nodes: ConversationTreeNode[];
+}
+
+export type ConversationBranchStatus = 'candidate' | 'active' | 'archived';
+
+export interface ConversationBranch {
+  id: string;
+  conversationId: string;
+  parentBranchId: string | null;
+  forkMessageId: string | null;
+  tipMessageId: string | null;
+  name: string | null;
+  status: ConversationBranchStatus;
+  isPinned: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationBranchSummary extends ConversationBranch {
+  preview: string;
+  messageCount: number;
+  isCurrent: boolean;
+}
+
+export type ConversationRunStatus = 'running' | 'committed' | 'superseded' | 'aborted' | 'failed';
+
+export interface ConversationRun {
+  id: string;
+  conversationId: string;
+  branchId: string | null;
+  anchorMessageId: string | null;
+  expectedTipId: string | null;
+  resultTipId: string | null;
+  model: string | null;
+  agentType: string | null;
+  status: ConversationRunStatus;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  updatedAt: string;
+}
+
+export type ConversationCommand =
+  | { type: 'append'; branchId: string; message: UIMessage; expectedTipId: string | null }
+  | { type: 'regenerate'; branchId: string; messageId: string }
+  | { type: 'edit'; branchId: string; messageId: string; replacement: UIMessage }
+  | { type: 'fork'; sourceBranchId: string; fromMessageId: string; name?: string }
+  | { type: 'switch'; branchId: string };
+
+export interface ConversationCommandResult {
+  branchId: string;
+  headMessageId: string | null;
+  revision: number;
+}
+
+export interface ConversationProjection {
+  revision: number;
+  activeBranchId: string | null;
+  activeTipId: string | null;
+  messages: UIMessage[];
+  tree: ConversationTree;
+  branches: ConversationBranchSummary[];
+}
+
+export interface BranchStore {
+  ensureMainBranch(conversationId: string): ConversationBranch;
+  getBranch(branchId: string): ConversationBranch | null;
+  listBranches(conversationId: string, includeArchived?: boolean): ConversationBranch[];
+  createBranch(input: {
+    conversationId: string;
+    parentBranchId: string | null;
+    forkMessageId: string | null;
+    tipMessageId: string | null;
+    name?: string;
+    status?: ConversationBranchStatus;
+    createdBy?: string;
+  }): ConversationBranch;
+  updateBranch(branchId: string, update: {
+    name?: string | null;
+    status?: ConversationBranchStatus;
+    isPinned?: boolean;
+    tipMessageId?: string | null;
+  }): ConversationBranch | null;
+  deleteBranch(branchId: string): boolean;
+  switchBranch(conversationId: string, branchId: string): boolean;
+  getProjection(conversationId: string): ConversationProjection;
+  executeCommand(conversationId: string, command: ConversationCommand): ConversationCommandResult;
+}
+
+export interface ConversationRunStore {
+  createRun(input: {
+    id: string;
+    conversationId: string;
+    branchId?: string | null;
+    anchorMessageId?: string | null;
+    expectedTipId?: string | null;
+    model?: string | null;
+    agentType?: string | null;
+  }): ConversationRun;
+  finishRun(runId: string, input: {
+    status: Exclude<ConversationRunStatus, 'running'>;
+    resultTipId?: string | null;
+    error?: string | null;
+  }): void;
+  getRun(runId: string): ConversationRun | null;
+  listRuns(conversationId: string, branchId?: string): ConversationRun[];
+}
+
 /**
  * Message storage interface
  */
@@ -208,6 +334,13 @@ export interface MessageStore {
    * Messages on abandoned branches (regenerate/edit) are not returned.
    */
   getMessagesByConversation(conversationId: string): UIMessage[];
+
+  /**
+   * Read the full immutable message tree as a frontend-safe projection.
+   * Nodes are returned in insertion order; active-path membership is resolved
+   * against the current head in the same read transaction.
+   */
+  getConversationTree(conversationId: string): ConversationTree;
 
   /**
    * Commit a user message, handling all three send semantics by id/content:
@@ -270,7 +403,8 @@ export interface SummaryStore {
     summary: string,
     lastMessageOrder: number,
     preCompactTokenCount: number,
-    anchorMessageId?: string | null
+    anchorMessageId?: string | null,
+    branchId?: string | null
   ): StoredSummary;
 
   /**
@@ -281,7 +415,7 @@ export interface SummaryStore {
   /**
    * Get the latest summary for a conversation
    */
-  getSummaryByConversation(conversationId: string): StoredSummary | null;
+  getSummaryByConversation(conversationId: string, branchId?: string | null): StoredSummary | null;
 
   /**
    * Delete all summaries for a conversation
@@ -382,6 +516,12 @@ export interface DataStore {
 
   /** Project storage */
   projectStore: ProjectStore;
+
+  /** First-class conversation branches and projections */
+  branchStore: BranchStore;
+
+  /** Immutable conversation run history */
+  conversationRunStore: ConversationRunStore;
 
   /** Agent run checkpoint storage */
   agentRunStore: AgentRunStore;
@@ -707,6 +847,8 @@ export interface ConversationRow {
   context_usage: number | null;
   context_total: number | null;
   context_limit: number | null;
+  revision: number;
+  active_branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -739,6 +881,7 @@ export interface SummaryRow {
   last_message_order: number;
   pre_compact_token_count: number;
   anchor_message_id: string | null;
+  branch_id: string | null;
 }
 
 export interface CostRow {

@@ -1,5 +1,4 @@
 import type { NextConfig } from 'next';
-import path from 'path';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -19,8 +18,8 @@ const nextConfig: NextConfig = {
           ...(Array.isArray(config.watchOptions?.ignored) ? config.watchOptions.ignored : []),
           '**/node_modules/**',
           '**/.git/**',
-          // 排除用户 memory 目录（wiki 写入不触发 Fast Refresh）
-          path.join(process.env.HOME || '~', '.thething', 'memory', '**'),
+          '**/.thething/memory/**',
+          '**/.workbuddy/memory/**',
         ],
       };
     }

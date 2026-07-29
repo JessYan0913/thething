@@ -126,6 +126,14 @@ export type {
   SQLiteDataStoreConfig,
   Project,
   ProjectStore,
+  BranchStore,
+  ConversationRunStore,
+  ConversationBranch,
+  ConversationBranchSummary,
+  ConversationRun,
+  ConversationCommand,
+  ConversationCommandResult,
+  ConversationProjection,
 } from './primitives/datastore/types';
 
 // Model
