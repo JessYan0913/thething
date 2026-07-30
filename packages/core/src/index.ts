@@ -79,6 +79,7 @@ export type {
 } from './modules/agent/types';
 export { type ConnectorRegistry } from './modules/connector';
 export { agentStreamOnError, REDACTED_ERROR_MESSAGE } from './modules/agent/stream-error';
+export { sanitizeToolErrorInputs } from './modules/agent/sanitize-messages';
 
 // ============================================================
 // 新的配置系统（推荐使用）

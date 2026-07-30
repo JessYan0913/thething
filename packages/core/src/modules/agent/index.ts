@@ -44,6 +44,9 @@ export {
   GENERAL_AGENT,
 } from './built-in'
 
+// 消息修复
+export { sanitizeToolErrorInputs } from './sanitize-messages'
+
 // 事件
 export { EventBroadcaster } from './event-broadcaster'
 

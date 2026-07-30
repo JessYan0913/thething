@@ -63,8 +63,8 @@ export function abortChat(chatId: string): boolean {
  */
 export function getStreamManager() {
   if (!streamContext) {
-    // 运行时数据库路径（留在 .thething/ 下，非协议配置）
-    const runtimeDataBase = path.join(os.homedir(), '.thething');
+    // 运行时数据库路径（统一放在 data/ 下）
+    const runtimeDataBase = path.join(os.homedir(), '.thething', 'data');
 
     // 创建内存事件发射器
     const emitter = new EventEmitter();

@@ -49,7 +49,7 @@ import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-comm
 import { parseCommand } from '@/lib/command-parser';
 import { cn } from '@/lib/utils';
 
-import { ConversationRoutePanel } from '@/components/conversation-route-panel';
+import { BranchAction, ConversationRoutePanel } from '@/components/conversation-route-panel';
 import type {
   ConversationBranchSummary,
   ConversationTree,
@@ -1414,7 +1414,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   const handleBranchManage = useCallback(async (
     branch: ConversationBranchSummary,
-    action: 'pin' | 'archive' | 'delete',
+    action: BranchAction,
   ) => {
     if (!conversationId || branchSwitching) return;
     let method = 'PATCH';
@@ -1423,6 +1423,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       body = { isPinned: !branch.isPinned };
     } else if (action === 'archive') {
       body = { status: branch.status === 'archived' ? 'active' : 'archived' };
+    } else if (action === 'rename') {
+      return;
     } else {
       if (!window.confirm(`确定删除路线“${branch.name || '未命名路线'}”吗？只有没有运行记录、摘要和子路线的路线可以删除；其他路线请归档。`)) return;
       method = 'DELETE';
@@ -1577,7 +1579,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         </PromptInput>
       </div>
       {/* 对话路线按钮 — portal 到 header 区域 */}
-      {isInitialLoadDone && conversationTree.nodes.length > 0 && typeof document !== 'undefined' && createPortal(
+      {isInitialLoadDone && conversationTree.nodes.length > 0 && typeof document !== 'undefined' ? createPortal(
         <Button
           type="button"
           size="sm"
@@ -1598,7 +1600,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           </span>
         </Button>,
         document.getElementById('branch-panel-toggle')!,
-      )}
+      ) : null}
     </div>
   )
 

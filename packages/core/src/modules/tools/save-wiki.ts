@@ -5,48 +5,56 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { ensureWikiDirExists } from '../wiki/wiki-paths'
-import { writePage, updatePage, mergePages, replacePage, rebuildIndex, appendLog, findFilenameByName, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
+import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, findFilenameByName, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
 import { pageNameToFilename } from '../wiki/wiki-paths'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from '../wiki/wiki-config'
+import { wikiActionSchema } from '../wiki/wiki-prompt'
 import { logger } from '../../primitives/logger'
 import fs from 'fs/promises'
 import path from 'path'
 
-// ============================================================
-// Schema
-// ============================================================
+const PROCEDURAL_CONTENT_PATTERNS = [
+  /^#{1,6}\s*(安装|配置|使用方法|操作步骤|运行方式|快速开始)/im,
+  /(?:^|\n)\s*1[.、]\s*(安装|运行|执行|打开|配置|克隆|下载)/i,
+  /(?:npm|pnpm|yarn|pip)\s+(?:install|add)\b/i,
+  /git\s+clone\b/i,
+]
 
-const wikiActionSchema = z.object({
-  action: z
-    .enum(['create', 'update', 'merge', 'replace'])
-    .describe('操作类型: create=新知识, update=增强已有, merge=合并碎片, replace=替代旧知识'),
-  mode: z
-    .enum(['replace', 'append'])
-    .optional()
-    .describe('update 操作的模式: replace=替换旧内容(默认), append=追加到旧内容'),
-  category: z
-    .enum(['user', 'agent', 'project', 'domain', 'entity'])
-    .describe('知识分类: user=用户相关, agent=Agent规则, project=项目知识, domain=领域知识, entity=实体知识'),
-  name: z
-    .string()
-    .max(40)
-    .describe('页面名称（简短描述性）'),
-  description: z
-    .string()
-    .max(50)
-    .describe('一行摘要（用于索引，不是 content 复述）'),
-  content: z
-    .string()
-    .describe('编译后的知识（AI 未来需要知道的信息，可包含 [[wiki-link]]）'),
-  target: z
-    .string()
-    .optional()
-    .describe('目标文件名（可选，update/replace 时如果不提供，会自动根据 name 查找）'),
-  mergeTargets: z
-    .array(z.string())
-    .optional()
-    .describe('合并目标文件名列表（merge 时必填）'),
-})
+export function detectProceduralWikiContent(content: string): string[] {
+  if (!content) return []
+  const matched = PROCEDURAL_CONTENT_PATTERNS.filter(pattern => pattern.test(content)).length
+  return matched >= 2
+    ? ['内容包含多个安装、配置或操作手册特征；请确认主体是概念知识，命令仅作为解释性证据。']
+    : []
+}
+
+const INTERNAL_WIKI_PAGES = new Set(['index', 'log'])
+
+function normalizeWikiPageIdentifier(value: string): string {
+  return path.basename(value).replace(/\.md$/i, '').toLowerCase()
+}
+
+export function validateWikiActionBoundary(action: z.infer<typeof wikiActionSchema>): string | null {
+  const referencedPages = [action.name, action.target, ...(action.mergeTargets ?? [])]
+    .filter((value): value is string => Boolean(value))
+
+  if (referencedPages.some(value => INTERNAL_WIKI_PAGES.has(normalizeWikiPageIdentifier(value)))) {
+    return 'index.md and log.md are maintained internally and cannot be modified by save_wiki'
+  }
+
+  if (action.action === 'merge' && action.target && action.mergeTargets) {
+    const target = normalizeWikiPageIdentifier(action.target)
+    const sources = action.mergeTargets.map(normalizeWikiPageIdentifier)
+    if (sources.includes(target)) {
+      return 'merge target cannot also appear in mergeTargets'
+    }
+    if (new Set(sources).size !== sources.length) {
+      return 'mergeTargets must not contain duplicate pages'
+    }
+  }
+
+  return null
+}
 
 // ============================================================
 // Tool Config
@@ -65,25 +73,19 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
   const wikiConfig = config.config || DEFAULT_WIKI_CONFIG
 
   return tool({
-    description: `保存通用知识到你的长期知识库（Wiki）。Wiki 是持久化的事实、规则、决策和领域知识的存储。
+    description: `保存经过筛选的概念性知识到长期知识库（Wiki）。先完成当前任务，再决定是否需要调用本工具。
 
-⚠️ 重要边界 — Wiki 不是配置注册表：
-- 技能（skill）有自己的注册机制（~/.thething/skills/<name>/SKILL.md），不要保存到 Wiki
-- MCP 配置、connector 配置各有自己的注册位置，也不属于 Wiki
-- Wiki 存储的是"关于某个主题的知识"，不是"如何配置某个工具的说明"
-- 例如：保存"抖音视频下载使用 ttwid cookie 鉴权" → 可以存 Wiki
-- 例如：保存"douyin-video-downloader 的使用方法" → 不要存 Wiki（skill 自带 SKILL.md）
+仅保存以下知识类型：概念、原理、架构、术语关系、稳定机制。内容还应具备稳定性、新颖性、可信度和通用性。
 
-何时保存：
-- 搜索外部来源后，将整理的事实和知识保存到 Wiki
-- 有价值的分析、研究发现或决策
+不要仅因为搜索资料、阅读 GitHub 仓库、分析代码或完成一次操作就保存。以下内容不属于 Wiki：
+- Skill 的触发条件、执行步骤、工具调用、使用说明
+- MCP 或 Connector 配置
+- 安装步骤、操作手册、任务日志、临时研究摘录
+- 已存在知识的重复表述
 
-何时不保存：
-- 技能、MCP、connector 的配置或使用说明（它们有自己的存储位置）
-- 简单的事实查询
-- 已存在于知识库中的内容
+用户要求创建或封装 Skill 时，必须实际创建可加载的 SKILL.md；调用本工具不能完成该任务。命令和代码可以作为概念说明的证据，但不能成为页面主体。
 
-index.md 和 log.md 会自动维护。`,
+每个操作必须通过 knowledgeType 明确所保存的概念知识类型。index.md 和 log.md 会自动维护。`,
     inputSchema: z.object({
       actions: z
         .array(wikiActionSchema)
@@ -109,6 +111,18 @@ index.md 和 log.md 会自动维护。`,
 
       for (const action of input.actions.slice(0, 5)) {
         try {
+          const boundaryError = validateWikiActionBoundary(action)
+          if (boundaryError) {
+            logger.warn('SaveWiki', `Rejected ${action.action}("${action.name}"): ${boundaryError}`)
+            results.push({
+              name: action.name,
+              action: action.action,
+              success: false,
+              error: boundaryError,
+            })
+            continue
+          }
+
           const baseData: WikiPageData = {
             name: action.name,
             description: action.description,
@@ -117,7 +131,7 @@ index.md 和 log.md 会自动维护。`,
             updated: now,
           }
 
-          const warnings: string[] = []
+          const warnings = detectProceduralWikiContent(action.content)
 
           // 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在
           if (action.content) {
@@ -207,6 +221,21 @@ index.md 和 log.md 会自动维护。`,
                 results.push({ name: action.name, action: action.action, success: false, error: 'replace requires target' })
               }
               break
+
+            case 'invalidate': {
+              let target = action.target
+              if (!target) {
+                target = await findFilenameByName(wikiDir, action.name) ?? undefined
+              }
+              if (target) {
+                await invalidatePage(wikiDir, target, action.content)
+                logDetails.push(`invalidate: [[${action.name}]] — ${action.description}`)
+                results.push({ name: action.name, action: action.action, success: true })
+              } else {
+                results.push({ name: action.name, action: action.action, success: false, error: `Page "${action.name}" not found` })
+              }
+              break
+            }
           }
         } catch (err) {
           logger.error('SaveWiki', `Failed to save "${action.name}": ${err}`)

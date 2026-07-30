@@ -46,7 +46,7 @@ export type ConversationTree = {
   nodes: ConversationTreeNode[];
 };
 
-type BranchAction = 'rename' | 'pin' | 'archive' | 'delete';
+export type BranchAction = 'rename' | 'pin' | 'archive' | 'delete';
 
 type RouteRow = {
   node: ConversationTreeNode;

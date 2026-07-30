@@ -1,4 +1,3 @@
-import path from 'path'
 import { nanoid } from 'nanoid';
 import { getServerRuntime, getServerContext, getProjectContext, getModelConfig } from '@/lib/runtime';
 import { agentStreamOnError } from '@/lib/agent-stream-on-error';
@@ -6,12 +5,12 @@ import { convertFileToText } from '@/lib/file-convert';
 import { getStreamManager, registerAbortController, unregisterAbortController, abortChat } from '@/lib/stream-manager';
 import {
   createAgent,
-  generateConversationTitle,
   finalizeAgentRun,
   handleReactiveRetry,
   isContextLengthError,
   applyCheckpointOnLoad,
   fingerprintMessage,
+  sanitizeToolErrorInputs,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -155,7 +154,10 @@ export async function POST(request: Request) {
     // 作为 newerMessages 保留,避免"锚点之后无新消息 -> 返回全量"的 guard 误触发
     // 导致 checkpoint 不生效、旧大输出(如 read-loop 污染)原样进上下文。
     const checkpointResult = applyCheckpointOnLoad(activeMessages, conversationId, store);
-    const messages: UIMessage[] = checkpointResult.messages;
+    // Fix error-state tool parts whose rawInput (string) would be
+    // double-serialized by the OpenAI-compatible provider, causing
+    // HTTP 400 on providers like Ark / deepseek.
+    const messages: UIMessage[] = sanitizeToolErrorInputs(checkpointResult.messages);
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
     const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);

@@ -112,9 +112,22 @@ douyin-video-downloader --link "分享链接" --action download --output ./video
 4. Tell the user the video has been downloaded and provide the file path.
 ```
 
-## 5. Finalize and confirm
+## 5. Validate the deliverable (MANDATORY — do not report completion before this passes)
 
-Delete any example files or directories that are not needed (e.g., delete `scripts/` if the skill has no scripts).
+Run all of these checks after writing the Skill:
+
+1. Confirm `~/.thething/skills/<name>/SKILL.md` exists.
+2. Read the final file and verify its frontmatter passes these requirements:
+   - `name` and `description` are present and valid.
+   - `name` exactly matches the directory name.
+   - No required value is empty.
+3. Search the Skill directory for `TODO` placeholders. Remove every generated placeholder before completion.
+4. Check every local file referenced by `SKILL.md`; each referenced `scripts/`, `references/`, or `assets/` path must exist.
+5. Delete generated example files and empty resource directories that the final Skill does not use.
+6. Invoke the new Skill by its exact name with the skill tool. This forces a reload after the pre-task Skill snapshot and proves the loader can discover it. Treat an unknown-skill result as a failed creation and fix the Skill before reporting completion.
+7. Confirm the loaded body contains executable instructions rather than a human-facing overview.
+
+Saving a Wiki page, writing only a script, or writing a `SKILL.md` that the Skill loader cannot discover does not complete a Skill creation task.
 
 TheThing may parse optional compatibility extensions such as `model`, `effort`, `context`, `agent`, `background`, `allowedTools`, and `paths`. Treat these as TheThing or Claude Code compatibility extensions, not as fields required by the portable Agent Skills standard. Add them only when the requested behavior needs them.
 
@@ -124,11 +137,12 @@ Runtime semantics:
 - `context: fork` runs the Skill body in an isolated sub-agent without parent conversation history. Use `agent` to select its type.
 - Fork execution is currently synchronous and requires `background: false`; persistent background fork runs are not available yet.
 
-## 6. Confirm
+## 6. Report the verified result
 
-Report:
+Report only after validation succeeds:
 
 - The absolute path of the created `SKILL.md`.
 - How to invoke it with `/<name>`.
 - Any bundled `scripts/`, `references/`, or `assets/` created.
+- Confirmation that the Skill was reloaded and discovered by exact name.
 - Any non-standard compatibility extensions intentionally added.

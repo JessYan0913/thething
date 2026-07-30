@@ -26,6 +26,7 @@ import type { DataStore } from '../../primitives/datastore/types'
 import { checkPermissionRules } from '../../modules/permissions/rules'
 import { buildApprovalAskMessageForRequests } from './approval-handler'
 import { logger } from '../../primitives/logger'
+import { sanitizeToolErrorInputs } from '../../modules/agent/sanitize-messages'
 import {
   type SuspendedAgentState,
   getSuspendedState,
@@ -538,7 +539,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     )
 
     const initialModelMessages = await convertToModelMessages(
-      sanitizeMessagesForConversion(adjustedMessages ?? uiMessagesForSave)
+      sanitizeMessagesForConversion(sanitizeToolErrorInputs(adjustedMessages ?? uiMessagesForSave))
     )
 
     return this.runAgentLoop(

@@ -35,6 +35,7 @@ export {
 export {
   LINT_PROMPT,
   WIKI_GUIDELINES_PROMPT,
+  wikiKnowledgeTypeSchema,
   wikiActionSchema,
   lintIssueSchema,
   lintOutputSchema,

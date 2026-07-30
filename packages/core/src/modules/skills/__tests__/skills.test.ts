@@ -186,6 +186,9 @@ describe('skills-types', () => {
         source: 'builtin',
         body: match![2].replace(/^\n/, '').replace(/\s+$/, ''),
       })]);
+      expect(match![2]).toContain('Validate the deliverable')
+      expect(match![2]).toContain('Invoke the new Skill by its exact name with the skill tool')
+      expect(match![2]).toContain('does not complete a Skill creation task')
     });
   });
 

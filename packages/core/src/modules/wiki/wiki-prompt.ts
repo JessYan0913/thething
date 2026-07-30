@@ -9,6 +9,10 @@ import { z } from 'zod'
 // Zod Schema - LLM 输出结构
 // ============================================================
 
+export const wikiKnowledgeTypeSchema = z
+  .enum(['concept', 'principle', 'architecture', 'terminology', 'mechanism'])
+  .describe('概念知识类型: concept=概念, principle=原理, architecture=架构, terminology=术语关系, mechanism=稳定机制')
+
 export const wikiActionSchema = z.object({
   action: z
     .enum(['create', 'update', 'merge', 'replace', 'invalidate'])
@@ -20,6 +24,7 @@ export const wikiActionSchema = z.object({
   category: z
     .enum(['user', 'agent', 'project', 'domain', 'entity'])
     .describe('知识分类: user=用户相关, agent=Agent规则, project=项目知识, domain=领域知识, entity=实体知识'),
+  knowledgeType: wikiKnowledgeTypeSchema,
   name: z
     .string()
     .max(40)
@@ -30,7 +35,7 @@ export const wikiActionSchema = z.object({
     .describe('一行摘要（用于索引，不是 content 复述）'),
   content: z
     .string()
-    .describe('编译后的知识（AI 未来需要知道的信息，可包含 [[wiki-link]]）'),
+    .describe('提炼后的概念知识（可包含 [[wiki-link]]；不要写任务日志、配置步骤或操作手册）'),
   target: z
     .string()
     .optional()
@@ -124,32 +129,35 @@ export const LINT_PROMPT = `你是一个知识库健康检查员。检查以下�
 
 export const WIKI_GUIDELINES_PROMPT = `## 知识库（你的长期记忆）
 
-你有一个持久化的知识库（Wiki）。这是你跨会话记忆的唯一机制。不保存的知识会永远丢失。
+你有一个持久化的知识库（Wiki），用于跨会话积累概念性知识。
 
-**核心理念：**
-Wiki 是持久的、复合的知识工件。你增量地构建和维护它——结构化的、相互链接的 markdown 文件。
+**核心原则：当前任务优先。** 先完成用户要求的主要交付，不要让知识沉淀替代、偏离或拖延当前任务。完成任务后，可以做一次受控反思，判断是否产生值得长期保留的新知识。
 
 ### 三个核心操作
 
-1. **Ingest**：获取来源，整理要点，保存到知识库
+1. **Ingest**：提炼高价值概念知识并保存
 2. **Query**：基于知识库回答问题
 3. **Lint**：检查知识库的一致性和完整性
 
-### 何时保存
+### 自主学习判断
 
-搜索外部来源后，将整理的知识保存到 Wiki。
-有价值的综合分析或研究发现，也应该保存。
+仅在内容同时具备以下特征时，自主创建或更新 Wiki：
+- **概念性**：属于概念、原理、架构、术语关系或稳定机制
+- **稳定性**：不是临时状态、一次性操作或短期易失效信息
+- **新颖性**：对已有 Wiki 有实质新增、修正或关联价值
+- **可信度**：有代码、官方资料或可靠来源支持
+- **通用性**：不只服务于当前一次任务
 
-⚠️ 重要边界 — 以下内容不属于 Wiki：
-- 技能（skill）配置和使用说明 — 技能有自己的 SKILL.md，存放在 ~/.thething/skills/
-- MCP 配置 — 有自己的注册位置
-- Connector 配置 — 有自己的注册位置
+不要仅因为进行了搜索、阅读 GitHub 仓库、分析代码或完成一次操作就保存 Wiki。先查询已有知识；重复内容不保存，有实质变化时优先更新已有页面。
 
-不需要保存：
-- 简单的事实查询
-- 已存在于知识库中的内容
+### Wiki 与 Skill 的边界
 
-**注意：** index.md 和 log.md 会自动维护，你只需创建/更新页面。
+- Wiki 回答“是什么、为什么、如何关联”，保存概念性知识。
+- Skill 回答“收到某类任务后怎么做”，保存触发条件、执行步骤、工具调用、异常处理和验收标准。
+- 用户要求创建或封装 Skill 时，必须产出可被加载器识别的 SKILL.md；保存 Wiki 只能作为补充，不能视为完成该任务。
+- 技能配置和使用说明、MCP 配置、Connector 配置、安装步骤、操作手册、任务日志和临时研究摘录不属于 Wiki。
+
+**注意：** index.md 和 log.md 会自动维护，你只需创建或更新页面。
 
 ### 交叉引用
 
@@ -159,9 +167,8 @@ Wiki 是持久的、复合的知识工件。你增量地构建和维护它——
 
 ### Content 原则
 
-写的是"AI 未来需要知道什么"，不是"用户说了什么"。
-保留事实、规则和决策，而非原始对话。
+写提炼后的概念知识，不写原始对话或执行过程。代码和命令只应作为解释概念的证据或示例，不能让页面退化为操作手册。
 
 ### 使用知识
 
-当知识库中有相关信息时，直接使用，不要犹豫。不要说"根据记忆"——直接陈述事实。`
+当知识库中有相关信息时，直接使用，不要说“根据记忆”。`

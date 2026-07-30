@@ -8,6 +8,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, defaultSettingsMiddleware } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ModelProviderConfig, ModelProviderFn } from './provider-types';
+import { fixDoubleSerializedArguments } from '../../modules/agent/sanitize-messages';
 
 
 export type { ModelProviderConfig, ModelProviderFn };
@@ -23,6 +24,9 @@ export function createModelProvider(config: ModelProviderConfig): ModelProviderF
     apiKey: config.apiKey,
     baseURL: config.baseURL,
     includeUsage: config.includeUsage ?? true,
+    // Last-mile guard: unwrap double-serialized tool_call arguments
+    // that arise from error-state tool parts (rawInput fallback).
+    transformRequestBody: fixDoubleSerializedArguments,
   }) as any;
 }
 

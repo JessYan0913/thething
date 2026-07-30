@@ -73,14 +73,12 @@ function ThemeSelect() {
   ]
   const current = themeOptions.find((o) => o.value === theme) ?? themeOptions[2]
 
-  // Avoid hydration mismatch: server and first client render must match
+  // Keep the server and first client render identical. next-themes only knows
+  // the persisted theme after mounting, so the placeholder must stay static.
   if (!mounted) {
     return (
       <div className="relative">
-        <button className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm min-w-[110px] opacity-0">
-          <span>{current.emoji}</span>
-          <span>{current.label}</span>
-        </button>
+        <div aria-hidden="true" className="h-8 min-w-[110px]" />
       </div>
     )
   }
