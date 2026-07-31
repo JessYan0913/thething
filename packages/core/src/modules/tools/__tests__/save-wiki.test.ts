@@ -192,6 +192,39 @@ describe('save_wiki integrity boundaries', () => {
     expect(duplicate.results[0].error).toContain('already exists')
   })
 
+  it('does not warn on cross references to pages created in the same batch', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+    await execute(tool, { actions: [{
+      action: 'create', category: 'domain', name: 'Existing Page', description: 'Existing', content: 'Existing',
+    }] })
+
+    const result = await execute(tool, {
+      actions: [
+        {
+          action: 'create',
+          category: 'domain',
+          name: 'New Architecture',
+          description: 'New page referenced by a later action',
+          content: 'Architecture overview.',
+        },
+        {
+          action: 'update',
+          category: 'domain',
+          name: 'Existing Page',
+          target: 'existing-page.md',
+          description: 'References the page created in this batch',
+          content: 'See [[New Architecture]] and the missing [[Nonexistent Page]].',
+        },
+      ],
+    })
+
+    expect(result.saved).toBe(2)
+    const updateWarnings = result.results[1].warnings ?? []
+    expect(updateWarnings.join('\n')).not.toContain('New Architecture')
+    expect(updateWarnings.join('\n')).toContain('Nonexistent Page')
+  })
+
   it('captures deleted merge sources before removing their current pages', async () => {
     const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
     const tool = createSaveWikiTool({ wikiBaseDir })

@@ -91,6 +91,14 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
       logger.debug('SaveWiki', `Received ${input.actions.length} actions: ${input.actions.map(a => `${a.action}(${a.name})`).join(', ')}`)
 
+      // 本批次将创建的页面。同批 Action 的交叉引用校验读取的 index 要到整批
+      // 结束后才重建，引用同批新页面时不应误报缺失。
+      const prospectivePages = new Set(
+        input.actions
+          .filter(a => a.action === 'create')
+          .map(a => pageNameToFilename(a.name)),
+      )
+
       for (const action of input.actions.slice(0, 5)) {
         try {
           const boundaryError = validateWikiActionBoundary(action)
@@ -118,12 +126,14 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
           const warnings: string[] = []
 
-          // 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在
+          // 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在（含本批次将创建的页面）
           if (action.content) {
             const crossRefResult = await validateCrossReferences(wikiDir, action.content)
-            if (!crossRefResult.valid) {
-              warnings.push(`交叉引用缺失: ${crossRefResult.missingPages.join(', ')} 不存在`)
-              logger.warn('SaveWiki', `Cross reference missing: ${crossRefResult.missingPages.join(', ')}`)
+            const missingPages = crossRefResult.missingPages
+              .filter(name => !prospectivePages.has(pageNameToFilename(name)))
+            if (missingPages.length > 0) {
+              warnings.push(`交叉引用缺失: ${missingPages.join(', ')} 不存在`)
+              logger.warn('SaveWiki', `Cross reference missing: ${missingPages.join(', ')}`)
             }
           }
 
