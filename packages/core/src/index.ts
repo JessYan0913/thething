@@ -337,11 +337,29 @@ export {
   replacePage,
   rebuildIndex,
   readIndex,
+  appendLog,
   pageNameToFilename,
   filenameToPageName,
   type WikiPageData,
   type WikiPage,
   type IndexEntry,
+  // Wiki mutation lock（所有写入必须经过，与 Agent 工具共享同一队列）
+  withWikiMutationLock,
+  // Wiki revisions
+  capturePageRevision,
+  initializeWikiRevisionBaselines,
+  listPageRevisions,
+  readPageRevision,
+  diffPageRevisions,
+  restorePageRevision,
+  type WikiRevisionRecord,
+  type WikiRevisionSnapshot,
+  type WikiRevisionDiff,
+  // Wiki sources & relations
+  listWikiSources,
+  listPagesForSource,
+  rebuildSourcePageIndex,
+  type WikiSourceRecord,
 } from './modules/wiki';
 
 // Title generation

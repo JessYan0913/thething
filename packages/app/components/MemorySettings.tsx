@@ -4,7 +4,8 @@ import dynamic from "next/dynamic"
 import {
   SearchIcon, TrashIcon, PlusIcon, RefreshCwIcon, BrainIcon,
   UserIcon, BotIcon, FolderIcon, GlobeIcon, BoxIcon,
-  MoreVerticalIcon, NetworkIcon, ListIcon,
+  MoreVerticalIcon, NetworkIcon, ListIcon, HeartPulseIcon,
+  ScrollTextIcon, XIcon, Loader2Icon,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -157,6 +158,24 @@ export default function MemorySettings() {
   const [confirmDelete, setConfirmDelete] = useState<WikiPageView | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "graph">("list")
 
+  // Lint 健康检查
+  const [lintRunning, setLintRunning] = useState(false)
+  const [lintReport, setLintReport] = useState<{
+    checked: number
+    fixed: number
+    issues: Array<{ type: string; severity: string; pages: string[]; description: string; suggestion?: string }>
+  } | null>(null)
+
+  // 操作日志时间线
+  const [showLog, setShowLog] = useState(false)
+  const [logLoading, setLogLoading] = useState(false)
+  const [logEntries, setLogEntries] = useState<Array<{
+    timestamp: string
+    operation: string
+    description: string
+    details: string[]
+  }>>([])
+
   // 创建对话框
   const [dialogOpen, setDialogOpen] = useState(false)
   const [formName, setFormName] = useState("")
@@ -169,7 +188,7 @@ export default function MemorySettings() {
   const loadPages = useCallback(async () => {
     setIsLoading(true)
     try {
-      const res = await fetch("/api/memory")
+      const res = await fetch("/api/wiki")
       if (res.ok) {
         const data = await res.json()
         setPages(data.pages ?? [])
@@ -207,7 +226,7 @@ export default function MemorySettings() {
   ], [pages])
 
   const handleDelete = useCallback(async (filename: string) => {
-    const res = await fetch(`/api/memory?filename=${encodeURIComponent(filename)}`, { method: "DELETE" })
+    const res = await fetch(`/api/wiki?filename=${encodeURIComponent(filename)}`, { method: "DELETE" })
     if (res.ok) {
       setPages((prev) => prev.filter((e) => e.filename !== filename))
     }
@@ -231,7 +250,7 @@ export default function MemorySettings() {
     setFormSaving(true)
     setFormError(null)
     try {
-      const res = await fetch("/api/memory", {
+      const res = await fetch("/api/wiki", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -254,6 +273,41 @@ export default function MemorySettings() {
       setFormSaving(false)
     }
   }, [formName, formDesc, formCategory, formContent, loadPages])
+
+  const handleLint = useCallback(async () => {
+    setLintRunning(true)
+    try {
+      const res = await fetch("/api/wiki/lint", { method: "POST" })
+      if (res.ok) {
+        const data = await res.json()
+        setLintReport(data.report ?? null)
+        // 自动修复可能改动了索引，刷新列表
+        await loadPages()
+      }
+    } finally {
+      setLintRunning(false)
+    }
+  }, [loadPages])
+
+  const handleToggleLog = useCallback(async () => {
+    if (showLog) {
+      setShowLog(false)
+      return
+    }
+    setShowLog(true)
+    setLogLoading(true)
+    try {
+      const res = await fetch("/api/wiki/log?limit=50")
+      if (res.ok) {
+        const data = await res.json()
+        setLogEntries(data.entries ?? [])
+      }
+    } catch {
+      setLogEntries([])
+    } finally {
+      setLogLoading(false)
+    }
+  }, [showLog])
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -312,6 +366,20 @@ export default function MemorySettings() {
             <NetworkIcon className="size-4" />
           </Button>
         </div>
+        <Button variant="ghost" size="sm" onClick={handleLint} disabled={lintRunning} title="健康检查">
+          {lintRunning
+            ? <Loader2Icon className="size-4 animate-spin" />
+            : <HeartPulseIcon className="size-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleToggleLog}
+          title="操作日志"
+          className={cn(showLog && "bg-accent")}
+        >
+          <ScrollTextIcon className="size-4" />
+        </Button>
         <Button variant="ghost" size="sm" onClick={loadPages} disabled={isLoading}>
           <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
@@ -319,6 +387,73 @@ export default function MemorySettings() {
           <PlusIcon className="size-4 mr-1" />新建
         </Button>
       </div>
+
+      {/* Lint report banner */}
+      {lintReport && (
+        <div className="shrink-0 px-6 py-2 border-b bg-muted/20 flex items-start gap-3">
+          <div className="flex-1 min-w-0 text-xs space-y-1">
+            <p className="text-muted-foreground">
+              健康检查完成：检查 {lintReport.checked} 个页面，
+              自动修复 {lintReport.fixed} 项，
+              {lintReport.issues.length > 0 ? `发现 ${lintReport.issues.length} 个建议` : "没有发现问题"}
+            </p>
+            {lintReport.issues.slice(0, 5).map((issue, i) => (
+              <p key={i} className="text-muted-foreground/80 truncate">
+                <span className={cn(
+                  "inline-block px-1 rounded text-[10px] mr-1.5",
+                  issue.severity === "high" ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                    : issue.severity === "medium" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-muted text-muted-foreground",
+                )}>{issue.type}</span>
+                {issue.description}
+              </p>
+            ))}
+            {lintReport.issues.length > 5 && (
+              <p className="text-muted-foreground/60">… 另有 {lintReport.issues.length - 5} 个建议</p>
+            )}
+          </div>
+          <Button variant="ghost" size="icon" className="size-6 shrink-0" onClick={() => setLintReport(null)}>
+            <XIcon className="size-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Log timeline panel */}
+      {showLog && (
+        <div className="shrink-0 border-b bg-muted/10 max-h-64 overflow-y-auto px-6 py-3">
+          {logLoading ? (
+            <div className="flex items-center text-muted-foreground text-xs py-2">
+              <Loader2Icon className="size-3.5 animate-spin mr-2" />
+              加载日志...
+            </div>
+          ) : logEntries.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">还没有操作日志。</p>
+          ) : (
+            <div className="space-y-2">
+              {logEntries.map((entry, i) => (
+                <div key={i} className="text-xs">
+                  <p className="flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+                      {entry.operation}
+                    </span>
+                    <span className="truncate">{entry.description}</span>
+                    <span className="text-muted-foreground/50 text-[10px] ml-auto shrink-0">
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </span>
+                  </p>
+                  {entry.details.length > 0 && (
+                    <ul className="mt-0.5 ml-4 space-y-0.5 text-muted-foreground/70">
+                      {entry.details.map((detail, j) => (
+                        <li key={j} className="truncate">{detail}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">

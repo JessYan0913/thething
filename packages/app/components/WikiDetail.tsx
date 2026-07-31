@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
-  ArrowLeftIcon, TrashIcon, CheckIcon, PencilIcon,
-  RefreshCwIcon, BrainIcon, UserIcon, BotIcon, FolderIcon,
-  GlobeIcon, BoxIcon, Loader2Icon,
+  TrashIcon, PencilIcon, HistoryIcon,
+  BrainIcon, UserIcon, BotIcon, FolderIcon,
+  GlobeIcon, BoxIcon, Loader2Icon, LinkIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import MarkdownEditor from "@/components/markdown-editor"
@@ -15,11 +15,14 @@ import { getWikiCategoryMeta } from "@/lib/wiki-category"
 import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { FileLink } from "@/components/ui/file-link"
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import WikiHistoryPanel from "@/components/WikiHistoryPanel"
+
+interface WikiSourceView {
+  type: string
+  value: string
+  revision?: string
+  title?: string
+}
 
 interface WikiPageView {
   name: string
@@ -29,6 +32,8 @@ interface WikiPageView {
   filename: string
   created: string
   updated: string
+  origin?: string
+  sources: WikiSourceView[]
   lines: number
   sizeKb: number
 }
@@ -48,6 +53,14 @@ function getCategoryView(category: string) {
     icon: <BrainIcon className="size-3.5" />,
     color: "text-slate-500",
   }
+}
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  url: "URL",
+  file: "文件",
+  git: "Git",
+  conversation: "对话",
+  other: "其他",
 }
 
 function getRelativeTime(dateStr: string) {
@@ -75,6 +88,9 @@ export default function WikiDetail({
   const [editContent, setEditContent] = useState("")
   const [editSaving, setEditSaving] = useState(false)
 
+  // 修订历史面板
+  const [showHistory, setShowHistory] = useState(false)
+
   // 删除确认
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -82,7 +98,7 @@ export default function WikiDetail({
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/memory")
+      const res = await fetch("/api/wiki")
       if (res.ok) {
         const data = await res.json()
         const pages = data.pages ?? []
@@ -117,7 +133,7 @@ export default function WikiDetail({
     if (!page || !editContent.trim()) return
     setEditSaving(true)
     try {
-      const res = await fetch("/api/memory", {
+      const res = await fetch("/api/wiki", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -140,7 +156,7 @@ export default function WikiDetail({
 
   const handleDelete = useCallback(async () => {
     if (!page) return
-    const res = await fetch(`/api/memory?filename=${encodeURIComponent(page.filename)}`, { method: "DELETE" })
+    const res = await fetch(`/api/wiki?filename=${encodeURIComponent(page.filename)}`, { method: "DELETE" })
     if (res.ok) onBack()
     setShowDeleteConfirm(false)
   }, [page, onBack])
@@ -172,6 +188,11 @@ export default function WikiDetail({
         label: "编辑",
         icon: <PencilIcon className="size-3.5" />,
         onClick: handleStartEdit,
+      },
+      {
+        label: "修订历史",
+        icon: <HistoryIcon className="size-3.5" />,
+        onClick: () => setShowHistory(true),
       },
     ] : []),
     { divider: true, label: "", icon: null, onClick: () => {} },
@@ -209,131 +230,108 @@ export default function WikiDetail({
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        {editing ? (
-          <div className="flex flex-col h-full min-h-0 p-6 gap-3">
-            <MarkdownEditor
-              value={editContent}
-              onChange={setEditContent}
-              onSave={handleSaveEdit}
-              className="flex-1 min-h-0"
-            />
-            <div className="flex items-center gap-2 shrink-0">
-              <Button size="sm" variant="ghost" onClick={handleCancelEdit}>取消</Button>
-              <span className="text-[11px] text-muted-foreground/40">Ctrl+S 保存</span>
+      {/* Body: content + optional history panel */}
+      <div className="flex-1 min-h-0 flex">
+        <div className="flex-1 min-h-0 overflow-auto">
+          {editing ? (
+            <div className="flex flex-col h-full min-h-0 p-6 gap-3">
+              <MarkdownEditor
+                value={editContent}
+                onChange={setEditContent}
+                onSave={handleSaveEdit}
+                className="flex-1 min-h-0"
+              />
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" variant="ghost" onClick={handleCancelEdit}>取消</Button>
+                <span className="text-[11px] text-muted-foreground/40">Ctrl+S 保存</span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none p-6">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                table: ({ children }) => (
-                  <div className="overflow-x-auto my-4">
-                    <table className="border-collapse border w-full text-sm">{children}</table>
-                  </div>
-                ),
-                thead: ({ children }) => (
-                  <thead className="border-b bg-muted/50">{children}</thead>
-                ),
-                tbody: ({ children }) => (
-                  <tbody>{children}</tbody>
-                ),
-                tr: ({ children }) => (
-                  <tr className="border-b hover:bg-muted/30">{children}</tr>
-                ),
-                th: ({ children }) => (
-                  <th className="border px-3 py-2 text-left font-medium">{children}</th>
-                ),
-                td: ({ children }) => (
-                  <td className="border px-3 py-2">{children}</td>
-                ),
-                h1: ({ children }) => (
-                  <h1 className="text-2xl font-bold mt-6 mb-3">{children}</h1>
-                ),
-                h2: ({ children }) => (
-                  <h2 className="text-xl font-bold mt-5 mb-2">{children}</h2>
-                ),
-                h3: ({ children }) => (
-                  <h3 className="text-lg font-bold mt-4 mb-2">{children}</h3>
-                ),
-                p: ({ children }) => (
-                  <p className="my-2 leading-relaxed">{children}</p>
-                ),
-                ul: ({ children }) => (
-                  <ul className="list-disc ml-6 my-2">{children}</ul>
-                ),
-                ol: ({ children }) => (
-                  <ol className="list-decimal ml-6 my-2">{children}</ol>
-                ),
-                li: ({ children }) => (
-                  <li className="my-1">{children}</li>
-                ),
-                code: ({ className, children }) => {
-                  const isInline = !className;
-                  if (isInline) {
-                    return (
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">
-                        {children}
-                      </code>
-                    );
-                  }
-                  return (
-                    <code className={className}>{children}</code>
-                  );
-                },
-                pre: ({ children }) => (
-                  <pre className="rounded-md bg-muted p-4 overflow-x-auto my-4">
-                    {children}
-                  </pre>
-                ),
-                blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-muted-foreground/30 pl-4 my-4 italic text-muted-foreground">
-                    {children}
-                  </blockquote>
-                ),
-                hr: () => (
-                  <hr className="my-6 border-t" />
-                ),
-                a: ({ href, children }) => {
-                  // 检测是否是文件路径
-                  const isFilePath = href && (
-                    href.startsWith('/') ||
-                    href.startsWith('file://') ||
-                    href.match(/\.\w+$/)
-                  )
+          ) : (
+            <div className="p-6 space-y-4">
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-4">
+                        <table className="border-collapse border w-full text-sm">{children}</table>
+                      </div>
+                    ),
+                    a: ({ href, children }) => {
+                      if (href && (href.startsWith("/") || href.startsWith("~"))) {
+                        return <FileLink href={href}>{children}</FileLink>
+                      }
+                      return (
+                        <a href={href} target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      )
+                    },
+                  }}
+                >
+                  {page.content}
+                </ReactMarkdown>
+              </div>
 
-                  if (isFilePath) {
-                    return (
-                      <FileLink href={href}>
-                        {children}
-                      </FileLink>
-                    )
-                  }
+              {/* Sources */}
+              {page.sources.length > 0 && (
+                <div className="border-t pt-4 space-y-2">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <LinkIcon className="size-3.5" />
+                    来源（{page.sources.length}）
+                  </p>
+                  <ul className="space-y-1.5">
+                    {page.sources.map((source, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs">
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground mt-px">
+                          {SOURCE_TYPE_LABELS[source.type] ?? source.type}
+                        </span>
+                        <span className="min-w-0">
+                          {source.type === "url" ? (
+                            <a
+                              href={source.value}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline break-all"
+                            >
+                              {source.title || source.value}
+                            </a>
+                          ) : (
+                            <span className="break-all">{source.title || source.value}</span>
+                          )}
+                          {source.revision && (
+                            <span className="text-muted-foreground/60 ml-1.5 font-mono text-[10px]">
+                              @{source.revision.slice(0, 12)}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-                  return (
-                    <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                      {children}
-                    </a>
-                  )
-                },
-                strong: ({ children }) => (
-                  <strong className="font-bold">{children}</strong>
-                ),
-              }}
-            >
-              {page.content}
-            </ReactMarkdown>
+              {/* Meta footer */}
+              <div className="border-t pt-3 flex items-center gap-3 text-[10px] text-muted-foreground/60">
+                <span>{page.lines} 行</span>
+                <span>{page.sizeKb.toFixed(1)} KB</span>
+                <span>更新于 {getRelativeTime(page.updated)}</span>
+                {page.origin && <span>origin: {page.origin}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* History panel */}
+        {showHistory && !editing && (
+          <div className="w-96 shrink-0 min-h-0">
+            <WikiHistoryPanel
+              filename={page.filename}
+              onClose={() => setShowHistory(false)}
+              onRestored={loadPage}
+            />
           </div>
         )}
-      </div>
-
-      {/* Footer */}
-      <div className="shrink-0 px-6 py-1.5 border-t text-[11px] text-muted-foreground/40 flex items-center gap-3">
-        <span>{page.lines} 行</span>
-        <span>{page.sizeKb.toFixed(1)} KB</span>
-        <span className="ml-auto">更新于 {getRelativeTime(page.updated)}</span>
       </div>
 
       <DeleteConfirmDialog

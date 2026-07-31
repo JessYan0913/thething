@@ -106,7 +106,7 @@ export default function WikiGraph({
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/memory/graph")
+        const res = await fetch("/api/wiki/graph")
         if (res.ok) {
           const data = await res.json()
           setAllNodes(data.nodes ?? [])
