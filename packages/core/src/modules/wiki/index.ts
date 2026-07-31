@@ -6,7 +6,7 @@
 export { getPrimaryWikiDir, ensureWikiDirExists, pageNameToFilename, filenameToPageName } from './wiki-paths'
 
 // 配置
-export { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
+export { DEFAULT_WIKI_CONFIG, DEFAULT_WIKI_CATEGORY, type WikiConfig } from './wiki-config'
 
 // 文件 IO
 export {

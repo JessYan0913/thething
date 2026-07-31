@@ -8,7 +8,7 @@ import { ensureWikiDirExists } from '../wiki/wiki-paths'
 import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
 import { pageNameToFilename } from '../wiki/wiki-paths'
 import { resolveWikiPageFilename } from '../wiki/wiki-resolver'
-import { DEFAULT_WIKI_CONFIG, type WikiConfig } from '../wiki/wiki-config'
+import { DEFAULT_WIKI_CONFIG, DEFAULT_WIKI_CATEGORY, type WikiConfig } from '../wiki/wiki-config'
 import { wikiActionSchema } from '../wiki/wiki-prompt'
 import { logger } from '../../primitives/logger'
 import { capturePageRevision, initializeWikiRevisionBaselines, type WikiRevisionOperation } from '../wiki/wiki-revisions'
@@ -117,7 +117,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
           const baseData: WikiPageData = {
             name: action.name,
             description: action.description,
-            category: action.category,
+            category: action.category ?? DEFAULT_WIKI_CATEGORY,
             created: now,
             updated: now,
             origin,

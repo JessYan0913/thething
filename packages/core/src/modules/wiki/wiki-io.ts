@@ -7,7 +7,7 @@ import crypto from 'node:crypto'
 import fs from 'fs/promises'
 import path from 'path'
 import { ensureWikiDirExists, pageNameToFilename, directoryExists } from './wiki-paths'
-import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
+import { DEFAULT_WIKI_CONFIG, DEFAULT_WIKI_CATEGORY, type WikiConfig } from './wiki-config'
 import { logger } from '../../primitives/logger'
 
 // ============================================================
@@ -88,13 +88,14 @@ export function parsePage(raw: string, filename: string): WikiPage | null {
 
   const name = fm.match(/^name:\s*(.+)$/m)?.[1]?.trim()
   const description = fm.match(/^description:\s*(.+)$/m)?.[1]?.trim()
-  const category = fm.match(/^category:\s*(.+)$/m)?.[1]?.trim()
+  // 分类是描述性的索引分组，不是写入门槛：缺失时归入兜底分类，页面保持可见。
+  const category = fm.match(/^category:\s*(.+)$/m)?.[1]?.trim() || DEFAULT_WIKI_CATEGORY
   const created = fm.match(/^created:\s*(.+)$/m)?.[1]?.trim()
   const updated = fm.match(/^updated:\s*(.+)$/m)?.[1]?.trim()
   const originRaw = fm.match(/^origin:\s*(.+)$/m)?.[1]?.trim()
   const sourcesRaw = fm.match(/^sources:\s*(.+)$/m)?.[1]?.trim()
 
-  if (!name || !description || !category || !created || !updated) return null
+  if (!name || !description || !created || !updated) return null
 
   const origin = originRaw === 'ingest' || originRaw === 'query' || originRaw === 'maintenance'
     ? originRaw
@@ -401,7 +402,13 @@ export async function rebuildIndex(
     '',
   ]
 
-  for (const category of config.categories) {
+  // 分组从实际存在的分类生成：config.categories 只决定优先排序，其余按名称排序追加。
+  const orderedCategories = [
+    ...config.categories.filter(category => grouped[category]?.length),
+    ...Object.keys(grouped).filter(category => !config.categories.includes(category)).sort(),
+  ]
+
+  for (const category of orderedCategories) {
     const catEntries = grouped[category]
     if (!catEntries || catEntries.length === 0) continue
 
@@ -444,10 +451,10 @@ export function parseIndex(content: string): IndexEntry[] {
   let currentCategory = ''
 
   for (const line of lines) {
-    // 匹配 category header: ## identity
-    const categoryMatch = line.match(/^## (\w+)/)
+    // 匹配 category header: ## identity（分类为自由字符串，可含中文或连字符）
+    const categoryMatch = line.match(/^## (.+)$/)
     if (categoryMatch) {
-      currentCategory = categoryMatch[1]
+      currentCategory = categoryMatch[1].trim()
       continue
     }
 

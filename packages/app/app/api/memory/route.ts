@@ -8,6 +8,7 @@ import {
   rebuildIndex,
   ensureWikiDirExists,
   pageNameToFilename,
+  DEFAULT_WIKI_CATEGORY,
   type WikiPageData,
 } from '@the-thing/core';
 
@@ -51,8 +52,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, description, category, content } = body;
 
-    if (!name || !category || !content) {
-      return NextResponse.json({ error: 'Missing required fields: name, category, content' }, { status: 400 });
+    if (!name || !content) {
+      return NextResponse.json({ error: 'Missing required fields: name, content' }, { status: 400 });
     }
 
     const rt = await getServerRuntime();
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     const data: WikiPageData = {
       name,
       description: description || '',
-      category,
+      category: category || DEFAULT_WIKI_CATEGORY,
       created: now,
       updated: now,
     };
@@ -88,8 +89,8 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { filename, name, description, category, content } = body;
 
-    if (!filename || !name || !category || content === undefined) {
-      return NextResponse.json({ error: 'Missing required fields: filename, name, category, content' }, { status: 400 });
+    if (!filename || !name || content === undefined) {
+      return NextResponse.json({ error: 'Missing required fields: filename, name, content' }, { status: 400 });
     }
 
     const rt = await getServerRuntime();
@@ -110,7 +111,7 @@ export async function PUT(request: Request) {
       const data: WikiPageData = {
         name,
         description: description || '',
-        category,
+        category: category || DEFAULT_WIKI_CATEGORY,
         created: now,
         updated: now,
       };

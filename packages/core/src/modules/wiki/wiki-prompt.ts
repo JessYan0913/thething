@@ -48,8 +48,10 @@ export const wikiActionSchema = z.object({
     .optional()
     .describe('update 操作的模式: replace=替换旧内容(默认), append=追加到旧内容'),
   category: z
-    .enum(['user', 'agent', 'project', 'domain', 'entity'])
-    .describe('知识分类: user=用户相关, agent=Agent规则, project=项目知识, domain=领域知识, entity=实体知识'),
+    .string()
+    .max(30)
+    .optional()
+    .describe('可选分类，用于索引分组。分类由实践演化，不是固定制度；常见分类如 user(用户)、agent(Agent规则)、project(项目)、domain(领域)、entity(实体)，也可以按内容使用更贴切的分类。省略时归入 misc'),
   name: z
     .string()
     .max(40)

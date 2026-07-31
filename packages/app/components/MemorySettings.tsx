@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { getWikiCategoryMeta, listWikiCategories } from "@/lib/wiki-category"
 
 const WikiGraph = dynamic(() => import("./WikiGraph"), { ssr: false })
 import {
@@ -41,14 +42,14 @@ const categoryConfig: Record<string, { label: string; icon: React.ReactNode; col
   entity: { label: "实体", icon: <BoxIcon className="size-3.5" />, color: "text-cyan-500" },
 }
 
-const categoryFilters = [
-  { value: "all", label: "全部" },
-  { value: "user", label: "用户" },
-  { value: "agent", label: "Agent" },
-  { value: "project", label: "项目" },
-  { value: "domain", label: "领域" },
-  { value: "entity", label: "实体" },
-]
+// 分类是自由字符串：已知分类有专属图标，未知分类用中性样式兜底。
+function getCategoryView(category: string) {
+  return categoryConfig[category] ?? {
+    label: getWikiCategoryMeta(category).label,
+    icon: <BrainIcon className="size-3.5" />,
+    color: "text-slate-500",
+  }
+}
 
 function getRelativeTime(dateStr: string) {
   const ageMs = Date.now() - new Date(dateStr).getTime()
@@ -73,7 +74,7 @@ function WikiCard({
   onDelete: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const config = categoryConfig[page.category]
+  const config = getCategoryView(page.category)
 
   return (
     <div className="rounded-lg border p-4 transition-colors hover:border-accent/50 hover:bg-accent/20 relative">
@@ -82,26 +83,16 @@ function WikiCard({
           onClick={onClick}
           className="flex items-start gap-3 min-w-0 flex-1 text-left cursor-pointer"
         >
-          {config ? (
-            <span className={cn("size-4 mt-0.5 shrink-0", config.color)}>{config.icon}</span>
-          ) : (
-            <BrainIcon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
-          )}
+          <span className={cn("size-4 mt-0.5 shrink-0", config.color)}>{config.icon}</span>
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="font-medium text-sm truncate">{page.name}</span>
-              {config && (
-                <span className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-full",
-                  page.category === "user" && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-                  page.category === "agent" && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-                  page.category === "project" && "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                  page.category === "domain" && "bg-green-500/10 text-green-600 dark:text-green-400",
-                  page.category === "entity" && "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
-                )}>
-                  {config.label}
-                </span>
-              )}
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-full",
+                getWikiCategoryMeta(page.category).chip,
+              )}>
+                {config.label}
+              </span>
             </div>
             {page.description && (
               <p className="text-xs text-muted-foreground line-clamp-2">
@@ -206,6 +197,15 @@ export default function MemorySettings() {
     return result
   }, [pages, categoryFilter, search])
 
+  // 筛选项从页面实际存在的分类生成
+  const categoryFilters = useMemo(() => [
+    { value: "all", label: "全部" },
+    ...listWikiCategories(pages.map((p) => p.category)).map((c) => ({
+      value: c,
+      label: getCategoryView(c).label,
+    })),
+  ], [pages])
+
   const handleDelete = useCallback(async (filename: string) => {
     const res = await fetch(`/api/memory?filename=${encodeURIComponent(filename)}`, { method: "DELETE" })
     if (res.ok) {
@@ -237,7 +237,7 @@ export default function MemorySettings() {
         body: JSON.stringify({
           name: formName.trim(),
           description: formDesc.trim(),
-          category: formCategory,
+          category: formCategory.trim() || undefined,
           content: formContent,
         }),
       })
@@ -406,17 +406,21 @@ export default function MemorySettings() {
               <Input id="wiki-desc" placeholder="一句话摘要（用于索引）" value={formDesc} onChange={(e) => setFormDesc(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label>分类</Label>
-              <Select value={formCategory} onValueChange={setFormCategory}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">用户（偏好、身份、习惯）</SelectItem>
-                  <SelectItem value="agent">Agent（行为规则）</SelectItem>
-                  <SelectItem value="project">项目（架构、选型、进度）</SelectItem>
-                  <SelectItem value="domain">领域（技术对比、最佳实践）</SelectItem>
-                  <SelectItem value="entity">实体（人物、工具、服务）</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="wiki-category">分类</Label>
+              <Input
+                id="wiki-category"
+                list="wiki-category-suggestions"
+                placeholder="例如: domain（可自定义，留空归入 misc）"
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+              />
+              <datalist id="wiki-category-suggestions">
+                <option value="user">用户（偏好、身份、习惯）</option>
+                <option value="agent">Agent（行为规则）</option>
+                <option value="project">项目（架构、选型、进度）</option>
+                <option value="domain">领域（技术对比、最佳实践）</option>
+                <option value="entity">实体（人物、工具、服务）</option>
+              </datalist>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="wiki-content">内容</Label>

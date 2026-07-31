@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import MarkdownEditor from "@/components/markdown-editor"
 import { cn } from "@/lib/utils"
+import { getWikiCategoryMeta } from "@/lib/wiki-category"
 import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { FileLink } from "@/components/ui/file-link"
@@ -38,6 +39,15 @@ const categoryConfig: Record<string, { label: string; icon: React.ReactNode; col
   project: { label: "项目", icon: <FolderIcon className="size-3.5" />, color: "text-amber-500" },
   domain: { label: "领域", icon: <GlobeIcon className="size-3.5" />, color: "text-green-500" },
   entity: { label: "实体", icon: <BoxIcon className="size-3.5" />, color: "text-cyan-500" },
+}
+
+// 分类是自由字符串：未知分类用中性样式兜底渲染。
+function getCategoryView(category: string) {
+  return categoryConfig[category] ?? {
+    label: getWikiCategoryMeta(category).label,
+    icon: <BrainIcon className="size-3.5" />,
+    color: "text-slate-500",
+  }
 }
 
 function getRelativeTime(dateStr: string) {
@@ -154,7 +164,7 @@ export default function WikiDetail({
     )
   }
 
-  const config = categoryConfig[page.category]
+  const config = getCategoryView(page.category)
 
   const menuItems: MenuItem[] = [
     ...(!editing ? [
@@ -177,20 +187,16 @@ export default function WikiDetail({
     <div className="flex flex-col h-full min-h-0">
       <DetailPageHeader
         onBack={onBack}
-        icon={config ? <span className={cn(config.color)}>{config.icon}</span> : undefined}
+        icon={<span className={cn(config.color)}>{config.icon}</span>}
         title={page.name}
-        badges={config ? (
+        badges={
           <span className={cn(
             "text-[10px] px-1.5 py-0.5 rounded-full",
-            page.category === "user" && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-            page.category === "agent" && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-            page.category === "project" && "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-            page.category === "domain" && "bg-green-500/10 text-green-600 dark:text-green-400",
-            page.category === "entity" && "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+            getWikiCategoryMeta(page.category).chip,
           )}>
             {config.label}
           </span>
-        ) : undefined}
+        }
         onSave={editing ? handleSaveEdit : undefined}
         saving={editSaving}
         menuItems={menuItems}

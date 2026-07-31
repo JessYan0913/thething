@@ -29,22 +29,12 @@ interface GraphEdge {
 // ============================================================
 // Category config
 // ============================================================
+// 分类是自由字符串：已知分类有专属颜色，未知分类用中性样式兜底。
 
-const CATEGORY_COLORS: Record<string, string> = {
-  user: "#3b82f6",
-  agent: "#a855f7",
-  project: "#f59e0b",
-  domain: "#22c55e",
-  entity: "#06b6d4",
-}
+import { getWikiCategoryMeta, listWikiCategories } from "@/lib/wiki-category"
 
-const CATEGORY_LABELS: Record<string, string> = {
-  user: "用户",
-  agent: "Agent",
-  project: "项目",
-  domain: "领域",
-  entity: "实体",
-}
+const categoryColor = (category: string) => getWikiCategoryMeta(category).hex
+const categoryLabel = (category: string) => getWikiCategoryMeta(category).label
 
 // ============================================================
 // Dynamic import (SSR not supported by canvas-based library)
@@ -174,6 +164,12 @@ export default function WikiGraph({
     [nodes, edges],
   )
 
+  // 筛选 chips 从图数据实际存在的分类生成
+  const presentCategories = useMemo(
+    () => listWikiCategories(allNodes.map((n) => n.category)),
+    [allNodes],
+  )
+
   // Callback ref: tracks container size via ResizeObserver
   const measureRef = useCallback((el: HTMLDivElement | null) => {
     observerRef.current?.disconnect()
@@ -273,7 +269,7 @@ export default function WikiGraph({
 
   const nodeCanvasObject = useCallback(
     (node: CustomNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const color = CATEGORY_COLORS[node.category] || "#94a3b8"
+      const color = categoryColor(node.category)
       const isHovered = hoveredNodeRef.current?.id === node.id
       const isSelected = selectedNodeRef.current?.id === node.id
       const base = 5 + Math.min(node.linkCount * 2, 10)
@@ -420,7 +416,7 @@ export default function WikiGraph({
           <div className="flex items-center gap-1.5 mb-1">
             <span
               className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: CATEGORY_COLORS[hoveredUI.category] }}
+              style={{ backgroundColor: categoryColor(hoveredUI.category) }}
             />
             <span className="font-medium text-xs truncate">
               {hoveredUI.name}
@@ -430,7 +426,7 @@ export default function WikiGraph({
             {hoveredUI.description || "暂无描述"}
           </p>
           <p className="text-[10px] text-muted-foreground/60 mt-1">
-            {CATEGORY_LABELS[hoveredUI.category]} · {hoveredUI.linkCount}{" "}
+            {categoryLabel(hoveredUI.category)} · {hoveredUI.linkCount}{" "}
             关联
           </p>
         </div>
@@ -478,7 +474,7 @@ export default function WikiGraph({
           >
             全部
           </button>
-          {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+          {presentCategories.map((key) => (
             <button
               key={key}
               className={cn(
@@ -491,9 +487,9 @@ export default function WikiGraph({
             >
               <span
                 className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ backgroundColor: CATEGORY_COLORS[key] }}
+                style={{ backgroundColor: categoryColor(key) }}
               />
-              {label}
+              {categoryLabel(key)}
             </button>
           ))}
         </div>
@@ -508,14 +504,14 @@ export default function WikiGraph({
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{
-                    backgroundColor: CATEGORY_COLORS[selectedUI.category],
+                    backgroundColor: categoryColor(selectedUI.category),
                   }}
                 />
                 <span className="font-medium text-sm">
                   {selectedUI.name}
                 </span>
                 <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded-full bg-muted">
-                  {CATEGORY_LABELS[selectedUI.category]}
+                  {categoryLabel(selectedUI.category)}
                 </span>
               </div>
               {selectedUI.description && (

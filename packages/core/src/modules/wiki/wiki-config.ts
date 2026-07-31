@@ -7,7 +7,7 @@ export interface WikiConfig {
   indexFile: string
   /** 日志文件名 */
   logFile: string
-  /** 知识分类 */
+  /** 索引分组的优先排序；未列出的分类按实际内容动态追加 */
   categories: string[]
   /** Lint 触发间隔（对话次数） */
   lintInterval: number
@@ -18,6 +18,9 @@ export interface WikiConfig {
   /** 每次 ingest 最大操作数 */
   maxActionsPerIngest: number
 }
+
+/** 页面缺失 category 时的兜底分类 */
+export const DEFAULT_WIKI_CATEGORY = 'misc'
 
 export const DEFAULT_WIKI_CONFIG: WikiConfig = {
   indexFile: 'index.md',

@@ -80,6 +80,37 @@ describe('save_wiki integrity boundaries', () => {
     expect(await readFile(path.join(wikiBaseDir, 'local-development-workflow.md'), 'utf8')).toContain('Local development workflow')
   })
 
+  it('saves pages with a custom category or no category at all', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+
+    const result = await execute(tool, {
+      actions: [
+        {
+          action: 'create',
+          category: 'comparison',
+          name: 'Framework comparison',
+          description: 'A comparison that fits no suggested category',
+          content: 'Option A vs Option B.',
+        },
+        {
+          action: 'create',
+          name: 'Uncategorized note',
+          description: 'Saved without any category',
+          content: 'Still worth keeping.',
+        },
+      ],
+    })
+
+    expect(result.saved).toBe(2)
+    expect(await readFile(path.join(wikiBaseDir, 'framework-comparison.md'), 'utf8')).toContain('category: comparison')
+    expect(await readFile(path.join(wikiBaseDir, 'uncategorized-note.md'), 'utf8')).toContain('category: misc')
+
+    const index = await readFile(path.join(wikiBaseDir, 'index.md'), 'utf8')
+    expect(index).toContain('## comparison')
+    expect(index).toContain('## misc')
+  })
+
   it('executes invalidate from the shared action schema', async () => {
     const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
     const tool = createSaveWikiTool({ wikiBaseDir })

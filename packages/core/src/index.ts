@@ -327,6 +327,7 @@ export {
   lintWiki,
   WIKI_GUIDELINES_PROMPT,
   DEFAULT_WIKI_CONFIG,
+  DEFAULT_WIKI_CATEGORY,
   // Wiki IO
   readAllPages,
   readPage,
