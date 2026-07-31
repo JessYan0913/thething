@@ -64,4 +64,6 @@ export const DEFAULT_COMPACTABLE = new Set([
   'read_wiki_page',
   'lint_wiki',
   'ingest_wiki_source',
+  'inspect_wiki_history',
+  'restore_wiki_revision',
 ]);

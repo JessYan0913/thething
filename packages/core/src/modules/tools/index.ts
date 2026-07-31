@@ -13,6 +13,8 @@ export { createSaveWikiTool } from './save-wiki';
 export { createReadWikiPageTool } from './read-wiki-page';
 export { createLintWikiTool } from './lint-wiki';
 export { createIngestWikiSourceTool } from './ingest-wiki-source';
+export { createInspectWikiHistoryTool } from './inspect-wiki-history';
+export { createRestoreWikiRevisionTool } from './restore-wiki-revision';
 export { createContextPinTool } from './context-pin';
 
 // Text processing utilities (BOM, line endings)

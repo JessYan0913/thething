@@ -3,6 +3,7 @@
 // ============================================================
 // 所有文件 IO 操作集中在此。代码只做 IO，不做语义判断。
 
+import crypto from 'node:crypto'
 import fs from 'fs/promises'
 import path from 'path'
 import { ensureWikiDirExists, pageNameToFilename, directoryExists } from './wiki-paths'
@@ -127,6 +128,17 @@ export function parsePage(raw: string, filename: string): WikiPage | null {
 // 页面读写
 // ============================================================
 
+export async function atomicWriteText(filePath: string, content: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const temporary = `${filePath}.tmp-${crypto.randomBytes(6).toString('hex')}`
+  try {
+    await fs.writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' })
+    await fs.rename(temporary, filePath)
+  } finally {
+    await fs.unlink(temporary).catch(() => {})
+  }
+}
+
 /**
  * 读取单个 wiki 页面
  */
@@ -169,7 +181,7 @@ export async function writePage(
 
   const filename = pageNameToFilename(data.name)
   const fileContent = formatFrontmatter(data) + '\n\n' + content
-  await fs.writeFile(path.join(wikiDir, filename), fileContent, 'utf-8')
+  await atomicWriteText(path.join(wikiDir, filename), fileContent)
 
   return filename
 }
@@ -227,7 +239,7 @@ export async function updatePage(
   }
 
   const fileContent = formatFrontmatter(updatedData) + '\n\n' + mergedContent
-  await fs.writeFile(path.join(wikiDir, normalizedFilename), fileContent, 'utf-8')
+  await atomicWriteText(path.join(wikiDir, normalizedFilename), fileContent)
 }
 
 /**
@@ -238,6 +250,7 @@ export async function mergePages(
   targetFilename: string,
   sourceFilenames: string[],
   metadata?: Pick<WikiPageData, 'origin' | 'sources'>,
+  beforeDelete?: (filename: string, raw: string) => Promise<void>,
 ): Promise<string | null> {
   const pages: WikiPage[] = []
 
@@ -271,6 +284,8 @@ export async function mergePages(
   for (const fn of allFilenames) {
     const normalizedFn = normalizeFilename(fn)
     if (normalizedFn !== newFilename) {
+      const raw = await readPageRaw(wikiDir, normalizedFn)
+      if (raw !== null && beforeDelete) await beforeDelete(normalizedFn, raw)
       await fs.unlink(path.join(wikiDir, normalizedFn)).catch(() => {})
     }
   }
@@ -298,7 +313,7 @@ export async function replacePage(
     sources: mergeSources(existing?.data.sources, data.sources),
   }
   const fileContent = formatFrontmatter(updatedData) + '\n\n' + content
-  await fs.writeFile(path.join(wikiDir, normalizedFilename), fileContent, 'utf-8')
+  await atomicWriteText(path.join(wikiDir, normalizedFilename), fileContent)
 }
 
 /**
@@ -323,7 +338,7 @@ export async function invalidatePage(
   }
   const invalidatedContent = page.content + `\n\n> [已过期] ${reason}`
   const fileContent = formatFrontmatter(updatedData) + '\n\n' + invalidatedContent
-  await fs.writeFile(path.join(wikiDir, normalizedFilename), fileContent, 'utf-8')
+  await atomicWriteText(path.join(wikiDir, normalizedFilename), fileContent)
 }
 
 /**
@@ -402,7 +417,7 @@ export async function rebuildIndex(
   }
 
   const indexContent = lines.join('\n')
-  await fs.writeFile(path.join(wikiDir, config.indexFile), indexContent, 'utf-8')
+  await atomicWriteText(path.join(wikiDir, config.indexFile), indexContent)
 }
 
 /**

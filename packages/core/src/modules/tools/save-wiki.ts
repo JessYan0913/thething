@@ -10,6 +10,9 @@ import { pageNameToFilename } from '../wiki/wiki-paths'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from '../wiki/wiki-config'
 import { wikiActionSchema } from '../wiki/wiki-prompt'
 import { logger } from '../../primitives/logger'
+import { capturePageRevision, initializeWikiRevisionBaselines, type WikiRevisionOperation } from '../wiki/wiki-revisions'
+import { rebuildSourcePageIndex } from '../wiki/wiki-relations'
+import { withWikiMutationLock } from '../wiki/wiki-mutation'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -69,7 +72,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
         .max(5)
         .describe('要执行的操作列表，每次最多 5 条'),
     }),
-    execute: async (input) => {
+    execute: async (input) => withWikiMutationLock(config.wikiBaseDir, async () => {
       const results: Array<{
         name: string
         action: string
@@ -80,6 +83,8 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
       const wikiDir = config.wikiBaseDir
       await ensureWikiDirExists(wikiDir)
+      // Existing pages from before Revision Store adoption receive one idempotent baseline.
+      await initializeWikiRevisionBaselines(wikiDir)
 
       const now = new Date().toISOString()
       const logDetails: string[] = []
@@ -149,11 +154,14 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
             }
           }
 
+          let revisionTarget: { filename: string; operation: WikiRevisionOperation } | undefined
+
           switch (action.action) {
             case 'create': {
               const filename = pageNameToFilename(action.name)
               logger.debug('SaveWiki', `create: name="${action.name}" filename="${filename}"`)
               await writePage(wikiDir, baseData, action.content)
+              revisionTarget = { filename, operation: 'create' }
               logDetails.push(`create: [[${action.name}]] — ${action.description}`)
               results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               break
@@ -173,6 +181,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
                 const mode = action.mode === 'append' ? 'append' : 'replace'
                 logger.debug('SaveWiki', `update: target="${target}" mode="${mode}"`)
                 await updatePage(wikiDir, target, action.content, mode, { origin, sources: action.sources })
+                revisionTarget = { filename: target.endsWith('.md') ? target : `${target}.md`, operation: 'update' }
                 logDetails.push(`update: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -184,7 +193,22 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
             case 'merge':
               if (action.target && action.mergeTargets) {
-                await mergePages(wikiDir, action.target, action.mergeTargets, { origin, sources: action.sources })
+                const mergedFilename = await mergePages(
+                  wikiDir,
+                  action.target,
+                  action.mergeTargets,
+                  { origin, sources: action.sources },
+                  async (filename, raw) => {
+                    await capturePageRevision(wikiDir, {
+                      filename,
+                      operation: 'delete',
+                      raw,
+                      reason: `merged into ${action.name}`,
+                    })
+                  },
+                )
+                if (!mergedFilename) throw new Error(`No Wiki pages found for merge target: ${action.target}`)
+                revisionTarget = { filename: mergedFilename, operation: 'merge' }
                 logDetails.push(`merge: ${action.mergeTargets.join(', ')} → [[${action.name}]]`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -195,6 +219,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
             case 'replace':
               if (action.target) {
                 await replacePage(wikiDir, action.target, baseData, action.content)
+                revisionTarget = { filename: action.target.endsWith('.md') ? action.target : `${action.target}.md`, operation: 'replace' }
                 logDetails.push(`replace: [[${action.target}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -209,6 +234,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
               }
               if (target) {
                 await invalidatePage(wikiDir, target, action.content, { origin, sources: action.sources })
+                revisionTarget = { filename: target.endsWith('.md') ? target : `${target}.md`, operation: 'invalidate' }
                 logDetails.push(`invalidate: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true })
               } else {
@@ -216,6 +242,10 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
               }
               break
             }
+          }
+
+          if (revisionTarget) {
+            await capturePageRevision(wikiDir, revisionTarget)
           }
         } catch (err) {
           logger.error('SaveWiki', `Failed to save "${action.name}": ${err}`)
@@ -228,8 +258,9 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
         }
       }
 
-      // 重建索引
+      // 重建页面索引和来源反向索引。来源索引是可重建的派生数据。
       await rebuildIndex(wikiDir, wikiConfig)
+      await rebuildSourcePageIndex(wikiDir, wikiConfig)
 
       // 写入日志
       if (logDetails.length > 0) {
@@ -251,7 +282,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
         failed: results.filter(r => !r.success).length,
         results,
       }
-    },
+    }),
   })
 }
 

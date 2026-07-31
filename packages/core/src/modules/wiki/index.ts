@@ -14,6 +14,7 @@ export {
   parsePage,
   readPage,
   readPageRaw,
+  atomicWriteText,
   writePage,
   updatePage,
   mergePages,
@@ -55,6 +56,32 @@ export {
   type RegisterWikiSourceInput,
   type RegisterWikiSourceResult,
 } from './wiki-sources'
+
+// Source-page relations
+export {
+  rebuildSourcePageIndex,
+  readSourcePageIndex,
+  listPagesForSource,
+  type WikiSourcePageIndex,
+  type WikiSourcePageRelation,
+} from './wiki-relations'
+
+// Revisions
+export {
+  capturePageRevision,
+  initializeWikiRevisionBaselines,
+  listPageRevisions,
+  readPageRevision,
+  diffPageRevisions,
+  restorePageRevision,
+  type WikiRevisionOperation,
+  type WikiRevisionRecord,
+  type WikiRevisionSnapshot,
+  type WikiRevisionDiff,
+} from './wiki-revisions'
+
+// Mutation serialization
+export { withWikiMutationLock, clearWikiMutationLocks } from './wiki-mutation'
 
 // Query
 export {

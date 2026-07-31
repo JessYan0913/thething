@@ -2,6 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { listPageRevisions } from '../../wiki/wiki-revisions'
 import { createSaveWikiTool, validateWikiActionBoundary } from '../save-wiki'
 
 async function execute(tool: any, input: unknown): Promise<any> {
@@ -148,6 +149,58 @@ describe('save_wiki integrity boundaries', () => {
     expect(updated).toContain('https://example.com/article')
     expect(updated).toContain('owner/repo')
     expect(updated).toContain('abc123')
+  })
+
+  it('records revisions for create, update, replace and invalidate actions', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+    const filename = 'revision-actions.md'
+
+    await execute(tool, { actions: [{ action: 'create', category: 'domain', name: 'Revision Actions', description: 'Revision test', content: 'Create' }] })
+    await execute(tool, { actions: [{ action: 'update', category: 'domain', name: 'Revision Actions', target: filename, description: 'Revision test', content: 'Update' }] })
+    await execute(tool, { actions: [{ action: 'replace', category: 'domain', name: 'Revision Actions', target: filename, description: 'Revision test', content: 'Replace' }] })
+    await execute(tool, { actions: [{ action: 'invalidate', category: 'domain', name: 'Revision Actions', target: filename, description: 'Revision test', content: 'Outdated' }] })
+
+    expect((await listPageRevisions(wikiBaseDir, filename)).map(item => item.operation)).toEqual([
+      'create', 'update', 'replace', 'invalidate',
+    ])
+  })
+
+  it('captures deleted merge sources before removing their current pages', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+    await execute(tool, { actions: [
+      { action: 'create', category: 'domain', name: 'Merge Target', description: 'Target', content: 'Target content' },
+      { action: 'create', category: 'domain', name: 'Merge Source', description: 'Source', content: 'Source content' },
+    ] })
+
+    const result = await execute(tool, { actions: [{
+      action: 'merge',
+      category: 'domain',
+      name: 'Merge Target',
+      target: 'merge-target.md',
+      mergeTargets: ['merge-source.md'],
+      description: 'Merge pages',
+      content: '',
+    }] })
+
+    expect(result.saved).toBe(1)
+    expect((await listPageRevisions(wikiBaseDir, 'merge-source.md')).at(-1)?.operation).toBe('delete')
+    await expect(readFile(path.join(wikiBaseDir, 'merge-source.md'), 'utf8')).rejects.toThrow()
+    expect((await listPageRevisions(wikiBaseDir, 'merge-target.md')).at(-1)?.operation).toBe('merge')
+  })
+
+  it('serializes concurrent saves for the same Wiki directory', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+    await Promise.all(['One', 'Two', 'Three'].map(name => execute(tool, { actions: [{
+      action: 'create', category: 'domain', name: `Concurrent ${name}`, description: name, content: name,
+    }] })))
+
+    const index = await readFile(path.join(wikiBaseDir, 'index.md'), 'utf8')
+    expect(index).toContain('Concurrent One')
+    expect(index).toContain('Concurrent Two')
+    expect(index).toContain('Concurrent Three')
   })
 
   it('writes query origin to log when all actions use query origin', async () => {

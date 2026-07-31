@@ -191,7 +191,7 @@ export function renderKeysOnlyActionLog(entries: ActionLogEntry[]): string {
 function classifyToolAccess(toolName: string): 'remote' | 'local' | 'transient' {
   const t = toolName.toLowerCase();
   if (t === 'web_fetch' || t === 'webfetch' || t === 'web_search' || t === 'websearch') return 'remote';
-  if (t === 'read_file' || t === 'read' || t === 'read_wiki_page' || t === 'readwikipage' || t === 'lint_wiki' || t === 'ingest_wiki_source') return 'local';
+  if (t === 'read_file' || t === 'read' || t === 'read_wiki_page' || t === 'readwikipage' || t === 'lint_wiki' || t === 'ingest_wiki_source' || t === 'inspect_wiki_history' || t === 'restore_wiki_revision') return 'local';
   return 'transient';
 }
 

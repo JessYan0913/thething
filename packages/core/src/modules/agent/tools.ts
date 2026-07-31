@@ -21,6 +21,8 @@ import {
   createReadWikiPageTool,
   createLintWikiTool,
   createIngestWikiSourceTool,
+  createInspectWikiHistoryTool,
+  createRestoreWikiRevisionTool,
   createContextPinTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
@@ -100,6 +102,12 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       model: config.model,
     })
     tools.ingest_wiki_source = createIngestWikiSourceTool({
+      wikiBaseDir: config.wikiBaseDir,
+    })
+    tools.inspect_wiki_history = createInspectWikiHistoryTool({
+      wikiBaseDir: config.wikiBaseDir,
+    })
+    tools.restore_wiki_revision = createRestoreWikiRevisionTool({
       wikiBaseDir: config.wikiBaseDir,
     })
   }

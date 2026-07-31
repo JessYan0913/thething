@@ -356,7 +356,27 @@ merge 需要对以下事实留痕：
 9. 跑完整定向测试、typecheck 和差异检查；
 10. 更新 Karpathy 差距文档中的能力矩阵与实施进度。
 
-## 十四、未来 Git Adapter
+## 十四、实施完成情况（2026-07-31）
+
+第三阶段及安全收口已经完成：
+
+- 普通 Wiki 页面和 `index.md` 改为同目录临时文件加 rename 的原子写入；
+- `save_wiki` 与 restore 使用 Wiki 目录级进程内写锁，防止同一进程并发覆盖页面、索引和日志；
+- 已有页面首次进入写入链路时会获得幂等 baseline revision；
+- merge 删除来源页面前会保存 `delete` revision，删除后的页面仍可通过历史快照读取；
+- create、update、replace、merge、invalidate 和 restore 均有 revision 覆盖；
+- restore 后会按历史来源集合重建来源反向索引；
+- 补充并发保存、baseline、merge 删除历史和 Action revision 测试。
+
+验证结果：
+
+- 第三阶段加固定向测试通过；
+- Core TypeScript 类型检查通过；
+- Core 完整测试为 80 个测试文件、757 项测试通过，剩余 2 项既有环境/对话路线失败：真实 DB 抽样为空；主分支 projection 名称实际为 `null`，旧测试仍期待“主分支”。二者与 Wiki 修改无关。
+
+当前原子性边界为单进程串行和单文件原子替换，不提供跨进程事务。Revision 文件不可变、来源索引可重建，因此跨进程异常不会成为静默不可恢复的数据覆盖机制；如未来出现多进程写入需求，再增加文件锁或数据库事务协调。
+
+## 十五、未来 Git Adapter
 
 内部 Revision Store 完成后，Git 可作为独立可选层：
 

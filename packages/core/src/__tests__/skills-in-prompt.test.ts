@@ -60,9 +60,9 @@ describe('Skills Mechanism (Progressive Disclosure)', () => {
     const matchSection = result.sections.find(s => s.name === 'skill-matching');
     // 无技能时应该显示"无额外技能"的提示(已 i18n 为中文)
     expect(matchSection?.content).toContain('暂无可用技能');
-    // 创建 Skill 的交付标准始终存在，避免用 Wiki 或脚本冒充完成
-    expect(matchSection?.content).toContain('通过 skill 工具按精确名称重新加载');
-    expect(matchSection?.content).toContain('保存 Wiki、只写脚本或只写说明文档都不能完成');
+    // 创建 Skill 的主要交付标准始终存在，但不锁死具体工具证据流程
+    expect(matchSection?.content).toContain('最终产物都应是结构有效、能被加载器发现的 SKILL.md');
+    expect(matchSection?.content).toContain('Wiki 页面或独立脚本不能替代');
     // 不应该有技能列表（因为没有技能）
     expect(matchSection?.content).not.toContain('可用技能列表');
   });

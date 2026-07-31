@@ -685,9 +685,9 @@ Raw Sources 当前只支持文本快照。图片、PDF、音频和其他二进�
 | 语义问题建议式维护 | 已实现 |
 | 周期 Lint 到期提示 | 已实现 |
 | 二进制来源资产 | 未实现 |
-| 来源反向影响索引 | 未实现 |
+| 来源反向影响索引 | 已实现（可由页面重建） |
 | 任意 Schema 字段透传 | 未实现 |
-| 版本历史 | 未实现 |
+| 版本历史 | 已实现（内部 revision/diff/restore） |
 | 大规模搜索 | 暂缺，属于可选增强 |
 | 人机协作模式 | 未形成显式工作流 |
 
@@ -710,3 +710,17 @@ Index-first Query
 ```
 
 下一阶段应根据真实 Wiki 规模决定是优先实现来源反向索引、版本历史还是搜索能力，而不是继续增加内容分类和强制验收。
+
+## 十、第三阶段实施进度（2026-07-31）
+
+第三阶段已实现 Git 非依赖的可追溯与恢复基础设施：
+
+- 新增 `wiki-relations.ts`，从页面可选 `sources` 重建 `system/source-pages.json`，支持按来源描述或稳定 source ID 查询受影响页面；该索引属于派生数据，丢失后可由现有页面恢复。
+- 新增 `wiki-revisions.ts`，以不可变完整 Markdown 快照保存 create、update、replace、merge、invalidate 和 restore 修订，记录内容哈希、父修订、来源及恢复关系。
+- 新增行级 unified diff，可比较两个历史修订，也可比较历史修订与当前页面。
+- 新增显式 restore：恢复不会删除后续历史，而是把目标快照写回当前页并生成新的 restore revision。
+- `save_wiki` 在页面操作成功后记录 revision，并在批量操作完成后同步重建来源反向索引。
+- 新增 `inspect_wiki_history` 只读工具和 `restore_wiki_revision` 显式写工具；恢复后同步 index、来源关系与 log，Lint 不会自动触发 restore。
+- Core Wiki 定向回归共 9 个测试文件、27 项测试通过；Core TypeScript 类型检查和 `git diff --check` 通过。
+
+当前仍未完成：任意 frontmatter 字段透传、二进制来源资产、大规模搜索、关系可视化和可选 Git Adapter。
