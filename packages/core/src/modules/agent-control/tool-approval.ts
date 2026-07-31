@@ -178,17 +178,24 @@ export async function catchAllApproval(options: {
   const input = toolCall.args ?? toolCall.input ?? toolCall.arguments;
   const ctx = options.runtimeContext;
 
+  // ── ask_user_question：必须最先处理 ──────────────────
+  // 它的"审批"就是前端答案收集面板：暂停 → 用户作答 → 答案经
+  // tool-approval-response.reason 传回。函数式 toolApproval 会让 SDK
+  // 完全跳过工具自身的 needsApproval，所以这里若返回 undefined，
+  // 工具会立即执行且拿不到任何答案（结果为空）。
+  // 因此任何模式下都返回 'user-approval'，且不能转交 reviewer 自动批准。
+  if (toolName === 'ask_user_question') {
+    // 'auto-review' + 有目标：自动放行（Agent 应自主决策而非询问用户）
+    if (ctx.approvalMode === 'auto-review' && ctx.goalState) return 'approved';
+    return 'user-approval';
+  }
+
   // ── 审批模式处理 ──────────────────────────────────────
   // 'full-trust': 所有已知工具自动放行
   if (ctx.approvalMode === 'full-trust') {
     if (TOOLS_WITH_APPROVAL.has(toolName)) return 'approved';
     if (ctx.connectorToolNames?.has(toolName)) return 'approved';
     return undefined;
-  }
-
-  // 'auto-review' + 有目标：ask_user_question 自动放行（Agent 应自主决策）
-  if (toolName === 'ask_user_question' && ctx.approvalMode === 'auto-review' && ctx.goalState) {
-    return 'approved';
   }
 
   // 'smart' / 'auto-review': 使用相同的上下文感知审批逻辑
