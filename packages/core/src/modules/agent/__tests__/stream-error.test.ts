@@ -1,3 +1,4 @@
+import { InvalidToolInputError } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { agentStreamOnError, REDACTED_ERROR_MESSAGE } from '../stream-error';
 
@@ -9,6 +10,17 @@ describe('agentStreamOnError', () => {
 
   it('passes through a safe code embedded in a string error', () => {
     expect(agentStreamOnError('ENOENT: missing file')).toBe('ENOENT: missing file');
+  });
+
+  it('exposes invalid tool input errors so the model can repair the call', () => {
+    const error = new InvalidToolInputError({
+      toolName: 'save_wiki',
+      toolInput: '{"actions": [not valid json',
+      cause: new SyntaxError('Unexpected token n in JSON at position 13'),
+    });
+    const result = agentStreamOnError(error);
+    expect(result).toContain('save_wiki');
+    expect(result).not.toBe(REDACTED_ERROR_MESSAGE);
   });
 
   it('redacts unknown errors that may contain sensitive details', () => {
