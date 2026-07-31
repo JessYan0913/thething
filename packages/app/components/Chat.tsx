@@ -1637,14 +1637,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
             <Conversation>
               <ConversationContent>
                 {messages.map((message, messageIndex) => {
-                const reasoningParts = message.parts.filter((part) => part.type === 'reasoning');
-                const reasoningText = reasoningParts.map((part) => part.text).join('\n\n');
-                const hasReasoning = reasoningParts.length > 0;
-
-                const lastPart = message.parts.at(-1);
-                const isReasoningStreaming =
-                  messageIndex === messages.length - 1 && status === 'streaming' && lastPart?.type === 'reasoning';
-
                 const isEditing = editingMessageId === message.id;
                 const userMessageText = message.role === 'user'
                   ? message.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
@@ -1715,13 +1707,34 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                       </div>
                     ) : (
                       <MessageContent>
-                        {hasReasoning && (
-                          <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
-                            <ReasoningTrigger />
-                            <ReasoningContent>{reasoningText}</ReasoningContent>
-                          </Reasoning>
-                        )}
                         {message.parts.map((part, index) => {
+                          if (part.type === 'reasoning') {
+                            // 同一步思考可能被流拆成多个相邻 reasoning part：
+                            // 只在连续段的第一个渲染，把相邻段合并进同一个折叠块
+                            if (index > 0 && message.parts[index - 1].type === 'reasoning') {
+                              return null;
+                            }
+                            let end = index;
+                            while (end + 1 < message.parts.length && message.parts[end + 1].type === 'reasoning') {
+                              end += 1;
+                            }
+                            const reasoningText = message.parts
+                              .slice(index, end + 1)
+                              .map((p) => (p as { text: string }).text)
+                              .join('\n\n');
+                            // 仅当该消息的最后一个 part 就是这段思考且正在流式时才显示思考中动画
+                            const isReasoningStreaming =
+                              messageIndex === messages.length - 1 &&
+                              status === 'streaming' &&
+                              end === message.parts.length - 1;
+                            return (
+                              <Reasoning key={`${message.id}-${index}`} className="w-full" isStreaming={isReasoningStreaming}>
+                                <ReasoningTrigger />
+                                <ReasoningContent>{reasoningText}</ReasoningContent>
+                              </Reasoning>
+                            );
+                          }
+
                           if (part.type === 'text') {
                             return (
                               <MessageResponse

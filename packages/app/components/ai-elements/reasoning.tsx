@@ -209,18 +209,32 @@ export type ReasoningContentProps = ComponentProps<
 const streamdownPlugins = { cjk, code, math, mermaid };
 
 export const ReasoningContent = memo(
-  ({ className, children, ...props }: ReasoningContentProps) => (
-    <CollapsibleContent
-      className={cn(
-        "mt-4 text-sm",
-        "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-        className
-      )}
-      {...props}
-    >
-      <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
-    </CollapsibleContent>
-  )
+  ({ className, children, ...props }: ReasoningContentProps) => {
+    const { isStreaming, isOpen } = useReasoning();
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    // 流式时内容持续增长，超出高度上限后自动滚到底部，保持最新思考可见
+    useEffect(() => {
+      if (isStreaming && isOpen && scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, [isStreaming, isOpen, children]);
+
+    return (
+      <CollapsibleContent
+        className={cn(
+          "mt-4 text-sm",
+          "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+          className
+        )}
+        {...props}
+      >
+        <div ref={scrollRef} className="max-h-64 overflow-y-auto">
+          <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+        </div>
+      </CollapsibleContent>
+    );
+  }
 );
 
 Reasoning.displayName = "Reasoning";
