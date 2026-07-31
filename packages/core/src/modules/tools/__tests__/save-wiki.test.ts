@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -164,6 +164,32 @@ describe('save_wiki integrity boundaries', () => {
     expect((await listPageRevisions(wikiBaseDir, filename)).map(item => item.operation)).toEqual([
       'create', 'update', 'replace', 'invalidate',
     ])
+  })
+
+  it('resolves page names and non-canonical targets to one file and revision chain', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+
+    await execute(tool, { actions: [{
+      action: 'create', category: 'domain', name: 'Wiki 维护核心操作', description: 'Canonical target', content: 'Create',
+    }] })
+    await execute(tool, { actions: [{
+      action: 'update', category: 'domain', name: 'Wiki 维护核心操作', target: 'Wiki 维护核心操作.md', description: 'Canonical target', content: 'Update',
+    }] })
+    await execute(tool, { actions: [{
+      action: 'replace', category: 'domain', name: 'Wiki 维护核心操作', target: 'wiki-维护核心操作', description: 'Canonical target', content: 'Replace',
+    }] })
+
+    expect((await listPageRevisions(wikiBaseDir, 'wiki-维护核心操作.md')).map(item => item.operation)).toEqual([
+      'create', 'update', 'replace',
+    ])
+    expect(await readdir(wikiBaseDir)).not.toContain('Wiki 维护核心操作.md')
+
+    const duplicate = await execute(tool, { actions: [{
+      action: 'create', category: 'domain', name: 'wiki-维护核心操作', description: 'Duplicate', content: 'Duplicate',
+    }] })
+    expect(duplicate.failed).toBe(1)
+    expect(duplicate.results[0].error).toContain('already exists')
   })
 
   it('captures deleted merge sources before removing their current pages', async () => {

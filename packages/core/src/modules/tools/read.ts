@@ -10,6 +10,7 @@ export interface FileToolOptions {
   cwd?: string;
   extraSensitivePaths?: readonly string[];
   permissionRules?: readonly PermissionRule[];
+  protectedWritePaths?: readonly string[];
 }
 
 // ============================================================

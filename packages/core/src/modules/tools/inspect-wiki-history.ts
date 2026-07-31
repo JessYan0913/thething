@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { diffPageRevisions, listPageRevisions, readPageRevision } from '../wiki/wiki-revisions'
 import { listPagesForSource } from '../wiki/wiki-relations'
 import { wikiSourceSchema } from '../wiki/wiki-prompt'
+import { resolveWikiPageFilenameOrCanonical } from '../wiki/wiki-resolver'
 
 export interface InspectWikiHistoryToolConfig {
   wikiBaseDir: string
@@ -39,15 +40,20 @@ export function createInspectWikiHistoryTool(config: InspectWikiHistoryToolConfi
     ]),
     execute: async (input) => {
       switch (input.action) {
-        case 'list_revisions':
-          return { revisions: await listPageRevisions(config.wikiBaseDir, input.filename) }
+        case 'list_revisions': {
+          const filename = await resolveWikiPageFilenameOrCanonical(config.wikiBaseDir, input.filename)
+          return { revisions: await listPageRevisions(config.wikiBaseDir, filename) }
+        }
         case 'read_revision': {
-          const snapshot = await readPageRevision(config.wikiBaseDir, input.filename, input.revisionId)
+          const filename = await resolveWikiPageFilenameOrCanonical(config.wikiBaseDir, input.filename)
+          const snapshot = await readPageRevision(config.wikiBaseDir, filename, input.revisionId)
           if (!snapshot) throw new Error(`Wiki revision not found: ${input.revisionId}`)
           return snapshot
         }
-        case 'diff':
-          return diffPageRevisions(config.wikiBaseDir, input)
+        case 'diff': {
+          const filename = await resolveWikiPageFilenameOrCanonical(config.wikiBaseDir, input.filename)
+          return diffPageRevisions(config.wikiBaseDir, { ...input, filename })
+        }
         case 'source_pages':
           return {
             pages: await listPagesForSource(config.wikiBaseDir, input.sourceId ?? input.source!),

@@ -4,6 +4,7 @@ import { appendLog, rebuildIndex } from '../wiki/wiki-io'
 import { rebuildSourcePageIndex } from '../wiki/wiki-relations'
 import { restorePageRevision } from '../wiki/wiki-revisions'
 import { withWikiMutationLock } from '../wiki/wiki-mutation'
+import { resolveWikiPageFilenameOrCanonical } from '../wiki/wiki-resolver'
 
 export interface RestoreWikiRevisionToolConfig {
   wikiBaseDir: string
@@ -18,7 +19,8 @@ export function createRestoreWikiRevisionTool(config: RestoreWikiRevisionToolCon
       reason: z.string().optional().describe('可选恢复原因'),
     }),
     execute: async (input) => withWikiMutationLock(config.wikiBaseDir, async () => {
-      const revision = await restorePageRevision(config.wikiBaseDir, input)
+      const filename = await resolveWikiPageFilenameOrCanonical(config.wikiBaseDir, input.filename)
+      const revision = await restorePageRevision(config.wikiBaseDir, { ...input, filename })
       await rebuildIndex(config.wikiBaseDir)
       await rebuildSourcePageIndex(config.wikiBaseDir)
       await appendLog(config.wikiBaseDir, {

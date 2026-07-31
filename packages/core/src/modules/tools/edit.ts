@@ -7,6 +7,7 @@ import type { FileToolOptions } from './read';
 import { stripBom, detectLineEnding, normalizeToLF, restoreLineEndings } from './utils/text';
 import { withFileMutationQueue } from './utils/file-mutation-queue';
 import { generateUnifiedDiff, summarizeChanges } from './utils/diff';
+import { findProtectedPathMatch, protectedPathWriteMessage } from './utils/protected-paths';
 
 // ============================================================
 // Schema
@@ -203,6 +204,14 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
       }
 
       const absolutePath = pathCheck.resolvedPath;
+      const protectedMatch = findProtectedPathMatch(absolutePath, options.protectedWritePaths);
+      if (protectedMatch) {
+        return {
+          error: true,
+          path: filePath,
+          message: protectedPathWriteMessage(protectedMatch.protectedPath),
+        };
+      }
 
       return withFileMutationQueue(absolutePath, async () => {
         // 1. Read and normalize

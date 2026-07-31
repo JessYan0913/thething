@@ -47,6 +47,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   let isSharedMcpRegistry = false
   const agentRegistry = new AgentRegistry()
 
+  const protectedWritePaths = config.wikiBaseDir ? [config.wikiBaseDir] : []
+
   Object.assign(tools, {
     web_fetch: createWebFetchTool(),
     read_file: createReadFileTool({
@@ -58,15 +60,18 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       cwd: config.sessionState.projectRoot,
       extraSensitivePaths: config.sessionState.extraSensitivePaths,
       permissionRules: config.sessionState.permissionRules,
+      protectedWritePaths,
     }),
     edit_file: createEditFileTool({
       cwd: config.sessionState.projectRoot,
       extraSensitivePaths: config.sessionState.extraSensitivePaths,
       permissionRules: config.sessionState.permissionRules,
+      protectedWritePaths,
     }),
     bash: createBashTool({
       cwd: config.sessionState.projectRoot,
       permissionRules: config.sessionState.permissionRules,
+      protectedWritePaths,
     }),
     grep: createGrepTool({
       cwd: config.sessionState.projectRoot,

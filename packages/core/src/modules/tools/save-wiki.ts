@@ -5,15 +5,15 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { ensureWikiDirExists } from '../wiki/wiki-paths'
-import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, findFilenameByName, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
+import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
 import { pageNameToFilename } from '../wiki/wiki-paths'
+import { resolveWikiPageFilename } from '../wiki/wiki-resolver'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from '../wiki/wiki-config'
 import { wikiActionSchema } from '../wiki/wiki-prompt'
 import { logger } from '../../primitives/logger'
 import { capturePageRevision, initializeWikiRevisionBaselines, type WikiRevisionOperation } from '../wiki/wiki-revisions'
 import { rebuildSourcePageIndex } from '../wiki/wiki-relations'
 import { withWikiMutationLock } from '../wiki/wiki-mutation'
-import fs from 'fs/promises'
 import path from 'path'
 
 const INTERNAL_WIKI_PAGES = new Set(['index', 'log'])
@@ -136,21 +136,17 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
             }
           }
 
-          // 去重检查：同名页面在 60 秒内已创建则跳过
+          // create 统一按 canonical 页面标识检查冲突，避免空格、大小写或连字符差异产生同义页面。
           if (action.action === 'create') {
-            const filename = pageNameToFilename(action.name)
-            try {
-              const existing = await fs.readFile(path.join(wikiDir, filename), 'utf-8')
-              const match = existing.match(/^created:\s*(.+)$/m)
-              if (match) {
-                const createdTime = new Date(match[1].trim()).getTime()
-                if (Date.now() - createdTime < 60_000) {
-                  results.push({ name: action.name, action: 'skip', success: true })
-                  continue
-                }
-              }
-            } catch {
-              // 文件不存在，可以创建
+            const existingFilename = await resolveWikiPageFilename(wikiDir, action.name)
+            if (existingFilename) {
+              results.push({
+                name: action.name,
+                action: action.action,
+                success: false,
+                error: `Wiki page already exists: ${existingFilename}. Use update or replace instead.`,
+              })
+              continue
             }
           }
 
@@ -168,20 +164,14 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
             }
 
             case 'update': {
-              // 如果 target 不存在，自动根据 name 查找
-              let target = action.target
-              if (!target) {
-                target = await findFilenameByName(wikiDir, action.name) ?? undefined
-                if (target) {
-                  logger.debug('SaveWiki', `update: auto-found target="${target}" for name="${action.name}"`)
-                }
-              }
-
+              const target = await resolveWikiPageFilename(wikiDir, action.target ?? action.name)
               if (target) {
+                logger.debug('SaveWiki', `update: resolved target="${target}" for reference="${action.target ?? action.name}"`)
+
                 const mode = action.mode === 'append' ? 'append' : 'replace'
                 logger.debug('SaveWiki', `update: target="${target}" mode="${mode}"`)
                 await updatePage(wikiDir, target, action.content, mode, { origin, sources: action.sources })
-                revisionTarget = { filename: target.endsWith('.md') ? target : `${target}.md`, operation: 'update' }
+                revisionTarget = { filename: target, operation: 'update' }
                 logDetails.push(`update: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -193,10 +183,18 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
             case 'merge':
               if (action.target && action.mergeTargets) {
+                const target = await resolveWikiPageFilename(wikiDir, action.target)
+                const mergeTargets = await Promise.all(
+                  action.mergeTargets.map(reference => resolveWikiPageFilename(wikiDir, reference)),
+                )
+                if (!target || mergeTargets.some(filename => !filename)) {
+                  throw new Error(`No Wiki pages found for merge references: ${[action.target, ...action.mergeTargets].join(', ')}`)
+                }
+                const resolvedMergeTargets = mergeTargets as string[]
                 const mergedFilename = await mergePages(
                   wikiDir,
-                  action.target,
-                  action.mergeTargets,
+                  target,
+                  resolvedMergeTargets,
                   { origin, sources: action.sources },
                   async (filename, raw) => {
                     await capturePageRevision(wikiDir, {
@@ -216,25 +214,26 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
               }
               break
 
-            case 'replace':
-              if (action.target) {
-                await replacePage(wikiDir, action.target, baseData, action.content)
-                revisionTarget = { filename: action.target.endsWith('.md') ? action.target : `${action.target}.md`, operation: 'replace' }
+            case 'replace': {
+              const target = action.target
+                ? await resolveWikiPageFilename(wikiDir, action.target)
+                : null
+              if (target) {
+                await replacePage(wikiDir, target, baseData, action.content)
+                revisionTarget = { filename: target, operation: 'replace' }
                 logDetails.push(`replace: [[${action.target}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
-                results.push({ name: action.name, action: action.action, success: false, error: 'replace requires target' })
+                results.push({ name: action.name, action: action.action, success: false, error: action.target ? `Page "${action.target}" not found` : 'replace requires target' })
               }
               break
+            }
 
             case 'invalidate': {
-              let target = action.target
-              if (!target) {
-                target = await findFilenameByName(wikiDir, action.name) ?? undefined
-              }
+              const target = await resolveWikiPageFilename(wikiDir, action.target ?? action.name)
               if (target) {
                 await invalidatePage(wikiDir, target, action.content, { origin, sources: action.sources })
-                revisionTarget = { filename: target.endsWith('.md') ? target : `${target}.md`, operation: 'invalidate' }
+                revisionTarget = { filename: target, operation: 'invalidate' }
                 logDetails.push(`invalidate: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true })
               } else {

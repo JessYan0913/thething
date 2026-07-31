@@ -7,6 +7,7 @@ import type { PermissionRule } from '../../modules/permissions/types';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { findProtectedShellWriteMatch, protectedPathWriteMessage } from './utils/protected-paths';
 
 // ============================================================
 // Safety constants
@@ -84,6 +85,7 @@ export interface BashOperations {
 export interface BashToolOptions {
   cwd: string;
   permissionRules?: readonly PermissionRule[];
+  protectedWritePaths?: readonly string[];
   operations?: BashOperations;
   spawnHook?: BashSpawnHook;
 }
@@ -344,6 +346,15 @@ async function bashExecute({
       error: true,
       command,
       message: `Security block: ${safety.reason}`,
+    };
+  }
+
+  const protectedMatch = findProtectedShellWriteMatch(command, options.protectedWritePaths);
+  if (protectedMatch) {
+    return {
+      error: true,
+      command,
+      message: protectedPathWriteMessage(protectedMatch.protectedPath),
     };
   }
 

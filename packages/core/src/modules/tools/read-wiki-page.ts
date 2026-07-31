@@ -4,8 +4,9 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { ensureWikiDirExists, pageNameToFilename } from '../wiki/wiki-paths'
+import { ensureWikiDirExists } from '../wiki/wiki-paths'
 import { readPage, readPageRaw } from '../wiki/wiki-io'
+import { resolveWikiPageFilename } from '../wiki/wiki-resolver'
 
 // ============================================================
 // Tool Config
@@ -35,8 +36,6 @@ Wiki 是你跨会话记忆的唯一机制。当知识库中有相关信息时，
       const wikiDir = config.wikiBaseDir
       await ensureWikiDirExists(wikiDir)
 
-      const filename = pageNameToFilename(pageName)
-
       // 特殊处理：读取 index.md（没有 frontmatter）
       if (pageName === 'index' || pageName === 'index.md') {
         const content = await readPageRaw(wikiDir, 'index.md')
@@ -52,7 +51,8 @@ Wiki 是你跨会话记忆的唯一机制。当知识库中有相关信息时，
         return { found: false, message: '索引页面不存在' }
       }
 
-      const page = await readPage(wikiDir, filename)
+      const filename = await resolveWikiPageFilename(wikiDir, pageName)
+      const page = filename ? await readPage(wikiDir, filename) : null
 
       if (!page) {
         return { found: false, message: `页面 "${pageName}" 不存在` }

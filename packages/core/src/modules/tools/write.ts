@@ -6,6 +6,7 @@ import { checkPermissionRules, validateWritePath } from '../../modules/permissio
 import type { PathValidationOptions } from '../../modules/permissions';
 import type { FileToolOptions } from './read';
 import { generateUnifiedDiff, summarizeChanges } from './utils/diff';
+import { findProtectedPathMatch, protectedPathWriteMessage } from './utils/protected-paths';
 
 // 文件类型到语言的映射（用于代码高亮）
 const FILE_TYPE_MAP: Record<string, string> = {
@@ -136,6 +137,15 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
     }
 
     const absolutePath = pathCheck.resolvedPath;
+    const protectedMatch = findProtectedPathMatch(absolutePath, options.protectedWritePaths);
+    if (protectedMatch) {
+      return {
+        error: true,
+        path: filePath,
+        message: protectedPathWriteMessage(protectedMatch.protectedPath),
+      };
+    }
+
     const dir = path.dirname(absolutePath);
 
     // 检查是否是追加模式，如果是，读取现有内容

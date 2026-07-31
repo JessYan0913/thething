@@ -140,4 +140,49 @@ describe('file tools structured errors', () => {
     expect(result).toMatchObject({ error: true, path: 'sample.txt' });
     expect(result.message).toContain('Disk full');
   });
+
+  it('write_file blocks files inside a managed Wiki directory', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'file-errors-'));
+    const wikiDir = join(dir, 'wiki');
+    try {
+      const tool = createWriteFileTool({ cwd: dir, protectedWritePaths: [wikiDir] });
+      const result = await execute(tool, {
+        filePath: 'wiki/page.md',
+        content: 'bypass',
+      });
+
+      expect(result).toMatchObject({ error: true, path: 'wiki/page.md' });
+      expect(result.message).toContain('Managed Wiki path');
+      expect(result.message).toContain('save_wiki');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('edit_file blocks files inside a managed Wiki directory before reading', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'file-errors-'));
+    const wikiDir = join(dir, 'wiki');
+    const readFile = vi.fn(async () => Buffer.from('original'));
+    try {
+      const tool = createEditFileTool({
+        cwd: dir,
+        protectedWritePaths: [wikiDir],
+        operations: {
+          access: vi.fn(async () => undefined),
+          readFile,
+          writeFile: vi.fn(async () => undefined),
+        },
+      });
+      const result = await execute(tool, {
+        filePath: 'wiki/page.md',
+        edits: [{ oldText: 'original', newText: 'bypass' }],
+      });
+
+      expect(result).toMatchObject({ error: true, path: 'wiki/page.md' });
+      expect(result.message).toContain('Managed Wiki path');
+      expect(readFile).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

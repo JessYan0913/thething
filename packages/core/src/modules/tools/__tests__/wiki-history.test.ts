@@ -32,7 +32,7 @@ describe('wiki history tools', () => {
     const second = await capturePageRevision(wikiDir, { filename, operation: 'update' })
 
     const inspect = createInspectWikiHistoryTool({ wikiBaseDir: wikiDir })
-    const listed = await execute(inspect, { action: 'list_revisions', filename } as never) as { revisions: unknown[] }
+    const listed = await execute(inspect, { action: 'list_revisions', filename: 'History Tool Page' } as never) as { revisions: unknown[] }
     expect(listed.revisions).toHaveLength(2)
 
     const diff = await execute(inspect, {
@@ -46,7 +46,7 @@ describe('wiki history tools', () => {
 
     const restore = createRestoreWikiRevisionTool({ wikiBaseDir: wikiDir })
     const result = await execute(restore, {
-      filename,
+      filename: 'History Tool Page.md',
       revisionId: first!.id,
       reason: 'Test restore',
     } as never) as { restored: boolean; restoredFromRevisionId: string }

@@ -62,6 +62,13 @@ describe('wiki maintenance guidelines', () => {
     }).success).toBe(true)
   })
 
+  it('requires explicit query provenance and preserves user-specified source semantics', () => {
+    expect(WIKI_GUIDELINES_PROMPT).toContain('必须显式传 origin: query')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('不能仅因为信息出现在当前对话中就改成 conversation 来源')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('仓库与 commit 应登记为 git 来源')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('actions 传空数组')
+  })
+
   it('validates source schema with required type and value', () => {
     expect(wikiSourceSchema.safeParse({
       type: 'file',
