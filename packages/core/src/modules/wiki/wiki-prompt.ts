@@ -9,14 +9,40 @@ import { z } from 'zod'
 // Zod Schema - LLM 输出结构
 // ============================================================
 
-export const wikiKnowledgeTypeSchema = z
-  .enum(['concept', 'principle', 'architecture', 'terminology', 'mechanism'])
-  .describe('概念知识类型: concept=概念, principle=原理, architecture=架构, terminology=术语关系, mechanism=稳定机制')
+export const wikiSourceSchema = z.object({
+  type: z
+    .enum(['url', 'file', 'git', 'conversation', 'other'])
+    .describe('来源类型'),
+  value: z
+    .string()
+    .min(1)
+    .describe('来源标识，例如 URL、文件路径、仓库地址或对话 ID'),
+  revision: z
+    .string()
+    .optional()
+    .describe('可选版本，例如 Git commit、文档版本或内容哈希'),
+  capturedAt: z
+    .string()
+    .optional()
+    .describe('可选采集时间，推荐 ISO 8601'),
+  title: z
+    .string()
+    .optional()
+    .describe('可选来源标题'),
+})
 
 export const wikiActionSchema = z.object({
   action: z
     .enum(['create', 'update', 'merge', 'replace', 'invalidate'])
     .describe('操作类型'),
+  origin: z
+    .enum(['ingest', 'query', 'maintenance'])
+    .optional()
+    .describe('本次变化的来源阶段；默认 ingest，Query 产生的新综合可标记为 query'),
+  sources: z
+    .array(wikiSourceSchema)
+    .optional()
+    .describe('支持本次页面变化的可选来源引用，不要求所有页面必须提供'),
   mode: z
     .enum(['replace', 'append'])
     .optional()
@@ -24,7 +50,6 @@ export const wikiActionSchema = z.object({
   category: z
     .enum(['user', 'agent', 'project', 'domain', 'entity'])
     .describe('知识分类: user=用户相关, agent=Agent规则, project=项目知识, domain=领域知识, entity=实体知识'),
-  knowledgeType: wikiKnowledgeTypeSchema,
   name: z
     .string()
     .max(40)
@@ -35,7 +60,7 @@ export const wikiActionSchema = z.object({
     .describe('一行摘要（用于索引，不是 content 复述）'),
   content: z
     .string()
-    .describe('提炼后的概念知识（可包含 [[wiki-link]]；不要写任务日志、配置步骤或操作手册）'),
+    .describe('编译后的知识（AI 未来需要知道的信息，可包含 [[wiki-link]]）'),
   target: z
     .string()
     .optional()
@@ -46,6 +71,7 @@ export const wikiActionSchema = z.object({
     .describe('合并目标文件名列表（merge 时必填）'),
 })
 
+export type WikiSource = z.infer<typeof wikiSourceSchema>
 export type WikiAction = z.infer<typeof wikiActionSchema>
 
 // ============================================================
@@ -129,46 +155,43 @@ export const LINT_PROMPT = `你是一个知识库健康检查员。检查以下�
 
 export const WIKI_GUIDELINES_PROMPT = `## 知识库（你的长期记忆）
 
-你有一个持久化的知识库（Wiki），用于跨会话积累概念性知识。
+你有一个持久化的知识库（Wiki）。这是一个由你增量构建和维护的、结构化且相互链接的 Markdown 知识库。它位于原始来源与当前对话之间：读取来源和完成探索后，将有价值的理解整合进已有页面，而不是让它们消失在聊天记录中。
 
-**核心原则：当前任务优先。** 先完成用户要求的主要交付，不要让知识沉淀替代、偏离或拖延当前任务。完成任务后，可以做一次受控反思，判断是否产生值得长期保留的新知识。
+Wiki 由你负责维护。具体页面结构、分类和工作流不是固定制度，可以根据领域、已有内容和用户偏好逐步演化。
 
 ### 三个核心操作
 
-1. **Ingest**：提炼高价值概念知识并保存
-2. **Query**：基于知识库回答问题
-3. **Lint**：检查知识库的一致性和完整性
+1. **Ingest**：阅读来源，提取关键信息，并整合到现有 Wiki。一次来源可以创建摘要，也可以更新多个相关页面、交叉引用和综合判断。
+2. **Query**：基于 Wiki 回答问题。查询中产生的有价值分析、比较或新联系，也可以保存回 Wiki，使探索持续积累。
+3. **Lint**：定期检查矛盾、陈旧信息、孤立页面、缺失引用和知识空白，并持续整理。
 
-### 自主学习判断
+### 维护方式
 
-仅在内容同时具备以下特征时，自主创建或更新 Wiki：
-- **概念性**：属于概念、原理、架构、术语关系或稳定机制
-- **稳定性**：不是临时状态、一次性操作或短期易失效信息
-- **新颖性**：对已有 Wiki 有实质新增、修正或关联价值
-- **可信度**：有代码、官方资料或可靠来源支持
-- **通用性**：不只服务于当前一次任务
+- 写入前先查看 index 和相关页面，优先整合、更新和建立联系，而不是机械创建重复页面。
+- 新来源与旧结论冲突时，记录冲突并修订综合判断，不要静默丢弃任一来源。
+- 内容可以包含摘要、实体、概念、事件、步骤、比较、项目知识和不断演化的综合分析；页面形式服务于知识积累，不要求预先归入固定知识类型。
+- 不必等到知识完全稳定或结构完美才记录。允许先形成有来源、有上下文的工作理解，之后通过新的来源、查询和 lint 持续修正。
+- 当前任务仍应得到直接回答或交付；Wiki 更新是对探索成果的积累，而不是替代用户要求。
 
-不要仅因为进行了搜索、阅读 GitHub 仓库、分析代码或完成一次操作就保存 Wiki。先查询已有知识；重复内容不保存，有实质变化时优先更新已有页面。
-
-### Wiki 与 Skill 的边界
-
-- Wiki 回答“是什么、为什么、如何关联”，保存概念性知识。
-- Skill 回答“收到某类任务后怎么做”，保存触发条件、执行步骤、工具调用、异常处理和验收标准。
-- 用户要求创建或封装 Skill 时，必须产出可被加载器识别的 SKILL.md；保存 Wiki 只能作为补充，不能视为完成该任务。
-- 技能配置和使用说明、MCP 配置、Connector 配置、安装步骤、操作手册、任务日志和临时研究摘录不属于 Wiki。
-
-**注意：** index.md 和 log.md 会自动维护，你只需创建或更新页面。
+**注意：** index.md 和 log.md 会自动维护，你只需创建、更新、合并或修订普通页面。
 
 ### 交叉引用
 
-如果新页面与已有知识相关，用 [[页面名称]] 引用它们，建立知识网络。
-完全独立的知识点无需引用。
-只在新信息实质性改变已有内容时才更新它们。
+如果新页面与已有知识相关，用 [[页面名称]] 建立联系。随着理解变化，维护这些链接和摘要，使 Wiki 成为持续复利的知识工件。
 
-### Content 原则
+### 来源追踪
 
-写提炼后的概念知识，不写原始对话或执行过程。代码和命令只应作为解释概念的证据或示例，不能让页面退化为操作手册。
+保存页面时可以通过 sources 字段记录支持该页面的来源（URL、文件、Git 仓库、对话等），便于后续验证和修订。来源是可选的——不要求所有页面必须提供，但当页面结论来自具体外部来源时，记录来源有助于冲突判断和知识追溯。
+
+通过 origin 字段可以标记本次变化的来源阶段：ingest（来源摄取）、query（查询中产生的新综合）或 maintenance（lint 后的修订）。默认为 ingest。
+
+### 工具
+
+- **ingest_wiki_source**：登记一个原始来源，可选保存不可变文本快照，并把该来源附加到本次所有页面变化。
+- **save_wiki**：创建、更新、合并、替换或失效页面，可附带来源和来源阶段。
+- **read_wiki_page**：按需读取指定页面内容。
+- **lint_wiki**：主动检查知识库健康状况。确定性问题（如索引不同步）会自动修复；语义问题（矛盾、缺失引用、知识缺口）只返回建议，由你结合来源决定是否修订。
 
 ### 使用知识
 
-当知识库中有相关信息时，直接使用，不要说“根据记忆”。`
+当知识库中有相关信息时，直接使用，不要说"根据记忆"。`

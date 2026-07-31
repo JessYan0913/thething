@@ -13,21 +13,6 @@ import { logger } from '../../primitives/logger'
 import fs from 'fs/promises'
 import path from 'path'
 
-const PROCEDURAL_CONTENT_PATTERNS = [
-  /^#{1,6}\s*(安装|配置|使用方法|操作步骤|运行方式|快速开始)/im,
-  /(?:^|\n)\s*1[.、]\s*(安装|运行|执行|打开|配置|克隆|下载)/i,
-  /(?:npm|pnpm|yarn|pip)\s+(?:install|add)\b/i,
-  /git\s+clone\b/i,
-]
-
-export function detectProceduralWikiContent(content: string): string[] {
-  if (!content) return []
-  const matched = PROCEDURAL_CONTENT_PATTERNS.filter(pattern => pattern.test(content)).length
-  return matched >= 2
-    ? ['内容包含多个安装、配置或操作手册特征；请确认主体是概念知识，命令仅作为解释性证据。']
-    : []
-}
-
 const INTERNAL_WIKI_PAGES = new Set(['index', 'log'])
 
 function normalizeWikiPageIdentifier(value: string): string {
@@ -73,19 +58,11 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
   const wikiConfig = config.config || DEFAULT_WIKI_CONFIG
 
   return tool({
-    description: `保存经过筛选的概念性知识到长期知识库（Wiki）。先完成当前任务，再决定是否需要调用本工具。
+    description: `将有价值的理解整合到持久化 Wiki。Wiki 是由 Agent 持续维护的复利知识工件，可以包含来源摘要、实体、概念、事件、步骤、比较、项目知识和不断演化的综合分析。
 
-仅保存以下知识类型：概念、原理、架构、术语关系、稳定机制。内容还应具备稳定性、新颖性、可信度和通用性。
+写入前先查看已有页面，优先更新、合并和建立交叉引用，避免机械创建重复内容。新信息与旧结论冲突时，应保留来源上下文并修订综合判断。查询中产生的有价值分析和联系也可以保存。
 
-不要仅因为搜索资料、阅读 GitHub 仓库、分析代码或完成一次操作就保存。以下内容不属于 Wiki：
-- Skill 的触发条件、执行步骤、工具调用、使用说明
-- MCP 或 Connector 配置
-- 安装步骤、操作手册、任务日志、临时研究摘录
-- 已存在知识的重复表述
-
-用户要求创建或封装 Skill 时，必须实际创建可加载的 SKILL.md；调用本工具不能完成该任务。命令和代码可以作为概念说明的证据，但不能成为页面主体。
-
-每个操作必须通过 knowledgeType 明确所保存的概念知识类型。index.md 和 log.md 会自动维护。`,
+不要求内容预先归入固定知识类型，也不必等到完全稳定或结构完美才记录；后续可通过新的来源、查询和 lint 持续修正。index.md 和 log.md 会自动维护。`,
     inputSchema: z.object({
       actions: z
         .array(wikiActionSchema)
@@ -123,15 +100,18 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
             continue
           }
 
+          const origin = action.origin ?? 'ingest'
           const baseData: WikiPageData = {
             name: action.name,
             description: action.description,
             category: action.category,
             created: now,
             updated: now,
+            origin,
+            sources: action.sources,
           }
 
-          const warnings = detectProceduralWikiContent(action.content)
+          const warnings: string[] = []
 
           // 交叉引用验证：检查 content 中的 [[页面名称]] 是否存在
           if (action.content) {
@@ -192,7 +172,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
               if (target) {
                 const mode = action.mode === 'append' ? 'append' : 'replace'
                 logger.debug('SaveWiki', `update: target="${target}" mode="${mode}"`)
-                await updatePage(wikiDir, target, action.content, mode)
+                await updatePage(wikiDir, target, action.content, mode, { origin, sources: action.sources })
                 logDetails.push(`update: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -204,7 +184,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
             case 'merge':
               if (action.target && action.mergeTargets) {
-                await mergePages(wikiDir, action.target, action.mergeTargets)
+                await mergePages(wikiDir, action.target, action.mergeTargets, { origin, sources: action.sources })
                 logDetails.push(`merge: ${action.mergeTargets.join(', ')} → [[${action.name}]]`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -228,7 +208,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
                 target = await findFilenameByName(wikiDir, action.name) ?? undefined
               }
               if (target) {
-                await invalidatePage(wikiDir, target, action.content)
+                await invalidatePage(wikiDir, target, action.content, { origin, sources: action.sources })
                 logDetails.push(`invalidate: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true })
               } else {
@@ -253,9 +233,13 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
       // 写入日志
       if (logDetails.length > 0) {
+        const origins = new Set(input.actions.map(a => a.origin ?? 'ingest'))
+        const logOperation = origins.size === 1
+          ? (input.actions[0].origin ?? 'ingest')
+          : 'ingest'
         await appendLog(wikiDir, {
           timestamp: now,
-          operation: 'ingest',
+          operation: logOperation,
           description: `Agent 保存 (${logDetails.length} 条操作)`,
           details: logDetails,
         }, wikiConfig)

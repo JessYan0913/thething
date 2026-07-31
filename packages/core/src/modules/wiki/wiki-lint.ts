@@ -5,10 +5,9 @@
 
 import fs from 'fs/promises'
 import path from 'path'
-import { generateText, Output } from 'ai'
-import type { LanguageModelV3 } from '@ai-sdk/provider'
+import { generateText, Output, type LanguageModel } from 'ai'
 import { ensureWikiDirExists, pageNameToFilename } from './wiki-paths'
-import { readAllPages, readPage, rebuildIndex, appendLog, replacePage, type WikiPage } from './wiki-io'
+import { readAllPages, rebuildIndex, appendLog, type WikiPage } from './wiki-io'
 import { LINT_PROMPT, lintOutputSchema, type LintIssue } from './wiki-prompt'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
 import { logger } from '../../primitives/logger'
@@ -189,7 +188,7 @@ async function checkConsistency(
  */
 async function checkSemantic(
   wikiDir: string,
-  model: LanguageModelV3,
+  model: LanguageModel,
   config: WikiConfig,
   scope?: string[],
 ): Promise<LintIssue[]> {
@@ -273,7 +272,7 @@ export async function lintDeterministic(
  */
 export async function lintWiki(
   wikiDir: string,
-  model?: LanguageModelV3,
+  model?: LanguageModel,
   config: WikiConfig = DEFAULT_WIKI_CONFIG,
 ): Promise<LintReport> {
   await ensureWikiDirExists(wikiDir)
@@ -298,27 +297,11 @@ export async function lintWiki(
   fixed += consistencyFixed
 
   // 4. 语义检查（需要 LLM）
+  // 语义问题只报告建议，不自动执行 replace/merge/invalidate。
+  // Agent 应结合来源和上下文决定如何修订，避免模型误判造成不可逆覆盖。
   if (model) {
     const semanticIssues = await checkSemantic(wikiDir, model, config)
     allIssues.push(...semanticIssues)
-
-    // 修复可自动修复的语义问题
-    for (const issue of semanticIssues) {
-      if (issue.type === 'contradiction' && issue.suggestion?.includes('replace')) {
-        // 找到需要 replace 的页面
-        const targetFile = issue.pages[0]
-        const page = await readPage(wikiDir, targetFile)
-        if (page) {
-          // 使用更新的信息替换
-          const newerFile = issue.pages[1]
-          const newerPage = await readPage(wikiDir, newerFile)
-          if (newerPage) {
-            await replacePage(wikiDir, targetFile, page.data, newerPage.content)
-            fixed++
-          }
-        }
-      }
-    }
   }
 
   // 5. 写入日志

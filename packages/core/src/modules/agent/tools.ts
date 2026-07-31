@@ -19,6 +19,8 @@ import {
   createCronTool,
   createSaveWikiTool,
   createReadWikiPageTool,
+  createLintWikiTool,
+  createIngestWikiSourceTool,
   createContextPinTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
@@ -85,12 +87,19 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     })
   }
 
-  // 注册 save_wiki 工具（需要 wikiBaseDir）
+  // 注册 Wiki 工具（需要 wikiBaseDir）
   if (config.wikiBaseDir) {
     tools.save_wiki = createSaveWikiTool({
       wikiBaseDir: config.wikiBaseDir,
     })
     tools.read_wiki_page = createReadWikiPageTool({
+      wikiBaseDir: config.wikiBaseDir,
+    })
+    tools.lint_wiki = createLintWikiTool({
+      wikiBaseDir: config.wikiBaseDir,
+      model: config.model,
+    })
+    tools.ingest_wiki_source = createIngestWikiSourceTool({
       wikiBaseDir: config.wikiBaseDir,
     })
   }

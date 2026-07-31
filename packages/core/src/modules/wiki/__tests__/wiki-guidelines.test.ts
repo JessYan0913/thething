@@ -1,53 +1,80 @@
 import { describe, expect, it } from 'vitest'
-import { WIKI_GUIDELINES_PROMPT, wikiActionSchema } from '../wiki-prompt'
+import { WIKI_GUIDELINES_PROMPT, wikiActionSchema, wikiSourceSchema } from '../wiki-prompt'
 
-describe('wiki knowledge boundaries', () => {
-  it('keeps the current task primary and reflects after completion', () => {
-    expect(WIKI_GUIDELINES_PROMPT).toContain('当前任务优先')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('完成任务后')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('受控反思')
+describe('wiki maintenance guidelines', () => {
+  it('describes the wiki as a persistent compounding artifact maintained by the agent', () => {
+    expect(WIKI_GUIDELINES_PROMPT).toContain('持久化的知识库')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('复利')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('知识工件')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('Wiki 由你负责维护')
   })
 
-  it('does not save merely because external sources were searched', () => {
-    expect(WIKI_GUIDELINES_PROMPT).not.toContain('搜索外部来源后，将整理的知识保存到 Wiki')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('不要仅因为进行了搜索')
+  it('supports ingest, query feedback, and lint as continuing maintenance operations', () => {
+    expect(WIKI_GUIDELINES_PROMPT).toContain('Ingest')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('查询中产生的有价值分析')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('Lint')
   })
 
-  it('separates conceptual knowledge from executable skills', () => {
-    expect(WIKI_GUIDELINES_PROMPT).toContain('Wiki 回答“是什么、为什么、如何关联”')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('必须产出可被加载器识别的 SKILL.md')
-  })
+  it('allows the schema and page forms to evolve without fixed knowledge types', () => {
+    expect(WIKI_GUIDELINES_PROMPT).toContain('不是固定制度')
+    expect(WIKI_GUIDELINES_PROMPT).toContain('不要求预先归入固定知识类型')
 
-  it('requires an explicit conceptual knowledge type', () => {
-    const valid = wikiActionSchema.safeParse({
+    expect(wikiActionSchema.safeParse({
       action: 'create',
-      category: 'domain',
-      knowledgeType: 'architecture',
-      name: 'Adapter architecture',
-      description: 'How adapters isolate rendering backends',
-      content: 'Adapters separate the timeline model from renderer implementations.',
-    })
-    const missingType = wikiActionSchema.safeParse({
-      action: 'create',
-      category: 'domain',
-      name: 'Adapter architecture',
-      description: 'How adapters isolate rendering backends',
-      content: 'Adapters separate the timeline model from renderer implementations.',
-    })
-
-    expect(valid.success).toBe(true)
-    expect(missingType.success).toBe(false)
+      category: 'project',
+      name: 'Development workflow',
+      description: 'Evolving local development notes',
+      content: 'Install, run, observe, and revise this page as the project evolves.',
+    }).success).toBe(true)
   })
 
   it('keeps invalidate available in the shared action schema', () => {
     expect(wikiActionSchema.safeParse({
       action: 'invalidate',
       category: 'domain',
-      knowledgeType: 'concept',
       name: 'Old concept',
       description: 'Outdated concept',
       content: 'Superseded by the current architecture.',
       target: 'old-concept.md',
     }).success).toBe(true)
+  })
+
+  it('accepts optional origin and sources without requiring them', () => {
+    expect(wikiActionSchema.safeParse({
+      action: 'create',
+      category: 'domain',
+      name: 'Test page',
+      description: 'A page with provenance',
+      content: 'Some synthesized knowledge.',
+      origin: 'query',
+      sources: [
+        { type: 'url', value: 'https://example.com/article', title: 'Example' },
+        { type: 'git', value: 'owner/repo', revision: 'abc123' },
+      ],
+    }).success).toBe(true)
+
+    expect(wikiActionSchema.safeParse({
+      action: 'create',
+      category: 'domain',
+      name: 'No provenance page',
+      description: 'A page without sources',
+      content: 'Knowledge without explicit provenance.',
+    }).success).toBe(true)
+  })
+
+  it('validates source schema with required type and value', () => {
+    expect(wikiSourceSchema.safeParse({
+      type: 'file',
+      value: '/path/to/file.ts',
+    }).success).toBe(true)
+
+    expect(wikiSourceSchema.safeParse({
+      type: 'invalid',
+      value: 'x',
+    }).success).toBe(false)
+
+    expect(wikiSourceSchema.safeParse({
+      type: 'url',
+    }).success).toBe(false)
   })
 })

@@ -13,12 +13,22 @@ import { logger } from '../../primitives/logger'
 // 类型定义
 // ============================================================
 
+export interface WikiSourceData {
+  type: 'url' | 'file' | 'git' | 'conversation' | 'other'
+  value: string
+  revision?: string
+  capturedAt?: string
+  title?: string
+}
+
 export interface WikiPageData {
   name: string
   description: string
   category: string
   created: string
   updated: string
+  origin?: 'ingest' | 'query' | 'maintenance'
+  sources?: WikiSourceData[]
 }
 
 export interface WikiPage {
@@ -56,8 +66,12 @@ export function formatFrontmatter(data: WikiPageData): string {
     `category: ${data.category}`,
     `created: ${data.created}`,
     `updated: ${data.updated}`,
-    '---',
   ]
+
+  if (data.origin) lines.push(`origin: ${data.origin}`)
+  if (data.sources?.length) lines.push(`sources: ${JSON.stringify(data.sources)}`)
+
+  lines.push('---')
   return lines.join('\n')
 }
 
@@ -76,8 +90,23 @@ export function parsePage(raw: string, filename: string): WikiPage | null {
   const category = fm.match(/^category:\s*(.+)$/m)?.[1]?.trim()
   const created = fm.match(/^created:\s*(.+)$/m)?.[1]?.trim()
   const updated = fm.match(/^updated:\s*(.+)$/m)?.[1]?.trim()
+  const originRaw = fm.match(/^origin:\s*(.+)$/m)?.[1]?.trim()
+  const sourcesRaw = fm.match(/^sources:\s*(.+)$/m)?.[1]?.trim()
 
   if (!name || !description || !category || !created || !updated) return null
+
+  const origin = originRaw === 'ingest' || originRaw === 'query' || originRaw === 'maintenance'
+    ? originRaw
+    : undefined
+  let sources: WikiSourceData[] | undefined
+  if (sourcesRaw) {
+    try {
+      const parsed = JSON.parse(sourcesRaw)
+      if (Array.isArray(parsed)) sources = parsed as WikiSourceData[]
+    } catch {
+      // Ignore malformed optional provenance while preserving page readability.
+    }
+  }
 
   return {
     data: {
@@ -86,6 +115,8 @@ export function parsePage(raw: string, filename: string): WikiPage | null {
       category,
       created,
       updated,
+      origin,
+      sources,
     },
     content,
     filename,
@@ -157,11 +188,24 @@ function normalizeFilename(filename: string): string {
   return filename.endsWith('.md') ? filename : filename + '.md'
 }
 
+function mergeSources(
+  existing: WikiSourceData[] = [],
+  incoming: WikiSourceData[] = [],
+): WikiSourceData[] | undefined {
+  const merged = new Map<string, WikiSourceData>()
+  for (const source of [...existing, ...incoming]) {
+    const key = `${source.type}:${source.value}:${source.revision ?? ''}`
+    merged.set(key, source)
+  }
+  return merged.size > 0 ? Array.from(merged.values()) : undefined
+}
+
 export async function updatePage(
   wikiDir: string,
   filename: string,
   newContent: string,
   mode: 'replace' | 'append' = 'replace',
+  metadata?: Pick<WikiPageData, 'origin' | 'sources'>,
 ): Promise<void> {
   const normalizedFilename = normalizeFilename(filename)
   const page = await readPage(wikiDir, normalizedFilename)
@@ -178,6 +222,8 @@ export async function updatePage(
   const updatedData: WikiPageData = {
     ...page.data,
     updated: now,
+    origin: metadata?.origin ?? page.data.origin,
+    sources: mergeSources(page.data.sources, metadata?.sources),
   }
 
   const fileContent = formatFrontmatter(updatedData) + '\n\n' + mergedContent
@@ -191,6 +237,7 @@ export async function mergePages(
   wikiDir: string,
   targetFilename: string,
   sourceFilenames: string[],
+  metadata?: Pick<WikiPageData, 'origin' | 'sources'>,
 ): Promise<string | null> {
   const pages: WikiPage[] = []
 
@@ -209,6 +256,11 @@ export async function mergePages(
   const mergedData: WikiPageData = {
     ...pages[0].data,
     updated: now,
+    origin: metadata?.origin ?? pages[0].data.origin,
+    sources: mergeSources(
+      pages.flatMap(page => page.data.sources ?? []),
+      metadata?.sources,
+    ),
   }
 
   // 写入合并后的页面
@@ -236,8 +288,15 @@ export async function replacePage(
   content: string,
 ): Promise<void> {
   const normalizedFilename = normalizeFilename(filename)
+  const existing = await readPage(wikiDir, normalizedFilename)
   const now = new Date().toISOString()
-  const updatedData: WikiPageData = { ...data, updated: now }
+  const updatedData: WikiPageData = {
+    ...data,
+    created: existing?.data.created ?? data.created,
+    updated: now,
+    origin: data.origin ?? existing?.data.origin,
+    sources: mergeSources(existing?.data.sources, data.sources),
+  }
   const fileContent = formatFrontmatter(updatedData) + '\n\n' + content
   await fs.writeFile(path.join(wikiDir, normalizedFilename), fileContent, 'utf-8')
 }
@@ -249,13 +308,19 @@ export async function invalidatePage(
   wikiDir: string,
   filename: string,
   reason: string,
+  metadata?: Pick<WikiPageData, 'origin' | 'sources'>,
 ): Promise<void> {
   const normalizedFilename = normalizeFilename(filename)
   const page = await readPage(wikiDir, normalizedFilename)
   if (!page) return
 
   const now = new Date().toISOString()
-  const updatedData: WikiPageData = { ...page.data, updated: now }
+  const updatedData: WikiPageData = {
+    ...page.data,
+    updated: now,
+    origin: metadata?.origin ?? page.data.origin,
+    sources: mergeSources(page.data.sources, metadata?.sources),
+  }
   const invalidatedContent = page.content + `\n\n> [已过期] ${reason}`
   const fileContent = formatFrontmatter(updatedData) + '\n\n' + invalidatedContent
   await fs.writeFile(path.join(wikiDir, normalizedFilename), fileContent, 'utf-8')

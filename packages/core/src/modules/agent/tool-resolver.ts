@@ -7,7 +7,7 @@ const SYSTEM_TOOLS = new Set([
   'read_file', 'write_file', 'edit_file', 'bash',
   'grep', 'glob', 'web_fetch',
   'ask_user_question', 'skill', 'cron',
-  'save_wiki', 'read_wiki_page',
+  'save_wiki', 'read_wiki_page', 'lint_wiki', 'ingest_wiki_source',
   'agent', 'parallel_agent',
   'create_todos', 'update_todos', 'list_todos', 'delete_todos',
 ]);

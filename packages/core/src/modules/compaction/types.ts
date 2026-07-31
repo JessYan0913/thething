@@ -62,4 +62,6 @@ export const DEFAULT_COMPACTABLE = new Set([
   'web_fetch',
   'skill',
   'read_wiki_page',
+  'lint_wiki',
+  'ingest_wiki_source',
 ]);

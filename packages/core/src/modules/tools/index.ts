@@ -11,6 +11,8 @@ export { createSkillTool } from './skill';
 export { createCronTool } from './cron';
 export { createSaveWikiTool } from './save-wiki';
 export { createReadWikiPageTool } from './read-wiki-page';
+export { createLintWikiTool } from './lint-wiki';
+export { createIngestWikiSourceTool } from './ingest-wiki-source';
 export { createContextPinTool } from './context-pin';
 
 // Text processing utilities (BOM, line endings)

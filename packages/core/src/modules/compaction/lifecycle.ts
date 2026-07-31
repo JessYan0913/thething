@@ -622,7 +622,8 @@ function isSemanticTool(toolName: string): boolean {
   return (
     isFileReadTool(toolName) ||
     toolName === 'read_wiki_page' ||
-    toolName === 'ReadWikiPage'
+    toolName === 'ReadWikiPage' ||
+    toolName === 'lint_wiki'
   );
 }
 

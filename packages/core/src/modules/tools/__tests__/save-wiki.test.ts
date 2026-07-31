@@ -2,39 +2,17 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createSaveWikiTool, detectProceduralWikiContent, validateWikiActionBoundary } from '../save-wiki'
+import { createSaveWikiTool, validateWikiActionBoundary } from '../save-wiki'
 
 async function execute(tool: any, input: unknown): Promise<any> {
   return tool.execute(input, { toolCallId: 'test', messages: [] })
 }
 
-describe('save_wiki knowledge boundaries', () => {
-  it('warns when content is dominated by installation steps', () => {
-    const warnings = detectProceduralWikiContent(`
-## 安装步骤
-1. 安装依赖：pnpm install
-2. 配置服务并运行命令
-`)
-
-    expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('操作手册')
-  })
-
-  it('does not warn for conceptual architecture with an isolated code term', () => {
-    const warnings = detectProceduralWikiContent(`
-## Adapter architecture
-The adapter separates timeline semantics from rendering backends.
-A project may use pnpm install during development, but installation is not the subject.
-`)
-
-    expect(warnings).toEqual([])
-  })
-
+describe('save_wiki integrity boundaries', () => {
   it('rejects direct operations on internally maintained pages', () => {
     expect(validateWikiActionBoundary({
       action: 'update',
       category: 'domain',
-      knowledgeType: 'concept',
       name: 'index',
       target: 'index.md',
       description: 'Manual index update',
@@ -46,7 +24,6 @@ A project may use pnpm install during development, but installation is not the s
     expect(validateWikiActionBoundary({
       action: 'merge',
       category: 'domain',
-      knowledgeType: 'architecture',
       name: 'HyperFrames overview',
       target: 'hyperframes-overview.md',
       mergeTargets: ['hyperframes-overview'],
@@ -57,7 +34,6 @@ A project may use pnpm install during development, but installation is not the s
     expect(validateWikiActionBoundary({
       action: 'merge',
       category: 'domain',
-      knowledgeType: 'architecture',
       name: 'HyperFrames overview',
       target: 'hyperframes-overview.md',
       mergeTargets: ['rendering.md', 'rendering'],
@@ -73,7 +49,6 @@ A project may use pnpm install during development, but installation is not the s
       actions: [{
         action: 'create',
         category: 'domain',
-        knowledgeType: 'concept',
         name: 'index',
         description: 'Attempted replacement',
         content: 'malicious index content',
@@ -85,24 +60,23 @@ A project may use pnpm install during development, but installation is not the s
     expect(await readFile(path.join(wikiBaseDir, 'index.md'), 'utf8')).not.toContain('malicious index content')
   })
 
-  it('saves conceptual knowledge and returns procedural warnings', async () => {
+  it('accepts different useful page forms without a fixed knowledge type', async () => {
     const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
     const tool = createSaveWikiTool({ wikiBaseDir })
 
     const result = await execute(tool, {
       actions: [{
         action: 'create',
-        category: 'domain',
-        knowledgeType: 'concept',
-        name: 'Package installation concept',
-        description: 'How package installation resolves dependencies',
-        content: '## 安装步骤\n1. 安装依赖：pnpm install\n2. 配置服务并运行命令',
+        category: 'project',
+        name: 'Local development workflow',
+        description: 'Working notes for developing the project locally',
+        content: '## Setup\n1. Install dependencies.\n2. Run the local checks.\n\nUpdate this page as the workflow evolves.',
       }],
     })
 
     expect(result.saved).toBe(1)
-    expect(result.results[0].warnings[0]).toContain('操作手册')
-    expect(await readFile(path.join(wikiBaseDir, 'package-installation-concept.md'), 'utf8')).toContain('Package installation concept')
+    expect(result.results[0].warnings).toBeUndefined()
+    expect(await readFile(path.join(wikiBaseDir, 'local-development-workflow.md'), 'utf8')).toContain('Local development workflow')
   })
 
   it('executes invalidate from the shared action schema', async () => {
@@ -113,7 +87,6 @@ A project may use pnpm install during development, but installation is not the s
       actions: [{
         action: 'create',
         category: 'domain',
-        knowledgeType: 'concept',
         name: 'Legacy concept',
         description: 'A concept that will be superseded',
         content: 'This concept is current.',
@@ -123,7 +96,6 @@ A project may use pnpm install during development, but installation is not the s
       actions: [{
         action: 'invalidate',
         category: 'domain',
-        knowledgeType: 'concept',
         name: 'Legacy concept',
         description: 'Superseded concept',
         content: 'Replaced by the current architecture.',
@@ -132,5 +104,68 @@ A project may use pnpm install during development, but installation is not the s
 
     expect(result.saved).toBe(1)
     expect(await readFile(path.join(wikiBaseDir, 'legacy-concept.md'), 'utf8')).toContain('[已过期] Replaced by the current architecture.')
+  })
+
+  it('persists optional sources and origin in frontmatter and merges sources on update', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+
+    await execute(tool, {
+      actions: [{
+        action: 'create',
+        category: 'domain',
+        name: 'Synthesized analysis',
+        description: 'Analysis from multiple sources',
+        content: 'The system uses a layered architecture.',
+        origin: 'ingest',
+        sources: [
+          { type: 'url', value: 'https://example.com/article', title: 'Article' },
+        ],
+      }],
+    })
+
+    const raw = await readFile(path.join(wikiBaseDir, 'synthesized-analysis.md'), 'utf8')
+    expect(raw).toContain('origin: ingest')
+    expect(raw).toContain('https://example.com/article')
+
+    await execute(tool, {
+      actions: [{
+        action: 'update',
+        category: 'domain',
+        name: 'Synthesized analysis',
+        target: 'synthesized-analysis.md',
+        description: 'Updated with additional source',
+        content: 'The system uses a layered architecture with clear boundaries.',
+        origin: 'query',
+        sources: [
+          { type: 'git', value: 'owner/repo', revision: 'abc123' },
+        ],
+      }],
+    })
+
+    const updated = await readFile(path.join(wikiBaseDir, 'synthesized-analysis.md'), 'utf8')
+    expect(updated).toContain('origin: query')
+    expect(updated).toContain('https://example.com/article')
+    expect(updated).toContain('owner/repo')
+    expect(updated).toContain('abc123')
+  })
+
+  it('writes query origin to log when all actions use query origin', async () => {
+    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
+    const tool = createSaveWikiTool({ wikiBaseDir })
+
+    await execute(tool, {
+      actions: [{
+        action: 'create',
+        category: 'domain',
+        name: 'Query result',
+        description: 'A comparison discovered during query',
+        content: 'Option A is faster than Option B for this use case.',
+        origin: 'query',
+      }],
+    })
+
+    const log = await readFile(path.join(wikiBaseDir, 'log.md'), 'utf8')
+    expect(log).toContain('query')
   })
 })

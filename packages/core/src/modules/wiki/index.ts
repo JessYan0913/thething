@@ -26,6 +26,7 @@ export {
   appendLog,
   readAllPages,
   type WikiPageData,
+  type WikiSourceData,
   type WikiPage,
   type IndexEntry,
   type LogEntry,
@@ -35,20 +36,37 @@ export {
 export {
   LINT_PROMPT,
   WIKI_GUIDELINES_PROMPT,
-  wikiKnowledgeTypeSchema,
   wikiActionSchema,
+  wikiSourceSchema,
   lintIssueSchema,
   lintOutputSchema,
   type WikiAction,
+  type WikiSource,
   type LintIssue,
   type LintOutput,
 } from './wiki-prompt'
+
+// Raw sources
+export {
+  createWikiSourceId,
+  registerWikiSource,
+  listWikiSources,
+  type WikiSourceRecord,
+  type RegisterWikiSourceInput,
+  type RegisterWikiSourceResult,
+} from './wiki-sources'
 
 // Query
 export {
   loadWikiContext,
   formatWikiContextForPrompt,
 } from './wiki-query'
+
+// Maintenance
+export {
+  getWikiLintStatus,
+  type WikiLintStatus,
+} from './wiki-maintenance'
 
 // Lint
 export {
