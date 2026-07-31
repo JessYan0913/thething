@@ -183,6 +183,10 @@ export async function POST(request: Request) {
     }
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
+    // 子 Agent data-sub 事件缓冲：SDK 内层流（createAgentUIStream）不包含这些事件，
+    // onEnd 保存的消息里没有它们；这里按 `${type}|${id}` 替换式缓冲（复刻 SDK 的
+    // 同 type+同 id 合并语义，text-delta 只留最后一条），保存前合并进消息实现刷新后回看。
+    const subEventBuffer = new Map<string, { type: string; id: string; data: unknown }>();
     const userId = messageUserId || 'default';
 
     console.log(`[Chat API] createAgent start: ${Date.now() - startTime}ms`);
@@ -327,6 +331,30 @@ export async function POST(request: Request) {
           return;
         }
 
+        // 合并缓冲的 data-sub 事件到包含对应工具 part 的 assistant 消息，
+        // 使刷新加载后子 Agent 过程可回看。事件 id 形如
+        // `${toolCallId}`、`${toolCallId}#${seq}`（步骤）或 `${toolCallId}-${i}[#seq]`（并行子任务），
+        // 截断后缀得到宿主工具的 toolCallId。
+        if (subEventBuffer.size > 0) {
+          const findHost = (toolCallId: string): UIMessage | undefined =>
+            newAssistantMessages.find((m) =>
+              m.parts.some((p) => (p as { toolCallId?: string }).toolCallId === toolCallId),
+            );
+          let merged = 0;
+          for (const event of subEventBuffer.values()) {
+            const rootId = event.id.split('#')[0];
+            // 先按完整 rootId 找（单 agent），再截去 `-index` 找（parallel 子任务）
+            const host = findHost(rootId) ?? findHost(rootId.replace(/-\d+$/, ''));
+            if (host) {
+              (host.parts as unknown[]).push({ type: event.type, id: event.id, data: event.data });
+              merged++;
+            }
+          }
+          if (merged > 0) {
+            console.log(`[Chat API] Merged ${merged}/${subEventBuffer.size} sub-agent data parts into messages`);
+          }
+        }
+
         // 锚定在本轮用户消息上追加；head 已移走则成为孤儿分支（headMoved=false）
         const headMoved = store.messageStore.appendMessages(
           conversationId, newAssistantMessages, headMessageId,
@@ -467,7 +495,17 @@ export async function POST(request: Request) {
     // 包装成 UI 消息流
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        writerRef.current = writer as unknown as SubAgentStreamWriter;
+        // 包装 writer：透传所有 chunk，同时替换式缓冲 data-sub 事件供 onEnd 持久化
+        writerRef.current = {
+          write: (chunk: Record<string, unknown>) => {
+            const type = chunk.type;
+            const id = chunk.id;
+            if (typeof type === 'string' && type.startsWith('data-sub-') && typeof id === 'string') {
+              subEventBuffer.set(`${type}|${id}`, { type, id, data: chunk.data });
+            }
+            (writer as unknown as SubAgentStreamWriter).write(chunk);
+          },
+        };
 
         // 读取可恢复流（JSON 字符串）并解析为 UIMessageChunk 后写入 UI 流
         const reader = resumableStream.getReader();

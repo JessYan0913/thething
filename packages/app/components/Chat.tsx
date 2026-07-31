@@ -29,7 +29,7 @@ import {
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
-import { SubAgentStream } from '@/components/ai-elements/subagent-stream';
+import { SubAgentCard } from '@/components/ai-elements/subagent-stream';
 import { TodoPanel } from '@/components/chat-todo-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Shimmer } from '@/components/ai-elements/shimmer';
@@ -1836,9 +1836,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                           const toolCallId = (toolPart as unknown as { toolCallId?: string }).toolCallId;
 
+                          // data-sub 事件 id 形如 `${toolCallId}`、`${toolCallId}#${seq}`（步骤）
+                          // 或 `${toolCallId}-${i}[#seq]`（并行子任务），前缀匹配全部关联
                           const subParts = toolCallId
                             ? (message.parts as SubDataPart[]).filter(
-                                (p) => p.type.startsWith('data-sub-') && p.id === toolCallId,
+                                (p) =>
+                                  p.type.startsWith('data-sub-') &&
+                                  (p.id === toolCallId ||
+                                    p.id?.startsWith(`${toolCallId}#`) ||
+                                    p.id?.startsWith(`${toolCallId}-`)),
                               )
                             : [];
 
@@ -2115,6 +2121,17 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const previewData = formatToolOutput();
                           const toolKey = `${message.id}-${index}`;
                           const isPreviewed = previewedToolKey === toolKey;
+
+                          // 子 Agent 工具（agent / parallel_agent）：渲染过程卡片
+                          //（自动展开实时步骤 + 流式文本，结束后收起为摘要行）
+                          if (isSubAgent && toolCallId) {
+                            return (
+                              <Fragment key={toolKey}>
+                                {mcpAppSlot}
+                                <SubAgentCard parts={subParts} toolCallId={toolCallId} />
+                              </Fragment>
+                            );
+                          }
 
                           return (
                             <Fragment key={toolKey}>

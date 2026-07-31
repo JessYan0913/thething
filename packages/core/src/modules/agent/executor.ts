@@ -138,6 +138,9 @@ export async function executeRoutedAgent(
 
     // 9. 处理输出流
     const toolResults: Array<{ name: string; input: unknown; output: string }> = [];
+    // 子流内部 toolCallId → 步骤序号，用于 tool-result 与 tool-call 配对
+    //（一个 step 可能并行发起多个 tool-call，不能用 stepsExecuted 当时值配对）
+    const stepSeqByCallId = new Map<string, number>();
 
     for await (const part of streamResult.stream) {
       if (part.type === 'text-delta') {
@@ -151,10 +154,13 @@ export async function executeRoutedAgent(
       if (part.type === 'tool-call') {
         stepsExecuted++;
         toolsUsed.push(part.toolName);
+        stepSeqByCallId.set(part.toolCallId, stepsExecuted);
+        // step 事件用唯一 id（`${toolCallId}#${seq}`）：AI SDK 对同 type+同 id
+        // 的 data part 是替换语义，共用 id 会导致前端只剩最后一步。
         writer?.write({
           type: 'data-sub-tool-call',
-          id: toolCallId,
-          data: { name: part.toolName, input: part.input },
+          id: `${toolCallId}#${stepsExecuted}`,
+          data: { name: part.toolName, input: part.input, seq: stepsExecuted },
         });
       }
       if (part.type === 'tool-result') {
@@ -164,10 +170,12 @@ export async function executeRoutedAgent(
             : JSON.stringify(part.output).slice(0, 200);
         // 保存工具结果用于强制摘要
         toolResults.push({ name: part.toolName, input: part.input, output: output.slice(0, 2000) });
+        // 与对应 tool-call 同 seq 同 id（type 不同不冲突），前端按 id 配对
+        const seq = stepSeqByCallId.get(part.toolCallId) ?? stepsExecuted;
         writer?.write({
           type: 'data-sub-tool-result',
-          id: toolCallId,
-          data: { name: part.toolName, result: output },
+          id: `${toolCallId}#${seq}`,
+          data: { name: part.toolName, result: output, seq },
         });
 
         // 写入 checkpoint（每完成一步更新一次）
