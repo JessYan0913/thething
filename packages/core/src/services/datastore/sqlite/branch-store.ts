@@ -76,7 +76,7 @@ export class SQLiteBranchStore implements BranchStore {
       parentBranchId: null,
       forkMessageId: null,
       tipMessageId: conversation.head_message_id,
-      name: undefined,
+      name: '主分支',
       status: 'active',
       createdBy: 'system',
     });
