@@ -224,7 +224,7 @@ function RunStatus({ run, isRunning }: { run: AgentRun; isRunning: boolean }) {
   if (isRunning) {
     const current = [...run.steps].reverse().find((s) => s.result === undefined);
     return (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
         <Loader2Icon className="size-3 animate-spin text-blue-500" />
         {current ? current.name : run.steps.length > 0 ? `${run.steps.length} steps` : 'starting'}
       </span>
@@ -234,14 +234,14 @@ function RunStatus({ run, isRunning }: { run: AgentRun; isRunning: boolean }) {
   const aborted = run.done?.status === 'aborted';
   if (failed || run.error) {
     return (
-      <span className="flex items-center gap-1 text-xs text-red-600">
+      <span className="flex shrink-0 items-center gap-1 text-xs text-red-600">
         <XCircleIcon className="size-3" /> failed
       </span>
     );
   }
   if (aborted) {
     return (
-      <span className="flex items-center gap-1 text-xs text-orange-500">
+      <span className="flex shrink-0 items-center gap-1 text-xs text-orange-500">
         <XCircleIcon className="size-3" /> aborted
       </span>
     );
@@ -254,7 +254,7 @@ function RunStatus({ run, isRunning }: { run: AgentRun; isRunning: boolean }) {
       ? `${run.done.successCount ?? 0}/${run.done.taskCount} tasks`
       : `${steps} steps`;
   return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
       <CheckIcon className="size-3 text-green-600" />
       {label}{secs ? ` · ${secs}s` : ''}
     </span>
@@ -320,7 +320,7 @@ export function SubAgentCard({ parts, toolCallId, className }: SubAgentCardProps
 
   return (
     <Collapsible
-      className={cn('not-prose group', className)}
+      className={cn('not-prose group mb-4', className)}
       open={isOpen}
       onOpenChange={setIsOpen}
     >
@@ -333,12 +333,10 @@ export function SubAgentCard({ parts, toolCallId, className }: SubAgentCardProps
         ) : (
           <span className="truncate">{title}</span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2">
-          <RunStatus run={run} isRunning={isRunning} />
-          <ChevronDownIcon
-            className={cn('size-4 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
-          />
-        </span>
+        <RunStatus run={run} isRunning={isRunning} />
+        <ChevronDownIcon
+          className={cn('size-4 shrink-0 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
+        />
       </CollapsibleTrigger>
       <CollapsibleContent className="data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in">
         <div className="mt-2 space-y-3 border-l-2 border-muted pl-4">
