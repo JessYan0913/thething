@@ -76,7 +76,9 @@
       "Bash(open http://localhost:3000/test-motion)",
       "Bash(sed -n \"/async function createSkillFile/,/^}/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)",
       "Bash(sed -n \"/empty dirs array means no resources/,/^    }\\);/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)",
-      "Bash(sed -n \"/async function createMcpJson/,/^}/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)"
+      "Bash(sed -n \"/async function createMcpJson/,/^}/p\" src/composition/loaders/__tests__/resource-dirs-verification.test.ts)",
+      "Bash(sqlite3 ~/.thething/data/chat.db \"SELECT content FROM messages WHERE id='-41b-vG-PHOlj13x5Byvl';\")",
+      "Bash(python3 -c \"import json,sys; m=json.load\\(sys.stdin\\); [print\\(p.get\\('type'\\), ':', p.get\\('text',''\\)[:800]\\) for p in m['parts']]\")"
     ]
   }
 }

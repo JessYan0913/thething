@@ -13,3 +13,11 @@
 - Skill 用于可复用的执行能力；用户明确要求创建或封装 Skill 时，主要交付仍应是可被加载器识别的 SKILL.md，Wiki 不能替代，但 Wiki 与 Skill 之间不做工具层硬隔离。
 - Wiki 应通过 Ingest、Query 回写和 Lint 持续修订、合并、交叉引用及处理冲突；页面结构、分类和工作流允许随领域与使用过程共同演化。
 - 不再推进以严格分类、内容纯度拒绝、Skill 写入硬授权和多交付工具证据验收为核心的治理方案；仅保留防止真实数据损坏的不变量约束。
+
+## 账本（Ledger）模块设计共识
+
+- 账本模块是 Agent 的「事实资产」，给 Agent 一个时间维度：让重复自动化任务从纯 API 调用变成有积累的价值产出。
+- 核心意义四层：对抗任务退化（数据复利）；自动化任务从执行升级为治理（采集→校验→对比→归因→沉淀）；数据分析不可替代性（计算/统计是 LLM 弱项）；Agent 自成长（数据资产随时间积累，同一问题的回答深度随历史变化）。其中治理目标是让 Agent 能自主维护事实资产，不预设必须产出 Wiki。
+- 与 Wiki/Skill 的关系：账本存事实与数值，Wiki 可存模型判断后选择沉淀的结论，Skill 存方法；Wiki 是可选下游消费者，不是 Ledger 的硬性闭环或验收条件。
+- 关键设计约束：参考 Wiki 模块是借鉴模式而非照抄骨架，须独立思考模块意义；存储为「文件为源、索引为算」双层并存（data.jsonl append-only 事实源 + SQLite 派生查询索引，单向导入、可重建），原因是 ledger 检索=算数据（SQL 擅长）而非 wiki 检索=读文本（LLM 擅长），纯文件路线无法支撑范围/维度/聚合/统计查询；核心动作只有 记(append)/查(query/aggregate/stat)/检(lint)/治(治理·阈值触发)，保持简单；账本只提供数据能力、不做价值评判，是否写入 Wiki 由 Agent 根据分析结果和任务上下文自主决定；Ledger 的使用引导对齐 Wiki 模块——不设独立"编排 Skill"，由模块自带 LEDGER_GUIDELINES_PROMPT 注入 system prompt（对齐 WIKI_GUIDELINES_PROMPT）+ 在编写具体业务 Skill 时于步骤中明确 Ledger 用法；Ledger 实现结构对齐 wiki 模块（modules/ledger/ 目录 + modules/tools/ 工厂函数 + agent/tools.ts 注册 + system-prompt section + settings UI）。
+
