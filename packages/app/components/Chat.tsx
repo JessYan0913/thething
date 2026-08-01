@@ -34,6 +34,7 @@ import { TodoPanel } from '@/components/chat-todo-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
+import { WriteFileStreamingCard } from '@/components/ai-elements/write-file-streaming-card';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
@@ -2046,7 +2047,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               }
                               return { content, title: 'wiki' };
                             }
-                            // read_wiki_page 工具：格式化知识库读取结果
+                            // read_wiki_page 工具：格式化为 markdown，走面板的 markdown 预览
                             if (toolName === 'read_wiki_page') {
                               let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
                               try {
@@ -2055,14 +2056,131 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                   content = parsed.message || 'Page not found';
                                 } else {
                                   const parts: string[] = [];
-                                  parts.push(`Page: ${parsed.name ?? ''}`);
-                                  if (parsed.category) parts.push(`Category: ${parsed.category}`);
-                                  if (parsed.description) parts.push(`Description: ${parsed.description}`);
+                                  parts.push(`# ${parsed.name ?? ''}`);
+                                  const meta: string[] = [];
+                                  if (parsed.category) meta.push(`**${parsed.category}**`);
+                                  if (parsed.description) meta.push(parsed.description);
+                                  if (meta.length > 0) parts.push(`> ${meta.join(' · ')}`);
                                   if (parsed.content) {
                                     parts.push('');
                                     parts.push(parsed.content);
                                   }
                                   content = parts.join('\n');
+                                }
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, language: 'markdown', title: 'wiki' };
+                            }
+                            // lint_wiki 工具：格式化知识库健康检查结果
+                            if (toolName === 'lint_wiki') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                const parts: string[] = [];
+                                if (parsed.error) {
+                                  parts.push(`Error: ${parsed.error}`);
+                                } else {
+                                  parts.push(`Checked ${parsed.checked ?? 0} page(s)  Issues: ${parsed.totalIssues ?? 0}  Auto-fixed: ${parsed.autoFixed ?? 0}${parsed.semanticChecked ? `  Semantic: ${parsed.semanticIssueCount ?? 0}` : ''}`);
+                                  if (Array.isArray(parsed.issues) && parsed.issues.length > 0) {
+                                    parts.push('');
+                                    for (const issue of parsed.issues) {
+                                      parts.push(`[${issue.severity}] ${issue.type} — ${issue.pages?.join(', ') ?? ''}`);
+                                      parts.push(`  ${issue.description}`);
+                                      if (issue.suggestion) parts.push(`  → ${issue.suggestion}`);
+                                    }
+                                  }
+                                  if (Array.isArray(parsed.pages) && parsed.pages.length > 0) {
+                                    parts.push('');
+                                    parts.push(`Pages (${parsed.pages.length}):`);
+                                    for (const p of parsed.pages) {
+                                      parts.push(`  ${p.name}${p.category ? ` [${p.category}]` : ''}${p.updated ? ` — ${p.updated}` : ''}`);
+                                    }
+                                  }
+                                }
+                                content = parts.join('\n');
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'wiki' };
+                            }
+                            // ingest_wiki_source 工具：格式化来源登记结果
+                            if (toolName === 'ingest_wiki_source') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                const parts: string[] = [];
+                                if (parsed.source) {
+                                  const s = parsed.source;
+                                  parts.push(`Source: ${s.title ?? s.value ?? ''}${s.type ? ` (${s.type})` : ''}`);
+                                  if (s.value && s.title) parts.push(`  ${s.value}`);
+                                  parts.push(`  ${parsed.sourceCreated ? 'Registered' : 'Already registered'}${parsed.snapshotCreated ? ', snapshot saved' : ''}`);
+                                }
+                                const wiki = parsed.wiki;
+                                if (wiki?.results && Array.isArray(wiki.results) && wiki.results.length > 0) {
+                                  parts.push('');
+                                  for (const r of wiki.results) {
+                                    const icon = r.success ? '✓' : '✗';
+                                    parts.push(`${icon} [${r.action}] ${r.name}${r.error ? ` — ${r.error}` : ''}`);
+                                  }
+                                  parts.push('');
+                                  parts.push(`Saved: ${wiki.saved ?? 0}  Skipped: ${wiki.skipped ?? 0}  Failed: ${wiki.failed ?? 0}`);
+                                } else if (wiki) {
+                                  parts.push('');
+                                  parts.push('No page changes');
+                                }
+                                content = parts.join('\n');
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'wiki' };
+                            }
+                            // inspect_wiki_history 工具：格式化修订历史查询结果
+                            if (toolName === 'inspect_wiki_history') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                if (Array.isArray(parsed.revisions)) {
+                                  // list_revisions
+                                  const parts: string[] = [];
+                                  for (const r of parsed.revisions) {
+                                    parts.push(`${r.id}  [${r.operation}]  ${r.createdAt}${r.reason ? ` — ${r.reason}` : ''}`);
+                                  }
+                                  content = parts.length > 0 ? parts.join('\n') : 'No revisions';
+                                } else if (parsed.record && typeof parsed.raw === 'string') {
+                                  // read_revision snapshot
+                                  const r = parsed.record;
+                                  content = [`Revision: ${r.id}  [${r.operation}]  ${r.createdAt}`, '', parsed.raw].join('\n');
+                                } else if (typeof parsed.unifiedDiff === 'string') {
+                                  // diff
+                                  return {
+                                    content: parsed.changed ? parsed.unifiedDiff : 'No changes between revisions',
+                                    language: parsed.changed ? 'diff' : undefined,
+                                    title: 'wiki',
+                                  };
+                                } else if (Array.isArray(parsed.pages)) {
+                                  // source_pages
+                                  content = parsed.pages.length > 0
+                                    ? parsed.pages.map((p: { name?: string; filename?: string } | string) =>
+                                        typeof p === 'string' ? p : (p.name ?? p.filename ?? '')).join('\n')
+                                    : 'No pages for this source';
+                                }
+                              } catch {
+                                // 解析失败，保持原样
+                              }
+                              return { content, title: 'wiki' };
+                            }
+                            // restore_wiki_revision 工具：格式化恢复结果
+                            if (toolName === 'restore_wiki_revision') {
+                              let content = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                              try {
+                                const parsed = JSON.parse(content);
+                                if (parsed.restored) {
+                                  content = [
+                                    `✓ Restored ${parsed.filename}`,
+                                    `  From revision: ${parsed.restoredFromRevisionId}`,
+                                    `  New revision: ${parsed.revisionId}`,
+                                  ].join('\n');
                                 }
                               } catch {
                                 // 解析失败，保持原样
@@ -2121,6 +2239,13 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const previewData = formatToolOutput();
                           const toolKey = `${message.id}-${index}`;
                           const isPreviewed = previewedToolKey === toolKey;
+
+                          // write_file 流式输入期间：展示尾部内容预览卡
+                          //（input 由 AI SDK parsePartialJson 增量解析，content 会逐步增长）
+                          const streamingWriteInput =
+                            toolPart.type === 'tool-write_file' && toolPart.state === 'input-streaming'
+                              ? (toolPart.input as { filePath?: string; content?: string } | undefined)
+                              : undefined;
 
                           // 子 Agent 工具（agent / parallel_agent）：渲染过程卡片
                           //（自动展开实时步骤 + 流式文本，结束后收起为摘要行）
@@ -2194,6 +2319,12 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               )}
                               {isDenied && <span className="text-xs text-orange-500 ml-auto">(已拒绝)</span>}
                             </div>
+                            {streamingWriteInput?.content !== undefined && (
+                              <WriteFileStreamingCard
+                                filePath={streamingWriteInput.filePath}
+                                content={streamingWriteInput.content}
+                              />
+                            )}
                             </Fragment>
                           );
                         }
