@@ -35,6 +35,7 @@ import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { WriteFileStreamingCard } from '@/components/ai-elements/write-file-streaming-card';
+import { FileOutputsSummary, collectFileOutputs } from '@/components/ai-elements/file-outputs-summary';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
@@ -2331,6 +2332,29 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                         return null;
                       })}
+                      {/* 产出文件汇总卡:一轮结束后聚合本消息内 write/edit 的成功产出 */}
+                      {message.role === 'assistant' &&
+                        !(messageIndex === messages.length - 1 && (status === 'streaming' || status === 'submitted')) && (
+                          <FileOutputsSummary
+                            entries={collectFileOutputs(message.parts as Array<{ type: string; state?: string; output?: unknown }>)}
+                            onOpen={async (entry) => {
+                              setPreviewFile({ path: entry.path, content: '', language: entry.language });
+                              try {
+                                const res = await fetch(`/api/fs?action=read&path=${encodeURIComponent(entry.path)}`);
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  const cleanContent = (data.content ?? '')
+                                    .split('\n')
+                                    .map((line: string) => line.replace(/^\d+:\s/, ''))
+                                    .join('\n');
+                                  setPreviewFile(prev => prev ? { ...prev, content: cleanContent } : null);
+                                }
+                              } catch {
+                                // 加载失败时保持空内容
+                              }
+                            }}
+                          />
+                        )}
                     </MessageContent>
                     )}
                     {message.role === 'user' && !isEditing && status !== 'streaming' && status !== 'submitted' && (
