@@ -18,6 +18,8 @@ export interface BuildInstructionsOptions {
   cwd?: string
   wikiBaseDir?: string
   skills?: Skill[]
+  /** 预格式化的技能清单（常驻集三段式 A+B 段），提供时优先于 skills 的预算格式化 */
+  skillListing?: string | null
   permissions?: PermissionRule[]
   projectContext?: LoadedProjectContext
   conversationMeta?: {
@@ -44,6 +46,7 @@ export async function buildAgentInstructions(
   const { prompt } = await buildSystemPrompt({
     cwd: options?.cwd,
     skills: options?.skills,
+    skillListing: options?.skillListing,
     permissions: options?.permissions,
     projectContext: options?.projectContext,
     includeProjectContext: true,

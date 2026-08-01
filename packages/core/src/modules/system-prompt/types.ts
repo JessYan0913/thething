@@ -47,6 +47,12 @@ export interface BuildSystemPromptOptions {
   agents?: AgentDefinition[];
   permissions?: PermissionRule[];
 
+  /**
+   * 预格式化的技能清单（三段式 A+B 段，由 createAgent 经常驻集选择器生成）。
+   * 提供时优先于 skills 的预算格式化路径。见 docs/skill-resident-set-design.md。
+   */
+  skillListing?: string | null;
+
   // 【新增】项目上下文（THING.md 等）
   projectContext?: LoadedProjectContext;
   /** 知识库根目录 */

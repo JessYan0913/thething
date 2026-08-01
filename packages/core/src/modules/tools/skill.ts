@@ -23,6 +23,7 @@ import type { AgentExecutionResult, AgentToolConfig } from '../../modules/agent/
 import { resolveModelAlias } from '../../services/model/alias';
 import { executeAgentTask } from '../../modules/agent/agent-tool';
 import { generateSkillDirTree, readSkillBody } from '../../modules/skills/loader';
+import { recordSkillUsage } from '../../modules/skills/usage';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -164,6 +165,10 @@ export function createSkillTool(options: {
   agentConfig?: AgentToolConfig;
   /** 测试或替代运行时可注入相同契约的 fork 执行器。 */
   executeFork?: typeof executeAgentTask;
+  /** 禁用技能名列表：快照命中与 reload 命中都拒绝加载。 */
+  disabledSkills?: readonly string[];
+  /** 使用统计目录（<dataDir>）。提供时成功加载后记一笔（内部容错）。 */
+  usageDataDir?: string;
 }) {
   return tool({
     description: `Invoke a skill by its exact name. Use when the Available Skills section in the system prompt lists a skill matching the user's request.
@@ -191,6 +196,16 @@ Matching Guide:
       const trimmedSkill = skill.trim().replace(/^\/+/, '');
 
       logger.debug('SkillTool', `Invoking skill: ${trimmedSkill}${args ? ` with args: ${args}` : ''}`);
+
+      // disabled 检查先于查找，同时覆盖快照命中与 reload 命中两条路径
+      if (options.disabledSkills?.includes(trimmedSkill)) {
+        return {
+          success: false,
+          skillName: trimmedSkill,
+          allowedTools: [],
+          error: `Skill "${trimmedSkill}" is disabled in user preferences. To re-enable it, remove it from the skills.disabled list in ~/.thething/preferences.json.`,
+        } as SkillToolResult;
+      }
 
       let skillData = findSkill(trimmedSkill, options.skills);
 
@@ -228,6 +243,11 @@ Matching Guide:
       }
 
       const output = formatSkillOutput(skillData, dirTree, args);
+
+      // 使用统计：成功加载即记一笔（内部容错，失败仅 debug 日志）
+      if (options.usageDataDir) {
+        await recordSkillUsage(options.usageDataDir, skillData.name);
+      }
 
       if (skillData.context === 'fork') {
         if (skillData.background !== false) {

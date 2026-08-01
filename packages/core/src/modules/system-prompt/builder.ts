@@ -115,10 +115,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
   {
     name: "skill-matching",
     create: (options) => {
+      // 优先使用预格式化的常驻集清单（createAgent 经 resident-set 选择器生成）；
+      // 未提供时回退到预算格式化路径（兼容直接调用 buildSystemPrompt 的场景）。
       const skills = options.skills ?? [];
-      const listing = skills.length > 0
-        ? formatSkillsWithinBudget(skills)
-        : '';
+      const listing = options.skillListing
+        ?? (skills.length > 0 ? formatSkillsWithinBudget(skills) : '');
 
       const skillCreationNote = '技能是配置目录中的标准 SKILL.md 文件（不是 .py 脚本、不是 Wiki 页面）。标准 frontmatter 必须包含 name 和 description；启动时只索引这两个元数据，匹配后再按需加载正文和资源。\n\n创建或封装 Skill 时，优先使用 create-skill 提供的指南和模板；无论采用何种可用工具，最终产物都应是结构有效、能被加载器发现的 SKILL.md。Wiki 页面或独立脚本不能替代用户明确要求的 Skill 交付。';
 

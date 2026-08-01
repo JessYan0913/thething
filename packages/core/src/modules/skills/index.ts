@@ -30,4 +30,29 @@ export {
   estimateTokensFromChars,
 } from './budget-formatter';
 
+export {
+  DEFAULT_RESIDENT_LIMIT,
+  MAX_RESIDENT_ENTRY_CHARS,
+  selectResidentSet,
+  formatResidentSections,
+  getSessionSkillResidentSet,
+  clearSessionSkillResidentSetCache,
+  type ResidentSetOptions,
+  type ResidentSetResult,
+} from './resident-set';
+
+export {
+  loadSkillPreferences,
+  EMPTY_SKILL_PREFERENCES,
+  type SkillPreferences,
+} from './preferences';
+
+export {
+  loadSkillUsage,
+  recordSkillUsage,
+  usageScore,
+  type SkillUsageEntry,
+  type SkillUsageMap,
+} from './usage';
+
 export const SKILLS_MODULE_VERSION = '2.0.0';

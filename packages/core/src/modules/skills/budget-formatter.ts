@@ -60,7 +60,7 @@ export function truncateDescription(desc: string, maxChars: number): string {
 /**
  * 需要保持完整描述的来源
  */
-const FULL_DESC_SOURCES: Set<string> = new Set(['bundled', 'project']);
+const FULL_DESC_SOURCES: Set<string> = new Set(['builtin', 'project']);
 
 /**
  * 格式化技能列表，在预算内

@@ -123,11 +123,13 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   })
 
   // ============================================================
-  // 并行加载 wiki + project context
+  // 并行加载 wiki + project context + 技能偏好/使用统计
   // ============================================================
   const { loadProjectContext } = await import('../../modules/system-prompt/sections/project-context')
+  const { loadSkillPreferences } = await import('../../modules/skills/preferences')
+  const { loadSkillUsage } = await import('../../modules/skills/usage')
 
-  const [wikiContext, projectContext] = await Promise.all([
+  const [wikiContext, projectContext, skillPreferences, skillUsage] = await Promise.all([
     (async () => {
       if (messagesWithAttachments.length === 0) return null
       return loadWikiContextForAgent(messagesWithAttachments, wikiBaseDir)
@@ -136,7 +138,25 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       contextFileNames: layout.contextFileNames,
       configDir: layout.configDir,
     }),
+    loadSkillPreferences(layout.configDir),
+    loadSkillUsage(layout.dataDir),
   ])
+
+  // ============================================================
+  // 技能常驻集（docs/skill-resident-set-design.md）
+  // 每会话只算一次（conversationId 键的进程级缓存），保证 session
+  // 缓存策略的 skill-matching section 会话内字节稳定。
+  // ============================================================
+  const { getSessionSkillResidentSet, selectResidentSet, formatResidentSections } =
+    await import('../../modules/skills/resident-set')
+
+  const residentSet = getSessionSkillResidentSet(conversationId, () =>
+    selectResidentSet(context.skills, {
+      preferences: skillPreferences,
+      usage: skillUsage,
+    }),
+  )
+  const skillListing = formatResidentSections(residentSet, skillPreferences)
 
   // ============================================================
   // Instructions
@@ -154,6 +174,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     cwd: projectRoot,
     wikiBaseDir,
     skills: [...context.skills],
+    skillListing,
     permissions: modules.permissions ? [...context.permissions] : [],
     projectContext,
     conversationMeta: options.conversationMeta ? {
@@ -233,6 +254,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     model: wrappedModel,
     provider,
     skills: [...context.skills],
+    disabledSkills: skillPreferences.disabled,
     agents: [...context.agents],
     mcps: [...context.mcps],
     mcpRegistry: context.mcpRegistry,

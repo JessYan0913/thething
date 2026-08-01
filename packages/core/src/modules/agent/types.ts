@@ -391,6 +391,8 @@ export interface LoadToolsConfig {
   availableModels?: string[]
   /** 预加载的 skills（来自 AppContext 快照） */
   skills?: Skill[]
+  /** 禁用技能名列表（skill 工具拒绝加载、find_skills 不返回） */
+  disabledSkills?: string[]
   /** WebSearch API Key（由应用层显式传入） */
   /** 是否开启调试日志 */
   debugEnabled?: boolean

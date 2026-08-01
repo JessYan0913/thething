@@ -16,6 +16,7 @@ import {
   createWriteFileTool,
   askUserQuestionTool,
   createSkillTool,
+  createFindSkillsTool,
   createCronTool,
   createSaveWikiTool,
   createReadWikiPageTool,
@@ -157,16 +158,26 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   tools.agent = createAgentTool(agentToolConfig)
 
   // Skill fork 与普通 agent 工具共享同一执行配置；此时 tools 已包含完整父工具池。
+  const reloadSkills = async () => loadSkills({
+    cwd: config.sessionState.projectRoot,
+    configDir: config.sessionState.layout.configDir,
+  })
   tools.skill = createSkillTool({
     skills: config.skills ?? [],
-    reloadSkills: async () => loadSkills({
-      cwd: config.sessionState.projectRoot,
-      configDir: config.sessionState.layout.configDir,
-    }),
+    reloadSkills,
     sessionState: config.sessionState,
     modelAliases: config.modelAliases,
     availableModels: config.availableModels,
     agentConfig: agentToolConfig,
+    disabledSkills: config.disabledSkills,
+    usageDataDir: config.sessionState.layout.dataDir,
+  })
+
+  // 技能检索通路：系统提示词只常驻部分技能描述，其余经本工具按需检索
+  tools.find_skills = createFindSkillsTool({
+    skills: config.skills ?? [],
+    reloadSkills,
+    disabledSkills: config.disabledSkills,
   })
 
   // 4. 创建并行 agent 工具（多子 Agent 同时执行）
