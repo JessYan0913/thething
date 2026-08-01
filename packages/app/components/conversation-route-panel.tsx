@@ -109,7 +109,8 @@ function buildRouteRows(tree: ConversationTree): {
     }
   }
 
-  const visibleNodes = nodes.filter((node) => node.role === 'user');
+  // 倒序排列：最新对话节点在最上方，历史节点向下延伸（连线/索引基于倒序数组自洽）
+  const visibleNodes = nodes.filter((node) => node.role === 'user').reverse();
   const visibleIds = new Set(visibleNodes.map((node) => node.id));
   const rowIndexById = new Map(visibleNodes.map((node, index) => [node.id, index]));
   const rows = visibleNodes.map((node): RouteRow => ({
@@ -392,44 +393,52 @@ export function ConversationRoutePanel({
                     </div>
                   )}
 
-                  {/* 路线标签 */}
-                  {(nodeBranches.length > 0 || isCurrentTip) && (
-                    <div
-                      className="absolute top-1/2 flex -translate-y-1/2 flex-col items-start gap-1"
-                      style={{ left: x + 14 }}
-                    >
-                      {nodeBranches.length > 0 ? nodeBranches.map((branch) => (
-                        <button
-                          key={branch.id}
-                          type="button"
-                          title={branch.preview}
-                          className={cn(
-                            'rounded-md px-2 py-1 text-left text-[11px] transition-colors hover:bg-accent',
-                            branch.id === selectedBranchId ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground',
-                            branch.status === 'archived' && 'line-through opacity-60',
-                          )}
-                          onMouseEnter={() => setHoveredBranchId(branch.id)}
-                          onMouseLeave={() => setHoveredBranchId(null)}
-                          onFocus={() => setHoveredBranchId(branch.id)}
-                          onBlur={() => setHoveredBranchId(null)}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            userPickedRef.current = !branch.isCurrent;
-                            setSelectedBranchId(branch.id);
-                            setOpenMenuBranchId(null);
-                          }}
-                        >
-                          <span className="flex items-center gap-1">
-                            {branch.isPinned && <PinIcon className="size-2.5" />}
-                            {getRouteLabel(branch, row.node.preview)}
-                            {branch.isCurrent && ' · 当前'}
-                          </span>
-                        </button>
-                      )) : (
+                  {/* 用户消息缩略 + 路线标签 */}
+                  <div
+                    className="absolute top-1/2 flex -translate-y-1/2 flex-col items-start gap-0.5"
+                    style={{ left: x + 14 }}
+                  >
+                    {/* 非当前节点显示预览：当前节点已在 header 显示，避免重复 */}
+                    {!isCurrentTip && row.node.preview && (
+                      <span
+                        className="max-w-[220px] truncate rounded-md px-2 py-1 text-[11px] leading-4 text-muted-foreground"
+                      >
+                        {row.node.preview}
+                      </span>
+                    )}
+                    {nodeBranches.length > 0 ? nodeBranches.map((branch) => (
+                      <button
+                        key={branch.id}
+                        type="button"
+                        title={branch.preview}
+                        className={cn(
+                          'rounded-md px-2 py-1 text-left text-[11px] transition-colors hover:bg-accent',
+                          branch.id === selectedBranchId ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground',
+                          branch.status === 'archived' && 'line-through opacity-60',
+                        )}
+                        onMouseEnter={() => setHoveredBranchId(branch.id)}
+                        onMouseLeave={() => setHoveredBranchId(null)}
+                        onFocus={() => setHoveredBranchId(branch.id)}
+                        onBlur={() => setHoveredBranchId(null)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          userPickedRef.current = !branch.isCurrent;
+                          setSelectedBranchId(branch.id);
+                          setOpenMenuBranchId(null);
+                        }}
+                      >
+                        <span className="flex items-center gap-1">
+                          {branch.isPinned && <PinIcon className="size-2.5" />}
+                          {getRouteLabel(branch, row.node.preview)}
+                          {branch.isCurrent && ' · 当前'}
+                        </span>
+                      </button>
+                    )) : (
+                      isCurrentTip && (
                         <span className="px-2 py-1 text-[11px] font-medium text-primary">你在这里</span>
-                      )}
-                    </div>
-                  )}
+                      )
+                    )}
+                  </div>
                 </div>
               );
             })}

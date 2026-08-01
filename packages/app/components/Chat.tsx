@@ -35,6 +35,8 @@ import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { WriteFileStreamingCard } from '@/components/ai-elements/write-file-streaming-card';
+import { BashStreamingCard, BashOutputCard } from '@/components/ai-elements/bash-streaming-card';
+import { ToolReportCard } from '@/components/ai-elements/tool-report-card';
 import { FileOutputsSummary, collectFileOutputs } from '@/components/ai-elements/file-outputs-summary';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
@@ -42,7 +44,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -73,6 +75,14 @@ const TODO_TOOL_TYPES = new Set([
   'tool-todo_get',
   'tool-todo_stop',
   'tool-todo_delete',
+]);
+
+// 报告/列表类工具：输出本质是摘要而非文件，点击内联展开报告卡（替代右侧文件预览面板）
+// 文件类（write/read/edit_file/read_wiki_page）与 web_fetch 仍走右侧面板
+const INLINE_REPORT_TOOLS = new Set([
+  'grep', 'glob', 'skill',
+  'save_wiki', 'lint_wiki', 'ingest_wiki_source',
+  'inspect_wiki_history', 'restore_wiki_revision', 'cron',
 ]);
 
 function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null, toolName?: string): { title: string; icon: React.ComponentType<{ className?: string }> } | undefined {
@@ -473,6 +483,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     mediaType?: string;
   } | null>(null);
   const [previewedToolKey, setPreviewedToolKey] = useState<string | null>(null);
+  // 点击工具行内联展开输出卡的 toolKey 集合（bash 终端卡 + 报告类工具报告卡，不走右侧文件预览面板）
+  const [expandedInlineKeys, setExpandedInlineKeys] = useState<Set<string>>(new Set());
 
   // 模型、Agent、审批模式选择状态（持久化到 ~/.thething/preferences.json + localStorage）
   const {
@@ -1638,6 +1650,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
             ) : (
             <Conversation>
               <ConversationContent>
+                <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
                 {messages.map((message, messageIndex) => {
                 const isEditing = editingMessageId === message.id;
                 const userMessageText = message.role === 'user'
@@ -1781,6 +1794,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           }
 
                           if (part.type.startsWith('data-sub-')) {
+                            return null;
+                          }
+
+                          // bash 直播帧不独立渲染，由对应工具 part 消费
+                          if (part.type.startsWith('data-bash-')) {
                             return null;
                           }
 
@@ -2248,6 +2266,19 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               ? (toolPart.input as { filePath?: string; content?: string } | undefined)
                               : undefined;
 
+                          // bash 执行期间：查找同 toolCallId 的直播帧（服务端节流推送，同 id 替换式合并）
+                          // 注意不能用 isRunning：审批通过后执行期间状态是 approval-responded（被 isRunning 排除）
+                          const bashExecuting =
+                            toolPart.state === 'input-available' ||
+                            (toolPart.state === 'approval-responded' &&
+                              (toolPart as unknown as { approval?: { approved?: boolean } }).approval?.approved !== false);
+                          const bashStreamPart =
+                            toolPart.type === 'tool-bash' && bashExecuting && toolCallId
+                              ? (message.parts as SubDataPart[]).find(
+                                  (p) => p.type === 'data-bash-output' && p.id === toolCallId,
+                                )
+                              : undefined;
+
                           // 子 Agent 工具（agent / parallel_agent）：渲染过程卡片
                           //（自动展开实时步骤 + 流式文本，结束后收起为摘要行）
                           if (isSubAgent && toolCallId) {
@@ -2259,16 +2290,40 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             );
                           }
 
+                          // bash 终端卡 + 报告类工具报告卡:点击内联展开(不走右侧文件预览面板)
+                          // 文件类(write/read/edit_file/read_wiki_page)与 web_fetch 仍走右侧面板
+                          const isBashTool = toolPart.type === 'tool-bash';
+                          const reportToolName = isDynamicTool
+                            ? ((part as DynamicToolUIPart).toolName ?? 'tool')
+                            : toolPart.type.replace('tool-', '');
+                          // inspect_wiki_history 的 diff 子分支仍走面板(保留 diff 高亮)
+                          const isInlineReportTool =
+                            isComplete &&
+                            INLINE_REPORT_TOOLS.has(reportToolName) &&
+                            previewData?.language !== 'diff';
+                          const isInlineTool = isBashTool || isInlineReportTool;
+                          const isInlineExpanded = isInlineTool && expandedInlineKeys.has(toolKey);
+                          const isExpandedView = isInlineTool ? isInlineExpanded : isPreviewed;
+
                           return (
                             <Fragment key={toolKey}>
                             {mcpAppSlot}
                             <div
-                              className={`flex items-center gap-2 text-sm transition-colors ${
+                              className={`flex w-full items-center gap-2 text-sm transition-colors ${
                                 isComplete && previewData
-                                  ? `cursor-pointer ${isPreviewed ? 'text-foreground bg-accent/50' : 'text-muted-foreground hover:text-foreground'}`
+                                  ? `cursor-pointer ${isExpandedView ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`
                                   : 'text-muted-foreground'
                               }`}
                               onClick={isComplete && previewData ? async () => {
+                                if (isInlineTool) {
+                                  setExpandedInlineKeys(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(toolKey)) next.delete(toolKey);
+                                    else next.add(toolKey);
+                                    return next;
+                                  });
+                                  return;
+                                }
                                 setPreviewedToolKey(toolKey);
 
                                 // 如果需要从 API 获取内容（write/read 工具）
@@ -2319,11 +2374,39 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                 </span>
                               )}
                               {isDenied && <span className="text-xs text-orange-500 ml-auto">(已拒绝)</span>}
+                              {isComplete && previewData && (
+                                <ChevronDownIcon className={`ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isExpandedView ? 'rotate-180' : 'rotate-0'}`} />
+                              )}
                             </div>
                             {streamingWriteInput?.content !== undefined && (
                               <WriteFileStreamingCard
                                 filePath={streamingWriteInput.filePath}
                                 content={streamingWriteInput.content}
+                              />
+                            )}
+                            {bashStreamPart?.data && (
+                              <BashStreamingCard
+                                command={(toolPart.input as { command?: string } | undefined)?.command}
+                                tail={String(bashStreamPart.data.tail ?? '')}
+                                bytes={Number(bashStreamPart.data.bytes ?? 0)}
+                                elapsedMs={Number(bashStreamPart.data.elapsedMs ?? 0)}
+                              />
+                            )}
+                            {isBashTool && isInlineExpanded && isComplete && (() => {
+                              const out = toolPart.output as { command?: string; stdout?: string; stderr?: string; exitCode?: number } | undefined;
+                              return (
+                                <BashOutputCard
+                                  command={out?.command}
+                                  stdout={out?.stdout ?? ''}
+                                  stderr={out?.stderr ?? ''}
+                                  exitCode={out?.exitCode}
+                                />
+                              );
+                            })()}
+                            {isInlineReportTool && isInlineExpanded && previewData && (
+                              <ToolReportCard
+                                label={previewData.title}
+                                content={previewData.content}
                               />
                             )}
                             </Fragment>
@@ -2453,6 +2536,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   <span className="animate-pulse">Thinking...</span>
                 </div>
               )}
+                </div>
               </ConversationContent>
               <AutoScrollToBottom trigger={isInitialLoadDone && messages.length > 0} />
               <ConversationScrollButton />

@@ -82,12 +82,19 @@ export interface BashOperations {
   ) => Promise<{ stdout: string; stderr: string; exitCode: number | null; outputFile?: string }>;
 }
 
+/** 结构等同 agent 模块的 SubAgentStreamWriter；就地定义以避免 tools 反向依赖 agent */
+export interface BashStreamWriter {
+  write: (chunk: Record<string, unknown>) => void;
+}
+
 export interface BashToolOptions {
   cwd: string;
   permissionRules?: readonly PermissionRule[];
   protectedWritePaths?: readonly string[];
   operations?: BashOperations;
   spawnHook?: BashSpawnHook;
+  /** 执行期间通过 UI 消息流推送 data-bash-output 直播帧（可选） */
+  writerRef?: { current: BashStreamWriter | null };
 }
 
 // ============================================================
@@ -321,6 +328,43 @@ const defaultBashOperations: BashOperations = {
 };
 
 // ============================================================
+// Live output streaming (data-bash-output frames)
+// ============================================================
+
+const STREAM_THROTTLE_MS = 200;
+const STREAM_TAIL_CHARS = 4000;
+
+/**
+ * 构造节流的直播帧推送器：stdout/stderr 按到达顺序合并进同一 buffer,
+ * 每 ≥200ms 通过 writer 推送一次累积尾部快照(同 type+id 在客户端替换式合并)。
+ * 无需结束时 flush —— 工具结果到达后 UI 会替换为最终卡片。
+ */
+function createStreamPusher(
+  writerRef: { current: BashStreamWriter | null } | undefined,
+  toolCallId: string | undefined,
+): ((chunk: string) => void) | undefined {
+  if (!writerRef || !toolCallId) return undefined;
+
+  let tail = '';
+  let bytes = 0;
+  let lastPush = 0;
+  const startTime = Date.now();
+
+  return (chunk: string) => {
+    bytes += Buffer.byteLength(chunk, 'utf-8');
+    tail = (tail + chunk).slice(-STREAM_TAIL_CHARS);
+    const now = Date.now();
+    if (now - lastPush < STREAM_THROTTLE_MS) return;
+    lastPush = now;
+    writerRef.current?.write({
+      type: 'data-bash-output',
+      id: toolCallId,
+      data: { tail, bytes, elapsedMs: now - startTime },
+    });
+  };
+}
+
+// ============================================================
 // Bash execute entry point
 // ============================================================
 
@@ -335,7 +379,7 @@ async function bashExecute({
   command: string;
   timeoutMs: number;
   background: boolean;
-  execOptions: { abortSignal?: AbortSignal };
+  execOptions: { abortSignal?: AbortSignal; toolCallId?: string };
   ops: BashOperations;
   options: BashToolOptions;
 }) {
@@ -424,10 +468,14 @@ async function bashExecute({
   }
 
   try {
+    // 直播帧推送:stdout/stderr 共用同一推送器,按到达顺序合并(符合终端体感)
+    const pushOutput = createStreamPusher(options.writerRef, execOptions.toolCallId);
     const { stdout, stderr, exitCode, outputFile } = await ops.exec(command, {
       cwd: resolvedCwd,
       timeout: resolvedTimeout,
       signal: execOptions.abortSignal,
+      onStdout: pushOutput,
+      onStderr: pushOutput,
     });
 
     const duration = Date.now() - startTime;

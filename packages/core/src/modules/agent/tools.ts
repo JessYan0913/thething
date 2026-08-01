@@ -72,6 +72,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       cwd: config.sessionState.projectRoot,
       permissionRules: config.sessionState.permissionRules,
       protectedWritePaths,
+      writerRef: config.writerRef ?? { current: null },
     }),
     grep: createGrepTool({
       cwd: config.sessionState.projectRoot,

@@ -335,7 +335,7 @@ export function SubAgentCard({ parts, toolCallId, className }: SubAgentCardProps
         )}
         <RunStatus run={run} isRunning={isRunning} />
         <ChevronDownIcon
-          className={cn('size-4 shrink-0 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
+          className={cn('ml-auto size-4 shrink-0 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in">
