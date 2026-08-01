@@ -25,6 +25,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { type CronJob } from "@the-thing/core"
+import { AgentTypeSelect } from "@/components/AgentTypeSelect"
 
 const SCHEDULE_PRESETS = [
   { label: "每分钟", value: "* * * * *" },
@@ -104,7 +105,9 @@ export default function AutomationSettings() {
         prompt: formPrompt.trim(),
       }
       if (schedule) body.schedule = schedule
+      // 清空时发 null（undefined 会被 JSON.stringify 丢弃，编辑时后端就不会清掉该字段）
       if (formAgentType.trim()) body.agentType = formAgentType.trim()
+      else if (editingJob) body.agentType = null
       // 有 schedule 时才允许启用
       if (schedule) body.enabled = formEnabled
 
@@ -389,11 +392,10 @@ export default function AutomationSettings() {
               <label className="text-sm font-medium">
                 Agent 类型 <span className="text-muted-foreground font-normal">（可选）</span>
               </label>
-              <Input
+              <AgentTypeSelect
                 value={formAgentType}
-                onChange={e => setFormAgentType(e.target.value)}
-                placeholder="留空使用默认 Agent"
-                className="text-sm"
+                onChange={setFormAgentType}
+                className="text-sm w-full"
               />
             </div>
 

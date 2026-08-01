@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { AgentTypeSelect } from "@/components/AgentTypeSelect"
 import { type CronJob, type CronExecution } from "@the-thing/core"
 import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
@@ -118,8 +119,9 @@ export default function AutomationDetail({
       }
       if (schedule) body.schedule = schedule
       else body.schedule = ""
+      // 清空时发 null（undefined 会被 JSON.stringify 丢弃，后端就不会更新该字段）
       if (editAgentType.trim()) body.agentType = editAgentType.trim()
-      else body.agentType = undefined
+      else body.agentType = null
       if (schedule) body.enabled = editEnabled
 
       const res = await fetch(`/api/cron/${encodeURIComponent(jobId)}`, {
@@ -278,11 +280,10 @@ export default function AutomationDetail({
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Agent 类型 <span className="text-xs text-muted-foreground/50">（可选）</span></p>
-                <Input
+                <AgentTypeSelect
                   value={editAgentType}
-                  onChange={(e) => setEditAgentType(e.target.value)}
-                  placeholder="留空使用默认 Agent"
-                  className="h-10 text-sm"
+                  onChange={setEditAgentType}
+                  className="h-10 text-sm w-full"
                 />
               </div>
             </div>
