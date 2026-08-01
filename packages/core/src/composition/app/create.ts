@@ -164,10 +164,12 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       sessionSourceId: options.conversationMeta.sessionSourceId,
     } : undefined,
     mcpServerTools,
-    // 合并 agent 定义的 instructions 和传入的 customInstructions
-    customInstructions: [selectedAgentDef?.instructions, options.customInstructions].filter(Boolean).join('\n\n'),
-    // 当选择自定义 Agent 时，跳过默认 identity section
-    excludeSections: selectedAgentDef ? ['identity'] : undefined,
+    // Agent 定义的 instructions 上升为提示词开头的身份 section，
+    // customInstructions 只含调用方传入的动态内容（如 todoNote）
+    customInstructions: options.customInstructions,
+    agentIdentity: selectedAgentDef?.instructions,
+    // 当选择自定义 Agent 时，跳过默认 identity 和 capabilities（"通用智能助手"身份声明）
+    excludeSections: selectedAgentDef ? ['identity', 'capabilities'] : undefined,
   })
 
   // ============================================================

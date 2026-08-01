@@ -98,6 +98,35 @@ describe('system-prompt', () => {
       });
     });
 
+    describe('agent identity (custom agent)', () => {
+      it('places agent instructions at the top and drops identity/capabilities', async () => {
+        const agentInstructions = '你是一个AI产品经理，擅长需求梳理、PRD撰写。';
+        const { prompt, includedSections } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+          agentIdentity: agentInstructions,
+          excludeSections: ['identity', 'capabilities'],
+        });
+        // Agent 身份出现在提示词开头
+        expect(prompt.startsWith(agentInstructions)).toBe(true);
+        // 默认身份/能力声明被排除
+        expect(includedSections).not.toContain('identity');
+        expect(includedSections).not.toContain('capabilities');
+        expect(prompt).not.toContain('通用智能助手');
+        // 价值观底线（rules section）保留
+        expect(prompt).toContain('核心价值');
+      });
+
+      it('keeps default behavior when no agentIdentity is provided', async () => {
+        const { includedSections } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+        });
+        expect(includedSections).not.toContain('agent-identity');
+        expect(includedSections).toContain('capabilities');
+      });
+    });
+
     describe('getAvailableSections', () => {
       it('should return all section names', () => {
         const sections = getAvailableSections();

@@ -66,6 +66,9 @@ export interface BuildSystemPromptOptions {
 
   /** Sections to exclude from the system prompt (e.g., ['identity'] for custom agents) */
   excludeSections?: string[];
+
+  /** 自定义 Agent 的身份指令，作为提示词开头的身份 section（替代 identity/capabilities） */
+  agentIdentity?: string | null;
 }
 
 /**

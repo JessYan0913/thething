@@ -267,6 +267,16 @@ export async function buildSystemPrompt(
     }
   }
 
+  // Add custom agent identity section (放在提示词开头，替代被排除的 identity/capabilities)
+  if (opts.agentIdentity) {
+    allSections.push({
+      name: "agent-identity",
+      content: opts.agentIdentity,
+      cacheStrategy: "session",
+      priority: 1,
+    });
+  }
+
   // Add session sections (async)
   for (const factory of SESSION_SECTION_FACTORIES) {
     // Skip sections that are explicitly disabled in options
