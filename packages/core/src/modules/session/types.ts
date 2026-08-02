@@ -7,8 +7,7 @@ import type { CompactionResult} from '../../services/config/compaction-types';
 import type { Skill, SkillEffort } from '../../modules/skills/types';
 import type { ContentReplacementState, ToolOutputConfig } from '../budget/tool-output-manager';
 import type { DataStore } from '../../primitives/datastore/types';
-import type { ModelSpec, CompactionConfig } from '../../services/config/behavior';
-import type { ModelAliases } from '../../services/model';
+import type { CompactionConfig } from '../../services/config/behavior';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ResolvedLayout } from '../../services/config/layout';
 import type { PermissionRule } from '../../modules/permissions/types';
@@ -43,17 +42,6 @@ export interface SessionStateOptions {
   pricingResolver?: PricingResolver;
   /** 任务存储（来自 CoreRuntime/DataStore，未传入时使用 dataStore.todoStore） */
   todoStore?: TodoStore;
-  /** 可用模型列表（来自 BehaviorConfig） */
-  availableModels?: ModelSpec[];
-  /** 自动降级成本阈值（来自 BehaviorConfig） */
-  autoDowngradeCostThreshold?: number;
-  /** 模型别名映射（来自 BehaviorConfig.modelAliases） */
-  modelAliases?: ModelAliases;
-  /** 任务复杂度切换配置 */
-  taskComplexitySwitch?: {
-    enabled: boolean;
-    complexityThreshold?: number;
-  };
   /** Compaction 配置（来自 BehaviorConfig.compaction） */
   compactionConfig?: CompactionConfig;
   /** 是否启用普通自动压缩（modules.compaction !== false） */
@@ -80,8 +68,6 @@ export interface SessionState {
   costTracker: import('./cost').CostTracker;
   /** 拒绝追踪 */
   denialTracker: import('./denial-tracking').DenialTracker;
-  /** 模型切换 */
-  modelSwapper: import('./model-switching').ModelSwapper;
   /** 活跃技能 */
   activeSkills: Set<string>;
   /** 已加载技能 */

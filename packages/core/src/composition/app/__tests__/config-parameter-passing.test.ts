@@ -104,17 +104,11 @@ describe('config parameter passing', () => {
       layout,
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 10_000, messageBudget: 50_000 },
-      modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o-mini' } },
-      availableModels: [
-        { id: 'custom-1', name: 'Custom 1', costMultiplier: 0.5, capabilityTier: 1 },
-      ],
-      autoDowngradeCostThreshold: 50,
       maxDenialsPerTool: 5,
       dataStore: createMockDataStore() as any,
       pricingResolver: createPricingResolver(),
     });
 
-    expect(state.modelSwapper).toBeDefined();
     expect(state.denialTracker).toBeDefined();
     expect(state.toolOutputConfig).toEqual({
       maxResultSizeChars: 10_000,
@@ -146,7 +140,6 @@ describe('config parameter passing', () => {
       previewSizeChars: 800,
     });
     expect(resolved.sessionOptions.toolOutputConfig).toEqual(resolved.toolOutputConfig);
-    expect(resolved.sessionOptions.modelAliases).toEqual(context.behavior.modelAliases);
   });
 
   it('uses session-specific tool output config without global fallback', async () => {

@@ -7,16 +7,27 @@ import {
   PromptInputSelectItem,
   PromptInputSelectValue,
 } from '@/components/ai-elements/prompt-input';
+import { SelectGroup, SelectLabel } from '@/components/ui/select';
 import { useEffect, useState } from 'react';
 
 // ============================================================
 // Model Selector
 // ============================================================
 
-interface ModelAliasConfig {
-  fast: { model: string; contextLimit?: number };
-  smart: { model: string; contextLimit?: number };
-  default: { model: string; contextLimit?: number };
+interface ProviderGroup {
+  name: string;
+  baseURL: string;
+  models: { id: string; contextLimit?: number }[];
+}
+
+/** 分组标题回落:自定义名 → 域名 → baseURL */
+function groupLabel(provider: ProviderGroup): string {
+  if (provider.name?.trim()) return provider.name;
+  try {
+    return new URL(provider.baseURL).hostname;
+  } catch {
+    return provider.baseURL;
+  }
 }
 
 interface ModelSelectorProps {
@@ -62,14 +73,20 @@ export function ApprovalModeSelector({ value, onChange }: ApprovalModeSelectorPr
 }
 
 export function ModelSelector({ value, onChange }: ModelSelectorProps) {
-  const [aliases, setAliases] = useState<ModelAliasConfig | null>(null);
+  const [providers, setProviders] = useState<ProviderGroup[]>([]);
 
   useEffect(() => {
     fetch('/api/config')
       .then((res) => res.json())
       .then((data) => {
-        if (data.modelAliases) {
-          setAliases(data.modelAliases);
+        if (Array.isArray(data.providers)) {
+          const groups = (data.providers as ProviderGroup[]).filter(p => p.models?.length > 0);
+          setProviders(groups);
+          // 初始值/旧别名值不在列表中时,重置为 defaultModel
+          const allIds = groups.flatMap(p => p.models.map(m => m.id));
+          if (allIds.length > 0 && !allIds.includes(value)) {
+            onChange(data.defaultModel || allIds[0]);
+          }
         }
       })
       .catch(() => {
@@ -77,28 +94,35 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
       });
   }, []);
 
-  const availableModels = aliases
-    ? (Object.entries(aliases).filter(([, config]) => config.model) as [string, { model: string; contextLimit?: number }][])
-    : [];
-
-  if (availableModels.length === 0) {
+  if (providers.length === 0) {
     return null;
   }
+
+  // 只有一个供应商时不显示分组标题,减少视觉噪音
+  const showGroups = providers.length > 1;
 
   return (
     <PromptInputSelect value={value} onValueChange={onChange}>
       <PromptInputSelectTrigger
         className="min-w-0 max-w-56 gap-1.5 text-xs [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate"
-        title={availableModels.find(([key]) => key === value)?.[1].model}
+        title={value}
       >
         <PromptInputSelectValue placeholder="Model" />
       </PromptInputSelectTrigger>
       <PromptInputSelectContent>
-        {availableModels.map(([key, config]) => (
-          <PromptInputSelectItem key={key} value={key}>
-            <span className="font-medium max-w-30 truncate" title={config.model}>{config.model.split('/').pop()}</span>
-          </PromptInputSelectItem>
-        ))}
+        {providers.map((provider) => {
+          const items = provider.models.map((model) => (
+            <PromptInputSelectItem key={model.id} value={model.id}>
+              <span className="font-medium max-w-40 truncate" title={model.id}>{model.id.split('/').pop()}</span>
+            </PromptInputSelectItem>
+          ));
+          return showGroups ? (
+            <SelectGroup key={`${provider.baseURL}-${provider.name}`}>
+              <SelectLabel className="text-xs text-muted-foreground">{groupLabel(provider)}</SelectLabel>
+              {items}
+            </SelectGroup>
+          ) : items;
+        })}
       </PromptInputSelectContent>
     </PromptInputSelect>
   );

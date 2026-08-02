@@ -1,7 +1,7 @@
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
-import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, type CoreRuntime, type AppContext, type GlobalConfig } from '@the-thing/core';
+import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, buildModelAliases, type CoreRuntime, type AppContext, type GlobalConfig, type ModelEntry } from '@the-thing/core';
 import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
 // Next.js dev 的 HMR 会重新执行本模块，module 级单例随之清空 —— 旧 runtime
@@ -73,32 +73,44 @@ export async function saveTheThingRC(config: { dataDir?: string }): Promise<void
 // ============================================================
 
 /**
- * 获取当前模型配置。
+ * 获取模型配置。
  * 从 ~/.thething/models.json 读取（通过 ~/.agents → ~/.thething symlink 兼容协议工具）。
  * 每次调用都从磁盘读取，确保配置更改后立即生效。
- * @param aliasKey 可选，模型别名 key（fast/smart/default），用于解析实际模型名称
+ *
+ * @param modelId 可选,模型真名(models[] 中的 id)。
+ *   - 缺省 → defaultModel
+ *   - 'background' → backgroundModel(未配置时回落 defaultModel)
+ *   - 其他 → 按 id 查条目;查不到时回落 defaultModel 条目
+ * 返回值总是携带 models 列表,供 core 的 provider registry 按名分发凭据。
  */
-export function getModelConfig(aliasKey?: string): { apiKey: string; baseURL: string; modelName?: string } {
+export function getModelConfig(modelId?: string): {
+  apiKey: string;
+  baseURL: string;
+  modelName?: string;
+  models?: ModelEntry[];
+  contextLimit?: number;
+} {
   const configDir = path.join(os.homedir(), '.thething');
   const freshConfig = loadGlobalConfig(configDir) || G.cachedGlobalConfig;
-  const aliases = freshConfig?.modelAliases;
+  const models = freshConfig?.models ?? [];
 
   let modelName: string | undefined;
-
-  if (aliasKey === 'fast') {
-    modelName = aliases?.fast?.model;
-  } else if (aliasKey === 'smart') {
-    modelName = aliases?.smart?.model;
+  if (modelId === 'background') {
+    modelName = freshConfig?.backgroundModel || freshConfig?.defaultModel;
+  } else if (modelId && models.some(m => m.id === modelId)) {
+    modelName = modelId;
+  } else {
+    modelName = freshConfig?.defaultModel;
   }
 
-  if (!modelName) {
-    modelName = aliases?.default?.model;
-  }
+  const entry = models.find(m => m.id === modelName) ?? models[0];
 
   return {
-    apiKey: freshConfig?.apiKey || '',
-    baseURL: freshConfig?.baseURL || '',
+    apiKey: entry?.apiKey || '',
+    baseURL: entry?.baseURL || '',
     modelName,
+    models,
+    contextLimit: entry?.contextLimit,
   };
 }
 
@@ -153,11 +165,13 @@ async function initializeRuntime(): Promise<CoreRuntime> {
       configDir: path.join(runtimeDataBase, 'connectors'),
     },
     behavior: {
-      modelAliases: {
-        fast: globalConfig?.modelAliases?.fast ?? { model: '' },
-        smart: globalConfig?.modelAliases?.smart ?? { model: '' },
-        default: globalConfig?.modelAliases?.default ?? { model: '' },
-      },
+      // 别名两档语义:fast=后台任务模型,smart/default=主模型(见 core alias.ts)
+      modelAliases: buildModelAliases({
+        defaultModel: globalConfig?.defaultModel,
+        backgroundModel: globalConfig?.backgroundModel,
+        defaultContextLimit: globalConfig?.models?.find(m => m.id === globalConfig?.defaultModel)?.contextLimit,
+        backgroundContextLimit: globalConfig?.models?.find(m => m.id === globalConfig?.backgroundModel)?.contextLimit,
+      }),
     },
     env: envSnapshot,
     debug: true,
@@ -184,12 +198,14 @@ async function initializeRuntime(): Promise<CoreRuntime> {
   }
 
   // Wire up connector inbound: bind AI agent handler to Feishu/WeChat webhooks
+  const defaultEntry = globalConfig?.models?.find(m => m.id === globalConfig?.defaultModel) ?? globalConfig?.models?.[0];
   configureConnectorInboundRuntime(runtime.connectorRuntime, {
     appContext: context,
     modelConfig: {
-      apiKey: globalConfig?.apiKey || '',
-      baseURL: globalConfig?.baseURL || '',
-      modelName: globalConfig?.modelAliases?.default?.model || '',
+      apiKey: defaultEntry?.apiKey || '',
+      baseURL: defaultEntry?.baseURL || '',
+      modelName: globalConfig?.defaultModel || '',
+      models: globalConfig?.models,
     },
   });
 

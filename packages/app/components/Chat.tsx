@@ -892,6 +892,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       // 消息持久化由服务端流的 onEnd 统一负责（唯一写入权威），前端不再回写
       if (isError || isDisconnect) {
         console.warn(`[Chat] Stream failed (error=${isError}, disconnect=${isDisconnect})`);
+        // 中断/断连时服务端 stop 路径仍会把部分 assistant 消息落库并前移分支 tip;
+        // 必须刷新投影,否则下一条消息带过期 expectedTipId → Branch tip conflict 500
+        void refreshBranchProjection(conversationTree.revision);
         return;
       }
 
@@ -1114,6 +1117,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     if (conversationId) {
       const baseEndpoint = apiEndpoint || '/api/chat';
       fetch(`${baseEndpoint}/${conversationId}/stop`, { method: 'POST' })
+        // stop 落库部分 assistant 消息后分支 tip 前移,刷新投影拿到新 tip,
+        // 避免下一条消息带过期 expectedTipId 触发 Branch tip conflict
+        .then(() => refreshBranchProjection(conversationTree.revision))
         .catch(err => console.error('[Chat] Failed to stop server stream:', err));
     }
     // Fire and forget: 将在执行中的 todo 重置为 pending，下一轮 Agent 可以继续
@@ -1125,7 +1131,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         conversationId,
       }),
     }).catch(err => console.error('[Chat] Failed to reset todos:', err));
-  }, [stop, conversationId, apiEndpoint]);
+  }, [stop, conversationId, apiEndpoint, refreshBranchProjection, conversationTree.revision]);
 
   useEffect(() => {
     let cancelled = false;

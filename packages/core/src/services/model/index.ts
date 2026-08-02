@@ -25,4 +25,4 @@ export {
 export type { ModelPricing, PricingRegistry, PricingResolver } from './pricing';
 
 // Alias（模型别名解析）
-export { resolveModelAlias, type ModelAliases } from './alias';
+export { resolveModelAlias, isInheritAlias, buildModelAliases, type ModelAliases } from './alias';

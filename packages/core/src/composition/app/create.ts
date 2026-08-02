@@ -25,7 +25,7 @@ import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
 import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
 import type { AgentDefinition } from '../../modules/agent/types'
-import { resolveModelAlias } from '../../services/model/alias'
+import { resolveModelAlias, isInheritAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
 import { getPrimaryWikiDir } from '../../modules/wiki'
 import { loadWikiContextForAgent } from '../../modules/agent/context/wiki-context'
@@ -119,7 +119,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     ...sessionOptions,
     model: modelConfig.modelName ?? sessionOptions.model,
     dataStore,
-    modelAliases: behavior.modelAliases,
   })
 
   // ============================================================
@@ -196,8 +195,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // Model + compact 注入
   // ============================================================
-  // 如果 Agent 定义了非 'inherit' 的模型，覆盖 modelName
-  if (selectedAgentDef?.model && selectedAgentDef.model !== 'inherit') {
+  // Agent 定义了非 inherit 语义的模型('fast' 或具体模型名)时覆盖 modelName;
+  // 'inherit'/'smart'/'default' 均跟随会话主模型(见 alias.ts 语义收敛)
+  if (selectedAgentDef?.model && (typeof selectedAgentDef.model !== 'string' || !isInheritAlias(selectedAgentDef.model))) {
     const agentModel = selectedAgentDef.model
     const resolvedModel = typeof agentModel === 'string'
       ? resolveModelAlias(agentModel, behavior.modelAliases)
@@ -260,7 +260,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     mcpRegistry: context.mcpRegistry,
     debugEnabled: Boolean(context.runtime.env.DEBUG),
     modelAliases: behavior.modelAliases,
-    availableModels: behavior.availableModels.map(model => model.id),
+    // 模型白名单来自配置的模型列表(多供应商条目);空数组 = 不限制
+    availableModels: (modelConfig.models ?? []).map(model => model.id),
     dynamicReload: resolved.dynamicReload,
     // 子 Agent 上下文注入：createAgent 每请求重建，此快照即当前完整历史
     parentMessages: messagesWithAttachments,

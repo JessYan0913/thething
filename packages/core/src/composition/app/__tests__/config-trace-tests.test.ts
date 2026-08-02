@@ -119,18 +119,12 @@ describe('traceResolvedAgentConfig', () => {
     const resolved = resolveAgentConfig(options);
     const trace = traceResolvedAgentConfig(options, resolved);
 
-    expect(resolved.sessionOptions.modelAliases).toEqual({
-      fast: { model: 'fast-x' },
-      smart: { model: 'smart-x' },
-      default: { model: 'default-x' },
-    });
     expect(resolved.toolOutputConfig).toEqual({
       maxResultSizeChars: 12_000,
       maxResultTokens: 5_000,
       messageBudget: 24_000,
       previewSizeChars: 800,
     });
-    expect(trace.fields.find(field => field.field === 'sessionOptions.modelAliases.fast')?.consumers).toContain('agent-control/model-switching');
     expect(trace.fields.find(field => field.field === 'toolOutputConfig.maxResultTokens')).toBeDefined();
     expect(trace.fields.find(field => field.field === 'sessionOptions.toolOutputConfig.maxResultSizeChars')).toBeDefined();
   });
@@ -138,7 +132,6 @@ describe('traceResolvedAgentConfig', () => {
   it('keeps behavior and layout defaults visible on the resolved config', () => {
     const resolved = resolveAgentConfig(createBaseOptions());
 
-    expect(resolved.behavior.availableModels).toEqual([]);
     expect(resolved.behavior.modelAliases).toEqual({ fast: { model: '' }, smart: { model: '' }, default: { model: '' } });
     expect(resolved.layout.dataDir).toBe('/tmp/test-data');
     expect(resolved.layout.contextFileNames).toEqual(['THING.md']);
@@ -151,7 +144,8 @@ describe('traceResolvedAgentConfig', () => {
     expect(keys).toContain('projectRoot');
     expect(keys).toContain('layout');
     expect(keys).toContain('toolOutputConfig');
-    expect(keys).toContain('modelAliases');
+    expect(keys).not.toContain('modelAliases');
+    expect(keys).not.toContain('availableModels');
     expect(keys).not.toContain('projectDir');
     expect(keys).not.toContain('toolOutputOverrides');
   });

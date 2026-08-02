@@ -29,25 +29,13 @@ import {
 
 /**
  * 模型规格定义
+ * @deprecated ModelSwapper 已删除;仅 pricing 相关字段仍被 createPricingResolver 使用
  */
 export interface ModelSpec {
   /** 模型 ID（用于 API 调用） */
   id: string;
   /** 模型显示名称 */
   name: string;
-  /**
-   * 相对于基准模型的费用倍数
-   * 用于自动降级决策：当费用超过阈值时切换到 costMultiplier 更低的模型
-   */
-  costMultiplier: number;
-  /**
-   * 能力层级（1=最快最便宜，数字越大能力越强）
-   * 用于模型选择逻辑
-   */
-  capabilityTier: number;
-
-  // ── 模型能力配置 ──────────────────────────────────────────────
-
   /**
    * 上下文窗口大小（Token 数）
    * 用于自动压缩和上下文管理
@@ -56,7 +44,7 @@ export interface ModelSpec {
 
   /**
    * 模型定价（USD / 百万 token）
-   * 用于估算费用和触发自动降级
+   * 用于估算费用
    */
   pricing?: {
     input: number;
@@ -117,13 +105,9 @@ export interface ToolOutputLimitsConfig {
  * });
  *
  * @example
- * // 替换模型商
+ * // 替换模型商（别名映射由新配置 models/backgroundModel 构造,见 buildModelAliases）
  * const behavior = buildBehaviorConfig({
- *   availableModels: [
- *     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', costMultiplier: 0.1, capabilityTier: 1 },
- *     { id: 'gpt-4o', name: 'GPT-4o', costMultiplier: 1.0, capabilityTier: 3 },
- *   ],
- *   modelAliases: { fast: 'gpt-4o-mini', smart: 'gpt-4o', default: 'gpt-4o-mini' },
+ *   modelAliases: { fast: { model: 'gpt-4o-mini' }, smart: { model: 'gpt-4o' }, default: { model: 'gpt-4o' } },
  * });
  */
 export interface BehaviorConfig {
@@ -167,42 +151,15 @@ export interface BehaviorConfig {
   // ── 模型配置 ──────────────────────────────────────────────
 
   /**
-   * 可用模型列表（按能力层级从低到高排列）
-   *
-   * core 用此列表实现自动降级：
-   * 当费用超过阈值时切换到 costMultiplier 更低的模型
-   *
-   * 调用方替换成自己的模型商时，替换此列表即可
-   */
-  availableModels: ModelSpec[];
-
-  /**
    * 模型快捷名称映射
-   * 让 Agent 定义文件可以用 'fast'/'smart'/'default' 代替具体模型名
+   * 让 Agent/Skill 定义文件可以用 'fast'（后台任务模型）代替具体模型名;
+   * 'smart'/'default' 语义上等价于跟随会话主模型（见 services/model/alias.ts）
    */
   modelAliases: ModelAliases;
 
   /**
-   * 自动降级成本阈值（百分比）
-   * 当累计费用达到预算的此百分比时，自动切换到更便宜的模型
-   * @default 80
-   */
-  autoDowngradeCostThreshold: number;
-
-  /**
-   * 任务复杂度切换配置
-   * 启用后，系统会根据任务复杂度自动选择合适的模型
-   */
-  taskComplexitySwitch?: {
-    /** 是否启用任务复杂度切换 */
-    enabled: boolean;
-    /** 复杂度阈值（0-100），超过此值时切换到更高级模型 */
-    complexityThreshold?: number;
-  };
-
-  /**
    * 模型定价表（USD / 百万 token）
-   * 用于估算费用和触发自动降级
+   * 用于估算费用
    * 传入值会覆盖内置定价，未覆盖的模型使用内置值
    */
   modelPricing?: Record<string, ModelPricing>;
@@ -266,16 +223,10 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
     maxContextTokens: partial?.maxContextTokens ?? DEFAULT_CONTEXT_LIMIT,
     compactionThreshold: partial?.compactionThreshold ?? COMPACT_TOKEN_THRESHOLD,
     maxDenialsPerTool: partial?.maxDenialsPerTool ?? DEFAULT_MAX_DENIALS_PER_TOOL,
-    availableModels: partial?.availableModels ?? [],
     modelAliases: partial?.modelAliases ?? {
       fast: { model: '' },
       smart: { model: '' },
       default: { model: '' },
-    },
-    autoDowngradeCostThreshold: partial?.autoDowngradeCostThreshold ?? 80,
-    taskComplexitySwitch: partial?.taskComplexitySwitch ?? {
-      enabled: false,
-      complexityThreshold: 70,
     },
     modelPricing: partial?.modelPricing,
     extraSensitivePaths: partial?.extraSensitivePaths ?? ([] as readonly string[]),

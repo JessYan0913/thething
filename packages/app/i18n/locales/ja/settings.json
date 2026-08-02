@@ -37,64 +37,74 @@
     }
   },
   "models": {
-    "badge": "モデル設定",
-    "save": "保存",
+    "saving": "保存中...",
     "saved": "保存済み",
     "saveError": "保存に失敗しました",
-    "providerSection": "プロバイダー設定",
+    "loading": "読み込み中...",
+    "addProvider": "プロバイダーを追加",
+    "addModel": "モデルを追加",
+    "emptyProviders": "プロバイダーがありません。「プロバイダーを追加」から設定してください。",
+    "emptyModels": "このプロバイダーにモデルがありません。「モデルを追加」をクリック。",
+    "defaultBadge": "デフォルト",
+    "backgroundBadge": "バックグラウンド",
+    "setDefault": "デフォルトに設定",
+    "setBackground": "バックグラウンドに設定",
+    "unsetBackground": "バックグラウンド解除",
+    "backgroundHint": "バックグラウンドタスク(サブエージェント等)は {{model}} を使用",
+    "backgroundHintUnset": "バックグラウンドモデル未設定。会話で選択したモデルに従います。",
     "apiKey": {
       "title": "API Key",
-      "description": "モデルプロバイダーのAPIキー",
       "placeholder": "sk-..."
     },
     "baseURL": {
       "title": "Base URL",
-      "description": "モデルプロバイダーのAPIエンドポイント",
       "placeholder": "https://api.example.com/v1"
     },
-    "model": {
-      "title": "デフォルトモデル",
-      "description": "会話に使用するデフォルトモデル名",
-      "placeholder": "qwen-plus"
+    "modelName": {
+      "title": "モデル名",
+      "placeholder": "例: gpt-4o, deepseek-chat"
     },
     "contextLimit": {
-      "title": "コンテキスト長",
-      "description": "モデルのコンテキストウィンドウサイズ（トークン数）、空欄でデフォルト値を使用",
+      "title": "コンテキスト長(任意)",
       "placeholder": "例: 128000"
     },
-    "aliasSection": "モデルエイリアス",
-    "aliasHint": "会話でエイリアスを使ってモデルを素早く切り替えられます",
-    "alias": {
-      "fast": "高速モデル",
-      "smart": "スマートモデル",
-      "default": "デフォルトモデル",
-      "required": "必須",
-      "defaultRequired": "デフォルトモデルは必須です",
-      "defaultDescription": "会話のデフォルトモデル。チャットで「デフォルトを使用」と入力するとこのモデルに切り替わります",
-      "optionalHint": "会話でモデルを素早く切り替えるためのオプションエイリアス",
-      "fastDescription": "シンプルなタスク向けの低コスト・高速モデル",
-      "smartDescription": "複雑なタスク向けの高性能モデル"
+    "providerEdit": {
+      "addTitle": "プロバイダーを追加",
+      "editTitle": "プロバイダーを編集",
+      "description": "プロバイダーごとに認証情報を一度設定し、その下に複数のモデルを追加できます",
+      "namePlaceholder": "プロバイダー名を入力",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "requiredError": "Base URL と API Key は必須です",
+      "providerTitle": "プロバイダー",
+      "verifying": "検証中...",
+      "verifyError": "プロバイダー検証に失敗:{{status}}。Base URL と API Key を確認してください",
+      "verifyNetworkError": "プロバイダーに接続できません。Base URL を確認してください"
+    },
+    "modelEdit": {
+      "addTitle": "モデルを追加",
+      "editTitle": "モデルを編集",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "requiredError": "モデル名は必須です",
+      "duplicateError": "同名のモデルが既に存在します",
+      "saveAndContinue": "保存して続けて追加"
     },
     "provider": {
       "openai": "OpenAI",
       "openrouter": "OpenRouter",
       "deepseek": "DeepSeek",
       "moonshot": "Moonshot",
-      "qwen": "Qwen (DashScope)",
-      "glm": "GLM",
+      "qwen": "通義千問 (DashScope)",
+      "glm": "智譜 GLM",
       "doubao": "Doubao (Volcengine)",
       "custom": "カスタム"
     },
     "fetchModels": {
-      "button": "モデル取得",
-      "dialogTitle": "モデルを選択",
-      "dialogDescription": "プロバイダーから利用可能なモデル一覧を取得し、{alias}として選択",
       "searchPlaceholder": "モデルを検索...",
-      "fetchButton": "モデル一覧を取得",
+      "fetchButton": "プロバイダーからモデル一覧を取得",
       "fetching": "取得中...",
-      "loading": "読み込み中...",
       "noModels": "利用可能なモデルがありません",
-      "baseURLRequired": "先にBase URLを入力してください",
       "error": "モデル一覧の取得に失敗しました"
     }
   }

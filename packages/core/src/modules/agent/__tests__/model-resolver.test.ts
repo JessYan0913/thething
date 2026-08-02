@@ -63,6 +63,40 @@ describe('subagents/model-resolver', () => {
 
         expect(getModelId(result)).toBe('parent-model');
       });
+
+      it('should return parent model when model is "smart"(语义收敛:smart=跟随主模型)', () => {
+        const definition: AgentDefinition = {
+          agentType: 'test',
+          instructions: 'Test',
+          model: 'smart',
+          source: 'builtin',
+        };
+        const context = createMockContext({
+          modelAliases: {
+            fast: { model: 'custom-fast' },
+            smart: { model: 'custom-smart' },
+            default: { model: 'custom-default' },
+          },
+        });
+
+        const result = resolveModelForAgent(definition, context);
+
+        expect(getModelId(result)).toBe('parent-model');
+      });
+
+      it('should return parent model when model is "default"(语义收敛:default=跟随主模型)', () => {
+        const definition: AgentDefinition = {
+          agentType: 'test',
+          instructions: 'Test',
+          model: 'default',
+          source: 'builtin',
+        };
+        const context = createMockContext();
+
+        const result = resolveModelForAgent(definition, context);
+
+        expect(getModelId(result)).toBe('parent-model');
+      });
     });
 
     describe('LanguageModel object', () => {
@@ -97,20 +131,6 @@ describe('subagents/model-resolver', () => {
         expect(getModelId(result)).toBe('fast');
       });
 
-      it('should resolve "smart" to smart model via provider', () => {
-        const definition: AgentDefinition = {
-          agentType: 'test',
-          instructions: 'Test',
-          model: 'smart',
-          source: 'builtin',
-        };
-        const context = createMockContext();
-
-        const result = resolveModelForAgent(definition, context);
-
-        expect(getModelId(result)).toBe('smart');
-      });
-
       it('should resolve shortcuts from BehaviorConfig model aliases when provided', () => {
         const definition: AgentDefinition = {
           agentType: 'test',
@@ -129,26 +149,6 @@ describe('subagents/model-resolver', () => {
         const result = resolveModelForAgent(definition, context);
 
         expect(getModelId(result)).toBe('custom-fast');
-      });
-
-      it('should resolve "default" alias from BehaviorConfig model aliases', () => {
-        const definition: AgentDefinition = {
-          agentType: 'test',
-          instructions: 'Test',
-          model: 'default',
-          source: 'builtin',
-        };
-        const context = createMockContext({
-          modelAliases: {
-            fast: { model: 'custom-fast' },
-            smart: { model: 'custom-smart' },
-            default: { model: 'custom-default' },
-          },
-        });
-
-        const result = resolveModelForAgent(definition, context);
-
-        expect(getModelId(result)).toBe('custom-default');
       });
     });
 

@@ -120,6 +120,8 @@ export interface ModelConfig {
   apiKey: string;
   baseURL: string;
   modelName?: string;
+  /** 多供应商模型列表:命中条目时用条目自带凭据(见 provider registry) */
+  models?: import('../../services/config/global-config').ModelEntry[];
   includeUsage?: boolean;
   enableThinking?: boolean;
 }

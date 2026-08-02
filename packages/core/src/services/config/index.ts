@@ -51,7 +51,11 @@ export {
   loadGlobalConfig,
   saveGlobalConfig,
   getGlobalConfigPath,
+  normalizeGlobalConfig,
   type GlobalConfig,
+  type ModelEntry,
+  type ProviderEntry,
+  type ProviderModel,
 } from './global-config';
 
 // ============================================================

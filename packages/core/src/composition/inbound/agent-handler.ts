@@ -1050,6 +1050,7 @@ export class AgentInboundHandler implements InboundEventHandler {
         apiKey: modelConfig.apiKey,
         baseURL: modelConfig.baseURL,
         modelName: modelConfig.modelName,
+        models: modelConfig.models,
         includeUsage: modelConfig.includeUsage ?? true,
       },
       conversationMeta: {

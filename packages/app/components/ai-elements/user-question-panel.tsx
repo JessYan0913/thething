@@ -54,6 +54,11 @@ export function UserQuestionPanel({
 
   const isMulti = current.multiSelect === true;
 
+  // 模型给的选项里已有"其他"时,UI 附加的自定义项改名区分,避免出现两个"其他"
+  const customOptionLabel = current.options.some(o => o.trim() === '其他' || o.trim().toLowerCase() === 'other')
+    ? '自定义回答'
+    : '其他';
+
   const currentAnswer = answers[currentIndex];
   const currentCustom = customText[currentIndex] || '';
   const hasCustomAnswer = currentAnswer === '__custom__' || (typeof currentAnswer === 'string' && currentAnswer.startsWith('__custom__'));
@@ -197,6 +202,7 @@ export function UserQuestionPanel({
             {current.options.map((opt, optIdx) => (
               <label
                 key={optIdx}
+                onClick={() => toggleOption(optIdx)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
                   isOptionSelected(optIdx)
@@ -230,42 +236,40 @@ export function UserQuestionPanel({
               </label>
             ))}
 
-            {/* Custom answer (single-select only) */}
+            {/* Custom answer (single-select only) — 选中后输入框原地替换文字 */}
             {!isMulti && (
-              <div className="space-y-1">
-                <label
+              <label
+                onClick={hasCustomAnswer ? undefined : selectCustom}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
+                  hasCustomAnswer
+                    ? 'bg-primary/5 ring-1 ring-primary/20'
+                    : 'hover:bg-accent/30',
+                )}
+              >
+                <span
+                  onClick={hasCustomAnswer ? deselectCustom : undefined}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
+                    'flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors',
                     hasCustomAnswer
-                      ? 'bg-primary/5 ring-1 ring-primary/20'
-                      : 'hover:bg-accent/30',
+                      ? 'border-primary bg-primary cursor-pointer'
+                      : 'border-muted-foreground/30',
                   )}
                 >
-                  <span
-                    className={cn(
-                      'flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors',
-                      hasCustomAnswer
-                        ? 'border-primary bg-primary'
-                        : 'border-muted-foreground/30',
-                    )}
-                    onClick={hasCustomAnswer ? deselectCustom : selectCustom}
-                  >
-                    {hasCustomAnswer && <span className="size-1.5 rounded-full bg-primary-foreground" />}
-                  </span>
-                  <span className="text-sm">其他</span>
-                </label>
-                {hasCustomAnswer && (
-                  <div className="pl-10 pr-3 pb-1">
-                    <Input
-                      className="h-8 text-sm"
-                      placeholder="输入自定义答案..."
-                      value={currentCustom}
-                      onChange={(e) => handleCustomInput(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
+                  {hasCustomAnswer && <span className="size-1.5 rounded-full bg-primary-foreground" />}
+                </span>
+                {hasCustomAnswer ? (
+                  <Input
+                    className="h-7 text-sm border-none shadow-none bg-transparent px-0 focus-visible:ring-0"
+                    placeholder="输入自定义答案..."
+                    value={currentCustom}
+                    onChange={(e) => handleCustomInput(e.target.value)}
+                    autoFocus
+                  />
+                ) : (
+                  <span className="text-sm">{customOptionLabel}</span>
                 )}
-              </div>
+              </label>
             )}
           </div>
 

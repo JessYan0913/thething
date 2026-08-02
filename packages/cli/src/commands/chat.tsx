@@ -63,16 +63,16 @@ async function runSetupWizard(): Promise<GlobalConfig | null> {
 
     rl.close()
 
+    // 新格式:模型列表 + defaultModel(见 docs/model-config-redesign.md)
     const config: GlobalConfig = {
-      apiKey: apiKey.trim(),
-      baseURL: baseURL.trim(),
-      modelAliases: { default: { model: modelName }, fast: { model: modelName }, smart: { model: modelName } },
+      models: [{ id: modelName, baseURL: baseURL.trim(), apiKey: apiKey.trim() }],
+      defaultModel: modelName,
     }
 
     saveConfig(config)
     console.log(chalk.green('\n✅ 配置已保存到 ~/.agents/models.json'))
-    console.log(chalk.gray(`   Base URL: ${config.baseURL}`))
-    console.log(chalk.gray(`   Model: ${config.modelAliases?.default?.model}\n`))
+    console.log(chalk.gray(`   Base URL: ${baseURL.trim()}`))
+    console.log(chalk.gray(`   Model: ${modelName}\n`))
 
     return config
   } catch (error) {
@@ -82,11 +82,18 @@ async function runSetupWizard(): Promise<GlobalConfig | null> {
   }
 }
 
+/** 从(已归一化的)配置中取 defaultModel 对应条目 */
+function getDefaultEntry(config: GlobalConfig): { id: string; baseURL: string; apiKey: string } | undefined {
+  const models = config.models ?? []
+  return models.find(m => m.id === config.defaultModel) ?? models[0]
+}
+
 async function ensureConfig(fileConfig?: GlobalConfig): Promise<{ apiKey: string; baseURL: string; modelName: string } | null> {
   fileConfig = fileConfig ?? loadConfig()
-  const apiKey = process.env.THETHING_API_KEY || fileConfig.apiKey
-  const baseURL = process.env.THETHING_BASE_URL || fileConfig.baseURL
-  const modelName = process.env[ENV_MODEL] || fileConfig.modelAliases?.default?.model || 'qwen-max'
+  const entry = getDefaultEntry(fileConfig)
+  const apiKey = process.env.THETHING_API_KEY || entry?.apiKey
+  const baseURL = process.env.THETHING_BASE_URL || entry?.baseURL
+  const modelName = process.env[ENV_MODEL] || fileConfig.defaultModel || entry?.id || 'qwen-max'
 
   if (apiKey && baseURL) {
     return { apiKey, baseURL, modelName }
@@ -104,13 +111,14 @@ async function ensureConfig(fileConfig?: GlobalConfig): Promise<{ apiKey: string
   if (shouldSetup) {
     rl.close()
     const newConfig = await runSetupWizard()
-    if (!newConfig?.apiKey || !newConfig?.baseURL) {
+    const newEntry = newConfig ? getDefaultEntry(newConfig) : undefined
+    if (!newEntry?.apiKey || !newEntry?.baseURL) {
       return null
     }
     return {
-      apiKey: newConfig.apiKey,
-      baseURL: newConfig.baseURL,
-      modelName: newConfig.modelAliases?.default?.model || 'qwen-max',
+      apiKey: newEntry.apiKey,
+      baseURL: newEntry.baseURL,
+      modelName: newConfig?.defaultModel || newEntry.id || 'qwen-max',
     }
   } else {
     rl.close()
@@ -136,14 +144,15 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const fileConfig = loadConfig()
   const envSnapshot: Record<string, string | undefined> = { ...process.env }
 
-  if (fileConfig.apiKey && !envSnapshot.THETHING_API_KEY) {
-    envSnapshot.THETHING_API_KEY = fileConfig.apiKey
+  const defaultEntry = getDefaultEntry(fileConfig)
+  if (defaultEntry?.apiKey && !envSnapshot.THETHING_API_KEY) {
+    envSnapshot.THETHING_API_KEY = defaultEntry.apiKey
   }
-  if (fileConfig.baseURL && !envSnapshot.THETHING_BASE_URL) {
-    envSnapshot.THETHING_BASE_URL = fileConfig.baseURL
+  if (defaultEntry?.baseURL && !envSnapshot.THETHING_BASE_URL) {
+    envSnapshot.THETHING_BASE_URL = defaultEntry.baseURL
   }
-  if (fileConfig.modelAliases?.default?.model && !envSnapshot[ENV_MODEL]) {
-    envSnapshot[ENV_MODEL] = fileConfig.modelAliases.default.model
+  if (fileConfig.defaultModel && !envSnapshot[ENV_MODEL]) {
+    envSnapshot[ENV_MODEL] = fileConfig.defaultModel
   }
 
   const cwd = resolveProjectDir({

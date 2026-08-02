@@ -70,22 +70,23 @@ describe('skill tool recovery guidance', () => {
   it('applies resolved model and effort overrides for the current request', async () => {
     const sessionState: SkillOverrideState = {};
     const skill = {
-      ...makeSkill('smart-skill'),
-      model: 'smart',
+      ...makeSkill('background-skill'),
+      // 语义收敛后只有 'fast'(后台模型)和具体模型名产生覆盖
+      model: 'fast',
       effort: 'xhigh' as const,
     };
     const tool = createSkillTool({
       skills: [skill],
       sessionState,
       modelAliases,
-      availableModels: ['smart-model'],
+      availableModels: ['fast-model'],
     });
 
-    await execute(tool, { skill: 'smart-skill' });
+    await execute(tool, { skill: 'background-skill' });
 
     expect(sessionState.skillTurnOverride).toEqual({
-      skillName: 'smart-skill',
-      model: 'smart-model',
+      skillName: 'background-skill',
+      model: 'fast-model',
       effort: 'xhigh',
     });
   });
@@ -98,6 +99,16 @@ describe('skill tool recovery guidance', () => {
     });
     await execute(inheritTool, { skill: 'inherit-skill' });
     expect(inheritState.skillTurnOverride).toBeUndefined();
+
+    // 'smart' 语义收敛为跟随主模型,同样不产生覆盖
+    const smartState: SkillOverrideState = {};
+    const smartTool = createSkillTool({
+      skills: [{ ...makeSkill('smart-skill'), model: 'smart', effort: undefined }],
+      sessionState: smartState,
+      modelAliases,
+    });
+    await execute(smartTool, { skill: 'smart-skill' });
+    expect(smartState.skillTurnOverride).toBeUndefined();
 
     const unavailableState: SkillOverrideState = {};
     const unavailableTool = createSkillTool({
@@ -137,7 +148,7 @@ describe('skill tool recovery guidance', () => {
         context: 'fork',
         agent: 'general-purpose',
         background: false,
-        model: 'smart',
+        model: 'fast',
       }],
       modelAliases,
       agentConfig,
@@ -155,7 +166,7 @@ describe('skill tool recovery guidance', () => {
     expect(executeFork).toHaveBeenCalledWith(expect.objectContaining({
       agentType: 'general-purpose',
       includeParentMessages: false,
-      modelOverride: 'smart-model',
+      modelOverride: 'fast-model',
       task: expect.stringContaining('Instructions for fork-skill'),
     }));
   });

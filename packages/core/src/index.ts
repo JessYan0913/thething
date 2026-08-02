@@ -101,7 +101,11 @@ export {
   loadGlobalConfig,
   saveGlobalConfig,
   getGlobalConfigPath,
+  normalizeGlobalConfig,
   type GlobalConfig,
+  type ModelEntry,
+  type ProviderEntry,
+  type ProviderModel,
 } from './services/config/global-config';
 
 // ============================================================
@@ -147,6 +151,10 @@ export {
   getEffectiveContextBudget,
   // Pricing（定价配置）
   createPricingResolver,
+  // 模型别名(两档语义:fast=后台模型,smart/default=跟随主模型)
+  resolveModelAlias,
+  isInheritAlias,
+  buildModelAliases,
 } from './services/model';
 export type {
   ModelCapabilities,

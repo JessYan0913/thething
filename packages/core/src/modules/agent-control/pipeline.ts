@@ -3,7 +3,6 @@ import type { LanguageModel, ModelMessage as ModelMessageType, PrepareStepFuncti
 import type { PipelineContext } from '../session/interfaces';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
 import { logger } from '../../primitives/logger';
-import { estimateTaskComplexity } from '../session/task-complexity';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
@@ -146,52 +145,6 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           role: 'user',
           content: '你已经连续多次推理但没有采取行动。请立即调用工具执行操作，或者如果不确定，请调用 ask_user_question 询问用户。',
         } as ModelMessageType]);
-      }
-    }
-
-    const modelSwitchResult = sessionState.modelSwapper.checkUserIntent(messages);
-    if (modelSwitchResult.switched) {
-      debugLog(debugEnabled, `[Agent] Model switched: ${sessionState.model} -> ${modelSwitchResult.newModel}`);
-      sessionState.model = modelSwitchResult.newModel!;
-      // 更新上下文长度限制
-      const newContextLimit = sessionState.modelSwapper.getCurrentContextLimit();
-      if (newContextLimit) {
-        config.contextLimit = newContextLimit;
-        debugLog(debugEnabled, `[Agent] Context limit updated to: ${newContextLimit}`);
-      }
-      if (modelSwitchResult.notification) {
-        debugLog(debugEnabled, `[Agent] ${modelSwitchResult.notification}`);
-      }
-    }
-
-    // 任务复杂度检查
-    const complexityScore = estimateTaskComplexity(messages as unknown as import('ai').ModelMessage[]);
-    const complexityResult = sessionState.modelSwapper.checkTaskComplexity(complexityScore);
-    if (complexityResult.switched) {
-      debugLog(debugEnabled, `[Agent] Model switched due to complexity (${complexityScore}): ${sessionState.model} -> ${complexityResult.newModel}`);
-      sessionState.model = complexityResult.newModel!;
-      // 更新上下文长度限制
-      const newContextLimit = sessionState.modelSwapper.getCurrentContextLimit();
-      if (newContextLimit) {
-        config.contextLimit = newContextLimit;
-        debugLog(debugEnabled, `[Agent] Context limit updated to: ${newContextLimit}`);
-      }
-      if (complexityResult.notification) {
-        debugLog(debugEnabled, `[Agent] ${complexityResult.notification}`);
-      }
-    }
-
-    const costSummary = sessionState.costTracker.getSummary();
-    const costPercent = (costSummary.totalCostUsd / costSummary.maxBudgetUsd) * 100;
-    const costSwitchResult = sessionState.modelSwapper.checkCostBudget(costPercent);
-    if (costSwitchResult.switched) {
-      debugLog(debugEnabled, `[Agent] Auto-downgrade model due to cost: ${costSwitchResult.newModel}`);
-      sessionState.model = costSwitchResult.newModel!;
-      // 更新上下文长度限制
-      const newContextLimit = sessionState.modelSwapper.getCurrentContextLimit();
-      if (newContextLimit) {
-        config.contextLimit = newContextLimit;
-        debugLog(debugEnabled, `[Agent] Context limit updated to: ${newContextLimit}`);
       }
     }
 

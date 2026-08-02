@@ -4,7 +4,6 @@
 
 
 import { DenialTracker } from './denial-tracking';
-import { ModelSwapper } from './model-switching';
 import type { CompactionResult, CompactionConfig } from '../../services/config/compaction-types';
 import type { Skill } from '../../modules/skills/types';
 import {
@@ -47,9 +46,6 @@ export function createSessionState(
     dataStore,
     pricingResolver,
     todoStore = dataStore.todoStore,
-    availableModels = [],
-    autoDowngradeCostThreshold = 80,
-    taskComplexitySwitch,
     compactionConfig,  // 新增：从 BehaviorConfig.compaction 传入
     compactionEnabled = true,
     compact: compactFn,
@@ -57,8 +53,7 @@ export function createSessionState(
     extraSensitivePaths = [],
   } = options;
 
-  // 创建 pricingResolver，传入 availableModels 以获取定价信息
-  const resolvedPricingResolver = pricingResolver ?? createPricingResolver(undefined, availableModels);
+  const resolvedPricingResolver = pricingResolver ?? createPricingResolver(undefined, []);
 
   const tokenBudget = new TokenBudgetTracker(maxContextTokens, compactThreshold);
   const costTracker = new CostTracker(conversationId, dataStore.costStore, {
@@ -68,20 +63,6 @@ export function createSessionState(
   });
   const denialTracker = new DenialTracker({
     maxDenialsPerTool: options?.maxDenialsPerTool,
-  });
-  // 使用传入的 availableModels（消除硬编码）
-  const modelSwapper = new ModelSwapper({
-    availableModels: availableModels.map(m => ({
-      id: m.id,
-      name: m.name,
-      costMultiplier: m.costMultiplier,
-      capabilityTier: m.capabilityTier,
-    })),
-    currentModel: model,
-    autoDowngradeCostThreshold,
-    notifyOnSwitch: true,
-    modelAliases: options?.modelAliases,
-    taskComplexitySwitch,
   });
 
   // 构建 压缩配置
@@ -113,7 +94,6 @@ export function createSessionState(
     tokenBudget,
     costTracker,
     denialTracker,
-    modelSwapper,
     activeSkills: new Set<string>(),
     loadedSkills: new Map<string, Skill>(),
     contentReplacementState: createContentReplacementState(),

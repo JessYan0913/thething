@@ -191,6 +191,8 @@ export async function POST(request: Request) {
 
     console.log(`[Chat API] createAgent start: ${Date.now() - startTime}ms`);
 
+    // 按用户所选模型读取凭据与上下文窗口(模型真名;旧别名值回落 defaultModel)
+    const chatModelConfig = getModelConfig(modelName);
     const {
       agent,
       sessionState,
@@ -205,9 +207,14 @@ export async function POST(request: Request) {
       userId,
       agentType,
       model: {
-        ...getModelConfig(modelName),
+        apiKey: chatModelConfig.apiKey,
+        baseURL: chatModelConfig.baseURL,
+        modelName: chatModelConfig.modelName,
+        models: chatModelConfig.models,
         includeUsage: true,
       },
+      // 模型条目声明了 contextLimit 时跟随该模型的上下文窗口
+      ...(chatModelConfig.contextLimit ? { session: { maxContextTokens: chatModelConfig.contextLimit } } : {}),
       modules: enableConnectors === false ? { connectors: false } : undefined,
       customInstructions: finalInstructions,
       approvalMode,
@@ -430,7 +437,7 @@ export async function POST(request: Request) {
                       undefined, // 使用默认 compaction config
                       {
                         model: model!,
-                        modelName: getModelConfig(modelName).modelName || '',
+                        modelName: chatModelConfig.modelName || '',
                         conversationId,
                         dataStore: store,
                       },
@@ -456,19 +463,37 @@ export async function POST(request: Request) {
               // 读取代理流并序列化为 JSON 字符串后发送到控制器
               const reader = agentStream.getReader();
               let agentChunkCount = 0;
+              // 用户 /stop 会先关闭 controller;后续 enqueue 抛 ERR_INVALID_STATE
+              // 属预期竞态,标记后静默收尾,不能再走 controller.error(二次抛错)
+              let controllerClosed = false;
               try {
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
                   const serialized = JSON.stringify(value);
-                  controller.enqueue(serialized);
+                  try {
+                    controller.enqueue(serialized);
+                  } catch (enqueueErr) {
+                    if ((enqueueErr as { code?: string })?.code === 'ERR_INVALID_STATE') {
+                      controllerClosed = true;
+                      console.log(`[Chat API] Controller closed by stop after ${agentChunkCount} chunks, draining agent stream`);
+                      break;
+                    }
+                    throw enqueueErr;
+                  }
                   agentChunkCount++;
                 }
               } catch (agentErr) {
                 console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
               }
               console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
-              controller.close();
+              if (!controllerClosed) {
+                try {
+                  controller.close();
+                } catch {
+                  // stop 竞态下可能刚被关闭,忽略
+                }
+              }
             } catch (error) {
               // 记录错误详情，便于排查
               const errStr = String(error);

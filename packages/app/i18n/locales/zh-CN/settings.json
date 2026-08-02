@@ -37,43 +37,58 @@
     }
   },
   "models": {
-    "badge": "模型配置",
-    "save": "保存",
+    "saving": "保存中...",
     "saved": "已保存",
     "saveError": "保存失败",
-    "providerSection": "服务商配置",
+    "loading": "加载中...",
+    "addProvider": "添加供应商",
+    "addModel": "添加模型",
+    "emptyProviders": "还没有供应商,点击右上角\"添加供应商\"开始配置",
+    "emptyModels": "该供应商下还没有模型,点击\"添加模型\"",
+    "defaultBadge": "默认",
+    "backgroundBadge": "后台",
+    "setDefault": "设为默认",
+    "setBackground": "设为后台",
+    "unsetBackground": "取消后台",
+    "backgroundHint": "后台任务(子 Agent、标题生成等)使用:{{model}}",
+    "backgroundHintUnset": "未设置后台任务模型,后台任务跟随对话所选模型",
     "apiKey": {
       "title": "API Key",
-      "description": "模型服务商的 API 密钥",
       "placeholder": "sk-..."
     },
     "baseURL": {
       "title": "Base URL",
-      "description": "模型服务商的 API 地址",
       "placeholder": "https://api.example.com/v1"
     },
-    "model": {
-      "title": "默认模型",
-      "description": "对话使用的默认模型名称",
-      "placeholder": "qwen-plus"
+    "modelName": {
+      "title": "模型名称",
+      "placeholder": "例如 gpt-4o, deepseek-chat"
     },
     "contextLimit": {
-      "title": "上下文长度",
-      "description": "模型的上下文窗口大小（token 数），留空使用默认值",
+      "title": "上下文长度(可选)",
       "placeholder": "例如 128000"
     },
-    "aliasSection": "模型别名",
-    "aliasHint": "对话中可通过别名快速切换模型",
-    "alias": {
-      "fast": "快速模型",
-      "smart": "智能模型",
-      "default": "默认模型",
-      "required": "必填",
-      "defaultRequired": "默认模型不能为空",
-      "defaultDescription": "对话使用的默认模型，对话中输入\"使用默认\"可切换回此模型",
-      "optionalHint": "以下别名可选配置，用于在对话中快速切换模型",
-      "fastDescription": "成本低、速度快的模型，适合简单任务",
-      "smartDescription": "能力强的模型，适合复杂任务"
+    "providerEdit": {
+      "addTitle": "添加供应商",
+      "editTitle": "编辑供应商",
+      "description": "一个供应商配置一次凭据,下面可以添加多个模型",
+      "namePlaceholder": "输入供应商名称,例如 阿里百炼",
+      "save": "保存",
+      "cancel": "取消",
+      "requiredError": "Base URL 和 API Key 为必填",
+      "providerTitle": "供应商",
+      "verifying": "校验中...",
+      "verifyError": "供应商校验失败:{{status}}。请检查 Base URL 和 API Key",
+      "verifyNetworkError": "无法连接供应商,请检查 Base URL 是否正确"
+    },
+    "modelEdit": {
+      "addTitle": "添加模型",
+      "editTitle": "编辑模型",
+      "save": "保存",
+      "cancel": "取消",
+      "requiredError": "模型名称不能为空",
+      "duplicateError": "已存在同名模型",
+      "saveAndContinue": "保存并继续添加"
     },
     "provider": {
       "openai": "OpenAI",
@@ -86,15 +101,10 @@
       "custom": "自定义"
     },
     "fetchModels": {
-      "button": "获取模型",
-      "dialogTitle": "选择模型",
-      "dialogDescription": "从服务商获取可用模型列表，选择作为{alias}",
       "searchPlaceholder": "搜索模型...",
-      "fetchButton": "获取模型列表",
+      "fetchButton": "从供应商获取模型列表",
       "fetching": "获取中...",
-      "loading": "加载中...",
       "noModels": "暂无可用模型",
-      "baseURLRequired": "请先填写 Base URL",
       "error": "获取模型列表失败"
     }
   }

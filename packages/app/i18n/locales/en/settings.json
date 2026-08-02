@@ -37,43 +37,58 @@
     }
   },
   "models": {
-    "badge": "Model Configuration",
-    "save": "Save",
+    "saving": "Saving...",
     "saved": "Saved",
     "saveError": "Save failed",
-    "providerSection": "Provider Configuration",
+    "loading": "Loading...",
+    "addProvider": "Add Provider",
+    "addModel": "Add Model",
+    "emptyProviders": "No providers yet. Click \"Add Provider\" to get started.",
+    "emptyModels": "No models under this provider. Click \"Add Model\".",
+    "defaultBadge": "Default",
+    "backgroundBadge": "Background",
+    "setDefault": "Set default",
+    "setBackground": "Set background",
+    "unsetBackground": "Unset background",
+    "backgroundHint": "Background tasks (sub-agents, title generation) use: {{model}}",
+    "backgroundHintUnset": "No background model set. Background tasks follow the selected chat model.",
     "apiKey": {
       "title": "API Key",
-      "description": "API key for the model provider",
       "placeholder": "sk-..."
     },
     "baseURL": {
       "title": "Base URL",
-      "description": "API endpoint for the model provider",
       "placeholder": "https://api.example.com/v1"
     },
-    "model": {
-      "title": "Default Model",
-      "description": "Default model name for conversations",
-      "placeholder": "qwen-plus"
+    "modelName": {
+      "title": "Model Name",
+      "placeholder": "e.g. gpt-4o, deepseek-chat"
     },
     "contextLimit": {
-      "title": "Context Length",
-      "description": "Model context window size (tokens), leave empty for default",
+      "title": "Context Limit (optional)",
       "placeholder": "e.g. 128000"
     },
-    "aliasSection": "Model Aliases",
-    "aliasHint": "Switch models quickly using aliases in conversations",
-    "alias": {
-      "fast": "Fast Model",
-      "smart": "Smart Model",
-      "default": "Default Model",
-      "required": "Required",
-      "defaultRequired": "Default model is required",
-      "defaultDescription": "Default model for conversations. Type \"use default\" in chat to switch back to this model",
-      "optionalHint": "Optional aliases for quick model switching in conversations",
-      "fastDescription": "Low-cost, fast model for simple tasks",
-      "smartDescription": "High-capability model for complex tasks"
+    "providerEdit": {
+      "addTitle": "Add Provider",
+      "editTitle": "Edit Provider",
+      "description": "Configure credentials once per provider, then add multiple models under it",
+      "namePlaceholder": "Provider name, e.g. My proxy",
+      "save": "Save",
+      "cancel": "Cancel",
+      "requiredError": "Base URL and API Key are required",
+      "providerTitle": "Provider",
+      "verifying": "Verifying...",
+      "verifyError": "Provider verification failed: {{status}}. Check Base URL and API Key",
+      "verifyNetworkError": "Cannot reach provider. Check the Base URL"
+    },
+    "modelEdit": {
+      "addTitle": "Add Model",
+      "editTitle": "Edit Model",
+      "save": "Save",
+      "cancel": "Cancel",
+      "requiredError": "Model name is required",
+      "duplicateError": "A model with this name already exists",
+      "saveAndContinue": "Save & add another"
     },
     "provider": {
       "openai": "OpenAI",
@@ -81,21 +96,16 @@
       "deepseek": "DeepSeek",
       "moonshot": "Moonshot",
       "qwen": "Qwen (DashScope)",
-      "glm": "GLM (Zhipu)",
+      "glm": "Zhipu GLM",
       "doubao": "Doubao (Volcengine)",
       "custom": "Custom"
     },
     "fetchModels": {
-      "button": "Fetch Models",
-      "dialogTitle": "Select Model",
-      "dialogDescription": "Fetch available models from provider and select as {alias}",
       "searchPlaceholder": "Search models...",
-      "fetchButton": "Fetch Model List",
+      "fetchButton": "Fetch model list from provider",
       "fetching": "Fetching...",
-      "loading": "Loading...",
-      "noModels": "No available models",
-      "baseURLRequired": "Please enter Base URL first",
-      "error": "Failed to fetch model list"
+      "noModels": "No models available",
+      "error": "Failed to fetch models"
     }
   }
 }

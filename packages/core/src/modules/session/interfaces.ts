@@ -1,7 +1,7 @@
 // ============================================================
 // Session State Interfaces - 接口隔离原则
 // ============================================================
-// 定义 7 个独立接口，每个消费者只 import 它需要的接口。
+// 定义 6 个独立接口，每个消费者只 import 它需要的接口。
 // SessionState 不强制 extends 这些接口（避免实现类需要满足所有属性），
 // 但这些接口描述了 SessionState 的能力子集。
 //
@@ -68,33 +68,7 @@ export interface DenialTracking {
 }
 
 // ============================================================
-// 4. ModelSwitching - 模型切换（pipeline 消费）
-// ============================================================
-export interface ModelSwitching {
-  checkUserIntent(messages: ModelMessage[]): {
-    switched: boolean;
-    newModel?: string;
-    reason?: string;
-    notification?: string;
-  };
-  checkCostBudget(percent: number): {
-    switched: boolean;
-    newModel?: string;
-    reason?: string;
-    notification?: string;
-  };
-  checkTaskComplexity(complexityScore: number): {
-    switched: boolean;
-    newModel?: string;
-    reason?: string;
-    notification?: string;
-  };
-  getCurrentModel(): string;
-  getCurrentContextLimit(): number | undefined;
-}
-
-// ============================================================
-// 5. ToolOutputState - 工具输出管理（compaction/tools/connector 消费）
+// 4. ToolOutputState - 工具输出管理（compaction/tools/connector 消费）
 // ============================================================
 export interface ToolOutputState {
   contentReplacementState: ContentReplacementState;
@@ -102,7 +76,7 @@ export interface ToolOutputState {
 }
 
 // ============================================================
-// 6. SessionContext - 会话基础信息（tools/pipeline 消费）
+// 5. SessionContext - 会话基础信息（tools/pipeline 消费）
 // ============================================================
 export interface SessionContext {
   readonly conversationId: string;
@@ -124,7 +98,7 @@ export interface SessionContext {
 }
 
 // ============================================================
-// 7. CompactionService - 压缩服务（由 api/app 注入，pipeline 消费）
+// 6. CompactionService - 压缩服务（由 api/app 注入，pipeline 消费）
 // ============================================================
 // 打破 session-state ↔ compaction 循环的关键：
 // session-state 只依赖这个接口，不 import compaction 模块。
@@ -140,7 +114,6 @@ export interface PipelineContext {
   tokenBudget: TokenBudget;
   costTracker: CostTracking;
   denialTracker: DenialTracking;
-  modelSwapper: ModelSwitching;
   contentReplacementState: ContentReplacementState;
   toolOutputConfig: ToolOutputConfig;
   compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;

@@ -20,7 +20,7 @@ import type { Skill, SkillEffort } from '../../modules/skills/types';
 import type { SessionState } from '../../modules/session/types';
 import type { ModelAliases } from '../../services/model';
 import type { AgentExecutionResult, AgentToolConfig } from '../../modules/agent/types';
-import { resolveModelAlias } from '../../services/model/alias';
+import { resolveModelAlias, isInheritAlias } from '../../services/model/alias';
 import { executeAgentTask } from '../../modules/agent/agent-tool';
 import { generateSkillDirTree, readSkillBody } from '../../modules/skills/loader';
 import { recordSkillUsage } from '../../modules/skills/usage';
@@ -68,9 +68,10 @@ function resolveSkillModelOverride(
   aliases: ModelAliases | undefined,
   availableModels: readonly string[],
 ): string | undefined {
-  if (!model || model === 'inherit') return undefined;
+  // inherit/smart/default 均跟随会话主模型,不产生覆盖(见 alias.ts 语义收敛)
+  if (isInheritAlias(model)) return undefined;
 
-  const resolved = resolveModelAlias(model, aliases);
+  const resolved = resolveModelAlias(model!, aliases);
   if (availableModels.length > 0 && !availableModels.includes(resolved)) {
     logger.debug('SkillTool', `Ignoring unavailable model override: ${resolved}`);
     return undefined;
