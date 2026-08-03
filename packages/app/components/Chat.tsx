@@ -44,7 +44,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -83,6 +83,7 @@ const INLINE_REPORT_TOOLS = new Set([
   'grep', 'glob', 'skill',
   'save_wiki', 'lint_wiki', 'ingest_wiki_source',
   'inspect_wiki_history', 'restore_wiki_revision', 'cron',
+  'ask_user_question',
 ]);
 
 function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null, toolName?: string): { title: string; icon: React.ComponentType<{ className?: string }> } | undefined {
@@ -127,8 +128,10 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
       return { title: `Stop: ${i.id ?? ''}`, icon: SquareIcon };
     case 'todo_delete':
       return { title: `Delete: ${i.id ?? ''}`, icon: TrashIcon };
-    case 'research': 
+    case 'research':
       return { title: `Research: ${i.task ?? ''}`, icon: BookIcon };
+    case 'ask_user_question':
+      return { title: 'Ask User', icon: HelpCircleIcon };
     default:
       return undefined;
   }
@@ -2256,6 +2259,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               }
                               return { content, title: 'cron' };
                             }
+                            // ask_user_question 是客户端工具，答案已内联显示，无需右侧面板预览
+                            if (toolName === 'ask_user_question') {
+                              return null;
+                            }
                             // 其他工具：JSON 输出
                             return {
                               content: JSON.stringify(out, null, 2),
@@ -2319,11 +2326,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             {mcpAppSlot}
                             <div
                               className={`flex w-full items-center gap-2 text-sm transition-colors ${
-                                isComplete && previewData
+                                isComplete && (previewData || isInlineTool)
                                   ? `cursor-pointer ${isExpandedView ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`
                                   : 'text-muted-foreground'
                               }`}
-                              onClick={isComplete && previewData ? async () => {
+                              onClick={isComplete && (previewData || isInlineTool) ? async () => {
                                 if (isInlineTool) {
                                   setExpandedInlineKeys(prev => {
                                     const next = new Set(prev);
@@ -2383,7 +2390,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                 </span>
                               )}
                               {isDenied && <span className="text-xs text-orange-500 ml-auto">(已拒绝)</span>}
-                              {isComplete && previewData && (
+                              {isComplete && (previewData || isInlineReportTool) && (
                                 <ChevronDownIcon className={`ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isExpandedView ? 'rotate-180' : 'rotate-0'}`} />
                               )}
                             </div>
@@ -2406,7 +2413,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                 {errorText}
                               </div>
                             )}
-                            {isComplete && reportToolName === 'ask_user_question' && (() => {
+                            {isComplete && reportToolName === 'ask_user_question' && isInlineExpanded && (() => {
                               const out = toolPart.output as { answers?: Array<{ question: string; answer: string | string[] }> } | undefined;
                               if (!out?.answers?.length) return null;
                               return (
