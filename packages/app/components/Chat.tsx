@@ -404,7 +404,7 @@ export interface ChatProps {
   showAgentSelector?: boolean;
   /** 项目根目录绝对路径，用于将 Agent 返回的相对路径补全为绝对路径 */
   projectPath?: string;
-  /** 上下文水位数据，从会话数据库读取传入，不再通过 stream event 传递 */
+  /** 上下文水位数据，从会话数据库读取传入，SSE 流推送时会覆盖此值 */
   contextBudget?: { usagePercentage: number; totalTokens: number; modelLimit: number } | null;
 }
 
@@ -939,6 +939,49 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       }
     },
   });
+
+  // ── 流式 todo 更新：从 SSE 流中提取 data-todo-update 事件 ──
+  const [streamTodoData, setStreamTodoData] = useState<import('@/lib/todos/types').Todo[] | null>(null);
+  const lastTodoUpdateRef = useRef('');
+
+  useEffect(() => {
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === 'data-todo-update' && 'data' in part) {
+          const d = (part as { data: { todos: import('@/lib/todos/types').Todo[] } }).data;
+          if (d?.todos) {
+            const serialized = JSON.stringify(d.todos);
+            if (serialized !== lastTodoUpdateRef.current) {
+              lastTodoUpdateRef.current = serialized;
+              setStreamTodoData(d.todos);
+            }
+          }
+        }
+      }
+    }
+  }, [messages]);
+
+  const [streamContextBudget, setStreamContextBudget] = useState<{
+    usagePercentage: number;
+    totalTokens: number;
+    modelLimit: number;
+  } | null>(null);
+
+  // 流式上下文水位优先，回退到 prop
+  const effectiveContextBudget = streamContextBudget ?? contextBudget ?? null;
+
+  useEffect(() => {
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === 'data-context-usage' && 'data' in part) {
+          const d = (part as { data: { usagePercentage: number; totalTokens: number; modelLimit: number } }).data;
+          if (d && typeof d.usagePercentage === 'number') {
+            setStreamContextBudget(d);
+          }
+        }
+      }
+    }
+  }, [messages]);
 
   // MCP App 发来的消息转发给 agent，触发 agent 回复
   const handleMcpAppMessage = useCallback((text: string) => {
@@ -1562,29 +1605,29 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               <ApprovalModeSelector value={approvalMode} onChange={handleApprovalModeChange} />
             </PromptInputTools>
             <div className="ml-auto flex items-center gap-2">
-              {contextBudget && (
+              {effectiveContextBudget && (
                 <div
                   className="flex items-center gap-1"
-                  title={`上下文窗口: ${contextBudget.usagePercentage.toFixed(0)}% (${contextBudget.totalTokens >= 1000 ? `${(contextBudget.totalTokens / 1000).toFixed(0)}K` : contextBudget.totalTokens}/${contextBudget.modelLimit >= 1000 ? `${(contextBudget.modelLimit / 1000).toFixed(0)}K` : contextBudget.modelLimit})`}
+                  title={`上下文窗口: ${effectiveContextBudget.usagePercentage.toFixed(0)}% (${effectiveContextBudget.totalTokens >= 1000 ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(0)}K` : effectiveContextBudget.totalTokens}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" className="-rotate-90 shrink-0">
                     <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted-foreground/30" />
                     <circle
                       cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-                      strokeDasharray={`${(Math.min(100, contextBudget.usagePercentage) / 100) * 50.27} 50.27`}
+                      strokeDasharray={`${(Math.min(100, effectiveContextBudget.usagePercentage) / 100) * 50.27} 50.27`}
                       className={cn(
                         'transition-all duration-700',
-                        contextBudget.usagePercentage > 80 ? 'text-destructive' :
-                        contextBudget.usagePercentage > 60 ? 'text-yellow-500' : 'text-primary/60',
+                        effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
+                        effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-500' : 'text-primary/60',
                       )}
                     />
                   </svg>
                   <span className={cn(
                     'text-xs tabular-nums',
-                    contextBudget.usagePercentage > 80 ? 'text-destructive' :
-                    contextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
+                    effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
+                    effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
                   )}>
-                    {contextBudget.usagePercentage.toFixed(0)}%
+                    {effectiveContextBudget.usagePercentage.toFixed(0)}%
                   </span>
                 </div>
               )}
@@ -1794,7 +1837,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             );
                           }
 
-                          if (part.type.startsWith('data-sub-')) {
+                          if (part.type.startsWith('data-sub-') || part.type === 'data-todo-update' || part.type === 'data-context-usage') {
                             return null;
                           }
 
@@ -2576,7 +2619,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
           <div className="mx-auto max-w-3xl space-y-2">
             {conversationId && !questionPanel && approvalRequests.length === 0 && (
-              <TodoPanel conversationId={conversationId} />
+              <TodoPanel conversationId={conversationId} streamData={streamTodoData} />
             )}
 
             {questionPanel && (

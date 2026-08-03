@@ -474,6 +474,46 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
           toolsUsed: [...new Set(checkpointToolsUsed)],
         });
       }
+
+      // 当 todo 工具执行后，推送任务清单快照到流，前端无需轮询
+      if (toolCall.toolName.startsWith('todo_') && conversationId) {
+        try {
+          const todos = dataStore.todoStore.getTodosByConversation(conversationId);
+          const writer = (options.writerRef as { current: SubAgentStreamWriter | null } | undefined)?.current;
+          if (writer) {
+            writer.write({
+              type: 'data-todo-update',
+              id: `todo-${toolCall.toolCallId}`,
+              data: { todos },
+            });
+          }
+        } catch {
+          // 不影响主流程
+        }
+      }
+
+      // 每步推送上下文水位到流，前端无需轮询
+      if (conversationId) {
+        try {
+          const conv = dataStore.conversationStore.getConversation(conversationId);
+          if (conv?.contextUsage != null) {
+            const writer = (options.writerRef as { current: SubAgentStreamWriter | null } | undefined)?.current;
+            if (writer) {
+              writer.write({
+                type: 'data-context-usage',
+                id: `ctx-${toolCall.toolCallId}`,
+                data: {
+                  usagePercentage: conv.contextUsage,
+                  totalTokens: conv.contextTotal ?? 0,
+                  modelLimit: conv.contextLimit ?? 0,
+                },
+              });
+            }
+          }
+        } catch {
+          // 不影响主流程
+        }
+      }
     },
   })
 

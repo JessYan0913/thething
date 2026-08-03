@@ -525,6 +525,38 @@ export async function POST(request: Request) {
                     throw enqueueErr;
                   }
                   agentChunkCount++;
+
+                  // 每步完成后推送上下文水位（覆盖纯文本步骤，不依赖 onToolExecutionEnd）
+                  if (value.type === 'finish-step' && conversationId) {
+                    try {
+                      const conv = store.conversationStore.getConversation(conversationId);
+                      if (conv?.contextUsage != null) {
+                        controller.enqueue(JSON.stringify({
+                          type: 'data-context-usage',
+                          id: `ctx-step-${agentChunkCount}`,
+                          data: {
+                            usagePercentage: conv.contextUsage,
+                            totalTokens: conv.contextTotal ?? 0,
+                            modelLimit: conv.contextLimit ?? 0,
+                          },
+                        }));
+                      }
+                    } catch {
+                      // 不影响主流程
+                    }
+
+                    // 每步完成后推送任务清单（覆盖 writerRef 可能未就绪的场景）
+                    try {
+                      const todos = store.todoStore.getTodosByConversation(conversationId);
+                      controller.enqueue(JSON.stringify({
+                        type: 'data-todo-update',
+                        id: `todo-step-${agentChunkCount}`,
+                        data: { todos },
+                      }));
+                    } catch {
+                      // 不影响主流程
+                    }
+                  }
                 }
               } catch (agentErr) {
                 console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
