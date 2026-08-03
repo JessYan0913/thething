@@ -20,6 +20,7 @@ import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-ap
 import { setReviewerDenial, extractInputKey } from '../../modules/agent-control/reviewer-feedback'
 import { telemetryMiddleware, costTrackingMiddleware } from '../../modules/middleware'
 import { loadAllTools } from '../../modules/agent/tools'
+import { repairAskUserQuestionRawInput } from '../../modules/tools'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
@@ -430,7 +431,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     denialTracker: sessionState.denialTracker,
     approvalMode: options.approvalMode ?? 'smart',
     reviewer,
-    goalState: sessionState.goalState,
     connectorToolNames: new Set(connectorToolNames),
   }
   // ── Checkpoint 回调：跟踪工具调用，每步结束写 checkpoint ──
@@ -452,6 +452,17 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     prepareStep: prepareStep as import('ai').PrepareStepFunction<ChatToolsType, ApprovalRuntimeContext>,
     stopWhen,
     toolChoice: 'auto',
+    // 修复 ask_user_question 输入：模型偶尔会把 questions 数组序列化为 JSON 字符串
+    // （且常被截断），Zod 校验失败抛出泛化的 "An error occurred"，Agent 难以自我修复。
+    // repairToolCall 仅在 NoSuchToolError/InvalidToolInputError 时被 SDK 调用，
+    // 这里尝试把字符串 parse/补全回数组。（refineToolInput 只在校验成功后执行，
+    // 对该失败路径无效。）
+    experimental_repairToolCall: async ({ toolCall }) => {
+      if (toolCall.toolName !== 'ask_user_question') return null;
+      const repaired = repairAskUserQuestionRawInput(toolCall.input);
+      if (repaired == null) return null;
+      return { ...toolCall, input: repaired };
+    },
     onToolExecutionEnd: ({ toolCall }) => {
       checkpointStepCount++;
       checkpointToolsUsed.push(toolCall.toolName);

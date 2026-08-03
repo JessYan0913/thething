@@ -115,17 +115,25 @@ export async function POST(request: Request) {
     // ── 单飞行：同会话已有运行 → 先中止（编辑/重新生成时这正是用户想要的）──
     abortChat(conversationId);
 
-    // ── 用户消息落库（不可变消息树，见 message-store.ts）──
-    // 必须先落库：agent 运行中刷新/切页/停止时，恢复流只回放 assistant chunks，
-    // GET 加载不到未保存的用户消息。
-    // commitUserMessage 内部区分三种语义：
-    //   新 id → 普通发送（head 下追加）；
-    //   已知 id + 内容未变 → regenerate（head 移回该消息，旧回答成为孤儿分支）；
-    //   已知 id + 内容变化 → 编辑重发（同 parent 插入新节点，旧版本保留）。
+    // ── 请求消息落库（不可变消息树，见 message-store.ts）──
+    // 普通发送提交 user 消息；工具审批后的自动续跑提交的是更新后的 assistant
+    // 工具消息，必须按同一节点的下一不可变版本推进，不能走 user 编辑语义。
+    // 客户端工具（ask_user_question）的 output-available/error 也是续跑。
+    const isAssistantContinuation = message.role === 'assistant' && message.parts.some((part) => {
+      if (!('state' in part)) return false;
+      const state = part.state as string;
+      return state === 'approval-responded' || state === 'output-available' || state === 'output-error';
+    });
+    if (message.role === 'assistant' && !isAssistantContinuation) {
+      return NextResponse.json({ error: 'Invalid assistant continuation' }, { status: 400 });
+    }
+
     const currentBranch = store.branchStore.ensureMainBranch(conversationId);
     let activeBranchId = branchId ?? currentBranch.id;
     let headMessageId: string;
-    if (operation === 'edit') {
+    if (isAssistantContinuation) {
+      headMessageId = store.messageStore.commitAssistantContinuation(conversationId, message);
+    } else if (operation === 'edit') {
       // 编辑：原地修改，不创建分支。走 commitUserMessage 内部编辑路径
       // （同 id + 不同内容 → 同 parent 下插新节点，head 自动转移）
       headMessageId = store.messageStore.commitUserMessage(conversationId, message);
@@ -149,6 +157,17 @@ export async function POST(request: Request) {
 
     // 模型输入基线 = 落库后的活跃路径（截断/编辑已由 head 移动体现）
     const activeMessages = store.messageStore.getMessagesByConversation(conversationId);
+
+    // 续跑时把最后一条（刚 commit 的服务端新版本 id）还原为客户端消息 id：
+    // SDK 的 start chunk 会带 originalMessages 末尾 assistant 的 id，
+    // id 与客户端本地消息一致时续写才会合并进原消息，否则客户端把续写
+    // 当成新消息追加 → UI 出现重复分段。落库仍用服务端 id（不可变树内唯一）。
+    if (isAssistantContinuation && activeMessages.length > 0) {
+      const last = activeMessages[activeMessages.length - 1];
+      if (last.role === 'assistant') {
+        activeMessages[activeMessages.length - 1] = { ...last, id: message.id };
+      }
+    }
 
     // 全量(含本次 user 消息)交给 applyCheckpointOnLoad:本次 user 消息落在锚点之后,
     // 作为 newerMessages 保留,避免"锚点之后无新消息 -> 返回全量"的 guard 误触发
@@ -318,16 +337,33 @@ export async function POST(request: Request) {
     // 本轮结果只是挂出一条孤儿分支，天然无害——无需依赖时序守卫。
     // 工厂形式：每次 createAgentUIStream 的输入消息数可能不同（context-length 重试会压缩消息），
     // 切片基准必须与实际传入的消息数一致，否则新增 assistant 消息会被切掉导致不保存。
-    const createOnEnd = (inputMessageCount: number) => async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
+    const createOnEnd = (inputMessageCount: number, inputContinuation?: UIMessage) => async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
       try {
         unregisterAbortController(conversationId, runId);
         store.agentRunStore.completeRun(conversationId);
+
+        let resultAnchorId = headMessageId;
+        let continuationUpdated = false;
+        if (inputContinuation) {
+          const completedContinuation = completedMessages[inputMessageCount - 1];
+          if (
+            inputContinuation.role === 'assistant' &&
+            completedContinuation?.role === 'assistant' &&
+            JSON.stringify(inputContinuation.parts) !== JSON.stringify(completedContinuation.parts)
+          ) {
+            resultAnchorId = store.messageStore.commitAssistantContinuation(
+              conversationId,
+              completedContinuation,
+            );
+            continuationUpdated = true;
+          }
+        }
 
         const newAssistantMessages = completedMessages
           .slice(inputMessageCount)
           .filter((m) => m.role === 'assistant' && m.parts && m.parts.length > 0);
 
-        if (newAssistantMessages.length === 0) {
+        if (newAssistantMessages.length === 0 && !continuationUpdated) {
           store.conversationRunStore.finishRun(runId, { status: 'failed', error: 'No assistant messages produced' });
           console.warn(
             `[Chat API] Stream produced no valid assistant messages, skipping save.\n` +
@@ -362,9 +398,10 @@ export async function POST(request: Request) {
           }
         }
 
-        // 锚定在本轮用户消息上追加；head 已移走则成为孤儿分支（headMoved=false）
+        // 普通轮次锚定在本轮 user；审批续跑则锚定在已保存的工具 output 版本。
+        // head 已移走时 appendMessages 的 CAS 会让迟到结果成为无害孤儿分支。
         const headMoved = store.messageStore.appendMessages(
-          conversationId, newAssistantMessages, headMessageId,
+          conversationId, newAssistantMessages, resultAnchorId,
         );
         const resultTipId = headMoved
           ? store.branchStore.getProjection(conversationId).activeTipId
@@ -374,7 +411,7 @@ export async function POST(request: Request) {
           resultTipId,
         });
         console.log(
-          `[Storage] Appended ${newAssistantMessages.length} assistant messages after ${headMessageId} (headMoved=${headMoved})`,
+          `[Storage] Appended ${newAssistantMessages.length} assistant messages after ${resultAnchorId} (headMoved=${headMoved})`,
         );
 
         const costSummary = sessionState.costTracker.getSummary();
@@ -424,7 +461,10 @@ export async function POST(request: Request) {
                   abortSignal: abortController.signal,
                   sendReasoning: true,
                   onError: agentStreamOnError,
-                  onEnd: createOnEnd(finalMessages.length),
+                  onEnd: createOnEnd(
+                    finalMessages.length,
+                    isAssistantContinuation ? finalMessages.at(-1) : undefined,
+                  ),
                 });
               } catch (streamErr) {
                 // context_length_error：压缩消息后重试
@@ -449,7 +489,10 @@ export async function POST(request: Request) {
                       abortSignal: abortController.signal,
                       sendReasoning: true,
                       onError: agentStreamOnError,
-                      onEnd: createOnEnd(retryResult.messages.length),
+                      onEnd: createOnEnd(
+                        retryResult.messages.length,
+                        isAssistantContinuation ? finalMessages.at(-1) : undefined,
+                      ),
                     });
                   } catch (retryErr) {
                     console.error('[Chat API] Reactive retry failed:', retryErr);
@@ -504,6 +547,14 @@ export async function POST(request: Request) {
                 `  Error: ${errStr.slice(0, 200)}\n` +
                 `  Messages: ${finalMessages.length}`,
               );
+              // 失败路径不会走 onEnd：必须在此收尾运行记录，
+              // 否则 conversation_runs/agent_runs 永远停在 'running'（已观测到泄漏）
+              unregisterAbortController(conversationId, runId);
+              store.conversationRunStore.finishRun(runId, {
+                status: 'failed',
+                error: errStr.slice(0, 500),
+              });
+              store.agentRunStore.failRun(conversationId, errStr.slice(0, 500));
               controller.error(error);
             }
           },

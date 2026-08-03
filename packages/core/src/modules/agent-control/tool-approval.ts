@@ -17,7 +17,6 @@ import type { ToolApprovalStatus } from 'ai';
 import { checkPermissionRules } from '../../modules/permissions';
 import { isCommandDangerous, isCommandSafe } from '../../modules/tools/bash';
 import type { PermissionRule } from '../../modules/permissions/types';
-import type { GoalState } from '../../modules/goal/types';
 import { hasReviewerDenial } from './reviewer-feedback';
 
 // ============================================================
@@ -51,8 +50,6 @@ export interface ApprovalRuntimeContext extends Record<string, unknown> {
   approvalMode: string;
   /** auto-review 模式下的审批 Agent（由 create.ts 注入） */
   reviewer?: (toolName: string, input: unknown, messages: unknown[]) => Promise<ToolApprovalStatus>;
-  /** 当前目标状态（有目标时，Agent 应自主决策而非询问用户） */
-  goalState?: GoalState | null;
   /** 已注册的 connector 工具名集合（{connectorId}_{toolName}），用于识别外部 API 工具 */
   connectorToolNames?: ReadonlySet<string>;
 }
@@ -178,19 +175,9 @@ export async function catchAllApproval(options: {
   const input = toolCall.args ?? toolCall.input ?? toolCall.arguments;
   const ctx = options.runtimeContext;
 
-  // ── ask_user_question：必须最先处理 ──────────────────
-  // 它的"审批"就是前端答案收集面板：暂停 → 用户作答 → 答案经
-  // tool-approval-response.reason 传回。函数式 toolApproval 会让 SDK
-  // 完全跳过工具自身的 needsApproval，所以这里若返回 undefined，
-  // 工具会立即执行且拿不到任何答案（结果为空）。
-  // 因此任何模式下都返回 'user-approval'，且不能转交 reviewer 自动批准。
-  if (toolName === 'ask_user_question') {
-    // 'auto-review' + 有目标：自动放行（Agent 应自主决策而非询问用户）
-    if (ctx.approvalMode === 'auto-review' && ctx.goalState) return 'approved';
-    return 'user-approval';
-  }
-
   // ── 审批模式处理 ──────────────────────────────────────
+  // 注：ask_user_question 是无 execute 的客户端工具（SDK 原生挂起等待前端
+  // addToolOutput），不走审批通道，这里无需也不能为它做任何决策。
   // 'full-trust': 所有已知工具自动放行
   if (ctx.approvalMode === 'full-trust') {
     if (TOOLS_WITH_APPROVAL.has(toolName)) return 'approved';

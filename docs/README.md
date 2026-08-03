@@ -17,8 +17,9 @@
 - [llm-wiki.md](./llm-wiki.md) - LLM Wiki 功能
 - [wiki-redesign.md](./wiki-redesign.md) - Wiki 重设计
 
-### 工具与集成
+## 问题分析
 - [chat-tool-mcp-chain-issues.md](./chat-tool-mcp-chain-issues.md) - MCP 链路问题分析
+- [chat-message-rendering-regression.md](./chat-message-rendering-regression.md) - c192478 之后 assistant 视觉断层回归
 
 ## UX 设计
 - [clickable-file-path-design.md](./clickable-file-path-design.md) - 可点击文件路径设计
@@ -34,4 +35,4 @@
 2. **架构文档持续更新** - 反映当前实际实现，标注最后更新日期
 3. **过时内容立即删除** - 避免误导，保持文档与代码同步
 
-最后更新：2026-07-23
+最后更新：2026-08-02

@@ -6,7 +6,7 @@ export { createGlobTool } from './glob';
 export { createGrepTool } from './grep';
 export { createReadFileTool } from './read';
 export { createWriteFileTool } from './write';
-export { askUserQuestionTool } from './ask-user-question';
+export { askUserQuestionTool, repairAskUserQuestionRawInput } from './ask-user-question';
 export { createSkillTool } from './skill';
 export { createFindSkillsTool } from './find-skills';
 export { createCronTool } from './cron';

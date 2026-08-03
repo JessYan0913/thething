@@ -30,7 +30,7 @@ interface QuestionItem {
 interface UserQuestionPanelProps {
   isOpen: boolean;
   questions: QuestionItem[];
-  onComplete: (answers: Record<string, string | string[]>) => void;
+  onComplete: (answers: Array<{ question: string; answer: string | string[] }>) => void;
   onCancel: () => void;
 }
 
@@ -139,14 +139,13 @@ export function UserQuestionPanel({
   };
 
   const handleComplete = () => {
-    const final: Record<string, string | string[]> = {};
+    const final: Array<{ question: string; answer: string | string[] }> = [];
     questions.forEach((q, i) => {
-      const key = q.header || `question_${i}`;
       let val = answers[i];
       if (typeof val === 'string' && val.startsWith('__custom__')) {
         val = val.replace(/^__custom__/, '');
       }
-      final[key] = val || '';
+      final.push({ question: q.question, answer: val || '' });
     });
     onComplete(final);
   };

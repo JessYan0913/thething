@@ -16,6 +16,26 @@ function texts(messages: UIMessage[]): string[] {
   return messages.map((m) => (m.parts[0] as { text: string }).text)
 }
 
+function toolMsg(id: string, state: 'approval-requested' | 'approval-responded' | 'output-available' | 'input-available'): UIMessage {
+  return {
+    id,
+    role: 'assistant',
+    parts: [{
+      type: 'tool-ask_user_question',
+      toolCallId: 'call-1',
+      state,
+      input: { questions: [] },
+      ...(state === 'approval-requested'
+        ? { approval: { id: 'approval-1' } }
+        : state === 'approval-responded'
+          ? { approval: { id: 'approval-1', approved: true, reason: '{"answers":{"需求":"回复"}}' } }
+          : state === 'output-available'
+            ? { output: { answers: { 需求: '回复' }, timestamp: 1 } }
+            : {}),
+    }],
+  } as UIMessage
+}
+
 const CONV = 'conv-1'
 
 describe('SQLiteMessageStore (immutable tree)', () => {
@@ -97,6 +117,137 @@ describe('SQLiteMessageStore (immutable tree)', () => {
       const backToOld = store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'original'))
       expect(backToOld).toBe('u1')
       expect(texts(store.messageStore.getMessagesByConversation(CONV))).toEqual(['original'])
+    })
+  })
+
+  describe('commitAssistantContinuation', () => {
+    it('replaces the active approval state without duplicating it on the active path', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'approval-requested')])
+
+      const respondedId = store.messageStore.commitAssistantContinuation(
+        CONV,
+        toolMsg('client-generated-id', 'approval-responded'),
+      )
+      expect(respondedId).not.toBe('a1')
+      let active = store.messageStore.getMessagesByConversation(CONV)
+      expect(active.map((message) => message.id)).toEqual(['u1', respondedId])
+      expect((active[1].parts[0] as { state: string }).state).toBe('approval-responded')
+
+      const outputId = store.messageStore.commitAssistantContinuation(
+        CONV,
+        toolMsg('another-client-generated-id', 'output-available'),
+      )
+      store.messageStore.appendMessages(CONV, [msg('a-final', 'assistant', 'final')], outputId)
+
+      active = store.messageStore.getMessagesByConversation(CONV)
+      expect(active.map((message) => message.id)).toEqual(['u1', outputId, 'a-final'])
+      expect((active[1].parts[0] as { state: string }).state).toBe('output-available')
+      expect(store.messageStore.getConversationTree(CONV).nodes).toHaveLength(5)
+    })
+
+    it('rejects a stale continuation after the active head has moved', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'approval-requested')])
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'new input'))
+
+      expect(() => store.messageStore.commitAssistantContinuation(
+        CONV,
+        toolMsg('client-generated-id', 'approval-responded'),
+      )).toThrow('is not an assistant message')
+    })
+
+    it('rejects a continuation for a different tool call', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'approval-requested')])
+      const different = toolMsg('client-generated-id', 'approval-responded')
+      ;(different.parts[0] as { toolCallId: string }).toolCallId = 'call-other'
+
+      expect(() => store.messageStore.commitAssistantContinuation(CONV, different))
+        .toThrow('does not match the active tool call')
+    })
+
+    it('rejects an invalid state transition for the same tool call', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'approval-requested')])
+
+      expect(() => store.messageStore.commitAssistantContinuation(
+        CONV,
+        toolMsg('client-generated-id', 'output-available'),
+      )).toThrow('does not match the active tool call')
+    })
+
+    it('accepts input-available → output-available for client tools', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'input-available')])
+
+      const outputId = store.messageStore.commitAssistantContinuation(
+        CONV,
+        toolMsg('client-generated-id', 'output-available'),
+      )
+      expect(outputId).not.toBe('a1')
+      const active = store.messageStore.getMessagesByConversation(CONV)
+      expect(active.map((message) => message.id)).toEqual(['u1', outputId])
+      expect((active[1].parts[0] as { state: string }).state).toBe('output-available')
+    })
+
+    it('accepts input-available → output-error as a valid cancellation', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'input-available')])
+
+      const errId = store.messageStore.commitAssistantContinuation(
+        CONV,
+        { ...toolMsg('client-generated-id', 'output-available'), parts: [{
+          type: 'tool-ask_user_question',
+          toolCallId: 'call-1',
+          state: 'output-error',
+          input: { questions: [] },
+          errorText: '用户取消了提问',
+        }] } as UIMessage,
+      )
+      const active = store.messageStore.getMessagesByConversation(CONV)
+      expect(active.map((message) => message.id)).toEqual(['u1', errId])
+      expect((active[1].parts[0] as { state: string }).state).toBe('output-error')
+    })
+
+    it('accepts same-terminal-state extension (onEnd persists resumed reply)', () => {
+      // 续跑流结束：工具 part 状态不变（output-available），消息新增了 text part
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'input-available')])
+      store.messageStore.commitAssistantContinuation(
+        CONV, toolMsg('answered', 'output-available'),
+      )
+
+      const extended = toolMsg('final', 'output-available')
+      extended.parts = [...extended.parts, { type: 'text', text: '基于你的回答…' } as UIMessage['parts'][number]]
+      const finalId = store.messageStore.commitAssistantContinuation(CONV, extended)
+
+      const active = store.messageStore.getMessagesByConversation(CONV)
+      expect(active.map((message) => message.id)).toEqual(['u1', finalId])
+      expect(active[1].parts).toHaveLength(2)
+      expect((active[1].parts[1] as { text: string }).text).toBe('基于你的回答…')
+    })
+
+    it('is idempotent when the same parts are committed twice', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q'))
+      store.messageStore.appendMessages(CONV, [toolMsg('a1', 'input-available')])
+      const firstId = store.messageStore.commitAssistantContinuation(
+        CONV, toolMsg('client-id-1', 'output-available'),
+      )
+      const secondId = store.messageStore.commitAssistantContinuation(
+        CONV, toolMsg('client-id-2', 'output-available'),
+      )
+      expect(secondId).toBe(firstId)
+      // 没有插入重复节点
+      const treeSize = store.messageStore.getConversationTree(CONV).nodes.length
+      expect(treeSize).toBe(3) // u1 + a1 + firstId
+    })
+
+    it('rejects non-assistant messages', () => {
+      expect(() => store.messageStore.commitAssistantContinuation(
+        CONV,
+        msg('u1', 'user', 'invalid'),
+      )).toThrow('must have role assistant')
     })
   })
 

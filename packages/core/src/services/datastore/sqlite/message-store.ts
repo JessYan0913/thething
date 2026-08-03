@@ -8,10 +8,11 @@
 //   - 重新生成/编辑重发 = 移动 head（旧分支原样保留，成为孤儿分支）
 //   - 过期运行的写入只会挂出没人指向的分叉，天然无害，无需时序守卫
 //
-// 三个写原语：
-//   commitUserMessage  用户消息（普通发送 / regenerate / 编辑重发 三种语义）
-//   appendMessages     assistant 回答追加（head CAS：锚点不再是 head 则不动 head）
-//   replaceConversation 开发工具语义：整会话重建为线性链（丢弃分支）
+// 四个写原语：
+//   commitUserMessage         用户消息（普通发送 / regenerate / 编辑重发 三种语义）
+//   commitAssistantContinuation assistant 工具消息的不可变状态推进
+//   appendMessages            assistant 回答追加（head CAS：锚点不再是 head 则不动 head）
+//   replaceConversation       开发工具语义：整会话重建为线性链（丢弃分支）
 
 import type { UIMessage } from 'ai';
 import type {
@@ -144,6 +145,58 @@ export class SQLiteMessageStore implements MessageStore {
       this.bumpRevision(conversationId);
       this.invalidateSummaryIfAnchorOffPath(conversationId);
       return headId;
+    });
+    return transaction();
+  }
+
+  commitAssistantContinuation(conversationId: string, message: UIMessage): string {
+    if (message.role !== 'assistant') {
+      throw new Error('Assistant continuation must have role assistant');
+    }
+
+    const transaction = this.db.transaction(() => {
+      const headId = this.getHead(conversationId);
+      if (!headId) {
+        throw new Error(`Assistant continuation has no active head in conversation ${conversationId}`);
+      }
+      const existing = this.db
+        .prepare('SELECT id, parent_id, content FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(conversationId, headId) as MessageRow | undefined;
+      if (!existing) {
+        throw new Error(`Active assistant continuation head ${headId} is missing from conversation ${conversationId}`);
+      }
+
+      const previous = JSON.parse(existing.content) as UIMessage;
+      if (previous.role !== 'assistant') {
+        throw new Error(`Assistant continuation head ${headId} is not an assistant message`);
+      }
+      // 幂等：客户端自动续跑可能重复发送同一状态（双击/竞态），
+      // parts 与 head 完全一致时直接复用当前版本，不再插入新节点
+      if (JSON.stringify(previous.parts) === JSON.stringify(message.parts)) {
+        return headId;
+      }
+      if (!this.hasMatchingToolCall(previous, message)) {
+        const prevToolCalls = previous.parts
+          .filter(p => (p as { toolCallId?: unknown }).toolCallId)
+          .map(p => `${(p as { toolCallId: string }).toolCallId}=${(p as { state?: string }).state}`);
+        const nextToolCalls = message.parts
+          .filter(p => (p as { toolCallId?: unknown }).toolCallId)
+          .map(p => `${(p as { toolCallId: string }).toolCallId}=${(p as { state?: string }).state}`);
+        logger.error(
+          'MessageStore',
+          `commitAssistantContinuation: head ${headId} (${previous.id}) toolCalls=[${prevToolCalls.join(', ')}] ` +
+          `incoming toolCalls=[${nextToolCalls.join(', ')}] ` +
+          `head.parent_id=${existing.parent_id} head.role=${previous.role}`,
+        );
+        throw new Error(`Assistant continuation does not match the active tool call in conversation ${conversationId}`);
+      }
+
+      const continued = { ...message, id: nanoid() };
+      this.insertNode(conversationId, continued, existing.parent_id);
+      this.setHead(conversationId, continued.id);
+      this.updateActiveBranchTip(conversationId, continued.id);
+      this.bumpRevision(conversationId);
+      return continued.id;
     });
     return transaction();
   }
@@ -317,6 +370,51 @@ export class SQLiteMessageStore implements MessageStore {
         'INSERT INTO messages (id, conversation_id, parent_id, branch_id, role, content) VALUES (?, ?, ?, ?, ?, ?)'
       )
       .run(msg.id, conversationId, parentId, activeBranch, msg.role, JSON.stringify(msg));
+  }
+
+  /**
+   * 流式客户端和服务端持久化可能为同一 assistant 消息分配不同 id。
+   * continuation 只能匹配当前 head 上已有的同一个 toolCallId，避免任意 assistant 覆盖。
+   *
+   * 合法状态转移：
+   *   approval-requested → approval-responded   （审批工具续跑）
+   *   approval-responded → output-available/error（审批后执行结果）
+   *   input-available → output-available/error   （客户端工具续跑，如 ask_user_question）
+   *   output-available/error → 同状态           （续跑流结束后 onEnd 落库：工具 part 状态
+   *                                              不变，但消息追加了新的 reasoning/text parts）
+   */
+  private hasMatchingToolCall(previous: UIMessage, next: UIMessage): boolean {
+    const previousStates = new Map<string, unknown>();
+    for (const part of previous.parts) {
+      const toolPart = part as { toolCallId?: unknown; state?: unknown };
+      if (typeof toolPart.toolCallId === 'string') {
+        previousStates.set(toolPart.toolCallId, toolPart.state);
+      }
+    }
+
+    return next.parts.some((part) => {
+      const toolPart = part as { toolCallId?: unknown; state?: unknown };
+      if (typeof toolPart.toolCallId !== 'string') return false;
+      const previousState = previousStates.get(toolPart.toolCallId);
+      // 客户端工具 (input-available → output-available/error)
+      if (previousState === 'input-available') {
+        return toolPart.state === 'output-available' || toolPart.state === 'output-error';
+      }
+      // 审批工具 (approval-requested → approval-responded → output-available/error)
+      if (previousState === 'approval-requested' && toolPart.state === 'approval-responded') {
+        return true;
+      }
+      if (previousState === 'approval-responded' &&
+          (toolPart.state === 'output-available' || toolPart.state === 'output-error')) {
+        return true;
+      }
+      // 同终态扩展（onEnd 落库续跑结果：同一 toolCallId 状态不变，消息新增其他 parts）
+      if ((previousState === 'output-available' || previousState === 'output-error') &&
+          toolPart.state === previousState) {
+        return true;
+      }
+      return false;
+    });
   }
 
   /** 同 parent 下查同内容消息，用于 appendMessages 去重 */

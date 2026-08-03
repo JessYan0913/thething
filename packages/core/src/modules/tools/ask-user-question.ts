@@ -15,6 +15,20 @@ const questionSchema = z.object({
   multiSelect: z.boolean().optional().default(false).describe("是否允许多选"),
 });
 
+const answerSchema = z.object({
+  question: z.string().describe("原问题文本"),
+  answer: z
+    .union([z.string(), z.array(z.string())])
+    .describe("用户的回答；多选为数组，自定义输入为自由文本"),
+});
+
+/**
+ * 客户端工具（无 execute）：AI SDK 遇到该调用时暂停 agent 循环，
+ * 流以 input-available 状态结束；前端答题面板收集答案后调
+ * addToolOutput({toolCallId, output}) 回写并自动续跑。
+ * 用户取消 → addToolOutput({state: 'output-error', errorText})，
+ * 模型看到明确的取消信息而非伪造的空答案。
+ */
 export const askUserQuestionTool = tool({
   description: `向用户提问以收集偏好、需求或澄清模糊指令。
 
@@ -38,38 +52,46 @@ export const askUserQuestionTool = tool({
       .max(4)
       .describe("要问用户的问题列表，最多4个"),
   }),
-  needsApproval: async () => true,
-  execute: async (_input, options) => {
-    const answers = extractAnswers(options);
-    return {
-      answers,
-      timestamp: Date.now(),
-    };
-  },
+  outputSchema: z.object({
+    answers: z
+      .array(answerSchema)
+      .describe("与 questions 顺序对齐的问答对列表"),
+  }),
 });
-
-function extractAnswers(options: {
-  messages: Array<{ role: string; content: unknown }>;
-}): Record<string, string | string[]> {
-  const lastMsg = options.messages.at(-1);
-  if (lastMsg?.role !== "tool" || Array.isArray(lastMsg.content) === false)
-    return {};
-  const approvalResp = (
-    lastMsg.content as Array<{ type?: string; reason?: string }>
-  ).find((p) => p.type === "tool-approval-response" && p.reason);
-  if (!approvalResp?.reason) return {};
-  try {
-    return JSON.parse(approvalResp.reason).answers ?? {};
-  } catch {
-    return {};
-  }
-}
 
 export type AskUserQuestionInput = z.infer<
   typeof askUserQuestionTool.inputSchema
 >;
 export type AskUserQuestionOutput = {
-  questions: Array<z.infer<typeof questionSchema>>;
-  answers: Record<string, string | string[]>;
-  timestamp: number;
+  answers: Array<z.infer<typeof answerSchema>>;
 };
+
+/**
+ * 修复模型把 questions 数组序列化为 JSON 字符串（甚至截断的字符串）的问题。
+ * 注意：experimental_refineToolInput 只在 schema 校验成功后执行，对
+ * InvalidToolInputError 无效；校验失败时的修复钩子是 experimental_repairToolCall，
+ * 本函数供其使用。入参是模型输出的原始 input JSON 文本。
+ * 返回修复后的 input JSON 文本；无法修复时返回 null（保留原错误让模型自我修正）。
+ */
+export function repairAskUserQuestionRawInput(rawInput: string): string | null {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(rawInput);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== "object") return null;
+  const questions = (obj as { questions?: unknown }).questions;
+  if (typeof questions !== "string") return null;
+  // 实际观测：模型输出的字符串常被截断（缺少收尾括号），依次尝试补全
+  for (const suffix of ["", "]", "}]", '"}]']) {
+    try {
+      const parsed = JSON.parse(questions + suffix);
+      if (!Array.isArray(parsed)) return null;
+      return JSON.stringify({ ...(obj as object), questions: parsed });
+    } catch {
+      // 尝试下一个补全
+    }
+  }
+  return null;
+}

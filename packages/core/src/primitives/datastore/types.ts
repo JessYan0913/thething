@@ -354,6 +354,18 @@ export interface MessageStore {
   commitUserMessage(conversationId: string, message: UIMessage): string;
 
   /**
+   * Commit the next immutable version of the active assistant tool message.
+   * Used for approval state progression (requested → responded → output):
+   * the supplied message must contain a toolCallId found on the current
+   * assistant head. Message ids may differ between streamed client state and
+   * server persistence. The new version is inserted under the same parent with
+   * a fresh id so the previous state stays recoverable without appearing twice
+   * on the active path.
+   * @returns the fresh id of the assistant version now at head
+   */
+  commitAssistantContinuation(conversationId: string, message: UIMessage): string;
+
+  /**
    * Append a chain of messages as descendants of `afterMessageId`
    * (defaults to current head). Rows are always inserted (immutable tree);
    * head only moves if it still equals the anchor — a compare-and-set that
