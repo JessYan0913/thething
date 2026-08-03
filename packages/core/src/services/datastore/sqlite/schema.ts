@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -444,6 +444,24 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
       updateSummaries.run(branchId, conversation.id);
     }
     logger.debug('Schema', 'Migrated to v14: added branches, selections, and run history');
+  }
+
+  if (currentVersion < 15) {
+    // v15: add context breakdown columns to conversations
+    const contextCols = [
+      'context_messages INTEGER',
+      'context_instructions INTEGER',
+      'context_tools INTEGER',
+      'context_output_reserve INTEGER',
+    ];
+    for (const col of contextCols) {
+      try {
+        db.exec(`ALTER TABLE conversations ADD COLUMN ${col} DEFAULT NULL`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
+    logger.debug('Schema', 'Migrated to v15: added context breakdown columns');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

@@ -538,6 +538,10 @@ export async function POST(request: Request) {
                             usagePercentage: conv.contextUsage,
                             totalTokens: conv.contextTotal ?? 0,
                             modelLimit: conv.contextLimit ?? 0,
+                            messagesTokens: conv.contextMessages ?? 0,
+                            instructionsTokens: conv.contextInstructions ?? 0,
+                            toolsTokens: conv.contextTools ?? 0,
+                            outputReserve: conv.contextOutputReserve ?? 0,
                           },
                         }));
                       }

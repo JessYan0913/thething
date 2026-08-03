@@ -16,7 +16,15 @@ export default function ChatPage() {
   // 从会话列表中取得当前会话的上下文水位
   const conversation = conversations.find(c => c.id === conversationId);
   const contextBudget = conversation && conversation.contextUsage != null
-    ? { usagePercentage: conversation.contextUsage, totalTokens: conversation.contextTotal ?? 0, modelLimit: conversation.contextLimit ?? 0 }
+    ? {
+        usagePercentage: conversation.contextUsage,
+        totalTokens: conversation.contextTotal ?? 0,
+        modelLimit: conversation.contextLimit ?? 0,
+        messagesTokens: conversation.contextMessages ?? 0,
+        instructionsTokens: conversation.contextInstructions ?? 0,
+        toolsTokens: conversation.contextTools ?? 0,
+        outputReserve: conversation.contextOutputReserve ?? 0,
+      }
     : null;
 
   // 根据 projectId 获取项目根路径，用于将 Agent 返回的相对路径补全为绝对路径

@@ -394,6 +394,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       usagePercentage: estimation.utilizationPercent,
       totalTokens: estimation.totalTokens,
       modelLimit: estimation.modelLimit,
+      messagesTokens: estimation.messagesTokens,
+      instructionsTokens: estimation.instructionsTokens,
+      toolsTokens: estimation.toolsTokens,
+      outputReserve: estimation.outputReserve,
     });
   };
 
@@ -506,6 +510,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
                   usagePercentage: conv.contextUsage,
                   totalTokens: conv.contextTotal ?? 0,
                   modelLimit: conv.contextLimit ?? 0,
+                  messagesTokens: conv.contextMessages ?? 0,
+                  instructionsTokens: conv.contextInstructions ?? 0,
+                  toolsTokens: conv.contextTools ?? 0,
+                  outputReserve: conv.contextOutputReserve ?? 0,
                 },
               });
             }

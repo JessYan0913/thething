@@ -64,6 +64,10 @@ export class SQLiteConversationStore implements ConversationStore {
       contextUsage: row.context_usage,
       contextTotal: row.context_total,
       contextLimit: row.context_limit,
+      contextMessages: row.context_messages,
+      contextInstructions: row.context_instructions,
+      contextTools: row.context_tools,
+      contextOutputReserve: row.context_output_reserve,
       revision: row.revision,
       activeBranchId: row.active_branch_id,
       createdAt: row.created_at,
@@ -71,11 +75,11 @@ export class SQLiteConversationStore implements ConversationStore {
     };
   }
 
-  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number }): void {
+  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number }): void {
     const stmt = this.db.prepare(
-      `UPDATE conversations SET context_usage = ?, context_total = ?, context_limit = ?, updated_at = datetime('now') WHERE id = ?`
+      `UPDATE conversations SET context_usage = ?, context_total = ?, context_limit = ?, context_messages = ?, context_instructions = ?, context_tools = ?, context_output_reserve = ?, updated_at = datetime('now') WHERE id = ?`
     );
-    stmt.run(budget.usagePercentage, budget.totalTokens, budget.modelLimit, id);
+    stmt.run(budget.usagePercentage, budget.totalTokens, budget.modelLimit, budget.messagesTokens ?? null, budget.instructionsTokens ?? null, budget.toolsTokens ?? null, budget.outputReserve ?? null, id);
   }
 
   listConversationsByProject(projectId: string): Conversation[] {

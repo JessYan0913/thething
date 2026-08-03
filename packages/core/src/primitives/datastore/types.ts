@@ -92,6 +92,14 @@ export interface Conversation {
   contextTotal: number | null;
   /** 模型上下文窗口上限 token 数 */
   contextLimit: number | null;
+  /** 消息历史 token 数 */
+  contextMessages: number | null;
+  /** 系统指令 token 数 */
+  contextInstructions: number | null;
+  /** 工具定义 token 数 */
+  contextTools: number | null;
+  /** 输出预留 token 数 */
+  contextOutputReserve: number | null;
   /** Monotonic revision for message-tree/projection changes. */
   revision: number;
   activeBranchId: string | null;
@@ -199,7 +207,15 @@ export interface ConversationStore {
    * 更新会话的上下文水位信息。在 pipeline 每步估算后写入，
    * 前端直接读取展示，无需通过 stream event 传递。
    */
-  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number }): void;
+  updateContextBudget(id: string, budget: {
+    usagePercentage: number;
+    totalTokens: number;
+    modelLimit: number;
+    messagesTokens?: number;
+    instructionsTokens?: number;
+    toolsTokens?: number;
+    outputReserve?: number;
+  }): void;
 }
 
 export interface ConversationTreeNode {
@@ -859,6 +875,10 @@ export interface ConversationRow {
   context_usage: number | null;
   context_total: number | null;
   context_limit: number | null;
+  context_messages: number | null;
+  context_instructions: number | null;
+  context_tools: number | null;
+  context_output_reserve: number | null;
   revision: number;
   active_branch_id: string | null;
   created_at: string;

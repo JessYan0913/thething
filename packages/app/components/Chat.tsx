@@ -405,7 +405,7 @@ export interface ChatProps {
   /** 项目根目录绝对路径，用于将 Agent 返回的相对路径补全为绝对路径 */
   projectPath?: string;
   /** 上下文水位数据，从会话数据库读取传入，SSE 流推送时会覆盖此值 */
-  contextBudget?: { usagePercentage: number; totalTokens: number; modelLimit: number } | null;
+   contextBudget?: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number } | null;
 }
 
 export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath, contextBudget }: ChatProps) {
@@ -965,7 +965,26 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     usagePercentage: number;
     totalTokens: number;
     modelLimit: number;
+    messagesTokens?: number;
+    instructionsTokens?: number;
+    toolsTokens?: number;
+    outputReserve?: number;
   } | null>(null);
+
+  const [showContextDetail, setShowContextDetail] = useState(false);
+  const contextDetailRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭弹窗
+  useEffect(() => {
+    if (!showContextDetail) return;
+    const handler = (e: MouseEvent) => {
+      if (contextDetailRef.current && !contextDetailRef.current.contains(e.target as Node)) {
+        setShowContextDetail(false);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
+  }, [showContextDetail]);
 
   // 流式上下文水位优先，回退到 prop
   const effectiveContextBudget = streamContextBudget ?? contextBudget ?? null;
@@ -974,7 +993,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === 'data-context-usage' && 'data' in part) {
-          const d = (part as { data: { usagePercentage: number; totalTokens: number; modelLimit: number } }).data;
+          const d = (part as { data: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number } }).data;
           if (d && typeof d.usagePercentage === 'number') {
             setStreamContextBudget(d);
           }
@@ -1606,29 +1625,118 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
             </PromptInputTools>
             <div className="ml-auto flex items-center gap-2">
               {effectiveContextBudget && (
-                <div
-                  className="flex items-center gap-1"
-                  title={`上下文窗口: ${effectiveContextBudget.usagePercentage.toFixed(0)}% (${effectiveContextBudget.totalTokens >= 1000 ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(0)}K` : effectiveContextBudget.totalTokens}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
-                >
-                  <svg width="18" height="18" viewBox="0 0 20 20" className="-rotate-90 shrink-0">
-                    <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted-foreground/30" />
-                    <circle
-                      cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-                      strokeDasharray={`${(Math.min(100, effectiveContextBudget.usagePercentage) / 100) * 50.27} 50.27`}
-                      className={cn(
-                        'transition-all duration-700',
-                        effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
-                        effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-500' : 'text-primary/60',
-                      )}
-                    />
-                  </svg>
-                  <span className={cn(
-                    'text-xs tabular-nums',
-                    effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
-                    effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
-                  )}>
-                    {effectiveContextBudget.usagePercentage.toFixed(0)}%
-                  </span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity"
+                    title={`上下文窗口: ${effectiveContextBudget.usagePercentage.toFixed(0)}% (${effectiveContextBudget.totalTokens >= 1000 ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(0)}K` : effectiveContextBudget.totalTokens}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
+                    onClick={() => setShowContextDetail(true)}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 20 20" className="-rotate-90 shrink-0">
+                      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted-foreground/30" />
+                      <circle
+                        cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                        strokeDasharray={`${(Math.min(100, effectiveContextBudget.usagePercentage) / 100) * 50.27} 50.27`}
+                        className={cn(
+                          'transition-all duration-700',
+                          effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
+                          effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-500' : 'text-primary/60',
+                        )}
+                      />
+                    </svg>
+                    <span className={cn(
+                      'text-xs tabular-nums',
+                      effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
+                      effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
+                    )}>
+                      {effectiveContextBudget.usagePercentage.toFixed(0)}%
+                    </span>
+                  </button>
+
+                  {showContextDetail && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowContextDetail(false)}
+                      />
+                      <div
+                        ref={contextDetailRef}
+                        className="fixed bottom-20 right-4 z-50 w-72 rounded-lg border bg-popover text-popover-foreground shadow-lg p-4"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-xs font-semibold text-foreground/80">上下文占用详情</h4>
+                          <button
+                            type="button"
+                            onClick={() => setShowContextDetail(false)}
+                            className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <ContextBarItem
+                            label="消息历史"
+                            value={effectiveContextBudget.messagesTokens ?? 0}
+                            total={effectiveContextBudget.totalTokens}
+                            color="bg-blue-500"
+                            dotColor="bg-blue-500"
+                          />
+                          <ContextBarItem
+                            label="系统指令"
+                            value={effectiveContextBudget.instructionsTokens ?? 0}
+                            total={effectiveContextBudget.totalTokens}
+                            color="bg-emerald-500"
+                            dotColor="bg-emerald-500"
+                          />
+                          <ContextBarItem
+                            label="工具定义"
+                            value={effectiveContextBudget.toolsTokens ?? 0}
+                            total={effectiveContextBudget.totalTokens}
+                            color="bg-amber-500"
+                            dotColor="bg-amber-500"
+                          />
+                          <ContextBarItem
+                            label="输出预留"
+                            value={effectiveContextBudget.outputReserve ?? 0}
+                            total={effectiveContextBudget.totalTokens}
+                            color="bg-purple-500"
+                            dotColor="bg-purple-500"
+                          />
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-border/50">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>总计</span>
+                            <span className="tabular-nums">
+                              {effectiveContextBudget.totalTokens >= 1000
+                                ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(1)}K`
+                                : effectiveContextBudget.totalTokens}
+                              {' / '}
+                              {effectiveContextBudget.modelLimit >= 1000
+                                ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K`
+                                : effectiveContextBudget.modelLimit}
+                            </span>
+                          </div>
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-700"
+                              style={{
+                                width: `${Math.min(100, effectiveContextBudget.usagePercentage)}%`,
+                                background: effectiveContextBudget.usagePercentage > 80
+                                  ? 'hsl(var(--destructive))'
+                                  : effectiveContextBudget.usagePercentage > 60
+                                  ? 'hsl(45, 93%, 47%)'
+                                  : 'hsl(var(--primary) / 0.6)',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               <PromptInputSubmit status={status} onStop={handleStop} />
@@ -2670,6 +2778,33 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           mediaType={previewFile.mediaType}
         />
       )}
+    </div>
+  );
+}
+
+/** 上下文占用柱状图条目 */
+function ContextBarItem({ label, value, total, color, dotColor }: {
+  label: string;
+  value: number;
+  total: number;
+  color: string;
+  dotColor: string;
+}) {
+  const percentage = total > 0 ? (value / total) * 100 : 0;
+  const formatted = value >= 1000 ? `${(value / 1000).toFixed(1)}K` : `${value}`;
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+      <span className="text-xs text-muted-foreground flex-1 truncate">{label}</span>
+      <div className="flex items-center gap-2">
+        <div className="w-20 h-2 rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full rounded-full ${color}`}
+            style={{ width: `${Math.min(100, percentage)}%` }}
+          />
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground w-12 text-right">{formatted}</span>
+      </div>
     </div>
   );
 }

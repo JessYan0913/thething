@@ -132,5 +132,13 @@ export interface SessionState {
   /** 清理工具结果存储 */
   cleanupToolResults(): Promise<void>;
   /** 更新会话上下文水位到数据库。pipeline 每步估算后调用。 */
-  updateContextBudget?: (estimation: { utilizationPercent: number; totalTokens: number; modelLimit: number }) => void;
+  updateContextBudget?: (estimation: {
+    utilizationPercent: number;
+    totalTokens: number;
+    modelLimit: number;
+    messagesTokens?: number;
+    instructionsTokens?: number;
+    toolsTokens?: number;
+    outputReserve?: number;
+  }) => void;
 }
