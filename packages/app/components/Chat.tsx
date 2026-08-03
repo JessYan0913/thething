@@ -44,7 +44,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, ListIcon, TrashIcon, SquareIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, PlusIcon, RefreshCwIcon, TrashIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -71,9 +71,6 @@ const CONVERSATION_ID_KEY = 'chat_conversation_id';
 const TODO_TOOL_TYPES = new Set([
   'tool-todo_create',
   'tool-todo_update',
-  'tool-todo_list',
-  'tool-todo_get',
-  'tool-todo_stop',
   'tool-todo_delete',
 ]);
 
@@ -120,14 +117,8 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
       return { title: `Create: ${i.subject ?? ''}`, icon: PlusIcon };
     case 'todo_update':
       return { title: `Update: ${i.subject ?? i.id ?? ''}`, icon: RefreshCwIcon };
-    case 'todo_list':
-      return { title: i.status ? `Todos (${i.status})` : 'Todos', icon: ListIcon };
-    case 'todo_get':
-      return { title: `Get: ${i.id ?? ''}`, icon: SearchIcon };
-    case 'todo_stop':
-      return { title: `Stop: ${i.id ?? ''}`, icon: SquareIcon };
     case 'todo_delete':
-      return { title: `Delete: ${i.id ?? ''}`, icon: TrashIcon };
+      return { title: `Cancel: ${i.id ?? ''}`, icon: TrashIcon };
     case 'research':
       return { title: `Research: ${i.task ?? ''}`, icon: BookIcon };
     case 'ask_user_question':

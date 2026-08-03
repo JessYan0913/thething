@@ -17,6 +17,7 @@ import {
 } from "./sections/session";
 import { createWikiGuidelinesSection, createRecalledWikiSection } from "./sections/wiki";
 import { createPermissionsSection } from "./sections/permissions";
+import { createTodoOverviewSection } from "./sections/todo-overview";
 import { formatSkillsWithinBudget } from '../skills/budget-formatter';
 
 // ============================================================================
@@ -176,6 +177,13 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
       return { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
     },
     cacheStrategy: "dynamic",
+  },
+  {
+    name: "todo-overview",
+    create: (options) => {
+      return createTodoOverviewSection(options.todoStore, options.conversationId);
+    },
+    cacheStrategy: "session",
   },
 ];
 

@@ -5,6 +5,7 @@
 import type { Skill, SkillMetadata } from '../skills/types';
 import type { AgentDefinition } from '../agent/types';
 import type { PermissionRule } from '../permissions/types';
+import type { TodoStore } from '../todos/types';
 import type { LoadedContextFile, LoadedProjectContext } from './sections/project-context';
 
 /**
@@ -69,6 +70,12 @@ export interface BuildSystemPromptOptions {
   wikiContext?: {
     recalledContent?: string;
   };
+
+  /** 任务存储（用于自动注入当前会话的任务清单） */
+  todoStore?: TodoStore;
+
+  /** 当前会话 ID（用于筛选任务） */
+  conversationId?: string;
 
   /** Sections to exclude from the system prompt (e.g., ['identity'] for custom agents) */
   excludeSections?: string[];

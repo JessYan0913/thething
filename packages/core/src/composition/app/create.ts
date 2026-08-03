@@ -185,6 +185,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       sessionSourceId: options.conversationMeta.sessionSourceId,
     } : undefined,
     mcpServerTools,
+    todoStore: sessionState.todoStore,
+    conversationId,
     // Agent 定义的 instructions 上升为提示词开头的身份 section，
     // customInstructions 只含调用方传入的动态内容（如 todoNote）
     customInstructions: options.customInstructions,

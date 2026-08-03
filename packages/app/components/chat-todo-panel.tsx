@@ -179,7 +179,7 @@ function TodoItem({ todo }: { todo: Todo }) {
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm truncate">{todo.subject}</span>
+          <span className={cn("text-sm truncate", todo.status === "cancelled" && "line-through")}>{todo.subject}</span>
           <span className="text-xs text-muted-foreground shrink-0">#{todo.id}</span>
         </div>
         {todo.activeForm && (

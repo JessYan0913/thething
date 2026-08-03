@@ -10,7 +10,7 @@ const SYSTEM_TOOLS = new Set([
   'save_wiki', 'read_wiki_page', 'lint_wiki', 'ingest_wiki_source',
   'inspect_wiki_history', 'restore_wiki_revision',
   'agent', 'parallel_agent',
-  'create_todos', 'update_todos', 'list_todos', 'delete_todos',
+  'todo_create', 'todo_update', 'todo_delete',
 ]);
 
 /**

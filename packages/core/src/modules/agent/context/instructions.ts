@@ -4,6 +4,7 @@
 
 import type { Skill } from '../../../modules/skills/types'
 import type { PermissionRule } from '../../../modules/permissions/types'
+import type { TodoStore } from '../../../modules/todos/types'
 import type { LoadedProjectContext } from '../../../modules/system-prompt/sections/project-context'
 import { buildSystemPrompt } from '../../../modules/system-prompt'
 import type { WikiContext } from '../types'
@@ -37,6 +38,12 @@ export interface BuildInstructionsOptions {
   mcpServerTools?: string
   /** 要跳过的 section 名称列表（如 ['identity'] 用于自定义 Agent） */
   excludeSections?: string[]
+
+  /** 任务存储（用于自动注入当前会话的任务清单） */
+  todoStore?: TodoStore
+
+  /** 当前会话 ID（用于筛选任务清单） */
+  conversationId?: string
 }
 
 export async function buildAgentInstructions(
@@ -57,6 +64,8 @@ export async function buildAgentInstructions(
     agentIdentity: options?.agentIdentity ?? null,
     mcpServerTools: options?.mcpServerTools,
     excludeSections: options?.excludeSections,
+    todoStore: options?.todoStore,
+    conversationId: options?.conversationId,
   })
 
   return prompt
