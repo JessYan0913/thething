@@ -28,6 +28,11 @@ export class SQLiteTodoStore implements TodoStore {
   private db: SqliteDatabase;
   private listeners: Set<TodoEventListener> = new Set();
   private agentStatus: Map<string, AgentStatus> = new Map();
+  private revision: number = 0;
+
+  getRevision(): number {
+    return this.revision;
+  }
 
   // Agent status persistence statements (lazy init)
   private _upsertAgentStatusStmt: ReturnType<SqliteDatabase['prepare']> | null = null;
@@ -235,6 +240,7 @@ export class SQLiteTodoStore implements TodoStore {
 
     const todo = this.getTodo(id)!;
     this.emit('todo:created', todo);
+    this.revision++;
     return todo;
   }
 
@@ -330,6 +336,7 @@ export class SQLiteTodoStore implements TodoStore {
 
     const updated = this.getTodo(input.id)!;
     this.emit('todo:updated', updated);
+    this.revision++;
     return updated;
   }
 
@@ -349,6 +356,7 @@ export class SQLiteTodoStore implements TodoStore {
     stmt.run(id);
 
     this.emit('todo:deleted', existing);
+    this.revision++;
     return true;
   }
 
@@ -399,6 +407,7 @@ export class SQLiteTodoStore implements TodoStore {
 
     const claimed = this.getTodo(todoId)!;
     this.emit('todo:claimed', claimed, { agentId });
+    this.revision++;
     return { success: true, todo: claimed };
   }
 

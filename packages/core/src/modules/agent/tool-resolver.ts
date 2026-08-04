@@ -11,6 +11,7 @@ const SYSTEM_TOOLS = new Set([
   'inspect_wiki_history', 'restore_wiki_revision',
   'agent', 'parallel_agent',
   'todo_create', 'todo_update', 'todo_delete',
+  'todo_list', 'todo_get', 'todo_create_batch',
 ]);
 
 /**

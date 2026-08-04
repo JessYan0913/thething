@@ -4,6 +4,7 @@ import type { PipelineContext } from '../session/interfaces';
 import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
 import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
+import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -153,6 +154,36 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     if (compactResult.executed) {
       debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
       messages = compactResult.messages as ModelMessageType[];
+    }
+
+    // ── Task Context Injection ──
+    // 三步触发：revision 变更、压缩后、5 步无活动
+    const todoStore = sessionState.todoStore;
+    const currentRevision = todoStore?.getRevision() ?? 0;
+    sessionState.stepsSinceTodoMutation = (sessionState.stepsSinceTodoMutation ?? 0) + 1;
+    const stepsSinceMutation = sessionState.stepsSinceTodoMutation;
+
+    const revisionChanged = currentRevision !== (sessionState.lastTodoRevision ?? 0);
+    const compactionJustRan = compactResult?.executed === true;
+    const inactivityThreshold = !revisionChanged && !compactionJustRan && stepsSinceMutation >= 5;
+
+    if (revisionChanged || compactionJustRan || inactivityThreshold) {
+      const todos = todoStore?.getTodosByConversation(sessionState.conversationId);
+      const snapshot = todos ? buildCompactTaskSnapshot(todos, todoStore) : null;
+      if (snapshot) {
+        const prefix = revisionChanged
+          ? '[任务状态已更新]'
+          : compactionJustRan
+            ? '[上下文已压缩，当前任务状态]'
+            : '[任务提醒]';
+        messages = [...messages, {
+          role: 'user',
+          content: `${prefix}\n${snapshot}`,
+        } as ModelMessageType];
+        debugLog(debugEnabled, `[Agent] Task snapshot injected: revision=${currentRevision} changed=${revisionChanged} compact=${compactionJustRan} inactive=${inactivityThreshold}`);
+      }
+      sessionState.lastTodoRevision = currentRevision;
+      sessionState.stepsSinceTodoMutation = 0;
     }
 
     // Context usage progress bar + 闸门(复用同一次估算,零新增开销)

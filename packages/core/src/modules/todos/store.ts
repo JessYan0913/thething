@@ -26,9 +26,14 @@ export class InMemoryTodoStore implements TodoStore {
   private hwm: HighWaterMarkImpl;
   private agentStatus: Map<string, AgentStatus> = new Map();
   private listeners: Set<TodoEventListener> = new Set();
+  private revision: number = 0;
 
   constructor(hwm?: HighWaterMarkImpl) {
     this.hwm = hwm || getGlobalHighWaterMark();
+  }
+
+  getRevision(): number {
+    return this.revision;
   }
 
   /**
@@ -95,6 +100,7 @@ export class InMemoryTodoStore implements TodoStore {
 
     this.todos.set(id, todo);
     this.emitTodoEvent('todo:created', todo);
+    this.revision++;
 
     return todo;
   }
@@ -211,6 +217,7 @@ export class InMemoryTodoStore implements TodoStore {
       }
     }
 
+    this.revision++;
     return todo;
   }
 
@@ -268,6 +275,7 @@ export class InMemoryTodoStore implements TodoStore {
     }
 
     this.emitTodoEvent('todo:deleted', todo);
+    this.revision++;
     return this.todos.delete(id);
   }
 
@@ -329,6 +337,7 @@ export class InMemoryTodoStore implements TodoStore {
     this.setAgentBusy(agentId, true, todoId);
 
     this.emitTodoEvent('todo:claimed', todo);
+    this.revision++;
     return { success: true, todo };
   }
 

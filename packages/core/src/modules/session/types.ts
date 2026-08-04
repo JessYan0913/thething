@@ -107,6 +107,12 @@ export interface SessionState {
   /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
   consecutiveReasoningOnlySteps: number;
 
+  /** 上一步骤的 todo revision 快照，用于 ContextInjector 变更检测 */
+  lastTodoRevision: number;
+
+  /** 自上次 todo 变更以来的步数，用于 ContextInjector 无活动提醒 */
+  stepsSinceTodoMutation: number;
+
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
 

@@ -769,6 +769,8 @@ export interface TodoStore {
   getAgentStatus(agentId: string): AgentStatus;
   setAgentBusy(agentId: string, busy: boolean, todoId?: string): void;
   clearAllTodos(): void;
+  /** Get the current revision counter. Monotonically increasing, incremented on every mutation. Used for change detection in ContextInjector. */
+  getRevision(): number;
 }
 
 // ============================================================

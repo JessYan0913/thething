@@ -93,6 +93,13 @@ export function createTodoUpdateTool(store: TodoStore) {
       try {
         // If claiming (status: in_progress with claimedBy), use claimTodo first
         if (input.status === 'in_progress' && input.claimedBy) {
+          // Check for single in_progress soft constraint
+          const inProgressTodos = store.getTodosByStatus('in_progress')
+            .filter(t => t.id !== input.id);
+          const warning = inProgressTodos.length > 0
+            ? `Warning: ${inProgressTodos.length} other todo(s) are already in_progress: ${inProgressTodos.map(t => `#${t.id} "${t.subject}"`).join(', ')}. Consider completing or cancelling them first before starting new work.`
+            : undefined;
+
           const claimResult = claimTodo(store, input.id, input.claimedBy);
           if (!claimResult.success) {
             return {
@@ -129,11 +136,53 @@ export function createTodoUpdateTool(store: TodoStore) {
               completedAt: updatedTodo.completedAt,
               metadata: updatedTodo.metadata,
             },
-            message: 'Todo claimed successfully',
+            ...(warning ? { message: warning } : {}),
           };
         }
 
         // Otherwise, do a regular update
+        // Check for single in_progress soft constraint
+        if (input.status === 'in_progress') {
+          const inProgressTodos = store.getTodosByStatus('in_progress')
+            .filter(t => t.id !== input.id);
+          if (inProgressTodos.length > 0) {
+            const warning = `Warning: ${inProgressTodos.length} other todo(s) are already in_progress: ${inProgressTodos.map(t => `#${t.id} "${t.subject}"`).join(', ')}. Consider completing or cancelling them first before starting new work.`;
+            const todo = updateTodo(store, {
+              id: input.id,
+              status: input.status,
+              subject: input.subject,
+              activeForm: input.activeForm,
+              claimedBy: input.claimedBy,
+              blockedBy: input.blockedBy,
+              metadata: input.metadata,
+            });
+
+            if (!todo) {
+              return {
+                success: false as const,
+                error: `Todo ${input.id} not found`,
+              };
+            }
+
+            return {
+              success: true as const,
+              todo: {
+                id: todo.id,
+                subject: todo.subject,
+                status: todo.status,
+                claimedBy: todo.claimedBy,
+                activeForm: todo.activeForm,
+                blockedBy: todo.blockedBy,
+                blocks: todo.blocks,
+                createdAt: todo.createdAt,
+                updatedAt: todo.updatedAt,
+                completedAt: todo.completedAt,
+                metadata: todo.metadata,
+              },
+              message: warning,
+            };
+          }
+        }
         const todo = updateTodo(store, {
           id: input.id,
           status: input.status,

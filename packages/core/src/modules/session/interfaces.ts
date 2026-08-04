@@ -141,4 +141,13 @@ export interface PipelineContext {
     toolsTokens?: number;
     outputReserve?: number;
   }) => void;
+
+  /** 上一步骤的 todo revision 快照，用于 ContextInjector 变更检测 */
+  lastTodoRevision: number;
+
+  /** 自上次 todo 变更以来的步数，用于 ContextInjector 无活动提醒 */
+  stepsSinceTodoMutation: number;
+
+  /** 任务存储，用于 ContextInjector 读取任务快照 */
+  todoStore: TodoStore;
 }

@@ -108,6 +108,8 @@ export function createSessionState(
     compactionStepCounter,
     compactionView: createCompactionView(telemetry),
     lastEstimation: undefined,
+    lastTodoRevision: 0,
+    stepsSinceTodoMutation: 0,
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {

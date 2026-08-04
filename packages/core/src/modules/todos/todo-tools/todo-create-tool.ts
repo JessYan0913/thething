@@ -20,14 +20,18 @@ function cleanupOldCompletedTodos(store: TodoStore, conversationId: string): voi
 
 export function createTodoCreateTool(store: TodoStore) {
   return tool({
-    description: `Create a new todo. Use this to create todos that can be tracked during execution.
+    description: `Create a new todo. Use this to create individual todos.
 
-IMPORTANT: When you delegate work to a sub-agent (like research tool), pass the returned todoId to the sub-agent as the 'todoId' parameter. The sub-agent will automatically update the todo status when completed. You do NOT need to call todo_update after the sub-agent finishes.
+IMPORTANT:
+- For creating multiple tasks at once with dependency declarations, use todo_create_batch instead.
+- Only one todo should be in_progress at a time. Complete or cancel the current in_progress todo before starting a new one.
+- Use todo_list to check the current task list and status.
+- When you delegate work to a sub-agent (like agent tool), pass the returned todoId to the sub-agent as the 'todoId' parameter. The sub-agent will automatically update the todo status when completed. You do NOT need to call todo_update after the sub-agent finishes.
 
 Example workflow:
 1. Call todo_create to create a todo → returns todoId
-2. Call research tool with todoId parameter
-3. The research tool will automatically complete the todo when done
+2. Call agent tool with todoId parameter
+3. The sub-agent will automatically complete the todo when done
 4. No need to call todo_update manually`,
     inputSchema: todoCreateToolSchema,
     execute: async (input: TodoCreateToolInput) => {
@@ -132,14 +136,18 @@ export type TodoCreateToolOutput = {
  */
 export function createTodoCreateToolForConversation(store: TodoStore, conversationId: string) {
   return tool({
-    description: `Create a new todo. Use this to create todos that can be tracked during execution.
+    description: `Create a new todo. Use this to create individual todos.
 
-IMPORTANT: When you delegate work to a sub-agent (like research tool), pass the returned todoId to the sub-agent as the 'todoId' parameter. The sub-agent will automatically update the todo status when completed. You do NOT need to call todo_update after the sub-agent finishes.
+IMPORTANT:
+- For creating multiple tasks at once with dependency declarations, use todo_create_batch instead.
+- Only one todo should be in_progress at a time. Complete or cancel the current in_progress todo before starting a new one.
+- Use todo_list to check the current task list and status.
+- When you delegate work to a sub-agent (like agent tool), pass the returned todoId to the sub-agent as the 'todoId' parameter. The sub-agent will automatically update the todo status when completed. You do NOT need to call todo_update after the sub-agent finishes.
 
 Example workflow:
 1. Call todo_create to create a todo → returns todoId
-2. Call research tool with todoId parameter
-3. The research tool will automatically complete the todo when done
+2. Call agent tool with todoId parameter
+3. The sub-agent will automatically complete the todo when done
 4. No need to call todo_update manually`,
     inputSchema: todoCreateToolSchema,
     execute: async (input: TodoCreateToolInput) => {
