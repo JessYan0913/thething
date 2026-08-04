@@ -176,6 +176,22 @@ export interface ConversationItem {
   contextTotal?: number | null;
   /** 模型上下文窗口上限 token 数 */
   contextLimit?: number | null;
+  /** 消息历史 token 数 */
+  contextMessages?: number | null;
+  /** 系统指令 token 数 */
+  contextInstructions?: number | null;
+  /** 工具定义 token 数 */
+  contextTools?: number | null;
+  /** 输出预留 token 数 */
+  contextOutputReserve?: number | null;
+  /** 上一步实际缓存读取 tokens */
+  contextCachedReadTokens?: number | null;
+  /** 上一步实际输入 tokens */
+  contextStepInputTokens?: number | null;
+  /** 上次压缩释放的 tokens */
+  contextLastCompactionFreedTokens?: number | null;
+  /** 当前上下文已被压缩 */
+  contextCompacted?: boolean | null;
 }
 
 export interface ProjectItem {

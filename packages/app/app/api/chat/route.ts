@@ -212,14 +212,7 @@ export async function POST(request: Request) {
 
     // 按用户所选模型读取凭据与上下文窗口(模型真名;旧别名值回落 defaultModel)
     const chatModelConfig = getModelConfig(modelName);
-    const {
-      agent,
-      sessionState,
-      mcpRegistry,
-      model,
-      adjustedMessages,
-      wikiBaseDir,
-    } = await createAgent({
+    const { agent, sessionState, mcpRegistry, model, adjustedMessages, wikiBaseDir } = await createAgent({
       context,
       conversationId,
       messages,
@@ -465,6 +458,42 @@ export async function POST(request: Request) {
                     finalMessages.length,
                     isAssistantContinuation ? finalMessages.at(-1) : undefined,
                   ),
+                  // onStepEnd 在 finish-step chunk 之前触发，直接入流
+                  onStepEnd: (stepEvent) => {
+                    if (stepEvent.usage) {
+                      sessionState.tokenBudget.accumulate(stepEvent.usage);
+                      const summary = sessionState.tokenBudget.getSummary();
+                      // 推送实际值到前端
+                      try {
+                        controller.enqueue(JSON.stringify({
+                          type: 'data-context-usage',
+                          id: 'ctx-on-step-end',
+                          data: {
+                            usagePercentage: summary.usagePercentage,
+                            totalTokens: summary.totalTokens,
+                            modelLimit: chatModelConfig.contextLimit ?? 128_000,
+                            sessionInputTokens: summary.inputTokens,
+                            sessionOutputTokens: summary.outputTokens,
+                            sessionCachedReadTokens: summary.cachedReadTokens,
+                          },
+                        }));
+                      } catch {
+                        // 不影响主流程
+                      }
+                      // 写入 DB（实际值）
+                      try {
+                        sessionState.updateContextBudget?.({
+                          utilizationPercent: summary.usagePercentage,
+                          totalTokens: summary.totalTokens,
+                          modelLimit: chatModelConfig.contextLimit ?? 128_000,
+                          cachedReadTokens: sessionState.tokenBudget.lastStepCachedReadTokens,
+                          stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
+                        });
+                      } catch {
+                        // 不影响主流程
+                      }
+                    }
+                  },
                 });
               } catch (streamErr) {
                 // context_length_error：压缩消息后重试
@@ -493,6 +522,35 @@ export async function POST(request: Request) {
                         retryResult.messages.length,
                         isAssistantContinuation ? finalMessages.at(-1) : undefined,
                       ),
+                      onStepEnd: (stepEvent) => {
+                        if (stepEvent.usage) {
+                          sessionState.tokenBudget.accumulate(stepEvent.usage);
+                          const summary = sessionState.tokenBudget.getSummary();
+                          try {
+                            controller.enqueue(JSON.stringify({
+                              type: 'data-context-usage',
+                              id: 'ctx-on-step-end',
+                              data: {
+                                usagePercentage: summary.usagePercentage,
+                                totalTokens: summary.totalTokens,
+                                modelLimit: chatModelConfig.contextLimit ?? 128_000,
+                                sessionInputTokens: summary.inputTokens,
+                                sessionOutputTokens: summary.outputTokens,
+                                sessionCachedReadTokens: summary.cachedReadTokens,
+                              },
+                            }));
+                          } catch {}
+                          try {
+                            sessionState.updateContextBudget?.({
+                              utilizationPercent: summary.usagePercentage,
+                              totalTokens: summary.totalTokens,
+                              modelLimit: chatModelConfig.contextLimit ?? 128_000,
+                              cachedReadTokens: sessionState.tokenBudget.lastStepCachedReadTokens,
+                              stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
+                            });
+                          } catch {}
+                        }
+                      },
                     });
                   } catch (retryErr) {
                     console.error('[Chat API] Reactive retry failed:', retryErr);
@@ -526,30 +584,8 @@ export async function POST(request: Request) {
                   }
                   agentChunkCount++;
 
-                  // 每步完成后推送上下文水位（覆盖纯文本步骤，不依赖 onToolExecutionEnd）
+                  // 每步完成后推送任务清单
                   if (value.type === 'finish-step' && conversationId) {
-                    try {
-                      const conv = store.conversationStore.getConversation(conversationId);
-                      if (conv?.contextUsage != null) {
-                        controller.enqueue(JSON.stringify({
-                          type: 'data-context-usage',
-                          id: `ctx-step-${agentChunkCount}`,
-                          data: {
-                            usagePercentage: conv.contextUsage,
-                            totalTokens: conv.contextTotal ?? 0,
-                            modelLimit: conv.contextLimit ?? 0,
-                            messagesTokens: conv.contextMessages ?? 0,
-                            instructionsTokens: conv.contextInstructions ?? 0,
-                            toolsTokens: conv.contextTools ?? 0,
-                            outputReserve: conv.contextOutputReserve ?? 0,
-                          },
-                        }));
-                      }
-                    } catch {
-                      // 不影响主流程
-                    }
-
-                    // 每步完成后推送任务清单（覆盖 writerRef 可能未就绪的场景）
                     try {
                       const todos = store.todoStore.getTodosByConversation(conversationId);
                       controller.enqueue(JSON.stringify({

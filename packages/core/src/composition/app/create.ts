@@ -398,6 +398,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       instructionsTokens: estimation.instructionsTokens,
       toolsTokens: estimation.toolsTokens,
       outputReserve: estimation.outputReserve,
+      cachedReadTokens: estimation.cachedReadTokens,
+      stepInputTokens: estimation.stepInputTokens,
+      lastCompactionFreedTokens: estimation.lastCompactionFreedTokens,
+      compactionActive: estimation.compactionActive,
     });
   };
 
@@ -490,33 +494,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
               id: `todo-${toolCall.toolCallId}`,
               data: { todos },
             });
-          }
-        } catch {
-          // 不影响主流程
-        }
-      }
-
-      // 每步推送上下文水位到流，前端无需轮询
-      if (conversationId) {
-        try {
-          const conv = dataStore.conversationStore.getConversation(conversationId);
-          if (conv?.contextUsage != null) {
-            const writer = (options.writerRef as { current: SubAgentStreamWriter | null } | undefined)?.current;
-            if (writer) {
-              writer.write({
-                type: 'data-context-usage',
-                id: `ctx-${toolCall.toolCallId}`,
-                data: {
-                  usagePercentage: conv.contextUsage,
-                  totalTokens: conv.contextTotal ?? 0,
-                  modelLimit: conv.contextLimit ?? 0,
-                  messagesTokens: conv.contextMessages ?? 0,
-                  instructionsTokens: conv.contextInstructions ?? 0,
-                  toolsTokens: conv.contextTools ?? 0,
-                  outputReserve: conv.contextOutputReserve ?? 0,
-                },
-              });
-            }
           }
         } catch {
           // 不影响主流程

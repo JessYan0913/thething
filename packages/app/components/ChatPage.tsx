@@ -24,6 +24,13 @@ export default function ChatPage() {
         instructionsTokens: conversation.contextInstructions ?? 0,
         toolsTokens: conversation.contextTools ?? 0,
         outputReserve: conversation.contextOutputReserve ?? 0,
+        // 新增 cache/compaction 字段
+        cachedReadTokens: conversation.contextCachedReadTokens ?? 0,
+        cacheHitRatio: conversation.contextStepInputTokens && conversation.contextStepInputTokens > 0
+          ? Math.round(((conversation.contextCachedReadTokens ?? 0) / conversation.contextStepInputTokens) * 100)
+          : undefined,
+        lastCompactionFreedTokens: conversation.contextLastCompactionFreedTokens ?? undefined,
+        compactionActive: conversation.contextCompacted ?? undefined,
       }
     : null;
 

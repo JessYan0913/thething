@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 17;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -462,6 +462,37 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
       }
     }
     logger.debug('Schema', 'Migrated to v15: added context breakdown columns');
+  }
+
+  if (currentVersion < 16) {
+    // v16: add cache hit columns to conversations
+    const cacheCols = [
+      'context_cached_read_tokens INTEGER DEFAULT NULL',
+      'context_step_input_tokens INTEGER DEFAULT NULL',
+    ];
+    for (const col of cacheCols) {
+      try {
+        db.exec(`ALTER TABLE conversations ADD COLUMN ${col}`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
+    logger.debug('Schema', 'Migrated to v16: added cache hit columns');
+  }
+
+  if (currentVersion < 17) {
+    // v17: add compaction info columns to conversations
+    for (const col of [
+      'context_last_compaction_freed_tokens INTEGER DEFAULT NULL',
+      'context_compacted INTEGER DEFAULT NULL',
+    ]) {
+      try {
+        db.exec(`ALTER TABLE conversations ADD COLUMN ${col}`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
+    logger.debug('Schema', 'Migrated to v17: added compaction info columns');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

@@ -146,5 +146,9 @@ export interface SessionState {
     instructionsTokens?: number;
     toolsTokens?: number;
     outputReserve?: number;
+    cachedReadTokens?: number;
+    stepInputTokens?: number;
+    lastCompactionFreedTokens?: number;
+    compactionActive?: boolean;
   }) => void;
 }

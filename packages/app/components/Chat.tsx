@@ -405,7 +405,13 @@ export interface ChatProps {
   /** 项目根目录绝对路径，用于将 Agent 返回的相对路径补全为绝对路径 */
   projectPath?: string;
   /** 上下文水位数据，从会话数据库读取传入，SSE 流推送时会覆盖此值 */
-   contextBudget?: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number } | null;
+  contextBudget?: {
+    usagePercentage: number; totalTokens: number; modelLimit: number;
+    messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number;
+    cacheHitRatio?: number; cachedReadTokens?: number;
+    lastCompactionFreedTokens?: number; compactionActive?: boolean;
+    sessionInputTokens?: number; sessionOutputTokens?: number; sessionCachedReadTokens?: number;
+  } | null;
 }
 
 export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath, contextBudget }: ChatProps) {
@@ -969,7 +975,20 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     instructionsTokens?: number;
     toolsTokens?: number;
     outputReserve?: number;
+    cacheHitRatio?: number;
+    cachedReadTokens?: number;
+    lastCompactionFreedTokens?: number;
+    compactionActive?: boolean;
+    sessionInputTokens?: number;
+    sessionOutputTokens?: number;
+    sessionCachedReadTokens?: number;
   } | null>(null);
+
+  // 持久化最新的上下文水位数据，流式数据消失后仍保留
+  const persistedContextBudget = useRef(streamContextBudget);
+  if (streamContextBudget != null) {
+    persistedContextBudget.current = streamContextBudget;
+  }
 
   const [showContextDetail, setShowContextDetail] = useState(false);
   const contextDetailRef = useRef<HTMLDivElement>(null);
@@ -986,16 +1005,20 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     return () => document.removeEventListener('mousedown', handler, true);
   }, [showContextDetail]);
 
-  // 流式上下文水位优先，回退到 prop
-  const effectiveContextBudget = streamContextBudget ?? contextBudget ?? null;
+  // 流式上下文水位优先，持久化兜底，再回退到 prop
+  const effectiveContextBudget = streamContextBudget ?? persistedContextBudget.current ?? contextBudget ?? null;
 
+  // 从流式消息的 data-context-usage 部分提取上下文水位数据
   useEffect(() => {
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === 'data-context-usage' && 'data' in part) {
-          const d = (part as { data: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number } }).data;
+          const d = (part as { data: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number; cacheHitRatio?: number; cachedReadTokens?: number; lastCompactionFreedTokens?: number; compactionActive?: boolean; sessionInputTokens?: number; sessionOutputTokens?: number; sessionCachedReadTokens?: number } }).data;
           if (d && typeof d.usagePercentage === 'number') {
             setStreamContextBudget(d);
+          } else if (d && (d.sessionInputTokens != null || d.sessionOutputTokens != null || d.sessionCachedReadTokens != null)) {
+            // 仅含累计统计的增量更新（来自 finish-step 推送），合并到现有数据
+            setStreamContextBudget(prev => prev ? { ...prev, ...d } : d);
           }
         }
       }
@@ -1676,7 +1699,50 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           </button>
                         </div>
 
+                        {/* 总计：放在最前面 */}
                         <div className="space-y-2">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>总计</span>
+                            <span className="tabular-nums">
+                              {effectiveContextBudget.totalTokens >= 1000
+                                ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(1)}K`
+                                : effectiveContextBudget.totalTokens}
+                              {' / '}
+                              {effectiveContextBudget.modelLimit >= 1000
+                                ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K`
+                                : effectiveContextBudget.modelLimit}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={cn(
+                                'h-full rounded-full transition-all duration-700',
+                                effectiveContextBudget.usagePercentage > 80
+                                  ? 'bg-destructive'
+                                  : effectiveContextBudget.usagePercentage > 60
+                                    ? 'bg-yellow-500'
+                                    : 'bg-primary/60',
+                              )}
+                              style={{
+                                width: `${Math.min(100, effectiveContextBudget.usagePercentage)}%`,
+                              }}
+                            />
+                          </div>
+                          {effectiveContextBudget.compactionActive && effectiveContextBudget.lastCompactionFreedTokens != null && effectiveContextBudget.lastCompactionFreedTokens > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block w-2 h-2 rounded-full shrink-0 bg-orange-500" />
+                              <span className="text-xs text-muted-foreground flex-1 truncate">上下文已压缩</span>
+                              <span className="text-xs tabular-nums text-orange-600 dark:text-orange-400">
+                                -{effectiveContextBudget.lastCompactionFreedTokens >= 1000
+                                  ? `${(effectiveContextBudget.lastCompactionFreedTokens / 1000).toFixed(1)}K`
+                                  : effectiveContextBudget.lastCompactionFreedTokens}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 明细：消息历史、系统指令、工具定义、输出预留 */}
+                        <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
                           <ContextBarItem
                             label="消息历史"
                             value={effectiveContextBudget.messagesTokens ?? 0}
@@ -1707,31 +1773,43 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           />
                         </div>
 
+                        {/* 会话累计：输入、输出、缓存命中 */}
                         <div className="mt-3 pt-3 border-t border-border/50">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>总计</span>
-                            <span className="tabular-nums">
-                              {effectiveContextBudget.totalTokens >= 1000
-                                ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(1)}K`
-                                : effectiveContextBudget.totalTokens}
-                              {' / '}
-                              {effectiveContextBudget.modelLimit >= 1000
-                                ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K`
-                                : effectiveContextBudget.modelLimit}
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-700"
-                              style={{
-                                width: `${Math.min(100, effectiveContextBudget.usagePercentage)}%`,
-                                background: effectiveContextBudget.usagePercentage > 80
-                                  ? 'hsl(var(--destructive))'
-                                  : effectiveContextBudget.usagePercentage > 60
-                                  ? 'hsl(45, 93%, 47%)'
-                                  : 'hsl(var(--primary) / 0.6)',
-                              }}
-                            />
+                          <h5 className="text-[10px] font-medium text-muted-foreground/70 mb-2 uppercase tracking-wider">会话累计</h5>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">输入</span>
+                              <span className="tabular-nums font-medium">
+                                {effectiveContextBudget.sessionInputTokens != null
+                                  ? (effectiveContextBudget.sessionInputTokens >= 1000
+                                    ? `${(effectiveContextBudget.sessionInputTokens / 1000).toFixed(1)}K`
+                                    : effectiveContextBudget.sessionInputTokens)
+                                  : '--'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">输出</span>
+                              <span className="tabular-nums font-medium">
+                                {effectiveContextBudget.sessionOutputTokens != null
+                                  ? (effectiveContextBudget.sessionOutputTokens >= 1000
+                                    ? `${(effectiveContextBudget.sessionOutputTokens / 1000).toFixed(1)}K`
+                                    : effectiveContextBudget.sessionOutputTokens)
+                                  : '--'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">缓存命中</span>
+                              <span className="tabular-nums text-cyan-600 dark:text-cyan-400">
+                                {effectiveContextBudget.sessionCachedReadTokens != null
+                                  ? `${effectiveContextBudget.sessionCachedReadTokens >= 1000 ? `${(effectiveContextBudget.sessionCachedReadTokens / 1000).toFixed(1)}K` : effectiveContextBudget.sessionCachedReadTokens}`
+                                  : '--'}
+                                {effectiveContextBudget.sessionCachedReadTokens != null && effectiveContextBudget.sessionInputTokens != null && effectiveContextBudget.sessionInputTokens > 0 && (
+                                  <span className="text-muted-foreground">
+                                    {` (${Math.round((effectiveContextBudget.sessionCachedReadTokens / effectiveContextBudget.sessionInputTokens) * 100)}%)`}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>

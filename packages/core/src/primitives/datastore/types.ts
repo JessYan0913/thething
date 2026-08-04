@@ -100,6 +100,14 @@ export interface Conversation {
   contextTools: number | null;
   /** 输出预留 token 数 */
   contextOutputReserve: number | null;
+  /** 上一步实际缓存读取 tokens */
+  contextCachedReadTokens: number | null;
+  /** 上一步实际输入 tokens */
+  contextStepInputTokens: number | null;
+  /** 上次压缩释放的 tokens */
+  contextLastCompactionFreedTokens: number | null;
+  /** 当前上下文已被压缩 */
+  contextCompacted: boolean | null;
   /** Monotonic revision for message-tree/projection changes. */
   revision: number;
   activeBranchId: string | null;
@@ -215,6 +223,10 @@ export interface ConversationStore {
     instructionsTokens?: number;
     toolsTokens?: number;
     outputReserve?: number;
+    cachedReadTokens?: number;
+    stepInputTokens?: number;
+    lastCompactionFreedTokens?: number;
+    compactionActive?: boolean;
   }): void;
 }
 
@@ -881,6 +893,10 @@ export interface ConversationRow {
   context_instructions: number | null;
   context_tools: number | null;
   context_output_reserve: number | null;
+  context_cached_read_tokens: number | null;
+  context_step_input_tokens: number | null;
+  context_last_compaction_freed_tokens: number | null;
+  context_compacted: number | null;
   revision: number;
   active_branch_id: string | null;
   created_at: string;

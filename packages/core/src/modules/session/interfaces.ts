@@ -28,6 +28,12 @@ export interface TokenBudget {
   recordEstimate(estimatedInputTokens: number): void;
   /** usage 反馈校准系数(实际/估算 的滑动平均) */
   readonly calibration: number;
+  /** 上一步实际输入 tokens 增量 */
+  readonly lastStepInputTokens: number;
+  /** 上一步实际输出 tokens 增量 */
+  readonly lastStepOutputTokens: number;
+  /** 上一步实际缓存读取 tokens 增量 */
+  readonly lastStepCachedReadTokens: number;
   getSummary(): {
     inputTokens: number;
     outputTokens: number;
@@ -140,6 +146,12 @@ export interface PipelineContext {
     instructionsTokens?: number;
     toolsTokens?: number;
     outputReserve?: number;
+    cachedReadTokens?: number;
+    stepInputTokens?: number;
+    /** 上次压缩释放的 tokens */
+    lastCompactionFreedTokens?: number;
+    /** 当前上下文已被压缩 */
+    compactionActive?: boolean;
   }) => void;
 
   /** 上一步骤的 todo revision 快照，用于 ContextInjector 变更检测 */

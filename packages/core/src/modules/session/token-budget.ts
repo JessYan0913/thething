@@ -11,6 +11,9 @@ export class TokenBudgetTracker {
   private _sessionInputTokens = 0;
   private _sessionOutputTokens = 0;
   private _sessionCachedReadTokens = 0;
+  private _lastStepInputTokens = 0;
+  private _lastStepOutputTokens = 0;
+  private _lastStepCachedReadTokens = 0;
   private _lastCompactionTokens = 0;
   // usage 反馈校准(见 docs/context-compaction-architecture.md F):
   // 实际 input tokens / 估算 tokens 的滑动平均,用于修正后续估算
@@ -23,9 +26,12 @@ export class TokenBudgetTracker {
   ) {}
 
   accumulate(usage: LanguageModelUsage): void {
-    this._sessionInputTokens += usage.inputTokens ?? 0;
-    this._sessionOutputTokens += usage.outputTokens ?? 0;
-    this._sessionCachedReadTokens += usage.inputTokenDetails?.cacheReadTokens ?? 0;
+    this._lastStepInputTokens = usage.inputTokens ?? 0;
+    this._lastStepOutputTokens = usage.outputTokens ?? 0;
+    this._lastStepCachedReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+    this._sessionInputTokens += this._lastStepInputTokens;
+    this._sessionOutputTokens += this._lastStepOutputTokens;
+    this._sessionCachedReadTokens += this._lastStepCachedReadTokens;
     // 若上一步记录了估算值,用本次真实 input tokens 配对校准
     const actualInput = usage.inputTokens ?? 0;
     if (this._pendingEstimate !== null && this._pendingEstimate > 0 && actualInput > 0) {
@@ -62,6 +68,18 @@ export class TokenBudgetTracker {
 
   get cachedReadTokens(): number {
     return this._sessionCachedReadTokens;
+  }
+
+  get lastStepInputTokens(): number {
+    return this._lastStepInputTokens;
+  }
+
+  get lastStepOutputTokens(): number {
+    return this._lastStepOutputTokens;
+  }
+
+  get lastStepCachedReadTokens(): number {
+    return this._lastStepCachedReadTokens;
   }
 
   get totalTokens(): number {
