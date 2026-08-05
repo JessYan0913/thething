@@ -743,7 +743,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         const tree = projection.tree;
         setBranchSummaries(projection.branches ?? []);
         setActiveBranchId(projection.activeBranchId);
-        setConversationTree((current) => tree.revision >= current.revision ? tree : current);
+        setConversationTree((current: ConversationTree) => tree.revision >= current.revision ? tree : current);
         if (minimumRevision == null || tree.revision > minimumRevision) return;
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
@@ -966,8 +966,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   const [streamContextBudget, setStreamContextBudget] = useState<import('@the-thing/core').ContextBudgetSnapshot | null>(null);
 
-  // 压缩状态：'idle' | 'compacting' | 'done'
-  const [compactionStatus, setCompactionStatus] = useState<'idle' | 'compacting' | 'done'>('idle');
+  // 压缩状态：从输入框水位环迁到消息回复区内的工具调用风格指示器。
+  // null=无事件, 'compacting'=压缩中(转圈), 'done'=刚完成(短暂显示已压缩 N tokens)。
+  // 保留 tokensFreed 用于 end 时反馈具体释放量。
+  type CompactionUiState = { status: 'compacting' } | { status: 'done'; tokensFreed?: number } | null;
+  const [compactionUi, setCompactionUi] = useState<CompactionUiState>(null);
 
   // 持久化最新的上下文水位数据，流式数据消失后仍保留
   const persistedContextBudget = useRef(streamContextBudget);
@@ -1043,21 +1046,35 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }
   }, [messages]);
 
-  // 从流式消息的 data-compaction-status 部分提取压缩状态
+  // 从流式消息的 data-compaction-status 部分提取压缩状态。
+  // 用 ref 记录上次处理过的 part id，只处理新增的 part（避免 messages 后续变化时
+  // 累积判断把 done 状态反复重置为 compacting/done，状态行卡住不消失）。
+  const lastCompactionPartIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const allParts: Array<{ id: string; status: 'start' | 'end'; tokensFreed?: number }> = [];
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === 'data-compaction-status' && 'data' in part) {
-          const d = (part as { data: { status: 'start' | 'end'; triggerWatermark?: number; tokensFreed?: number } }).data;
-          if (d && d.status === 'start') {
-            setCompactionStatus('compacting');
-          } else if (d && d.status === 'end') {
-            setCompactionStatus('done');
-            // 1 秒后自动回到 idle
-            setTimeout(() => setCompactionStatus('idle'), 1000);
-          }
+          const d = (part as { data: { status: 'start' | 'end'; tokensFreed?: number } }).data;
+          if (!d) continue;
+          allParts.push({ id: (part as { id?: string }).id ?? '', status: d.status, tokensFreed: d.tokensFreed });
         }
       }
+    }
+    const lastSeen = lastCompactionPartIdRef.current;
+    const lastSeenIdx = lastSeen ? allParts.findIndex((p) => p.id === lastSeen) : -1;
+    const newParts = lastSeenIdx >= 0 ? allParts.slice(lastSeenIdx + 1) : allParts;
+    if (newParts.length === 0) return;
+    const latest = newParts[newParts.length - 1];
+    lastCompactionPartIdRef.current = latest.id;
+
+    if (latest.status === 'start') {
+      setCompactionUi({ status: 'compacting' });
+    } else {
+      setCompactionUi({ status: 'done', tokensFreed: latest.tokensFreed });
+      // 1.5 秒后自动清空，让流式回复自然继续
+      const timer = setTimeout(() => setCompactionUi(null), 1500);
+      return () => clearTimeout(timer);
     }
   }, [messages]);
 
@@ -1930,7 +1947,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             );
                           }
 
-                          if (part.type.startsWith('data-sub-') || part.type === 'data-todo-update' || part.type === 'data-context-usage') {
+                          if (part.type.startsWith('data-sub-') || part.type === 'data-todo-update' || part.type === 'data-context-usage' || part.type === 'data-compaction-status') {
                             return null;
                           }
 
@@ -2467,6 +2484,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                                   });
                                   return;
                                 }
+                                if (!previewData) return;
                                 setPreviewedToolKey(toolKey);
 
                                 // 如果需要从 API 获取内容（write/read 工具）
@@ -2578,12 +2596,38 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                         return null;
                       })}
+                      {/* 压缩状态行（工具调用风格）：从输入框水位环迁出，仅在最后一条 assistant 消息内显示。
+                          start=压缩中(转圈+shimmer), end=短暂显示"已压缩 N tokens"后自动消失。 */}
+                      {message.role === 'assistant' &&
+                        messageIndex === messages.length - 1 &&
+                        compactionUi && (
+                        <div className="flex w-full items-center gap-2 text-sm text-muted-foreground">
+                          {compactionUi.status === 'compacting' ? (
+                            <>
+                              <Loader2Icon className="size-4 shrink-0 animate-spin text-blue-500" />
+                              <Shimmer className="text-sm" duration={1.5} spread={1}>
+                                Compress: 上下文压缩中
+                              </Shimmer>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircleIcon className="size-4 shrink-0 text-green-500" />
+                              <span className="truncate">
+                                Compress: 已压缩
+                                {compactionUi.tokensFreed
+                                  ? ` · 释放 ${compactionUi.tokensFreed >= 1000 ? `${(compactionUi.tokensFreed / 1000).toFixed(1)}K` : `${compactionUi.tokensFreed}`} tokens`
+                                  : ''}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
                       {/* 产出文件汇总卡:一轮结束后聚合本消息内 write/edit 的成功产出 */}
                       {message.role === 'assistant' &&
                         !(messageIndex === messages.length - 1 && (status === 'streaming' || status === 'submitted')) && (
                           <FileOutputsSummary
                             entries={collectFileOutputs(message.parts as Array<{ type: string; state?: string; output?: unknown }>)}
-                            onOpen={async (entry) => {
+                            onOpen={async (entry: { path: string; language?: string }) => {
                               setPreviewFile({ path: entry.path, content: '', language: entry.language });
                               try {
                                 const res = await fetch(`/api/fs?action=read&path=${encodeURIComponent(entry.path)}`);

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>黄金市场分析报告 — 2026年8月5日</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0e0;
+    line-height: 1.6;
+    padding: 0;
+  }
+  .report-container { max-width: 960px; margin: 0 auto; padding: 0 20px 40px; }
+
+  /* ===== Header ===== */
+  .report-header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 40px 32px 32px;
+    border-radius: 0 0 24px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .report-header::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(212,168,67,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .report-header::after {
+    content: '';
+    position: absolute;
+    bottom: -40px; left: -40px;
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, rgba(212,168,67,0.05) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .report-icon { font-size: 42px; line-height: 1; margin-bottom: 12px; }
+  .report-title {
+    font-size: 28px; font-weight: 700; color: #d4a843;
+    letter-spacing: 2px; margin-bottom: 6px;
+  }
+  .report-subtitle { font-size: 14px; color: #8888a0; letter-spacing: 1px; }
+  .report-date {
+    display: inline-block; margin-top: 10px; padding: 4px 16px;
+    background: rgba(212,168,67,0.12);
+    border: 1px solid rgba(212,168,67,0.25);
+    border-radius: 20px; font-size: 13px; color: #d4a843;
+  }
+
+  /* ===== Section ===== */
+  .section {
+    background: #1a1a2e; border-radius: 16px; padding: 24px 28px;
+    margin-bottom: 20px; border: 1px solid rgba(212,168,67,0.08);
+  }
+  .section-title {
+    font-size: 18px; font-weight: 600; color: #d4a843;
+    margin-bottom: 16px; padding-bottom: 10px;
+    border-bottom: 1px solid rgba(212,168,67,0.15);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-title .icon { font-size: 20px; }
+  .section-title .badge {
+    font-size: 11px; font-weight: 500;
+    background: rgba(212,168,67,0.15); color: #d4a843;
+    padding: 2px 10px; border-radius: 12px; margin-left: auto;
+  }
+
+  /* ===== Price Grid ===== */
+  .price-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px; margin: 16px 0 8px;
+  }
+  .price-item {
+    background: rgba(15,15,26,0.6); border-radius: 12px;
+    padding: 14px 16px; text-align: center;
+  }
+  .price-label {
+    font-size: 11px; color: #8888a0;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;
+  }
+  .price-value { font-size: 22px; font-weight: 700; color: #fff; }
+  .price-value.up { color: #4ecca3; }
+  .price-value.down { color: #ff6b6b; }
+  .price-change { font-size: 13px; margin-top: 2px; }
+  .price-change.up { color: #4ecca3; }
+  .price-change.down { color: #ff6b6b; }
+
+  /* ===== Key Levels ===== */
+  .levels-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px; margin: 12px 0;
+  }
+  .level-item {
+    background: rgba(15,15,26,0.5); border-radius: 10px;
+    padding: 12px; text-align: center;
+    border-left: 3px solid #d4a843;
+  }
+  .level-item.resistance { border-left-color: #ff6b6b; }
+  .level-item.support { border-left-color: #4ecca3; }
+  .level-label { font-size: 11px; color: #8888a0; margin-bottom: 2px; }
+  .level-price { font-size: 18px; font-weight: 700; color: #fff; }
+
+  /* ===== Strategy Cards ===== */
+  .strategy-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px; margin: 12px 0;
+  }
+  .strategy-card {
+    background: rgba(15,15,26,0.5); border-radius: 12px;
+    padding: 18px; border-top: 3px solid #d4a843;
+  }
+  .strategy-card.long { border-top-color: #4ecca3; }
+  .strategy-card.short { border-top-color: #ff6b6b; }
+  .strategy-card.neutral { border-top-color: #8888a0; }
+  .strategy-card h4 { font-size: 15px; margin-bottom: 12px; color: #fff; }
+  .strategy-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .strategy-item:last-child { border-bottom: none; }
+  .strategy-item .label { font-size: 13px; color: #8888a0; }
+  .strategy-item .value { font-size: 14px; font-weight: 600; color: #fff; }
+  .strategy-item .value.gold { color: #d4a843; }
+
+  /* ===== Risk Box ===== */
+  .risk-box {
+    background: rgba(255,107,107,0.06);
+    border: 1px solid rgba(255,107,107,0.15);
+    border-radius: 10px; padding: 16px 18px; font-size: 13px; color: #ccc;
+    line-height: 1.8;
+  }
+
+  /* ===== Footer ===== */
+  .report-footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+  .report-footer .divider {
+    border: none; border-top: 1px solid rgba(212,168,67,0.12);
+    margin-bottom: 14px;
+  }
+  .report-footer p { margin-bottom: 4px; }
+
+  /* ===== Indicator Table ===== */
+  .indicator-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px; margin: 12px 0;
+  }
+  .indicator-item {
+    background: rgba(15,15,26,0.5); border-radius: 10px;
+    padding: 12px 14px; text-align: center;
+  }
+  .indicator-label { font-size: 11px; color: #8888a0; margin-bottom: 4px; }
+  .indicator-value { font-size: 16px; font-weight: 700; }
+  .indicator-value.bullish { color: #4ecca3; }
+  .indicator-value.bearish { color: #ff6b6b; }
+  .indicator-value.neutral { color: #d4a843; }
+
+  /* ===== Alert Banner ===== */
+  .alert-banner {
+    background: linear-gradient(135deg, rgba(212,168,67,0.12), rgba(78,204,163,0.08));
+    border: 1px solid rgba(212,168,67,0.25);
+    border-radius: 12px; padding: 16px 20px; margin: 16px 0 8px;
+    text-align: center;
+  }
+  .alert-banner strong { color: #d4a843; font-size: 15px; }
+  .alert-banner p { color: #ccc; font-size: 13px; margin-top: 4px; }
+
+  /* ===== Analysis Text ===== */
+  .analysis-text { font-size: 14px; color: #ccc; line-height: 1.8; }
+  .analysis-text p { margin-bottom: 10px; }
+  .analysis-text strong { color: #e0e0e0; }
+  .analysis-text ul { list-style: none; padding: 0; margin: 8px 0; }
+  .analysis-text ul li { padding: 4px 0 4px 20px; position: relative; }
+  .analysis-text ul li::before { content: '▸'; position: absolute; left: 0; color: #d4a843; }
+
+  @media (max-width: 600px) {
+    .report-header { padding: 28px 20px 24px; }
+    .report-title { font-size: 22px; }
+    .section { padding: 18px 16px; }
+    .price-grid { grid-template-columns: repeat(2, 1fr); }
+    .levels-grid { grid-template-columns: repeat(2, 1fr); }
+    .strategy-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="report-container">
+
+  <!-- ===== HEADER ===== -->
+  <header class="report-header">
+    <div class="report-icon">🥇</div>
+    <h1 class="report-title">黄金市场分析报告</h1>
+    <p class="report-subtitle">Gold Market Analysis Report</p>
+    <span class="report-date">2026年8月5日 14:04 UTC</span>
+  </header>
+
+  <!-- ===== MARKET OVERVIEW ===== -->
+  <section class="section">
+    <h2 class="section-title"><span class="icon">📊</span> 市场概览 <span class="badge">Market Overview</span></h2>
+    <div class="alert-banner">
+      <strong>🔥 金价大幅走高！</strong>
+      <p>现货黄金日内暴涨 +3.21%，成交量放大至日均量的 21.6 倍，突破关键阻力位，强势拉升创近两周新高</p>
+    </div>
+    <div class="price-grid">
+      <div class="price-item">
+        <div class="price-label">国际金价 (XAU/USD)</div>
+        <div class="price-value up">$4,210</div>
+        <div class="price-change up">+$131.00 (+3.21%)</div>
+      </div>
+      <div class="price-item">
+        <div class="price-label">人民币金价</div>
+        <div class="price-value up">¥915.00</div>
+        <div class="price-change up">/克</div>
+      </div>
+      <div class="price-item">
+        <div class="price-label">日内最高</div>
+        <div class="price-value">$4,214</div>
+        <div class="price-change">+$150 从低点</div>
+      </div>
+      <div class="price-item">
+        <div class="price-label">日内最低</div>
+        <div class="price-value">$4,065</div>
+        <div class="price-change">—</div>
+      </div>
+      <div class="price-item">
+        <div class="price-label">前一收盘</div>
+        <div class="price-value">$4,079</div>
+        <div class="price-change">—</div>
+      </div>
+      <div class="price-item">
+        <div class="price-label">黄金期货 (GC=F)</div>
+        <div class="price-value up">$4,262</div>
+        <div class="price-change up">+$212.50 (+5.25%)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FUNDAMENTAL ANALYSIS ===== -->
+  <section class="section">
+    <h2 class="section-title"><span class="icon">🌍</span> 基本面分析 <span class="badge">Fundamental Analysis</span></h2>
+    <div class="analysis-text">
+      <p><strong>📉 美元走弱，为金价提供强劲支撑</strong></p>
+      <p>美元指数 DXY 跌至 <strong>99.74</strong>，处于近一个月低点。美元走弱使以美元计价的黄金对其他货币持有者更具吸引力，是今日金价飙升的核心驱动力之一。</p>
+      <p><strong>📈 美债收益率维持高位</strong></p>
+      <p>10年期美债收益率报 <strong>4.637%</strong>，处于近一个月区间中段（4.48% - 4.74%）。尽管收益率维持高位，但黄金凭借强劲的避险需求和央行购金趋势，仍走出独立上涨行情。</p>
+      <p><strong>🏛️ 央行持续购金</strong></p>
+      <p>全球央行持续增持黄金储备的大趋势未变，为金价提供坚实的底部支撑。2026年下半年以来，央行购金量保持高位，中国、波兰、印度等国持续买入。</p>
+      <p><strong>⚡ 成交量异动</strong></p>
+      <p>今日成交量 <strong>126,010 手</strong>，达到日均成交量的 <strong>21.6 倍</strong>，表明大量资金集中涌入，属于典型的放量突破形态，上涨动能强劲且具有持续性。</p>
+    </div>
+  </section>
+
+  <!-- ===== TECHNICAL ANALYSIS ===== -->
+  <section class="section">
+    <h2 class="section-title"><span class="icon">📈</span> 技术面分析 <span class="badge">Technical Analysis</span></h2>
+
+    <div class="indicator-grid">
+      <div class="indicator-item">
+        <div class="indicator-label">MA5 (5日均线)</div>
+        <div class="indicator-value bullish">$4,088</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">价格远高于均线 ↑</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">MA10 (10日均线)</div>
+        <div class="indicator-value bullish">$4,070</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">价格远高于均线 ↑</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">MA20 (20日均线)</div>
+        <div class="indicator-value bullish">$4,058</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">价格远高于均线 ↑</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">MA50 (50日均线)</div>
+        <div class="indicator-value bullish">$4,168</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">突破成功 ↑</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">RSI(14)</div>
+        <div class="indicator-value" style="color:#d4a843;">69.9</div>
+        <div style="font-size:11px;color:#d4a843;margin-top:2px;">接近超买 ⚠️</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">成交量</div>
+        <div class="indicator-value bullish">126K</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">21.6x 日均量 🔥</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">布林带 (20,2)</div>
+        <div class="indicator-value bullish">突破上轨</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">$3,947 - $4,068 - $4,189</div>
+      </div>
+      <div class="indicator-item">
+        <div class="indicator-label">MACD</div>
+        <div class="indicator-value bullish">金叉强势</div>
+        <div style="font-size:11px;color:#4ecca3;margin-top:2px;">动能柱放大 ↑</div>
+      </div>
+    </div>
+
+    <div class="analysis-text" style="margin-top:12px;">
+      <p><strong>📌 技术面研判：强势突破，多头占优</strong></p>
+      <ul>
+        <li><strong>均线系统：</strong>价格已突破 MA50（$4,168），短中期均线呈多头排列，MA5 > MA10 > MA20，趋势明确向上</li>
+        <li><strong>布林带：</strong>价格突破上轨（$4,189），布林带开口扩张，波动率放大，通常预示趋势的延续而非终结</li>
+        <li><strong>RSI(14)：</strong>69.9 接近超买阈值（70），但尚未进入超买区，短期仍有上行空间；若突破 70 后出现背离信号需警惕</li>
+        <li><strong>成交量：</strong>21.6 倍日均成交量，属于典型的放量突破，资金参与度极高，上涨可信度强</li>
+        <li><strong>多时间框架：</strong>日线级别突破，周线级别从 4,000 支撑位反弹，确认中期底部</li>
+      </ul>
+    </div>
+
+    <h3 style="font-size:15px;color:#d4a843;margin:16px 0 10px;">关键支撑阻力位</h3>
+    <div class="levels-grid">
+      <div class="level-item resistance">
+        <div class="level-label">阻力 R2</div>
+        <div class="level-price">$4,500</div>
+        <div style="font-size:11px;color:#8888a0;">心理关口</div>
+      </div>
+      <div class="level-item resistance">
+        <div class="level-label">阻力 R1</div>
+        <div class="level-price">$4,214</div>
+        <div style="font-size:11px;color:#8888a0;">今日高点</div>
+      </div>
+      <div class="level-item support">
+        <div class="level-label">支撑 S1</div>
+        <div class="level-price">$4,100</div>
+        <div style="font-size:11px;color:#8888a0;">整数关口</div>
+      </div>
+      <div class="level-item support">
+        <div class="level-label">支撑 S2</div>
+        <div class="level-price">$4,000</div>
+        <div style="font-size:11px;color:#8888a0;">心理关口</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TRADING STRATEGY ===== -->
+  <section class="section">
+    <h2 class="section-title"><span class="icon">🎯</span> 交易策略 <span class="badge">Trading Strategy</span></h2>
+    <div class="strategy-grid">
+      <div class="strategy-card long">
+        <h4>🟢 做多策略（推荐）</h4>
+        <div class="strategy-item"><span class="label">入场位</span><span class="value">$4,100 - $4,150</span></div>
+        <div class="strategy-item"><span class="label">止盈位</span><span class="value gold">$4,300 / $4,500</span></div>
+        <div class="strategy-item"><span class="label">止损位</span><span class="value">$4,000</span></div>
+        <div class="strategy-item"><span class="label">建议仓位</span><span class="value">3-5% 轻仓</span></div>
+      </div>
+      <div class="strategy-card short">
+        <h4>🔴 做空策略（暂不建议）</h4>
+        <div class="strategy-item"><span class="label">入场位</span><span class="value">—</span></div>
+        <div class="strategy-item"><span class="label">止盈位</span><span class="value gold">—</span></div>
+        <div class="strategy-item"><span class="label">止损位</span><span class="value">—</span></div>
+        <div class="strategy-item"><span class="label">建议仓位</span><span class="value">暂不建议做空</span></div>
+      </div>
+      <div class="strategy-card neutral">
+        <h4>⚪ 观望策略</h4>
+        <div class="strategy-item"><span class="label">建议</span><span class="value">等待回调入场</span></div>
+        <div class="strategy-item"><span class="label">等待信号</span><span class="value">RSI 回到 60-65 区间</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== RISK WARNING ===== -->
+  <section class="section">
+    <h2 class="section-title"><span class="icon">⚠️</span> 风险提示 <span class="badge">Risk Warning</span></h2>
+    <div class="risk-box">
+      <strong>1. 超买回调风险：</strong>RSI(14) 为 69.9，接近超买阈值 70。若短期获利盘涌现，可能出现技术性回调至 $4,100 附近。<br><br>
+      <strong>2. 美联储政策风险：</strong>若美联储官员发表鹰派言论或 CPI 数据超预期，可能引发美元反弹，对金价形成压制。<br><br>
+      <strong>3. 地缘政治缓和：</strong>若地缘紧张局势出现缓解，避险需求下降可能导致金价快速回落。<br><br>
+      <strong>4. 流动性风险：</strong>放量突破后容易出现短期波动加剧，需警惕假突破后的快速反转。
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="report-footer">
+    <hr class="divider">
+    <p>免责声明：本报告仅供参考，不构成任何投资建议。交易有风险，入市需谨慎。</p>
+    <p>报告生成时间：2026-08-05 14:04 UTC | 分析师：TheThing Gold Trading Analyst</p>
+  </footer>
+
+</div>
+</body>
+</html>

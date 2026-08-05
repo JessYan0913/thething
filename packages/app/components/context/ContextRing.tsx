@@ -12,8 +12,6 @@ import { displayPercent, ringDashOffset, utilizationColor } from './format';
 export function ContextRing({ snapshot }: { snapshot: ContextBudgetSnapshot }) {
   const pct = snapshot.utilizationPercent;
   const color = utilizationColor(pct);
-  const isCompacting = snapshot.compaction.state === 'compacting';
-  const isJustCompacted = snapshot.compaction.state === 'justCompacted';
 
   return (
     <div className="flex items-center gap-1">
@@ -28,15 +26,6 @@ export function ContextRing({ snapshot }: { snapshot: ContextBudgetSnapshot }) {
       <span className={cn('text-xs tabular-nums', color.text)}>
         {displayPercent(pct)}
       </span>
-      {isCompacting && (
-        <span className="inline-flex items-center gap-1 text-xs text-orange-500 ml-1">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-          压缩中
-        </span>
-      )}
-      {isJustCompacted && (
-        <span className="text-xs text-orange-500 ml-1">已压缩</span>
-      )}
     </div>
   );
 }
