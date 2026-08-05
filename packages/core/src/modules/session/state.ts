@@ -32,10 +32,10 @@ export type { SessionState, SessionStateOptions };
  *
  * 简化版：使用普通对象而非 getter/setter 闭包
  */
-export function createSessionState(
+export async function createSessionState(
   conversationId: string,
   options: SessionStateOptions,
-): SessionState {
+): Promise<SessionState> {
   const {
     maxContextTokens = DEFAULT_CONTEXT_LIMIT,
     compactThreshold = COMPACT_TOKEN_THRESHOLD,
@@ -62,6 +62,7 @@ export function createSessionState(
     maxBudgetUsd,
     pricingResolver: resolvedPricingResolver,
   });
+  await costTracker.hydrate();
   const denialTracker = new DenialTracker({
     maxDenialsPerTool: options?.maxDenialsPerTool,
   });

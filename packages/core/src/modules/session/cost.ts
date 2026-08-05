@@ -100,6 +100,37 @@ export class CostTracker {
     return delta;
   }
 
+  /**
+   * 压缩钩子：与 TokenBudgetTracker.reportCompaction 同步。
+   * 压缩后 context prefix 失效，旧 cache read 计数不能再累积进新 session 的
+   * 命中率（否则 inputTokens 扣、cachedReadTokens 残留 → 命中率虚高接近 100%）。
+   */
+  reportCompaction(tokensFreed: number): void {
+    this._inputTokens = Math.max(0, this._inputTokens - tokensFreed);
+    this._cachedReadTokens = 0;
+  }
+
+  /**
+   * 从 costStore 加载已持久化的成本基线，刷新页面后保证 session 内累加器
+   * 不会从零开始——否则刷新后第一次调用如果全量命中 cache，inputTokens=0
+   * 但 cachedReadTokens>0，命中率公式 cachedRead/(input+cachedRead) 直接 100%。
+   *
+   * 模型可能在两次会话之间变化：仅恢复 token 计数与总费用（已按当时模型计费），
+   * 不重算单次 delta。后续 accumulate() 的新 turn 仍按当前 _model 计费。
+   */
+  async hydrate(): Promise<void> {
+    try {
+      const record = await this._costStore.getCostByConversation(this._conversationId);
+      if (!record) return;
+      this._inputTokens = record.inputTokens;
+      this._outputTokens = record.outputTokens;
+      this._cachedReadTokens = record.cachedReadTokens;
+      this._totalCost = record.totalCostUsd;
+    } catch (error) {
+      logger.error('CostTracker', `Hydrate failed: ${(error as Error).message}`);
+    }
+  }
+
   async persistToDB(): Promise<void> {
     if (this._persistedToDB) return;
 

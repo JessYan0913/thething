@@ -85,15 +85,15 @@ describe('tool output config driven behavior', () => {
     expect(buildPersistedOutputMessage(persisted, false, sessionConfig)).toContain('Preview (first 500B)');
   });
 
-  it('different SessionState instances keep isolated toolOutputConfig snapshots', () => {
-    const state1 = createSessionState('session-1', {
+  it('different SessionState instances keep isolated toolOutputConfig snapshots', async () => {
+    const state1 = await createSessionState('session-1', {
       layout,
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 10_000, messageBudget: 30_000 },
       dataStore: createMockDataStore() as any,
       pricingResolver: createPricingResolver(),
     });
-    const state2 = createSessionState('session-2', {
+    const state2 = await createSessionState('session-2', {
       layout,
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 100_000, previewSizeChars: 500, messageBudget: 80_000 },

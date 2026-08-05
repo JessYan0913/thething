@@ -116,7 +116,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // Session 状态
   // ============================================================
-  const sessionState = createSessionState(conversationId, {
+  const sessionState = await createSessionState(conversationId, {
     ...sessionOptions,
     model: modelConfig.modelName ?? sessionOptions.model,
     dataStore,

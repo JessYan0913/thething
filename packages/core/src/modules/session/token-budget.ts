@@ -110,6 +110,11 @@ export class TokenBudgetTracker {
 
     if (postCompactTokens < this.maxContextTokens) {
       this._sessionInputTokens = Math.max(0, this._sessionInputTokens - result.tokensFreed);
+      // 压缩后 context 内容变化，cache prefix 失效。旧 cache read 计数不能再算到
+      // 新 session 的命中率里——否则 inputTokens 被扣、cachedReadTokens 残留，
+      // 命中率会虚高到接近 100%。
+      this._sessionCachedReadTokens = 0;
+      this._lastStepCachedReadTokens = 0;
     }
   }
 

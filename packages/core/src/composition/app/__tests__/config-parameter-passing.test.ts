@@ -98,9 +98,9 @@ describe('config parameter passing', () => {
     }).enableThinking).toBe(true);
   });
 
-  it('pushes behavior-driven session settings into SessionState', () => {
+  it('pushes behavior-driven session settings into SessionState', async () => {
     const layout = createMockLayout();
-    const state = createSessionState('test-conv', {
+    const state = await createSessionState('test-conv', {
       layout,
       projectRoot: layout.resourceRoot,
       toolOutputConfig: { maxResultSizeChars: 10_000, messageBudget: 50_000 },

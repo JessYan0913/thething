@@ -178,6 +178,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens at configured ${triggerWatermark.toFixed(0)}% watermark`);
       messages = compactResult.messages as ModelMessageType[];
       sessionState.tokenBudget.reportCompaction(compactResult, triggerWatermark);
+      sessionState.costTracker.reportCompaction(compactResult.tokensFreed ?? 0);
       config.compactionCallbackRef?.current?.({ status: 'end', triggerWatermark, tokensFreed: compactResult.tokensFreed ?? 0 });
     }
 

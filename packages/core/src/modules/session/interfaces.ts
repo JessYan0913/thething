@@ -65,6 +65,12 @@ export interface CostTracking {
     budgetUsagePercent: number;
   };
   persistToDB(): Promise<void>;
+  /**
+   * 压缩钩子：与 TokenBudgetTracker.reportCompaction 同步。
+   * 压缩后 cache prefix 失效，旧 cached read 计数不能继续计入
+   * 命中率（否则 inputTokens 被扣、cachedReadTokens 残留，命中率虚高）。
+   */
+  reportCompaction(tokensFreed: number): void;
 }
 
 // ============================================================
