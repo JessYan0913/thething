@@ -212,6 +212,12 @@ export interface CreateAgentOptions {
     /** 当 sessionSource 为 'connector' 时，具体的 connector ID（如 'feishu'） */
     sessionSourceId?: string;
   };
+
+  /**
+   * 压缩状态回调引用（流式通知前端）。
+   * 在流启动后设置 current，pipeline 在每步压缩前后调用。
+   */
+  compactionCallbackRef?: { current: ((event: import('../../modules/agent-control').CompactionStatusEvent) => void) | null };
 }
 
 // ============================================================

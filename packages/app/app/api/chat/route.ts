@@ -22,6 +22,7 @@ import {
   type UIMessage,
 } from 'ai';
 import { NextResponse } from 'next/server';
+import { safeBuildContextBudgetPayload } from './context-payload';
 
 export const runtime = 'nodejs';
 
@@ -206,6 +207,8 @@ export async function POST(request: Request) {
     // onEnd 保存的消息里没有它们；这里按 `${type}|${id}` 替换式缓冲（复刻 SDK 的
     // 同 type+同 id 合并语义，text-delta 只留最后一条），保存前合并进消息实现刷新后回看。
     const subEventBuffer = new Map<string, { type: string; id: string; data: unknown }>();
+    // 压缩状态回调引用：流启动后设置 current，pipeline 每步压缩前后调用
+    const compactionCallbackRef: { current: ((event: import('../../../../core/src/modules/agent-control').CompactionStatusEvent) => void) | null } = { current: null };
     const userId = messageUserId || 'default';
 
     console.log(`[Chat API] createAgent start: ${Date.now() - startTime}ms`);
@@ -231,6 +234,7 @@ export async function POST(request: Request) {
       customInstructions: finalInstructions,
       approvalMode,
       writerRef,
+      compactionCallbackRef,
       agentRunStore: store.agentRunStore,
       conversationMeta: {
         isNewConversation: isFirstMessage,
@@ -448,6 +452,18 @@ export async function POST(request: Request) {
             try {
               let agentStream;
               try {
+                // 设置压缩状态回调，将压缩开始/结束推送到前端
+                compactionCallbackRef.current = (compactionEvent) => {
+                  try {
+                    controller.enqueue(JSON.stringify({
+                      type: 'data-compaction-status',
+                      id: `compaction-${compactionEvent.status}-${Date.now()}`,
+                      data: compactionEvent,
+                    }));
+                  } catch {
+                    // 不影响主流程
+                  }
+                };
                 agentStream = await createAgentUIStream({
                   agent,
                   uiMessages: finalMessages,
@@ -463,34 +479,59 @@ export async function POST(request: Request) {
                     if (stepEvent.usage) {
                       sessionState.tokenBudget.accumulate(stepEvent.usage);
                       const summary = sessionState.tokenBudget.getSummary();
-                      // 推送实际值到前端
-                      try {
-                        controller.enqueue(JSON.stringify({
-                          type: 'data-context-usage',
-                          id: 'ctx-on-step-end',
-                          data: {
-                            usagePercentage: summary.usagePercentage,
-                            totalTokens: summary.totalTokens,
-                            modelLimit: chatModelConfig.contextLimit ?? 128_000,
-                            sessionInputTokens: summary.inputTokens,
-                            sessionOutputTokens: summary.outputTokens,
-                            sessionCachedReadTokens: summary.cachedReadTokens,
-                          },
-                        }));
-                      } catch {
-                        // 不影响主流程
-                      }
-                      // 写入 DB（实际值）
-                      try {
-                        sessionState.updateContextBudget?.({
-                          utilizationPercent: summary.usagePercentage,
-                          totalTokens: summary.totalTokens,
-                          modelLimit: chatModelConfig.contextLimit ?? 128_000,
-                          cachedReadTokens: sessionState.tokenBudget.lastStepCachedReadTokens,
-                          stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
-                        });
-                      } catch {
-                        // 不影响主流程
+                      // 单一构造点：buildContextBudgetPayload 永远不发脏数据
+                      const payload = safeBuildContextBudgetPayload({
+                        lastEstimation: sessionState.lastEstimation,
+                        compactionTracker: sessionState.compactionTracker,
+                        costTracker: sessionState.costTracker,
+                        source: 'live',
+                      });
+                      if (payload) {
+                        // 推 SSE：合并新 schema 字段 + 旧字段（UI 渐进切换）
+                        try {
+                          controller.enqueue(JSON.stringify({
+                            type: 'data-context-usage',
+                            id: 'ctx-on-step-end',
+                            data: {
+                              // === 新 schema（阶段 0/1 推送，UI 阶段 2 切）===
+                              ...payload,
+                              // === 旧字段（保留兼容，阶段 3 删除）===
+                              usagePercentage: payload.utilizationPercent,
+                              totalTokens: payload.totalTokens,
+                              modelLimit: payload.modelLimit,
+                              messagesTokens: payload.totalTokens,  // 旧字段无对应，用 total 占位
+                              instructionsTokens: undefined,
+                              toolsTokens: undefined,
+                              outputReserve: undefined,
+                              sessionInputTokens: payload.sessionCost.inputTokens,
+                              sessionOutputTokens: payload.sessionCost.outputTokens,
+                              sessionCachedReadTokens: payload.sessionCost.cachedReadTokens,
+                              lastCompactionFreedTokens: payload.compaction.totalFreed,
+                              compactionActive: payload.compaction.compactionsCount > 0,
+                              compactionTriggerWatermark: payload.compaction.triggerPercent * 100,
+                            },
+                          }));
+                        } catch {
+                          // 不影响主流程
+                        }
+                        // 写 DB（实际值）。仍走旧 updateContextBudget 路径，阶段 3 切新。
+                        try {
+                          sessionState.updateContextBudget?.({
+                            utilizationPercent: payload.utilizationPercent,
+                            totalTokens: payload.totalTokens,
+                            modelLimit: payload.modelLimit,
+                            messagesTokens: undefined,
+                            instructionsTokens: undefined,
+                            toolsTokens: undefined,
+                            outputReserve: undefined,
+                            cachedReadTokens: payload.sessionCost.cachedReadTokens,
+                            stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
+                            lastCompactionFreedTokens: payload.compaction.totalFreed,
+                            compactionActive: payload.compaction.compactionsCount > 0,
+                          });
+                        } catch {
+                          // 不影响主流程
+                        }
                       }
                     }
                   },
@@ -525,33 +566,54 @@ export async function POST(request: Request) {
                       onStepEnd: (stepEvent) => {
                         if (stepEvent.usage) {
                           sessionState.tokenBudget.accumulate(stepEvent.usage);
-                          const summary = sessionState.tokenBudget.getSummary();
-                          try {
-                            controller.enqueue(JSON.stringify({
-                              type: 'data-context-usage',
-                              id: 'ctx-on-step-end',
-                              data: {
-                                usagePercentage: summary.usagePercentage,
-                                totalTokens: summary.totalTokens,
-                                modelLimit: chatModelConfig.contextLimit ?? 128_000,
-                                sessionInputTokens: summary.inputTokens,
-                                sessionOutputTokens: summary.outputTokens,
-                                sessionCachedReadTokens: summary.cachedReadTokens,
-                              },
-                            }));
-                          } catch {}
-                          try {
-                            sessionState.updateContextBudget?.({
-                              utilizationPercent: summary.usagePercentage,
-                              totalTokens: summary.totalTokens,
-                              modelLimit: chatModelConfig.contextLimit ?? 128_000,
-                              cachedReadTokens: sessionState.tokenBudget.lastStepCachedReadTokens,
-                              stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
-                            });
-                          } catch {}
+                          const payload = safeBuildContextBudgetPayload({
+                            lastEstimation: sessionState.lastEstimation,
+                            compactionTracker: sessionState.compactionTracker,
+                            costTracker: sessionState.costTracker,
+                            source: 'live',
+                          });
+                          if (payload) {
+                            try {
+                              controller.enqueue(JSON.stringify({
+                                type: 'data-context-usage',
+                                id: 'ctx-on-step-end',
+                                data: {
+                                  ...payload,
+                                  usagePercentage: payload.utilizationPercent,
+                                  totalTokens: payload.totalTokens,
+                                  modelLimit: payload.modelLimit,
+                                  messagesTokens: payload.totalTokens,
+                                  instructionsTokens: undefined,
+                                  toolsTokens: undefined,
+                                  outputReserve: undefined,
+                                  sessionInputTokens: payload.sessionCost.inputTokens,
+                                  sessionOutputTokens: payload.sessionCost.outputTokens,
+                                  sessionCachedReadTokens: payload.sessionCost.cachedReadTokens,
+                                  lastCompactionFreedTokens: payload.compaction.totalFreed,
+                                  compactionActive: payload.compaction.compactionsCount > 0,
+                                  compactionTriggerWatermark: payload.compaction.triggerPercent * 100,
+                                },
+                              }));
+                            } catch {}
+                            try {
+                              sessionState.updateContextBudget?.({
+                                utilizationPercent: payload.utilizationPercent,
+                                totalTokens: payload.totalTokens,
+                                modelLimit: payload.modelLimit,
+                                messagesTokens: undefined,
+                                instructionsTokens: undefined,
+                                toolsTokens: undefined,
+                                outputReserve: undefined,
+                                cachedReadTokens: payload.sessionCost.cachedReadTokens,
+                                stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
+                                lastCompactionFreedTokens: payload.compaction.totalFreed,
+                                compactionActive: payload.compaction.compactionsCount > 0,
+                              });
+                            } catch {}
                         }
-                      },
-                    });
+                      }
+                    },
+                  });
                   } catch (retryErr) {
                     console.error('[Chat API] Reactive retry failed:', retryErr);
                     throw streamErr; // 重试也失败，抛出原始错误
@@ -602,6 +664,8 @@ export async function POST(request: Request) {
                 console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
               }
               console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
+              // 清理压缩状态回调
+              compactionCallbackRef.current = null;
               if (!controllerClosed) {
                 try {
                   controller.close();

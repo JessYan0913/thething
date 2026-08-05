@@ -25,6 +25,14 @@ function isReasoningOnlyStep(step: StepResult<any, any>): boolean {
   return hasReasoning && !hasToolCall && !hasText;
 }
 
+export interface CompactionStatusEvent {
+  status: 'start' | 'end';
+  /** 触发压缩时的水位百分比 */
+  triggerWatermark?: number;
+  /** 释放的 token 数 */
+  tokensFreed?: number;
+}
+
 export interface AgentPipelineConfig {
   sessionState: PipelineContext;
   maxSteps?: number;
@@ -36,6 +44,8 @@ export interface AgentPipelineConfig {
   triggerPercent?: number;
   /** 将模型名解析为已经套好遥测/成本中间件的实际模型。 */
   resolveModel?: (modelName: string) => LanguageModel;
+  /** 压缩状态回调引用（流式通知前端） */
+  compactionCallbackRef?: { current: ((event: CompactionStatusEvent) => void) | null };
 }
 
 export function getSkillStepOverrides(
@@ -74,26 +84,35 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     sessionState.turnCount = stepNumber + 1;
 
+    // 压缩状态机：每步入口 tick（让 justCompacted 自动回 idle）
+    sessionState.compactionTracker.tickStep(stepNumber);
+
     // accumulate 已在 route 的 onStepEnd 中完成，此处不再重复
     const lastStep = steps[steps.length - 1];
-    const budgetSummary = sessionState.tokenBudget.getSummary();
+    // 注：阶段 3 改用 estimation 替代 tokenBudget.getSummary()（累计数学错）。
+    // getSummary() 删除后会报 TS 错，先保留兼容性 fallback。
+    const fallbackSummary = sessionState.tokenBudget.getSummary();
+    const lastEst = sessionState.lastEstimation;
+    const totalTokens = lastEst?.totalTokens ?? fallbackSummary.totalTokens;
+    const utilizationPercent = lastEst?.utilizationPercent ?? 0;
+    const shouldCompact = utilizationPercent >= sessionState.compactionTracker.getSnapshot().triggerPercent * 100;
     debugLog(
       debugEnabled,
-      `[Agent] Step ${stepNumber + 1} | Tokens: ${budgetSummary.totalTokens.toLocaleString()} (${budgetSummary.usagePercentage.toFixed(1)}%) | Compact: ${budgetSummary.shouldCompact ? 'YES' : 'no'}`,
+      `[Agent] Step ${stepNumber + 1} | Tokens: ${totalTokens.toLocaleString()} (${utilizationPercent.toFixed(1)}%) | Compact: ${shouldCompact ? 'YES' : 'no'}`,
     );
 
     // 注入上下文水位信息（当使用率 > 60% 时让模型可见）
-    if (budgetSummary.usagePercentage > 60) {
-      const warningLevel = budgetSummary.usagePercentage > 85 ? ' ⚠️ CRITICAL' : budgetSummary.usagePercentage > 75 ? ' ⚠️ HIGH' : '';
-      const contextHint = `[Context Usage: ${budgetSummary.usagePercentage.toFixed(0)}%${warningLevel}]\n` +
-        (budgetSummary.usagePercentage > 75
+    if (utilizationPercent > 60) {
+      const warningLevel = utilizationPercent > 85 ? ' ⚠️ CRITICAL' : utilizationPercent > 75 ? ' ⚠️ HIGH' : '';
+      const contextHint = `[Context Usage: ${utilizationPercent.toFixed(0)}%${warningLevel}]\n` +
+        (utilizationPercent > 75
           ? `Note: Large tool outputs can be recovered from disk if needed. Check tool result metadata for "[saved to: ...]" paths.\n`
           : '');
       messages = [...messages, {
         role: 'user',
         content: contextHint,
       } as ModelMessageType];
-      debugLog(debugEnabled, `[Agent] Context usage ${budgetSummary.usagePercentage.toFixed(1)}%, injected hint`);
+      debugLog(debugEnabled, `[Agent] Context usage ${utilizationPercent.toFixed(1)}%, injected hint`);
     }
 
     // 条件技能激活已移除，技能现在通过 Skill 工具主动调用
@@ -147,11 +166,19 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     }
 
     // 每步调用 compactBeforeStep（Layer 2 + Layer 3）
+    // 状态机：先 recordAttempt，再 recordResult
+    sessionState.compactionTracker.recordAttempt();
     const compactResult = await sessionState.compact(messages as import('ai').ModelMessage[]);
+    sessionState.compactionTracker.recordResult(compactResult.tokensFreed ?? 0);
     if (compactResult.executed) {
-      debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens`);
+      // UI 展示的是配置的压缩阈值，而不是会话累计 token 的动态百分比。
+      // triggerPercent 的配置单位为 0-1，这里转为 0-100，并做边界保护。
+      const triggerWatermark = Math.min(100, Math.max(0, (config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT) * 100));
+      config.compactionCallbackRef?.current?.({ status: 'start', triggerWatermark });
+      debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens at configured ${triggerWatermark.toFixed(0)}% watermark`);
       messages = compactResult.messages as ModelMessageType[];
-      sessionState.tokenBudget.reportCompaction(compactResult);
+      sessionState.tokenBudget.reportCompaction(compactResult, triggerWatermark);
+      config.compactionCallbackRef?.current?.({ status: 'end', triggerWatermark, tokensFreed: compactResult.tokensFreed ?? 0 });
     }
 
     // ── Task Context Injection ──
@@ -196,8 +223,9 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       logger.info('Context', formatContextBar(estimation, estimation.modelLimit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
       // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)
       sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);
+      // 缓存估算结果,供 onStepEnd 推送前端当前窗口占用 + 明细
+      sessionState.lastEstimation = estimation;
 
-      // 前端展示使用 finish-step 推送的实际值，prepareStep 仅用于上下文压缩闸门
       // 不静默发超标请求出去被 provider 拒。pre-stream 闸门见 create.ts;此处覆盖运行中增长。
       if (estimation.exceedsLimit) {
         const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve} = ${estimation.totalTokens} > ${estimation.modelLimit}`;

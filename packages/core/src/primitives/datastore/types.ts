@@ -108,6 +108,14 @@ export interface Conversation {
   contextLastCompactionFreedTokens: number | null;
   /** 当前上下文已被压缩 */
   contextCompacted: boolean | null;
+  /** v18+ 新 schema 字段 */
+  contextCompactionState: string | null;
+  contextCompactionsCount: number | null;
+  contextTotalFreed: number | null;
+  contextSessionInput: number | null;
+  contextSessionOutput: number | null;
+  contextSessionCost: number | null;
+  contextCapturedAt: string | null;
   /** Monotonic revision for message-tree/projection changes. */
   revision: number;
   activeBranchId: string | null;
@@ -897,6 +905,14 @@ export interface ConversationRow {
   context_step_input_tokens: number | null;
   context_last_compaction_freed_tokens: number | null;
   context_compacted: number | null;
+  // v18 新增列
+  context_compaction_state: string | null;
+  context_compactions_count: number | null;
+  context_total_freed: number | null;
+  context_session_input: number | null;
+  context_session_output: number | null;
+  context_session_cost: number | null;
+  context_captured_at: string | null;
   revision: number;
   active_branch_id: string | null;
   created_at: string;

@@ -17,13 +17,14 @@ import type { PermissionRule } from '../../modules/permissions/types';
 import type { Skill, SkillEffort } from '../../modules/skills/types';
 import type { ModelMessage } from 'ai';
 import type { GoalState } from '../../modules/goal/types';
+import type { FullRequestEstimation } from '../compaction/token-counter';
 
 // ============================================================
 // 1. TokenBudget - 上下文窗口预算（compaction/pipeline 消费）
 // ============================================================
 export interface TokenBudget {
   accumulate(usage: LanguageModelUsage): void;
-  reportCompaction(result: CompactionResult): void;
+  reportCompaction(result: CompactionResult, triggerWatermark?: number): void;
   /** 记录本次请求发出前的输入侧估算,供下一步 usage 配对校准(见主文档 F) */
   recordEstimate(estimatedInputTokens: number): void;
   /** usage 反馈校准系数(实际/估算 的滑动平均) */
@@ -42,6 +43,8 @@ export interface TokenBudget {
     remainingTokens: number;
     usagePercentage: number;
     shouldCompact: boolean;
+    lastCompactionTokens: number;
+    compactionTriggerWatermark: number;
   };
 }
 
@@ -119,6 +122,8 @@ export interface CompactionService {
 export interface PipelineContext {
   tokenBudget: TokenBudget;
   costTracker: CostTracking;
+  /** 压缩状态机 + 事件累计（新；与 TokenBudget 正交） */
+  compactionTracker: import('../compaction/state-tracker').CompactionStateTracker;
   denialTracker: DenialTracking;
   contentReplacementState: ContentReplacementState;
   toolOutputConfig: ToolOutputConfig;
@@ -137,6 +142,8 @@ export interface PipelineContext {
   consecutiveReasoningOnlySteps: number;
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
+  /** prepareStep 最近一次全量估算结果，供 onStepEnd 推送前端当前窗口占用 + 明细 */
+  lastEstimation?: FullRequestEstimation | null;
   /** 更新会话上下文水位到数据库。pipeline 每步估算后调用。 */
   updateContextBudget?: (estimation: {
     utilizationPercent: number;

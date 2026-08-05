@@ -1,5 +1,11 @@
 # Token 使用信息展示：问题分析与架构修复方案
 
+> **状态**：⚠️ 本文档已被 [context-usage-redesign.md](./context-usage-redesign.md) 替代实施
+>
+> 本文档保留为"问题分析与演进历史"。新方案（3 个真相源严格分工 + 4 态显式状态机 + 单一 zod schema）请查阅 [context-usage-redesign.md](./context-usage-redesign.md)。
+>
+> 本文档 §4 "修复方案" 中的部分方案（`onContextUsage` 回调、ChatPage 字段补全等）已被新方案覆盖或重新设计。**新实施请勿参考本文档 §4**。
+
 ## 1. 问题总览
 
 现有 token 统计流程存在两类问题：**数据准确性问题**（展示给用户的数值不一致）和 **架构设计问题**（Core 计算了数据却绕路 DB 让 route 回读）。

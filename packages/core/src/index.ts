@@ -417,3 +417,24 @@ export type {
   SqliteDatabaseOptions,
   SqliteStatement,
 } from './primitives/datastore/types';
+
+// ============================================================
+// Context Budget（上下文用量单一类型源）
+// ============================================================
+// 三方真相源统一载体，跨 core/app 共享 schema 避免漂移。
+// 设计参考：docs/context-usage-redesign.md §5
+export {
+  CompactionState,
+  CompactionSnapshotSchema,
+  CompactionStateTracker,
+  type CompactionState as CompactionStateType,
+  type CompactionSnapshot,
+  type CompactionStateTrackerOptions,
+} from './modules/compaction/state-tracker';
+export {
+  ContextBudgetSnapshotSchema,
+  SessionCostSnapshotSchema,
+  type ContextBudgetSnapshot,
+  type SessionCostSnapshot,
+  type ContextBudgetSource,
+} from './services/context/budget-schema';

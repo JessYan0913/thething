@@ -23,6 +23,7 @@ import { createCompactionView } from '../compaction/compaction-view';
 import { CompactionTelemetry } from '../compaction/compaction-telemetry';
 import { ContextLedger } from '../compaction/context-ledger';
 import { compactBeforeStep } from '../compaction';
+import { CompactionStateTracker } from '../compaction/state-tracker';
 
 export type { SessionState, SessionStateOptions };
 
@@ -77,6 +78,12 @@ export function createSessionState(
   // 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化
   const compactionStepCounter = { current: 0 };
 
+  // 压缩状态机 + 事件累计（新；与 tokenBudget 正交）
+  // triggerPercent 来自 compactionConfig.contextWindow.triggerPercent（默认 0.85）
+  const compactionTracker = new CompactionStateTracker({
+    triggerPercent: compactionConfig?.contextWindow.triggerPercent ?? 0.85,
+  });
+
   // 使用普通对象，简化状态管理
   const state: SessionState = {
     conversationId,
@@ -107,6 +114,7 @@ export function createSessionState(
     contextLedger,
     compactionStepCounter,
     compactionView: createCompactionView(telemetry),
+    compactionTracker,
     lastEstimation: undefined,
     lastTodoRevision: 0,
     stepsSinceTodoMutation: 0,

@@ -15,6 +15,8 @@ export class TokenBudgetTracker {
   private _lastStepOutputTokens = 0;
   private _lastStepCachedReadTokens = 0;
   private _lastCompactionTokens = 0;
+  /** 触发压缩时的水位百分比 */
+  private _compactionTriggerWatermark = 0;
   // usage 反馈校准(见 docs/context-compaction-architecture.md F):
   // 实际 input tokens / 估算 tokens 的滑动平均,用于修正后续估算
   private _calibration = 1;
@@ -98,8 +100,11 @@ export class TokenBudgetTracker {
     return this.totalTokens > this.maxContextTokens - this.compactThreshold;
   }
 
-  reportCompaction(result: CompactionResult): void {
+  reportCompaction(result: CompactionResult, triggerWatermark?: number): void {
     this._lastCompactionTokens = result.tokensFreed;
+    if (triggerWatermark != null) {
+      this._compactionTriggerWatermark = triggerWatermark;
+    }
     const preCompactTokens = this.totalTokens;
     const postCompactTokens = preCompactTokens - result.tokensFreed;
 
@@ -116,6 +121,8 @@ export class TokenBudgetTracker {
     remainingTokens: number;
     usagePercentage: number;
     shouldCompact: boolean;
+    lastCompactionTokens: number;
+    compactionTriggerWatermark: number;
   } {
     return {
       inputTokens: this._sessionInputTokens,
@@ -125,6 +132,8 @@ export class TokenBudgetTracker {
       remainingTokens: this.remainingTokens,
       usagePercentage: this.usagePercentage,
       shouldCompact: this.shouldCompact(),
+      lastCompactionTokens: this._lastCompactionTokens,
+      compactionTriggerWatermark: this._compactionTriggerWatermark,
     };
   }
 }

@@ -420,6 +420,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     contextLimit: sessionOptions.maxContextTokens,
     triggerPercent: compactionCfg.contextWindow.triggerPercent,
     resolveModel: resolveStepModel,
+    compactionCallbackRef: options.compactionCallbackRef,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

@@ -119,6 +119,9 @@ export interface SessionState {
   /** 跨步骤压缩视图（记录已被 L3 摘要覆盖的前缀） */
   compactionView: CompactionView;
 
+  /** 压缩状态机 + 事件累计（新；与 TokenBudgetTracker 正交） */
+  compactionTracker: import('../compaction/state-tracker').CompactionStateTracker;
+
   /** 遥测收集器 */
   telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 
@@ -128,8 +131,8 @@ export interface SessionState {
   /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
   compactionStepCounter: { current: number };
 
-  /** 上次 token 估算结果（用于增量估算） */
-  lastEstimation?: import('../compaction/incremental-estimation').CachedEstimation;
+  /** 上次完整请求 token 估算结果，供 onStepEnd 推送前端 + 写库使用 */
+  lastEstimation?: import('../compaction/token-counter').FullRequestEstimation;
 
   /** 压缩消息 */
   compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;

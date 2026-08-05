@@ -7,7 +7,7 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -495,6 +495,27 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v17: added compaction info columns');
   }
 
+  if (currentVersion < 18) {
+    // v18: Context Budget 新 schema 列（context-usage-redesign §5.4）
+    // 保留 v12-v17 旧列以兼容；新列由 safeBuildContextBudgetPayload 写入。
+    for (const col of [
+      'context_compaction_state TEXT DEFAULT NULL',
+      'context_compactions_count INTEGER DEFAULT 0',
+      'context_total_freed INTEGER DEFAULT 0',
+      'context_session_input INTEGER DEFAULT 0',
+      'context_session_output INTEGER DEFAULT 0',
+      'context_session_cost REAL DEFAULT 0',
+      'context_captured_at TEXT DEFAULT NULL',
+    ]) {
+      try {
+        db.exec(`ALTER TABLE conversations ADD COLUMN ${col}`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column name')) throw e;
+      }
+    }
+    logger.debug('Schema', 'Migrated to v18: added ContextBudgetSnapshot columns');
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -507,7 +528,7 @@ export function initializeSchema(db: SqliteDatabase): void {
   db.exec(`
     -- Conversations table (base v1 schema; v5 adds source/source_id/channel_id,
     -- v6 adds project_id, v11 adds head_message_id, v12 adds context fields,
-    -- v13 adds revision)
+    -- v13 adds revision, v15/16/17 adds breakdown+cache+compaction, v18 adds new schema)
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       title TEXT DEFAULT 'New Conversation',
@@ -515,6 +536,22 @@ export function initializeSchema(db: SqliteDatabase): void {
       context_usage REAL DEFAULT NULL,
       context_total INTEGER DEFAULT NULL,
       context_limit INTEGER DEFAULT NULL,
+      context_messages INTEGER DEFAULT NULL,
+      context_instructions INTEGER DEFAULT NULL,
+      context_tools INTEGER DEFAULT NULL,
+      context_output_reserve INTEGER DEFAULT NULL,
+      context_cached_read_tokens INTEGER DEFAULT NULL,
+      context_step_input_tokens INTEGER DEFAULT NULL,
+      context_last_compaction_freed_tokens INTEGER DEFAULT NULL,
+      context_compacted INTEGER DEFAULT NULL,
+      -- v18 新增列
+      context_compaction_state TEXT DEFAULT NULL,
+      context_compactions_count INTEGER DEFAULT 0,
+      context_total_freed INTEGER DEFAULT 0,
+      context_session_input INTEGER DEFAULT 0,
+      context_session_output INTEGER DEFAULT 0,
+      context_session_cost REAL DEFAULT 0,
+      context_captured_at TEXT DEFAULT NULL,
       revision INTEGER NOT NULL DEFAULT 0,
       active_branch_id TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),

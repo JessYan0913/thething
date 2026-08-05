@@ -33,6 +33,9 @@ import { SubAgentCard } from '@/components/ai-elements/subagent-stream';
 import { TodoPanel } from '@/components/chat-todo-panel';
 import type { SubDataPart } from '@/components/ai-elements/subagent-stream';
 import { Shimmer } from '@/components/ai-elements/shimmer';
+import { ContextRing } from '@/components/context/ContextRing';
+import { ContextDetail } from '@/components/context/ContextDetail';
+import { ContextBudgetSnapshotSchema, type ContextBudgetSnapshot } from '@the-thing/core/context-budget';
 import { FilePreviewPanel } from '@/components/ai-elements/file-preview-panel';
 import { WriteFileStreamingCard } from '@/components/ai-elements/write-file-streaming-card';
 import { BashStreamingCard, BashOutputCard } from '@/components/ai-elements/bash-streaming-card';
@@ -404,14 +407,8 @@ export interface ChatProps {
   showAgentSelector?: boolean;
   /** 项目根目录绝对路径，用于将 Agent 返回的相对路径补全为绝对路径 */
   projectPath?: string;
-  /** 上下文水位数据，从会话数据库读取传入，SSE 流推送时会覆盖此值 */
-  contextBudget?: {
-    usagePercentage: number; totalTokens: number; modelLimit: number;
-    messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number;
-    cacheHitRatio?: number; cachedReadTokens?: number;
-    lastCompactionFreedTokens?: number; compactionActive?: boolean;
-    sessionInputTokens?: number; sessionOutputTokens?: number; sessionCachedReadTokens?: number;
-  } | null;
+  /** 上下文水位数据（新 schema）。从会话数据库读取传入，SSE 流推送时会覆盖此值。 */
+  contextBudget?: import('@the-thing/core').ContextBudgetSnapshot | null;
 }
 
 export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath, contextBudget }: ChatProps) {
@@ -967,22 +964,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }
   }, [messages]);
 
-  const [streamContextBudget, setStreamContextBudget] = useState<{
-    usagePercentage: number;
-    totalTokens: number;
-    modelLimit: number;
-    messagesTokens?: number;
-    instructionsTokens?: number;
-    toolsTokens?: number;
-    outputReserve?: number;
-    cacheHitRatio?: number;
-    cachedReadTokens?: number;
-    lastCompactionFreedTokens?: number;
-    compactionActive?: boolean;
-    sessionInputTokens?: number;
-    sessionOutputTokens?: number;
-    sessionCachedReadTokens?: number;
-  } | null>(null);
+  const [streamContextBudget, setStreamContextBudget] = useState<import('@the-thing/core').ContextBudgetSnapshot | null>(null);
+
+  // 压缩状态：'idle' | 'compacting' | 'done'
+  const [compactionStatus, setCompactionStatus] = useState<'idle' | 'compacting' | 'done'>('idle');
 
   // 持久化最新的上下文水位数据，流式数据消失后仍保留
   const persistedContextBudget = useRef(streamContextBudget);
@@ -1009,16 +994,67 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const effectiveContextBudget = streamContextBudget ?? persistedContextBudget.current ?? contextBudget ?? null;
 
   // 从流式消息的 data-context-usage 部分提取上下文水位数据
+  // 优先用新 schema 字段；stream data 同时含旧字段做兜底
   useEffect(() => {
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === 'data-context-usage' && 'data' in part) {
-          const d = (part as { data: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number; cacheHitRatio?: number; cachedReadTokens?: number; lastCompactionFreedTokens?: number; compactionActive?: boolean; sessionInputTokens?: number; sessionOutputTokens?: number; sessionCachedReadTokens?: number } }).data;
-          if (d && typeof d.usagePercentage === 'number') {
-            setStreamContextBudget(d);
-          } else if (d && (d.sessionInputTokens != null || d.sessionOutputTokens != null || d.sessionCachedReadTokens != null)) {
-            // 仅含累计统计的增量更新（来自 finish-step 推送），合并到现有数据
-            setStreamContextBudget(prev => prev ? { ...prev, ...d } : d);
+          const d = (part as { data: Record<string, unknown> }).data;
+          if (!d) continue;
+          // 优先用新 schema 字段
+          const snapshot: ContextBudgetSnapshot = {
+            utilizationPercent: typeof d.utilizationPercent === 'number'
+              ? d.utilizationPercent
+              : (typeof d.usagePercentage === 'number' ? d.usagePercentage : 0),
+            totalTokens: typeof d.totalTokens === 'number' ? d.totalTokens : 0,
+            modelLimit: typeof d.modelLimit === 'number' ? d.modelLimit : 128_000,
+            compaction: d.compaction && typeof d.compaction === 'object'
+              ? d.compaction as ContextBudgetSnapshot['compaction']
+              : {
+                  state: 'idle' as const,
+                  compactionsCount: typeof d.compactionActive === 'boolean' && d.compactionActive ? 1 : 0,
+                  totalFreed: typeof d.lastCompactionFreedTokens === 'number' ? d.lastCompactionFreedTokens : 0,
+                  triggerPercent: typeof d.compactionTriggerWatermark === 'number' ? d.compactionTriggerWatermark / 100 : 0.85,
+                },
+            sessionCost: {
+              inputTokens: typeof d.sessionCost === 'object' && d.sessionCost !== null && 'inputTokens' in d.sessionCost
+                ? Number((d.sessionCost as { inputTokens: number }).inputTokens)
+                : (typeof d.sessionInputTokens === 'number' ? d.sessionInputTokens : 0),
+              outputTokens: typeof d.sessionCost === 'object' && d.sessionCost !== null && 'outputTokens' in d.sessionCost
+                ? Number((d.sessionCost as { outputTokens: number }).outputTokens)
+                : (typeof d.sessionOutputTokens === 'number' ? d.sessionOutputTokens : 0),
+              cachedReadTokens: typeof d.sessionCost === 'object' && d.sessionCost !== null && 'cachedReadTokens' in d.sessionCost
+                ? Number((d.sessionCost as { cachedReadTokens: number }).cachedReadTokens)
+                : (typeof d.sessionCachedReadTokens === 'number' ? d.sessionCachedReadTokens : 0),
+              totalCostUsd: typeof d.sessionCost === 'object' && d.sessionCost !== null && 'totalCostUsd' in d.sessionCost
+                ? Number((d.sessionCost as { totalCostUsd: number }).totalCostUsd)
+                : 0,
+            },
+            capturedAt: typeof d.capturedAt === 'string' ? d.capturedAt : new Date().toISOString(),
+            source: 'live' as const,
+          };
+          // schema 校验：失败则跳过本次更新
+          const result = ContextBudgetSnapshotSchema.safeParse(snapshot);
+          if (result.success) {
+            setStreamContextBudget(result.data);
+          }
+        }
+      }
+    }
+  }, [messages]);
+
+  // 从流式消息的 data-compaction-status 部分提取压缩状态
+  useEffect(() => {
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === 'data-compaction-status' && 'data' in part) {
+          const d = (part as { data: { status: 'start' | 'end'; triggerWatermark?: number; tokensFreed?: number } }).data;
+          if (d && d.status === 'start') {
+            setCompactionStatus('compacting');
+          } else if (d && d.status === 'end') {
+            setCompactionStatus('done');
+            // 1 秒后自动回到 idle
+            setTimeout(() => setCompactionStatus('idle'), 1000);
           }
         }
       }
@@ -1652,28 +1688,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   <button
                     type="button"
                     className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity"
-                    title={`上下文窗口: ${effectiveContextBudget.usagePercentage.toFixed(0)}% (${effectiveContextBudget.totalTokens >= 1000 ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(0)}K` : effectiveContextBudget.totalTokens}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
+                    title={`上下文窗口: ${effectiveContextBudget.utilizationPercent.toFixed(0)}% (${effectiveContextBudget.totalTokens >= 1000 ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(0)}K` : effectiveContextBudget.totalTokens}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
                     onClick={() => setShowContextDetail(true)}
                   >
-                    <svg width="18" height="18" viewBox="0 0 20 20" className="-rotate-90 shrink-0">
-                      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted-foreground/30" />
-                      <circle
-                        cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-                        strokeDasharray={`${(Math.min(100, effectiveContextBudget.usagePercentage) / 100) * 50.27} 50.27`}
-                        className={cn(
-                          'transition-all duration-700',
-                          effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
-                          effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-500' : 'text-primary/60',
-                        )}
-                      />
-                    </svg>
-                    <span className={cn(
-                      'text-xs tabular-nums',
-                      effectiveContextBudget.usagePercentage > 80 ? 'text-destructive' :
-                      effectiveContextBudget.usagePercentage > 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground',
-                    )}>
-                      {effectiveContextBudget.usagePercentage.toFixed(0)}%
-                    </span>
+                    <ContextRing snapshot={effectiveContextBudget} />
                   </button>
 
                   {showContextDetail && (
@@ -1687,7 +1705,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                         className="fixed bottom-20 right-4 z-50 w-72 rounded-lg border bg-popover text-popover-foreground shadow-lg p-4"
                       >
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-xs font-semibold text-foreground/80">上下文占用详情</h4>
+                          <h4 className="text-xs font-semibold text-foreground/80">上下文用量</h4>
                           <button
                             type="button"
                             onClick={() => setShowContextDetail(false)}
@@ -1699,119 +1717,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           </button>
                         </div>
 
-                        {/* 总计：放在最前面 */}
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>总计</span>
-                            <span className="tabular-nums">
-                              {effectiveContextBudget.totalTokens >= 1000
-                                ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(1)}K`
-                                : effectiveContextBudget.totalTokens}
-                              {' / '}
-                              {effectiveContextBudget.modelLimit >= 1000
-                                ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K`
-                                : effectiveContextBudget.modelLimit}
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={cn(
-                                'h-full rounded-full transition-all duration-700',
-                                effectiveContextBudget.usagePercentage > 80
-                                  ? 'bg-destructive'
-                                  : effectiveContextBudget.usagePercentage > 60
-                                    ? 'bg-yellow-500'
-                                    : 'bg-primary/60',
-                              )}
-                              style={{
-                                width: `${Math.min(100, effectiveContextBudget.usagePercentage)}%`,
-                              }}
-                            />
-                          </div>
-                          {effectiveContextBudget.compactionActive && effectiveContextBudget.lastCompactionFreedTokens != null && effectiveContextBudget.lastCompactionFreedTokens > 0 && (
-                            <div className="flex items-center gap-2">
-                              <span className="inline-block w-2 h-2 rounded-full shrink-0 bg-orange-500" />
-                              <span className="text-xs text-muted-foreground flex-1 truncate">上下文已压缩</span>
-                              <span className="text-xs tabular-nums text-orange-600 dark:text-orange-400">
-                                -{effectiveContextBudget.lastCompactionFreedTokens >= 1000
-                                  ? `${(effectiveContextBudget.lastCompactionFreedTokens / 1000).toFixed(1)}K`
-                                  : effectiveContextBudget.lastCompactionFreedTokens}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 明细：消息历史、系统指令、工具定义、输出预留 */}
-                        <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                          <ContextBarItem
-                            label="消息历史"
-                            value={effectiveContextBudget.messagesTokens ?? 0}
-                            total={effectiveContextBudget.totalTokens}
-                            color="bg-blue-500"
-                            dotColor="bg-blue-500"
-                          />
-                          <ContextBarItem
-                            label="系统指令"
-                            value={effectiveContextBudget.instructionsTokens ?? 0}
-                            total={effectiveContextBudget.totalTokens}
-                            color="bg-emerald-500"
-                            dotColor="bg-emerald-500"
-                          />
-                          <ContextBarItem
-                            label="工具定义"
-                            value={effectiveContextBudget.toolsTokens ?? 0}
-                            total={effectiveContextBudget.totalTokens}
-                            color="bg-amber-500"
-                            dotColor="bg-amber-500"
-                          />
-                          <ContextBarItem
-                            label="输出预留"
-                            value={effectiveContextBudget.outputReserve ?? 0}
-                            total={effectiveContextBudget.totalTokens}
-                            color="bg-purple-500"
-                            dotColor="bg-purple-500"
-                          />
-                        </div>
-
-                        {/* 会话累计：输入、输出、缓存命中 */}
-                        <div className="mt-3 pt-3 border-t border-border/50">
-                          <h5 className="text-[10px] font-medium text-muted-foreground/70 mb-2 uppercase tracking-wider">会话累计</h5>
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">输入</span>
-                              <span className="tabular-nums font-medium">
-                                {effectiveContextBudget.sessionInputTokens != null
-                                  ? (effectiveContextBudget.sessionInputTokens >= 1000
-                                    ? `${(effectiveContextBudget.sessionInputTokens / 1000).toFixed(1)}K`
-                                    : effectiveContextBudget.sessionInputTokens)
-                                  : '--'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">输出</span>
-                              <span className="tabular-nums font-medium">
-                                {effectiveContextBudget.sessionOutputTokens != null
-                                  ? (effectiveContextBudget.sessionOutputTokens >= 1000
-                                    ? `${(effectiveContextBudget.sessionOutputTokens / 1000).toFixed(1)}K`
-                                    : effectiveContextBudget.sessionOutputTokens)
-                                  : '--'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">缓存命中</span>
-                              <span className="tabular-nums text-cyan-600 dark:text-cyan-400">
-                                {effectiveContextBudget.sessionCachedReadTokens != null
-                                  ? `${effectiveContextBudget.sessionCachedReadTokens >= 1000 ? `${(effectiveContextBudget.sessionCachedReadTokens / 1000).toFixed(1)}K` : effectiveContextBudget.sessionCachedReadTokens}`
-                                  : '--'}
-                                {effectiveContextBudget.sessionCachedReadTokens != null && effectiveContextBudget.sessionInputTokens != null && effectiveContextBudget.sessionInputTokens > 0 && (
-                                  <span className="text-muted-foreground">
-                                    {` (${Math.round((effectiveContextBudget.sessionCachedReadTokens / effectiveContextBudget.sessionInputTokens) * 100)}%)`}
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                        {/* 新 schema 详情（v1：3 段；detail 4 段 + 累计 3 段在 v2 加） */}
+                        <ContextDetail snapshot={effectiveContextBudget} />
                       </div>
                     </>
                   )}
@@ -2874,14 +2781,19 @@ function ContextBarItem({ label, value, total, color, dotColor }: {
     <div className="flex items-center gap-2">
       <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
       <span className="text-xs text-muted-foreground flex-1 truncate">{label}</span>
-      <div className="flex items-center gap-2">
-        <div className="w-20 h-2 rounded-full bg-muted overflow-hidden">
+      <div className="flex items-center gap-1.5">
+        <div className="w-16 h-2 rounded-full bg-muted overflow-hidden">
           <div
             className={`h-full rounded-full ${color}`}
             style={{ width: `${Math.min(100, percentage)}%` }}
           />
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground w-12 text-right">{formatted}</span>
+        <span className="text-xs tabular-nums text-muted-foreground w-12 text-right">
+          {formatted}
+        </span>
+        <span className="text-[10px] tabular-nums text-muted-foreground/50 w-7 text-right">
+          {percentage.toFixed(0)}%
+        </span>
       </div>
     </div>
   );
