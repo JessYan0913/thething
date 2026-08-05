@@ -136,5 +136,50 @@ describe('system-prompt', () => {
         expect(sections).toContain('rules');
       });
     });
+
+    describe('cache-friendly ordering', () => {
+      it('places byte-stable sections before the dynamic boundary', async () => {
+        const customInstructions = 'BE_CONCISE';
+        const { includedSections } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+          customInstructions,
+        });
+        // dynamic-boundary marker must exist
+        expect(includedSections).toContain('dynamic-boundary');
+        const boundaryIdx = includedSections.indexOf('dynamic-boundary');
+        // All session-level / static sections should be before the boundary
+        const cacheable = ['identity', 'capabilities', 'rules', 'actions', 'error-handling',
+                           'project-context', 'skill-matching', 'mcp-tools',
+                           'permissions', 'wiki-guidelines', 'custom-instructions'];
+        for (const name of cacheable) {
+          if (!includedSections.includes(name)) continue;
+          expect(includedSections.indexOf(name)).toBeLessThan(boundaryIdx);
+        }
+        // Per-turn sections (todo-overview) must be after the boundary
+        if (includedSections.includes('todo-overview')) {
+          expect(includedSections.indexOf('todo-overview')).toBeGreaterThan(boundaryIdx);
+        }
+        // dynamic section (session meta) must be after the boundary
+        if (includedSections.includes('session')) {
+          expect(includedSections.indexOf('session')).toBeGreaterThan(boundaryIdx);
+        }
+      });
+
+      it('places customInstructions before dynamic sections', async () => {
+        const customInstructions = 'TEST_CUSTOM_INSTR';
+        const { prompt } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+          customInstructions,
+        });
+        // customInstructions should appear before the DYNAMIC_BOUNDARY marker
+        const customIdx = prompt.indexOf('TEST_CUSTOM_INSTR');
+        const boundaryIdx = prompt.indexOf('__DYNAMIC_CONTENT_BOUNDARY__');
+        expect(customIdx).toBeGreaterThan(-1);
+        expect(boundaryIdx).toBeGreaterThan(-1);
+        expect(customIdx).toBeLessThan(boundaryIdx);
+      });
+    });
   });
 });

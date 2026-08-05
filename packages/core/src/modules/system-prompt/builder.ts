@@ -172,9 +172,9 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     create: async (options) => {
       if (options.wikiContext?.recalledContent) {
         const section = await createRecalledWikiSection(options.wikiContext.recalledContent);
-        return section ?? { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
+        return section ?? { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 51 };
       }
-      return { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 46 };
+      return { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 51 };
     },
     cacheStrategy: "dynamic",
   },
@@ -299,34 +299,51 @@ export async function buildSystemPrompt(
     }
   }
 
-  // Sort all sections by priority
-  allSections.sort((a, b) => a.priority - b.priority);
+  // ============================================================
+  // Cache-friendly ordering:
+  // - static (identity/capabilities/rules/...) and session-level sections
+  //   (project-context/skill-matching/mcp-tools/permissions/wiki-guidelines) come first.
+  // - customInstructions and soulGuide are byte-stable within a session, so they
+  //   also sit in the cacheable prefix.
+  // - The dynamic boundary marker (priority 50) is a constant string that
+  //   separates the stable prefix from the per-turn suffix.
+  // - Everything that changes per turn (recalled-wiki, todo-overview, session
+  //   meta) is placed after the boundary so the cache prefix stays intact.
+  // ============================================================
 
-  // Insert dynamic boundary marker
-  const dynamicBoundarySection: SystemPromptSection = {
+  // Cacheable tail: customInstructions (user-defined, static within a session)
+  if (opts.customInstructions) {
+    allSections.push({
+      name: "custom-instructions",
+      content: opts.customInstructions,
+      cacheStrategy: "static",
+      priority: 47,
+    });
+  }
+
+  // Cacheable tail: soulGuide (only shown when SOUL.md is missing, stable
+  // within that session)
+  if (!soulContent) {
+    allSections.push({
+      name: "soul-guide",
+      content: `【灵魂文件】
+你的灵魂文件（~/.thething/SOUL.md）尚未创建。这个文件定义了你的名字、性格和说话风格。
+在合适的时机，你可以询问用户是否想设定这些。用户描述后，保存到该文件。
+如果用户跳过，尊重他们的选择。`,
+      cacheStrategy: "session",
+      priority: 48,
+    });
+  }
+
+  // Dynamic boundary marker (constant string — does not invalidate cache)
+  allSections.push({
     name: "dynamic-boundary",
     content: `\n\n${DYNAMIC_BOUNDARY}\n\n`,
     cacheStrategy: "dynamic",
     priority: DYNAMIC_BOUNDARY_PRIORITY,
-  };
+  });
 
-  // Find where to insert the dynamic boundary (after tools, before project context)
-  const toolsIndex = allSections.findIndex((s) => s.name === "tools");
-  if (toolsIndex !== -1) {
-    allSections.splice(toolsIndex + 1, 0, dynamicBoundarySection);
-  } else {
-    // Insert before project context if tools not present
-    const projectIndex = allSections.findIndex(
-      (s) => s.name === "project-context",
-    );
-    if (projectIndex !== -1) {
-      allSections.splice(projectIndex, 0, dynamicBoundarySection);
-    } else {
-      allSections.push(dynamicBoundarySection);
-    }
-  }
-
-  // Add dynamic sections
+  // Per-turn dynamic sections
   for (const factory of DYNAMIC_SECTION_FACTORIES) {
     const section = await factory.create(opts);
     if (section.content) {
@@ -334,30 +351,9 @@ export async function buildSystemPrompt(
     }
   }
 
-  // Add custom instructions at the end
-  if (opts.customInstructions) {
-    const customSection: SystemPromptSection = {
-      name: "custom-instructions",
-      content: opts.customInstructions,
-      cacheStrategy: "static",
-      priority: 200,
-    };
-    allSections.push(customSection);
-  }
-
-  // SOUL.md 引导：如果灵魂文件不存在，引导 Agent 在合适时机询问
-  if (!soulContent) {
-    const soulGuideSection: SystemPromptSection = {
-      name: "soul-guide",
-      content: `【灵魂文件】
-你的灵魂文件（~/.thething/SOUL.md）尚未创建。这个文件定义了你的名字、性格和说话风格。
-在合适的时机，你可以询问用户是否想设定这些。用户描述后，保存到该文件。
-如果用户跳过，尊重他们的选择。`,
-      cacheStrategy: "session",
-      priority: 201,
-    };
-    allSections.push(soulGuideSection);
-  }
+  // Final sort: lower priority first. Boundary (50) falls naturally between
+  // cacheable (1–48) and dynamic (51+), replacing the old splice hack.
+  allSections.sort((a, b) => a.priority - b.priority);
 
   // Filter out null content and combine
   const includedSections = allSections

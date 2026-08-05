@@ -32,8 +32,8 @@ export function createTodoOverviewSection(
     return {
       name: 'todo-overview',
       content: null,
-      cacheStrategy: 'session',
-      priority: 40,
+      cacheStrategy: 'dynamic',
+      priority: 52,
     };
   }
 
@@ -42,8 +42,8 @@ export function createTodoOverviewSection(
     return {
       name: 'todo-overview',
       content: null,
-      cacheStrategy: 'session',
-      priority: 40,
+      cacheStrategy: 'dynamic',
+      priority: 52,
     };
   }
 
@@ -51,8 +51,8 @@ export function createTodoOverviewSection(
   return {
     name: 'todo-overview',
     content,
-    cacheStrategy: 'session',
-    priority: 40,
+    cacheStrategy: 'dynamic',
+    priority: 52,
   };
 }
 
