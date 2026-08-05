@@ -26,6 +26,9 @@ function buildSnapshotFromConversation(conversation: {
   contextStepInputTokens?: number | null;
   contextLastCompactionFreedTokens?: number | null;
   contextCompacted?: boolean | null;
+  contextSessionInput?: number | null;
+  contextSessionOutput?: number | null;
+  contextSessionCost?: number | null;
 }): ContextBudgetSnapshot | null {
   if (conversation.contextUsage == null) return null;
   const snapshot: ContextBudgetSnapshot = {
@@ -40,10 +43,10 @@ function buildSnapshotFromConversation(conversation: {
       triggerPercent: 0.85,  // 旧 DB 没存；硬编码默认值
     },
     sessionCost: {
-      inputTokens: 0,  // 旧 DB 缺字段；前端显示为 0
-      outputTokens: 0,
+      inputTokens: conversation.contextSessionInput ?? 0,
+      outputTokens: conversation.contextSessionOutput ?? 0,
       cachedReadTokens: conversation.contextCachedReadTokens ?? 0,
-      totalCostUsd: 0,
+      totalCostUsd: conversation.contextSessionCost ?? 0,
     },
     capturedAt: new Date().toISOString(),
     source: 'db-loaded',

@@ -402,6 +402,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       stepInputTokens: estimation.stepInputTokens,
       lastCompactionFreedTokens: estimation.lastCompactionFreedTokens,
       compactionActive: estimation.compactionActive,
+      sessionInputTokens: estimation.sessionInputTokens,
+      sessionOutputTokens: estimation.sessionOutputTokens,
+      sessionCostUsd: estimation.sessionCostUsd,
     });
   };
 

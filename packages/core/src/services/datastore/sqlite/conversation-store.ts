@@ -87,11 +87,27 @@ export class SQLiteConversationStore implements ConversationStore {
     };
   }
 
-  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number; cachedReadTokens?: number; stepInputTokens?: number; lastCompactionFreedTokens?: number; compactionActive?: boolean }): void {
+  updateContextBudget(id: string, budget: { usagePercentage: number; totalTokens: number; modelLimit: number; messagesTokens?: number; instructionsTokens?: number; toolsTokens?: number; outputReserve?: number; cachedReadTokens?: number; stepInputTokens?: number; lastCompactionFreedTokens?: number; compactionActive?: boolean; sessionInputTokens?: number; sessionOutputTokens?: number; sessionCostUsd?: number }): void {
     const stmt = this.db.prepare(
-      `UPDATE conversations SET context_usage = ?, context_total = ?, context_limit = ?, context_messages = ?, context_instructions = ?, context_tools = ?, context_output_reserve = ?, context_cached_read_tokens = ?, context_step_input_tokens = ?, context_last_compaction_freed_tokens = ?, context_compacted = ?, updated_at = datetime('now') WHERE id = ?`
+      `UPDATE conversations SET context_usage = ?, context_total = ?, context_limit = ?, context_messages = ?, context_instructions = ?, context_tools = ?, context_output_reserve = ?, context_cached_read_tokens = ?, context_step_input_tokens = ?, context_last_compaction_freed_tokens = ?, context_compacted = ?, context_session_input = ?, context_session_output = ?, context_session_cost = ?, updated_at = datetime('now') WHERE id = ?`
     );
-    stmt.run(budget.usagePercentage, budget.totalTokens, budget.modelLimit, budget.messagesTokens ?? null, budget.instructionsTokens ?? null, budget.toolsTokens ?? null, budget.outputReserve ?? null, budget.cachedReadTokens ?? null, budget.stepInputTokens ?? null, budget.lastCompactionFreedTokens ?? null, budget.compactionActive ? 1 : null, id);
+    stmt.run(
+      budget.usagePercentage,
+      budget.totalTokens,
+      budget.modelLimit,
+      budget.messagesTokens ?? null,
+      budget.instructionsTokens ?? null,
+      budget.toolsTokens ?? null,
+      budget.outputReserve ?? null,
+      budget.cachedReadTokens ?? null,
+      budget.stepInputTokens ?? null,
+      budget.lastCompactionFreedTokens ?? null,
+      budget.compactionActive ? 1 : null,
+      budget.sessionInputTokens ?? null,
+      budget.sessionOutputTokens ?? null,
+      budget.sessionCostUsd ?? null,
+      id,
+    );
   }
 
   listConversationsByProject(projectId: string): Conversation[] {

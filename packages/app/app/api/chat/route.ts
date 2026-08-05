@@ -528,6 +528,9 @@ export async function POST(request: Request) {
                             stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
                             lastCompactionFreedTokens: payload.compaction.totalFreed,
                             compactionActive: payload.compaction.compactionsCount > 0,
+                            sessionInputTokens: payload.sessionCost.inputTokens,
+                            sessionOutputTokens: payload.sessionCost.outputTokens,
+                            sessionCostUsd: payload.sessionCost.totalCostUsd,
                           });
                         } catch {
                           // 不影响主流程
@@ -608,6 +611,9 @@ export async function POST(request: Request) {
                                 stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
                                 lastCompactionFreedTokens: payload.compaction.totalFreed,
                                 compactionActive: payload.compaction.compactionsCount > 0,
+                                sessionInputTokens: payload.sessionCost.inputTokens,
+                                sessionOutputTokens: payload.sessionCost.outputTokens,
+                                sessionCostUsd: payload.sessionCost.totalCostUsd,
                               });
                             } catch {}
                         }

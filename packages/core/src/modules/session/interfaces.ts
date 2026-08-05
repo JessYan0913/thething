@@ -165,6 +165,9 @@ export interface PipelineContext {
     lastCompactionFreedTokens?: number;
     /** 当前上下文已被压缩 */
     compactionActive?: boolean;
+    sessionInputTokens?: number;
+    sessionOutputTokens?: number;
+    sessionCostUsd?: number;
   }) => void;
 
   /** 上一步骤的 todo revision 快照，用于 ContextInjector 变更检测 */

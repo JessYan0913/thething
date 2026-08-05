@@ -235,6 +235,9 @@ export interface ConversationStore {
     stepInputTokens?: number;
     lastCompactionFreedTokens?: number;
     compactionActive?: boolean;
+    sessionInputTokens?: number;
+    sessionOutputTokens?: number;
+    sessionCostUsd?: number;
   }): void;
 }
 
