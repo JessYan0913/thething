@@ -998,8 +998,13 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 从流式消息的 data-context-usage 部分提取上下文水位数据
   // 优先用新 schema 字段；stream data 同时含旧字段做兜底
+  // 关键：只处理本次 turn 的新 messages（index >= initialMessageCountRef），
+  // 历史 messages 里的 data-context-usage parts 是旧 SSE 快照（含修复前的
+  // bug 数据如 inputTokens=0），否则会把正确的初始 prop 覆盖回 100%。
   useEffect(() => {
-    for (const msg of messages) {
+    const startIndex = initialMessageCountRef.current ?? 0;
+    for (let i = startIndex; i < messages.length; i++) {
+      const msg = messages[i];
       for (const part of msg.parts) {
         if (part.type === 'data-context-usage' && 'data' in part) {
           const d = (part as { data: Record<string, unknown> }).data;
