@@ -29,8 +29,21 @@ function buildSnapshotFromConversation(conversation: {
   contextSessionInput?: number | null;
   contextSessionOutput?: number | null;
   contextSessionCost?: number | null;
+  // /api/conversations 合并自 costStore（跨 turn 累计正确），用于 v18 列
+  // 还是 0（migration DEFAULT）或 null 的旧会话。
+  costSessionInput?: number | null;
+  costSessionOutput?: number | null;
+  costSessionCost?: number | null;
+  costCachedRead?: number | null;
 }): ContextBudgetSnapshot | null {
   if (conversation.contextUsage == null) return null;
+  // 优先用 costStore 数据：v18 列在首次写入前是 0（migration DEFAULT），
+  // 旧会话永远是 0，命中率 = full/(0+full) = 100% 错显。costStore 才有
+  // 跨 turn 累计的真相。
+  const sessionInput = conversation.costSessionInput ?? conversation.contextSessionInput ?? 0;
+  const sessionOutput = conversation.costSessionOutput ?? conversation.contextSessionOutput ?? 0;
+  const sessionCost = conversation.costSessionCost ?? conversation.contextSessionCost ?? 0;
+  const cachedRead = conversation.costCachedRead ?? conversation.contextCachedReadTokens ?? 0;
   const snapshot: ContextBudgetSnapshot = {
     utilizationPercent: Math.min(100, Math.max(0, conversation.contextUsage)),
     totalTokens: conversation.contextTotal ?? 0,
@@ -43,10 +56,10 @@ function buildSnapshotFromConversation(conversation: {
       triggerPercent: 0.85,  // 旧 DB 没存；硬编码默认值
     },
     sessionCost: {
-      inputTokens: conversation.contextSessionInput ?? 0,
-      outputTokens: conversation.contextSessionOutput ?? 0,
-      cachedReadTokens: conversation.contextCachedReadTokens ?? 0,
-      totalCostUsd: conversation.contextSessionCost ?? 0,
+      inputTokens: sessionInput,
+      outputTokens: sessionOutput,
+      cachedReadTokens: cachedRead,
+      totalCostUsd: sessionCost,
     },
     capturedAt: new Date().toISOString(),
     source: 'db-loaded',

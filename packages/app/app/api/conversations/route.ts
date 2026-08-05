@@ -28,11 +28,19 @@ export async function GET(request: Request) {
     }
 
     // Enrich with agent run status (running/paused_approval)
+    // 同时合并 chat_costs 累计成本：v18 列在 migration 时 DEFAULT 0，
+    // 旧会话行 context_session_input 全是 0，前端读 → cachedRead / (0+cachedRead) = 100%。
+    // costStore 由 CostTracker.persistToDB 写入，跨 turn 累加正确。
     const conversationsWithStatus = conversations.map((c) => {
       const run = rt.dataStore.agentRunStore.getRun(c.id);
+      const cost = rt.dataStore.costStore.getCostByConversation(c.id);
       return {
         ...c,
         runStatus: run?.status ?? null,
+        costSessionInput: cost?.inputTokens ?? null,
+        costSessionOutput: cost?.outputTokens ?? null,
+        costSessionCost: cost?.totalCostUsd ?? null,
+        costCachedRead: cost?.cachedReadTokens ?? null,
       };
     });
 
