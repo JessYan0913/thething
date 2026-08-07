@@ -486,6 +486,7 @@ export async function POST(request: Request) {
       agent,
       sessionState,
       mcpRegistry,
+      ownedMcpRegistry,
       model,
       adjustedMessages,
       wikiBaseDir,
@@ -544,7 +545,8 @@ export async function POST(request: Request) {
                 messages: messagesToSave,
                 conversationId,
                 costTracker: sessionState.costTracker,
-                mcpRegistry,
+                // 只清理 per-request registry；共享 registry 常驻
+                mcpRegistry: ownedMcpRegistry ?? null,
                 model,
                 isNewConversation: isFirstMessage,
                 userId,

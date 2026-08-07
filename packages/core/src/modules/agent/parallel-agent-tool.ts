@@ -312,6 +312,7 @@ async function executeSingleTask(
     // 构建执行上下文（并行任务共享父上下文，但有独立的 toolCallId）
     const context: AgentExecutionContext = {
       parentTools: config.parentTools,
+      connectorToolNames: config.connectorToolNames,
       parentModel: config.parentModel,
       parentSystemPrompt: config.parentSystemPrompt,
       parentMessages: config.parentMessages,

@@ -64,8 +64,8 @@ export interface AppContext {
   // 加载错误
   readonly errors?: LoadError[];
 
-  /** 共享 MCP 注册表（跨请求复用连接，生命周期由 AppContext 管理） */
-  readonly mcpRegistry?: McpRegistry;
+  /** 共享 MCP 注册表（跨请求复用连接，生命周期由 AppContext 管理；始终存在，可经 syncServers 热更新） */
+  readonly mcpRegistry: McpRegistry;
 
   /**
    * 重新加载所有资源，返回新的 AppContext 快照。
@@ -238,6 +238,11 @@ export interface CreateAgentResult {
   sessionState: SessionState;
   /** 已注册的 MCP 注册表，对话结束后调用 disconnectAll() */
   mcpRegistry?: McpRegistry | null;
+  /**
+   * 需要调用方清理的 MCP registry（finalize 时断开）。
+   * 共享 registry 为 null——由 AppContext 管理，finalize 不得断开。
+   */
+  ownedMcpRegistry?: McpRegistry | null;
   /** 当前对话可用的工具集（已应用权限过滤） */
   tools: Record<string, Tool>;
   /** 注入到 system prompt 的完整指令字符串 */

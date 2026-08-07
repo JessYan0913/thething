@@ -110,6 +110,64 @@ describe('mcp', () => {
         expect(registry.connections.size).toBe(0);
       });
     });
+
+    describe('syncServers', () => {
+      // 全部 autoConnect: false + connect: false，避免测试真实 spawn 子进程
+      const cfg = (name: string, overrides: Partial<McpServerConfig> = {}): McpServerConfig => ({
+        name,
+        transport: { type: 'stdio', command: 'node', args: [`${name}.js`] },
+        autoConnect: false,
+        ...overrides,
+      });
+
+      it('adds servers from empty', async () => {
+        const r = new McpRegistry([]);
+        await r.syncServers([cfg('a'), cfg('b')], { connect: false });
+        expect(r.servers.map((s) => s.name)).toEqual(['a', 'b']);
+        expect(r.snapshot().servers.length).toBe(2);
+      });
+
+      it('removes servers no longer in config', async () => {
+        const r = new McpRegistry([cfg('a'), cfg('b')]);
+        await r.syncServers([cfg('a')], { connect: false });
+        expect(r.servers.map((s) => s.name)).toEqual(['a']);
+        expect(r.snapshot().servers.find((s) => s.name === 'b')).toBeUndefined();
+      });
+
+      it('is idempotent for identical configs', async () => {
+        const r = new McpRegistry([cfg('a')]);
+        await r.syncServers([cfg('a')], { connect: false });
+        await r.syncServers([cfg('a')], { connect: false });
+        expect(r.servers.length).toBe(1);
+      });
+
+      it('updates server config in place (transport change)', async () => {
+        const r = new McpRegistry([cfg('a')]);
+        const changed = cfg('a', { transport: { type: 'stdio', command: 'node', args: ['other.js'] } });
+        await r.syncServers([changed], { connect: false });
+        const stored = r.servers.find((s) => s.name === 'a');
+        expect(stored?.transport).toEqual({ type: 'stdio', command: 'node', args: ['other.js'] });
+      });
+
+      it('reflects enabled toggle in snapshot', async () => {
+        const r = new McpRegistry([cfg('a', { enabled: true })]);
+        await r.syncServers([cfg('a', { enabled: false })], { connect: false });
+        expect(r.snapshot().servers[0].enabled).toBe(false);
+      });
+
+      it('connect:false does not create connections', async () => {
+        const r = new McpRegistry([]);
+        await r.syncServers([cfg('a')], { connect: false });
+        expect(r.connections.size).toBe(0);
+      });
+
+      it('ignores sourcePath differences (non-behavioral field)', async () => {
+        const r = new McpRegistry([cfg('a', { sourcePath: '/old/mcp.json' })]);
+        // 只有 sourcePath 不同 → 不应视为配置变更（无连接可断，验证不抛错且列表更新）
+        await r.syncServers([cfg('a', { sourcePath: '/new/mcp.json' })], { connect: false });
+        expect(r.servers[0].sourcePath).toBe('/new/mcp.json');
+      });
+    });
   });
 
   describe('createMcpRegistry', () => {

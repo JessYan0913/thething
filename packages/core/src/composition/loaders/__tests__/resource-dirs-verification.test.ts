@@ -177,7 +177,12 @@ describe('resource-dirs verification', () => {
       await mkdir(skillDir, { recursive: true });
       await createSkillFile(skillDir, 'skill-in-default', 'Should NOT be loaded');
 
-      const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'),
+      // 注意：MCP 的 dirs 语义与其他资源不同——空数组会 fallthrough 到
+      // mcp.json 聚合路径（layout.resources.mcps 默认即 []，主配置源是 mcp.json）。
+      // 用临时 homeDir/configDir 保证测试不依赖真实 ~/.thething/mcp.json。
+      const loaded = await loadAll({
+        configDir: path.join(testRoot, '.thething'),
+        homeDir: path.join(testRoot, 'home'),
         cwd: testRoot,
         resourceDirs: {
           skills: [],
@@ -201,7 +206,9 @@ describe('resource-dirs verification', () => {
       await mkdir(skillDir, { recursive: true });
       await createSkillFile(skillDir, 'custom-skill', 'From custom dir');
 
-      const loaded = await loadAll({ configDir: path.join(os.homedir(), '.thething'),
+      const loaded = await loadAll({
+        configDir: path.join(testRoot, '.thething'),
+        homeDir: path.join(testRoot, 'home'),
         cwd: testRoot,
         resourceDirs: {
           skills: [skillDir],

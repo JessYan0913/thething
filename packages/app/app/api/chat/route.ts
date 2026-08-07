@@ -215,7 +215,7 @@ export async function POST(request: Request) {
 
     // 按用户所选模型读取凭据与上下文窗口(模型真名;旧别名值回落 defaultModel)
     const chatModelConfig = getModelConfig(modelName);
-    const { agent, sessionState, mcpRegistry, model, adjustedMessages, wikiBaseDir } = await createAgent({
+    const { agent, sessionState, mcpRegistry, ownedMcpRegistry, model, adjustedMessages, wikiBaseDir } = await createAgent({
       context,
       conversationId,
       messages,
@@ -421,7 +421,8 @@ export async function POST(request: Request) {
           messages: [...store.messageStore.getMessagesByConversation(conversationId)],
           conversationId,
           costTracker: sessionState.costTracker,
-          mcpRegistry,
+          // 只清理 per-request registry；共享 registry 常驻，不逐轮断连
+          mcpRegistry: ownedMcpRegistry ?? null,
           model,
           isNewConversation: isFirstMessage,
           userId,

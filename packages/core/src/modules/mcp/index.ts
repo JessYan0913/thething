@@ -45,5 +45,6 @@ export {
   wrapMcpToolWithOutputHandler,
   wrapMcpToolsWithOutputHandler,
   processMcpToolResult,
+  createRegistryBoundMcpTool,
   type McpToolWrapperOptions,
 } from './tool-wrapper';

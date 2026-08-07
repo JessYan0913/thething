@@ -25,8 +25,10 @@ export interface McpServerConfig {
   autoConnect?: boolean;
   /** 是否阻塞启动直到连接成功，默认 false。仅对 autoConnect 为 true 的服务器有效 */
   alwaysLoad?: boolean;
-  /** 连接超时（毫秒），默认 10000。0 表示不超时 */
+  /** 连接超时（毫秒），默认 15000（registry DEFAULT_CONNECT_TIMEOUT_MS） */
   connectionTimeout?: number;
+  /** 单次工具调用/资源读取超时（毫秒），默认 15000。执行时间长的工具（如浏览器自动化）可调大 */
+  requestTimeout?: number;
   tools?: {
     include?: string[];
     exclude?: string[];
@@ -152,6 +154,7 @@ export const McpServerConfigSchema = z.object({
   autoConnect: z.boolean().optional(),
   alwaysLoad: z.boolean().optional(),
   connectionTimeout: z.number().int().positive().optional(),
+  requestTimeout: z.number().int().positive().optional(),
   tools: ToolsFilterSchema,
   elicitation: ElicitationSchema,
 });

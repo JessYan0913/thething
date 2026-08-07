@@ -531,7 +531,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       agentType: event.agentType ?? null,
     })
 
-    const { agent, sessionState, adjustedMessages, model, dispose, mcpRegistry } = await this.createAgentInstance(
+    const { agent, sessionState, adjustedMessages, model, dispose, mcpRegistry, ownedMcpRegistry } = await this.createAgentInstance(
       conversationId,
       uiMessagesForSave,
       event.connectorId,
@@ -551,6 +551,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       model,
       dispose,
       mcpRegistry,
+      ownedMcpRegistry,
       initialModelMessages,
       uiMessagesForSave,
       { allSteps: [], responseText: '', writtenFiles: [], approvedTools: [] },
@@ -614,7 +615,7 @@ export class AgentInboundHandler implements InboundEventHandler {
 
     logger.debug('AgentInboundHandler', `Resuming from suspended state: conversation=${conversationId} tools=${suspended.pendingApprovals.map(item => item.toolName).join(', ')} pausedCount=${suspended.pausedModelMessages.length}`)
 
-    const { agent, sessionState, model, dispose, mcpRegistry } = await this.createAgentInstance(
+    const { agent, sessionState, model, dispose, mcpRegistry, ownedMcpRegistry } = await this.createAgentInstance(
       conversationId,
       uiMessagesForSave,
       event.connectorId,
@@ -630,6 +631,7 @@ export class AgentInboundHandler implements InboundEventHandler {
       model,
       dispose,
       mcpRegistry,
+      ownedMcpRegistry,
       resumeModelMessages,
       uiMessagesForSave,
       {
@@ -659,6 +661,7 @@ export class AgentInboundHandler implements InboundEventHandler {
     model: any,
     dispose: () => Promise<void>,
     mcpRegistry: any,
+    ownedMcpRegistry: any,
     initialModelMessages: ModelMessage[],
     uiMessagesForSave: UIMessage[],
     accumulated: AccumulatedState,
@@ -1002,7 +1005,8 @@ export class AgentInboundHandler implements InboundEventHandler {
       messages: finalMessages,
       conversationId,
       costTracker: sessionState.costTracker,
-      mcpRegistry,
+      // 只清理 per-request registry；共享 registry 常驻，不逐轮断连
+      mcpRegistry: ownedMcpRegistry ?? null,
       model,
       isNewConversation: isFirstMessage,
       wikiBaseDir,

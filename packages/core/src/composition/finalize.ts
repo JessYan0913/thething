@@ -95,7 +95,8 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
       // 成本持久化（只调一次）
       await costTracker.persistToDB()
 
-      // MCP 清理（仅清理非共享的 per-request registry；共享 registry 由 AppContext 管理生命周期）
+      // MCP 清理（仅清理非共享的 per-request registry；共享 registry 由
+      // AppContext 管理生命周期。调用方须传 ownedMcpRegistry——共享时传 null）
       if (mcpRegistry) {
         await mcpRegistry.disconnectAll()
       }

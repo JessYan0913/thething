@@ -20,6 +20,7 @@ import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-ap
 import { setReviewerDenial, extractInputKey } from '../../modules/agent-control/reviewer-feedback'
 import { telemetryMiddleware, costTrackingMiddleware } from '../../modules/middleware'
 import { loadAllTools } from '../../modules/agent/tools'
+import { filterToolNames } from '../../modules/agent/tool-resolver'
 import { repairAskUserQuestionRawInput } from '../../modules/tools'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
@@ -168,7 +169,10 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const wikiPromptContext = { recalledContent: wikiContext?.recalledContent || '' }
 
   // 构建 MCP 工具列表文本，让 Agent 在系统提示中直接看到可用工具
-  const mcpServerTools = formatMcpServerTools(context.mcps, context.mcpRegistry)
+  // （Agent 定义 mcp: false 时不注入——工具已被过滤，提示词不应宣称可用）
+  const mcpServerTools = selectedAgentDef?.mcp === false
+    ? ''
+    : formatMcpServerTools([...context.mcpRegistry.servers], context.mcpRegistry)
 
   const instructions = await buildAgentInstructions(wikiPromptContext, {
     cwd: projectRoot,
@@ -259,7 +263,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     skills: [...context.skills],
     disabledSkills: skillPreferences.disabled,
     agents: [...context.agents],
-    mcps: [...context.mcps],
+    mcps: [...context.mcpRegistry.servers],
     mcpRegistry: context.mcpRegistry,
     debugEnabled: Boolean(context.runtime.env.DEBUG),
     modelAliases: behavior.modelAliases,
@@ -276,19 +280,24 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     wikiBaseDir,
   })
 
-  // 如果 Agent 定义了工具白名单，过滤工具集
+  // 如果 Agent 定义了工具白名单/能力开关，过滤工具集
+  // （与子 Agent 共用 filterToolNames：白名单只约束系统工具，
+  //   MCP/connector 工具由 mcp/connectors 开关控制）
   let filteredTools = tools
-  if (selectedAgentDef?.tools?.length) {
-    const allowedTools = selectedAgentDef.tools
-
-    // 支持 '*' 通配符，表示允许所有工具
-    if (allowedTools.includes('*')) {
-      logger.debug('AgentCreate', `Tools: wildcard '*' allows all tools`)
-    } else {
+  if (selectedAgentDef) {
+    const kept = new Set(filterToolNames(Object.keys(tools), {
+      tools: selectedAgentDef.tools,
+      connectors: selectedAgentDef.connectors,
+      skills: selectedAgentDef.skills,
+      mcp: selectedAgentDef.mcp,
+      connectorToolNames: new Set(connectorToolNames),
+      denySubAgentTools: false, // 主 Agent 保留 agent/parallel_agent
+    }))
+    if (kept.size !== Object.keys(tools).length) {
       filteredTools = Object.fromEntries(
-        Object.entries(tools).filter(([name]) => allowedTools.includes(name)),
+        Object.entries(tools).filter(([name]) => kept.has(name)),
       )
-      logger.debug('AgentCreate', `Tools filtered by allowlist: ${Object.keys(filteredTools).join(', ')}`)
+      logger.debug('AgentCreate', `Tools filtered by agent definition: ${Object.keys(filteredTools).join(', ')}`)
     }
   }
 
@@ -524,6 +533,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     agent,
     sessionState,
     mcpRegistry,
+    // 仅非共享的 per-request registry 需要调用方清理（finalize 时断开）；
+    // 共享 registry 为 null，由 AppContext/dispose/syncServers 管理生命周期。
+    ownedMcpRegistry: isSharedMcpRegistry ? null : mcpRegistry,
     tools: finalTools,
     instructions,
     adjustedMessages: finalMessages,

@@ -479,7 +479,7 @@ export default function McpSettingsPage() {
   const handleTest = useCallback(async (name: string) => {
     setIsTesting(name)
     try {
-      const res = await fetch(`/api/mcp?name=${encodeURIComponent(name)}&connect=true`)
+      const res = await fetch(`/api/mcp?name=${encodeURIComponent(name)}&connect=true&force=true`)
       if (res.ok) {
         const data = await res.json()
         const snapshot = data.snapshot as { servers: Array<{

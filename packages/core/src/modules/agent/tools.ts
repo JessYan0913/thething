@@ -28,7 +28,7 @@ import {
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
-import { createMcpRegistry, type McpRegistry, wrapMcpToolWithOutputHandler } from '../../modules/mcp'
+import { createMcpRegistry, type McpRegistry, createRegistryBoundMcpTool } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
 import type { LoadToolsConfig } from './types'
 import { loadSkills } from '../skills/loader'
@@ -135,8 +135,12 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   logger.debug('AgentRegistry', `Total registered: ${agentRegistry.getAll().map(a => `${a.agentType}(${a.source})`).join(', ')}`)
 
   // 3. 创建 agent 工具（共享配置）
+  // connectorToolNameSet 与 tools 同为可变引用：connector 工具在 agent 工具
+  // 创建之后才注册，靠引用共享让子 Agent 的工具分类看到完整集合。
+  const connectorToolNameSet = new Set<string>()
   const agentToolConfig = {
     parentTools: tools,
+    connectorToolNames: connectorToolNameSet,
     parentModel: config.model,
     parentSystemPrompt: '',
     parentMessages: config.parentMessages ?? [],
@@ -186,9 +190,11 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   if (config.enableMcp) {
     try {
       const mcpConfigs = config.mcps ?? []
-      if (mcpConfigs.length > 0) {
-        const sharedRegistry = config.mcpRegistry
-        const activeRegistry = sharedRegistry ?? createMcpRegistry(mcpConfigs)
+      // 共享 registry 优先（即使当前配置为空——registry 可能已被 syncServers 热注入）；
+      // 无共享 registry 时按本次配置新建 per-request registry。
+      const sharedRegistry = config.mcpRegistry
+      const activeRegistry = sharedRegistry ?? (mcpConfigs.length > 0 ? createMcpRegistry(mcpConfigs) : undefined)
+      if (activeRegistry) {
         await activeRegistry.connectAll()
 
         isSharedMcpRegistry = !!sharedRegistry
@@ -207,11 +213,14 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
                 toolOutputConfig: config.sessionState.toolOutputConfig,
               }
 
-              // 统一使用标准包装器（不再区分 MCP App 工具）
-              tools[qualifiedName] = wrapMcpToolWithOutputHandler(
+              // registry 绑定包装器：每次调用经 registry.callToolSafe 取活连接，
+              // 带超时 + 半死连接强制重连重试（治 -32001）
+              tools[qualifiedName] = createRegistryBoundMcpTool(
                 toolDef as Tool,
-                qualifiedName,
-                wrapOptions,
+                serverName,
+                toolName,
+                activeRegistry,
+                { ...wrapOptions, qualifiedName },
               )
             }
           }
@@ -255,6 +264,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
         if (!(toolName in tools)) {
           tools[toolName] = toolDef
           connectorToolNames.push(toolName)
+          connectorToolNameSet.add(toolName)
         }
       }
     } catch (error) {

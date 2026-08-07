@@ -24,6 +24,9 @@ packages/*/node_modules/
 /coverage
 **/coverage
 
+# Playwright MCP 生成产物(控制台日志/页面快照)
+.playwright-mcp/
+
 # next.js
 /.next/
 /out/

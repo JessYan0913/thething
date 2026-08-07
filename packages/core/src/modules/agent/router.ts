@@ -1,4 +1,5 @@
 import { AgentRegistry } from './registry';
+import { GENERAL_AGENT } from './built-in/general';
 import type { AgentDefinition, AgentExecutionContext, AgentRouteDecision } from './types';
 import { logger } from '../../primitives/logger';
 
@@ -6,29 +7,8 @@ import { logger } from '../../primitives/logger';
 // General-purpose Agent (Fallback)
 // ============================================================
 
-const GENERAL_PURPOSE_FALLBACK: AgentDefinition = {
-  agentType: 'general-purpose',
-  displayName: 'General Agent',
-  tools: ['read_file', 'write_file', 'edit_file', 'grep', 'glob', 'bash', 'web_fetch'],
-  model: 'inherit',
-  instructions: `You are a General-purpose agent. Given a task, use the available tools to complete it.
-
-## Guidelines
-- Be thorough but efficient
-- Summarize your findings and actions clearly
-- If you cannot complete the task, explain what you were able to do
-
-## Response Format
-### Summary
-What was accomplished.
-
-### Key Findings
-Specific results with evidence.
-
-### Limitations
-What couldn't be done and why.`,
-  source: 'builtin',
-};
+// 复用内置 GENERAL_AGENT，消除重复定义
+const GENERAL_PURPOSE_FALLBACK: AgentDefinition = GENERAL_AGENT;
 
 // ============================================================
 // Task Keywords for Auto-routing

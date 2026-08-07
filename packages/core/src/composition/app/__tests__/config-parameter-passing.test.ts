@@ -6,6 +6,7 @@ import { resolveLayout } from '../../../services/config/layout';
 import { createPricingResolver } from '../../../services/model/pricing';
 import { resolveAgentConfig, resolveAgentModelConfig, resolveToolOutputConfig } from '../../app/resolve-agent-config';
 import { createSessionState } from '../../../modules/session';
+import { createMcpRegistry } from '../../../modules/mcp';
 import {
   getMessageBudgetLimit,
   getPreviewSizeLimit,
@@ -83,6 +84,7 @@ function createMockContext(behaviorOverrides?: Parameters<typeof buildBehaviorCo
       permissions: { userPath: '', userCount: 0, projectPath: '', projectCount: 0 },
       memory: { path: '', count: 0 },
     },
+    mcpRegistry: createMcpRegistry([]),
     reload: vi.fn(),
     dispose: vi.fn(),
   };

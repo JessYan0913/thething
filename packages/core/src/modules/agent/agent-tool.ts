@@ -46,6 +46,7 @@ export async function executeAgentTask({
 
     const context: AgentExecutionContext = {
       parentTools: config.parentTools,
+      connectorToolNames: config.connectorToolNames,
       parentModel: config.parentModel,
       parentSystemPrompt: config.parentSystemPrompt,
       parentMessages: includeParentMessages ? config.parentMessages : [],

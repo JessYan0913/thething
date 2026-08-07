@@ -1,4 +1,4 @@
-import { getServerRuntime, getServerContext, getServerContextIfReady, waitForMcpReady } from '@/lib/runtime';
+import { getServerRuntime, getServerContext, getServerContextIfReady, waitForMcpReady, syncMcpRuntime } from '@/lib/runtime';
 import {
   getMcpServerConfigs,
   getMcpServerConfig,
@@ -37,12 +37,21 @@ export async function GET(request: Request) {
         // 等待 MCP 连接完成
         await waitForMcpReady();
 
+        const force = searchParams.get('force') === 'true';
+
         // 优先查共享 registry 的实时状态（已在启动时连接）
         const context = getServerContextIfReady() ?? await getServerContext();
         if (context.mcpRegistry) {
           const snap = context.mcpRegistry.snapshot();
           const serverSnap = snap.servers.find(s => s.name === name);
           if (serverSnap) {
+            // force=true → 对共享 registry 做真实强制重连（"测试/重连"按钮真正生效）
+            if (force) {
+              await context.mcpRegistry.connect(config, { force: true });
+              const refreshed = context.mcpRegistry.snapshot();
+              const refreshedSnap = refreshed.servers.find(s => s.name === name);
+              return NextResponse.json({ config, snapshot: { servers: [refreshedSnap ?? serverSnap], totalTools: refreshed.totalTools } });
+            }
             return NextResponse.json({ config, snapshot: { servers: [serverSnap], totalTools: snap.totalTools } });
           }
         }
@@ -106,6 +115,8 @@ export async function POST(request: Request) {
     }
 
     const config = await addMcpServerConfig(body, resourceRoot, configDir);
+    // 写盘后定向同步运行时（不重启进程，下轮对话即可用新配置）
+    await syncMcpRuntime().catch((e) => console.error('[MCP API] POST sync error:', e));
     return NextResponse.json({ config }, { status: 201 });
   } catch (error) {
     console.error('[MCP API] POST error:', error);
@@ -129,6 +140,9 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }
 
+    // 写盘后定向同步运行时（enabled 开关 / 配置修改实时生效）
+    await syncMcpRuntime().catch((e) => console.error('[MCP API] PUT sync error:', e));
+
     return NextResponse.json({ config });
   } catch (error) {
     console.error('[MCP API] PUT error:', error);
@@ -149,6 +163,9 @@ export async function DELETE(request: Request) {
     if (!deleted) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }
+
+    // 写盘后定向同步运行时（删除的 server 从运行时断开）
+    await syncMcpRuntime().catch((e) => console.error('[MCP API] DELETE sync error:', e));
 
     return NextResponse.json({ success: true });
   } catch (error) {

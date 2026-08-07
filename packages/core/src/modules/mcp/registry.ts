@@ -26,8 +26,30 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
  * 默认请求超时（毫秒）。
  * stdio 本地服务器响应极快，设一个较短上限，让"连接还在但子进程已死"的
  * 半死管道快速失败并触发重连，而不是干等到 SDK 的 60s 默认超时（-32001）。
+ * 慢工具的 server 可用 config.requestTimeout 单独调大。
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * 行为等价比较：剔除 sourcePath 等非行为字段后按 key 排序做稳定序列化。
+ * 用于 syncServers 判断某个 server 的配置是否变化。
+ */
+function configsEqual(a: McpServerConfig, b: McpServerConfig): boolean {
+  const stable = (obj: unknown): string =>
+    JSON.stringify(obj, function replacer(_key, value) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return Object.keys(value as Record<string, unknown>)
+          .sort()
+          .reduce<Record<string, unknown>>((acc, k) => {
+            acc[k] = (value as Record<string, unknown>)[k];
+            return acc;
+          }, {});
+      }
+      return value;
+    });
+  const strip = ({ sourcePath: _s, elicitation: _e, ...rest }: McpServerConfig) => rest;
+  return stable(strip(a)) === stable(strip(b));
+}
 
 // ------------------------------------------------------------------
 // MCP Registry — 管理 MCP 服务器连接和工具
@@ -49,8 +71,50 @@ export class McpRegistry {
     return this._connections;
   }
 
+  /**
+   * 配置热同步（diff 式）：让 registry 成为运行时唯一状态源。
+   * - 移除的 server → 断开连接并从 _servers 删除
+   * - 配置变更的 server（含 enabled 切换）→ 断开旧连接，下次 connect 用新配置重建
+   * - 新增的 server → 加入 _servers
+   * 尾部按需幂等 connectAll（已连且无错误的连接直接复用）。
+   *
+   * @param configs 磁盘上的最新完整配置列表
+   * @param options.connect 默认 true；false 时只应用 diff 不建连接
+   *（API 路径用 false + 后台 connectAll，快速返回）
+   */
+  async syncServers(configs: McpServerConfig[], options?: { connect?: boolean }): Promise<void> {
+    const next = new Map(configs.map((c) => [c.name, c]));
+
+    // 1. 移除的 server → 断开
+    for (const old of this._servers) {
+      if (!next.has(old.name)) {
+        await this.disconnect(old.name).catch(() => {});
+        logger.debug('MCP', `syncServers: removed ${old.name}`);
+      }
+    }
+
+    // 2. 配置变更的 server → 断开旧连接（懒重连，下次 connect 用新配置）
+    for (const old of this._servers) {
+      const updated = next.get(old.name);
+      if (!updated) continue;
+      if (!configsEqual(old, updated)) {
+        await this.disconnect(old.name).catch(() => {});
+        logger.debug('MCP', `syncServers: config changed for ${old.name}, connection reset`);
+      }
+    }
+
+    // 3. 整体替换 server 列表
+    this._servers = [...configs];
+
+    // 4. 幂等补连
+    if (options?.connect !== false) {
+      await this.connectAll();
+    }
+  }
+
   async connectAll(): Promise<void> {
     const enabledServers = this._servers.filter((s) => s.enabled !== false);
+    if (enabledServers.length === 0) return;
     const totalTimeoutMs = 30_000; // 整体超时 30 秒
 
     const connectOperation = async (): Promise<void> => {
@@ -225,12 +289,13 @@ export class McpRegistry {
    */
   async readResourceSafe(name: string, uri: string) {
     const client = await this._ensureClient(name);
+    const timeout = this._servers.find((s) => s.name === name)?.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT_MS;
     try {
-      return await client.readResource({ uri, options: { timeout: DEFAULT_REQUEST_TIMEOUT_MS } });
+      return await client.readResource({ uri, options: { timeout } });
     } catch (error) {
       logger.warn('MCP', `readResource ${name} failed, reconnecting: ${error instanceof Error ? error.message : error}`);
       const retryClient = await this._ensureClient(name, true);
-      return retryClient.readResource({ uri, options: { timeout: DEFAULT_REQUEST_TIMEOUT_MS } });
+      return retryClient.readResource({ uri, options: { timeout } });
     }
   }
 
@@ -239,12 +304,13 @@ export class McpRegistry {
    */
   async callToolSafe(name: string, toolName: string, args: Record<string, unknown>) {
     const client = await this._ensureClient(name);
+    const timeout = this._servers.find((s) => s.name === name)?.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT_MS;
     try {
-      return await client.callTool({ name: toolName, arguments: args, options: { timeout: DEFAULT_REQUEST_TIMEOUT_MS } });
+      return await client.callTool({ name: toolName, arguments: args, options: { timeout } });
     } catch (error) {
       logger.warn('MCP', `callTool ${name}/${toolName} failed, reconnecting: ${error instanceof Error ? error.message : error}`);
       const retryClient = await this._ensureClient(name, true);
-      return retryClient.callTool({ name: toolName, arguments: args, options: { timeout: DEFAULT_REQUEST_TIMEOUT_MS } });
+      return retryClient.callTool({ name: toolName, arguments: args, options: { timeout } });
     }
   }
 

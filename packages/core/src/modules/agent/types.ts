@@ -126,6 +126,9 @@ export interface AgentExecutionContext {
   /** 父 Agent 的工具池 */
   parentTools: ToolSet;
 
+  /** 注册期确定的 connector 工具名集合（用于工具分类，见 tool-resolver） */
+  connectorToolNames?: ReadonlySet<string>;
+
   /** 父 Agent 的模型 */
   parentModel: LanguageModel;
 
@@ -240,6 +243,9 @@ export interface AgentToolInput {
 export interface AgentToolConfig {
   /** 父工具池 */
   parentTools: ToolSet;
+
+  /** 注册期确定的 connector 工具名集合（用于工具分类，见 tool-resolver） */
+  connectorToolNames?: ReadonlySet<string>;
 
   /** 父模型 */
   parentModel: LanguageModel;

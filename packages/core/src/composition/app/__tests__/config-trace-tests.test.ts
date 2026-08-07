@@ -5,6 +5,7 @@ import { buildBehaviorConfig } from '../../../services/config/behavior';
 import { resolveLayout } from '../../../services/config/layout';
 import { createPricingResolver } from '../../../services/model/pricing';
 import { resolveAgentConfig, traceResolvedAgentConfig } from '../../app/resolve-agent-config';
+import { createMcpRegistry } from '../../../modules/mcp';
 import type { CreateAgentOptions } from '../../app/types';
 
 function createMockContext(behaviorOverrides?: Record<string, unknown>) {
@@ -52,6 +53,7 @@ function createMockContext(behaviorOverrides?: Record<string, unknown>) {
       permissions: { userPath: '', userCount: 0, projectPath: '', projectCount: 0 },
       memory: { path: '', count: 0 },
     },
+    mcpRegistry: createMcpRegistry([]),
     reload: vi.fn(),
     dispose: vi.fn(),
   };

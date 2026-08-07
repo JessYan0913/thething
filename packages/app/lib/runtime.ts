@@ -1,7 +1,7 @@
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
-import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, buildModelAliases, type CoreRuntime, type AppContext, type GlobalConfig, type ModelEntry } from '@the-thing/core';
+import { bootstrap, createContext, resolveProjectLayout, configureConnectorInboundRuntime, loadGlobalConfig, buildModelAliases, loadMcpServers, type CoreRuntime, type AppContext, type GlobalConfig, type ModelEntry } from '@the-thing/core';
 import { startAllFeishuLongConnections, stopAllFeishuLongConnections } from './feishu-long-connection';
 
 // Next.js dev 的 HMR 会重新执行本模块，module 级单例随之清空 —— 旧 runtime
@@ -284,6 +284,9 @@ export async function getProjectContext(projectId: string, projectPath: string):
   const projectLayout = resolveProjectLayout(defaultCtx.layout, projectPath);
   const projectCtx = await createContext({ runtime: defaultCtx.runtime, layout: projectLayout });
 
+  // 后台预连接项目级 MCP（loadAllTools 的幂等 connectAll 是兜底，这里让首轮就有连接）
+  projectCtx.mcpRegistry.connectAll().catch(() => {});
+
   // 缓存
   G.projectContextCache.set(projectId, projectCtx);
 
@@ -294,10 +297,40 @@ export async function reloadServerContext(): Promise<AppContext> {
   const ctx = await getServerContext();
   G.context = await ctx.reload();
   // reload 会断开旧 MCP 连接并创建新注册表，需要重新建立连接
-  if (G.context.mcpRegistry) {
-    await G.context.mcpRegistry.connectAll().catch(() => {});
-  }
+  await G.context.mcpRegistry.connectAll().catch(() => {});
   return G.context;
+}
+
+/**
+ * MCP 配置写盘后定向同步运行时（不做全量 context reload）。
+ *
+ * 对比 reloadServerContext 的三个优势：
+ * 1. 只同步 MCP 子系统，不无差别重启全部 stdio 子进程；
+ * 2. 全局 + 所有已缓存项目 context 一起同步（reload 只碰全局 context）；
+ * 3. 不丢 layout（项目 context reload 会退回默认 layout 的现存 bug）。
+ *
+ * diff 应用同步完成，连接建立后台化（connect: false + connectAll），
+ * 让 API 快速返回；前端已有 5s 轮询能看到真实连接进度。
+ */
+export async function syncMcpRuntime(): Promise<void> {
+  const ctx = G.context;
+  if (!ctx) return; // runtime 未初始化 → 启动时会读到最新磁盘配置
+  const homeDir = os.homedir();
+  const targets = [ctx, ...G.projectContextCache.values()];
+  for (const c of targets) {
+    try {
+      const configs = await loadMcpServers({
+        cwd: c.layout.resourceRoot,
+        homeDir,
+        configDir: c.layout.configDir,
+      });
+      await c.mcpRegistry.syncServers(configs, { connect: false });
+      // 后台补连：不阻塞 API 响应
+      c.mcpRegistry.connectAll().catch(() => {});
+    } catch (e) {
+      console.warn('[SyncMcpRuntime]', `Failed to sync MCP for ${c.layout.resourceRoot}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
 }
 
 export async function getServerDataStore() {

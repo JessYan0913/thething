@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
       // 4a. 创建 Agent
       const context = await getServerContext();
-      const { agent, sessionState, model, dispose, mcpRegistry, wikiBaseDir } = await createAgent({
+      const { agent, sessionState, model, dispose, mcpRegistry, ownedMcpRegistry, wikiBaseDir } = await createAgent({
         context,
         conversationId,
         messages: uiMessagesForSave,
@@ -175,7 +175,8 @@ export async function POST(request: Request) {
           messages: messagesToSave,
           conversationId,
           costTracker: sessionState.costTracker,
-          mcpRegistry,
+          // 只清理 per-request registry；共享 registry 常驻，不逐轮断连
+          mcpRegistry: ownedMcpRegistry ?? null,
           model,
           isNewConversation: false,
           userId: 'web-ui',

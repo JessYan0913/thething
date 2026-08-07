@@ -7,6 +7,8 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { stat as fsStat, readFile as fsReadFile, readdir as fsReaddir } from 'fs/promises';
+import { join as pathJoin } from 'path';
 import type { McpServerConfig } from './types';
 import { logger } from '../../primitives/logger';
 
@@ -123,35 +125,30 @@ async function loadDotAgentsMcpJson(
 
   if (!homeDir && !cwd && !configDir) return [];
 
-  const _path = 'path';
-  const _fs = 'fs/promises';
-  const { default: fs } = await import(/* webpackIgnore: true */ _fs);
-  const { default: path } = await import(/* webpackIgnore: true */ _path);
-
   // mcp.json 候选路径：优先级从低到高（后读覆盖先读）
   const mcpJsonCandidates: string[] = [];
 
   // Dot Agents 用户级兼容
-  if (homeDir) mcpJsonCandidates.push(path.join(homeDir, '.agents', 'mcp.json'));
+  if (homeDir) mcpJsonCandidates.push(pathJoin(homeDir, '.agents', 'mcp.json'));
   // Dot Agents 项目级兼容
-  if (cwd) mcpJsonCandidates.push(path.join(cwd, '.agents', 'mcp.json'));
+  if (cwd) mcpJsonCandidates.push(pathJoin(cwd, '.agents', 'mcp.json'));
   // 用户级主配置（通过 layout configDir）
-  if (configDir) mcpJsonCandidates.push(path.join(configDir, 'mcp.json'));
+  if (configDir) mcpJsonCandidates.push(pathJoin(configDir, 'mcp.json'));
   // 项目级主配置
-  if (cwd && configDirName) mcpJsonCandidates.push(path.join(cwd, configDirName, 'mcp.json'));
+  if (cwd && configDirName) mcpJsonCandidates.push(pathJoin(cwd, configDirName, 'mcp.json'));
 
   const merged = new Map<string, McpServerConfig>();
 
   for (const mcpJsonPath of mcpJsonCandidates) {
     try {
-      const stat = await fs.stat(mcpJsonPath);
+      const stat = await fsStat(mcpJsonPath);
       if (!stat.isFile()) continue;
     } catch {
       continue;
     }
 
     try {
-      const content = await fs.readFile(mcpJsonPath, 'utf-8');
+      const content = await fsReadFile(mcpJsonPath, 'utf-8');
       const parsed = JSON.parse(content);
 
       if (!parsed.mcpServers || typeof parsed.mcpServers !== 'object') continue;
@@ -182,9 +179,20 @@ async function loadDotAgentsMcpJson(
             logger.warn('McpLoader', `Skipping "${name}": unknown transport type "${tType}"`);
             continue;
           }
+        } else if (serverConfig.transport && typeof serverConfig.transport === 'object') {
+          // 已经是结构化格式 { transport: { type, ... } }
+          transport = serverConfig.transport as McpServerConfig['transport'];
+        } else if (typeof serverConfig.command === 'string') {
+          // Claude Desktop 扁平格式 { command, args, env }（无 transport 键）
+          transport = {
+            type: 'stdio',
+            command: serverConfig.command,
+            args: serverConfig.args as string[] | undefined,
+            env: serverConfig.env as Record<string, string> | undefined,
+          };
         } else {
-          // 已经是结构化格式
-          transport = serverConfig as McpServerConfig['transport'];
+          logger.warn('McpLoader', `Skipping "${name}": unrecognized config shape`);
+          continue;
         }
 
         merged.set(name, {
@@ -194,6 +202,7 @@ async function loadDotAgentsMcpJson(
           autoConnect: serverConfig?.autoConnect as boolean | undefined,
           alwaysLoad: serverConfig?.alwaysLoad as boolean | undefined,
           connectionTimeout: serverConfig?.connectionTimeout as number | undefined,
+          requestTimeout: serverConfig?.requestTimeout as number | undefined,
           tools: serverConfig?.tools as { include?: string[]; exclude?: string[] } | undefined,
           elicitation: serverConfig?.elicitation as { enabled: boolean } | undefined,
           sourcePath: mcpJsonPath,
@@ -222,43 +231,62 @@ async function loadDotAgentsMcpJson(
 }
 
 export async function loadMcpServers(options?: LoadMcpsOptions): Promise<McpServerConfig[]> {
-  // 显式提供 dirs(含空数组)→ 只扫描这些目录下的 {name}.json 单文件,
+  // 显式提供 dirs(非空数组)→ 只扫描这些目录下的 {name}.json 单文件,
   // 跳过 mcp.json 聚合文件的 implicit 查找(resource-dirs 隔离契约)。
-  if (options?.dirs !== undefined) {
+  // 空数组 → fallthrough 到 mcp.json 聚合文件路径（loadDotAgentsMcpJson）。
+  if (options?.dirs && options.dirs.length > 0) {
     return loadMcpServersFromDirs(options.dirs);
   }
   const configDir = options?.configDir;
   const configDirName = configDir ? configDir.split(/[/\\]/).filter(Boolean).pop() ?? '.agents' : '.agents';
-  return loadDotAgentsMcpJson({
+
+  const result = await loadDotAgentsMcpJson({
     configDir: options?.configDir,
     configDirName,
     homeDir: options?.homeDir,
     cwd: options?.cwd,
   });
+
+  // 防御：Next.js 16 Turbopack dev 启动早期 race condition——`createContext` 在
+  // Turbopack 完成 loader.ts 的 fs/promises chunk 编译前调用，loadDotAgentsMcpJson
+  // 静默返回空（fs.stat 抛错被吞）。如果路径都非空但结果为空，延迟 500ms 重试一次。
+  if (
+    result.length === 0 &&
+    (options?.homeDir || options?.cwd || options?.configDir)
+  ) {
+    await new Promise((r) => setTimeout(r, 500));
+    const retried = await loadDotAgentsMcpJson({
+      configDir: options?.configDir,
+      configDirName,
+      homeDir: options?.homeDir,
+      cwd: options?.cwd,
+    });
+    if (retried.length > 0) {
+      logger.debug('McpLoader', `Recovered from race condition on retry: ${retried.length} servers`);
+      return retried;
+    }
+  }
+
+  return result;
 }
 
 /** 从显式目录列表扫描 {name}.json 单文件格式的 MCP 配置 */
 async function loadMcpServersFromDirs(dirs: readonly string[]): Promise<McpServerConfig[]> {
   if (dirs.length === 0) return [];
 
-  const _path = 'path';
-  const _fs = 'fs/promises';
-  const { default: fs } = await import(/* webpackIgnore: true */ _fs);
-  const { default: path } = await import(/* webpackIgnore: true */ _path);
-
   const configs: McpServerConfig[] = [];
   for (const dir of dirs) {
     let entries: string[];
     try {
-      entries = await fs.readdir(dir);
+      entries = await fsReaddir(dir);
     } catch {
       continue; // 目录不存在 → 跳过
     }
     for (const entry of entries) {
       if (!entry.endsWith('.json')) continue;
-      const filePath = path.join(dir, entry);
+      const filePath = pathJoin(dir, entry);
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await fsReadFile(filePath, 'utf-8');
         const parsed = JSON.parse(content) as Record<string, unknown>;
         if (!parsed.name || !parsed.transport) continue;
         configs.push({

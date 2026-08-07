@@ -116,8 +116,10 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   }
 
   // 创建不可变快照
-  // 创建共享 MCP 注册表（跨请求复用连接，延迟到首次 connectAll 时建立）
-  const mcpRegistry = loaded.mcps.length > 0 ? createMcpRegistry(loaded.mcps) : undefined;
+  // 创建共享 MCP 注册表（跨请求复用连接，延迟到首次 connectAll 时建立）。
+  // 始终创建（空配置也创建）：registry 是运行时唯一状态源，后续可经
+  // syncServers 热注入配置——避免"启动时加载为空 → registry 永久缺失"的死局。
+  const mcpRegistry = createMcpRegistry([...loaded.mcps]);
 
   const context: AppContext = {
     runtime,
@@ -131,15 +133,17 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
     mcpRegistry,
     loadedFrom,
     reload: async (reloadOptions?: { verbose?: boolean; onLoad?: (event: import('./types').LoadEvent) => void }) => {
-      if (mcpRegistry) await mcpRegistry.disconnectAll().catch(() => {});
+      await mcpRegistry.disconnectAll().catch(() => {});
       return createContext({
         runtime,
+        // 保留原始 layout：项目级 context reload 不能退回默认 layout
+        layout: options.layout,
         verbose: reloadOptions?.verbose ?? verbose,
         onLoad: reloadOptions?.onLoad ?? onLoad,
       });
     },
     dispose: async () => {
-      if (mcpRegistry) await mcpRegistry.disconnectAll().catch(() => {});
+      await mcpRegistry.disconnectAll().catch(() => {});
     },
   };
 
