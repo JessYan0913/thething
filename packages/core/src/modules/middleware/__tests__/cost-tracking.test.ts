@@ -7,7 +7,7 @@ function createMockCostStore(): CostStore {
   return {
     saveCostRecord: vi.fn().mockResolvedValue(undefined),
     getCostByConversation: vi.fn().mockResolvedValue(null),
-    getAllCosts: vi.fn().mockResolvedValue([]),
+    updateCostByConversation: vi.fn().mockResolvedValue(undefined),
   };
 }
 
