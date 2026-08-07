@@ -79,6 +79,7 @@ const TODO_TOOL_TYPES = new Set([
 
 // 报告/列表类工具：输出本质是摘要而非文件，点击内联展开报告卡（替代右侧文件预览面板）
 // 文件类（write/read/edit_file/read_wiki_page）与 web_fetch 仍走右侧面板
+// MCP 动态工具（mcp__*）同为报告性质，在 isInlineReportTool 里按前缀统一内联展开
 const INLINE_REPORT_TOOLS = new Set([
   'grep', 'glob', 'skill',
   'save_wiki', 'lint_wiki', 'ingest_wiki_source',
@@ -2041,7 +2042,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           const errorText = isError ? (toolPart as { errorText?: string }).errorText : undefined;
 
                           // 格式化工具输出用于预览面板
-                          const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean } | null => {
+                          const formatToolOutput = (): { content: string; language?: string; title: string; needFetch?: boolean; structured?: string; input?: string } | null => {
                             if (!isComplete || !toolPart.output) return null;
                             const out = toolPart.output as Record<string, unknown>;
                             // 动态工具使用 toolName 字段，静态工具从 type 推导
@@ -2408,6 +2409,35 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               }
                               return { content, title: 'cron' };
                             }
+                            // MCP 工具：输出是 CallToolResult { content:[{type:'text',text}], isError, structuredContent }
+                            // 正文取 content[].text；structuredContent 作次要 JSON 视图。点击内联展开（不走右侧面板）
+                            if (toolName.startsWith('mcp__')) {
+                              const result = out as { content?: unknown[]; structuredContent?: unknown };
+                              const texts: string[] = [];
+                              if (Array.isArray(result.content)) {
+                                for (const p of result.content) {
+                                  const part = p as { type?: string; text?: string } | null;
+                                  if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
+                                    texts.push(part.text);
+                                  }
+                                }
+                              }
+                              const structured =
+                                result.structuredContent && typeof result.structuredContent === 'object'
+                                  ? JSON.stringify(result.structuredContent, null, 2)
+                                  : undefined;
+                              return {
+                                content: texts.length > 0 ? texts.join('\n') : JSON.stringify(out, null, 2),
+                                structured,
+                                // mcp__server__tool → server:tool
+                                title: toolName.split('__').slice(1).join(':'),
+                                // 入参：点开仍能回看这次调了哪些参数
+                                input:
+                                  toolPart.input && typeof toolPart.input === 'object'
+                                    ? JSON.stringify(toolPart.input, null, 2)
+                                    : undefined,
+                              };
+                            }
                             // ask_user_question 是客户端工具，答案已内联显示，无需右侧面板预览
                             if (toolName === 'ask_user_question') {
                               return null;
@@ -2462,9 +2492,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             ? ((part as DynamicToolUIPart).toolName ?? 'tool')
                             : toolPart.type.replace('tool-', '');
                           // inspect_wiki_history 的 diff 子分支仍走面板(保留 diff 高亮)
+                          // MCP 工具(mcp__* 动态工具)输出同为"摘要/报告"性质,统一内联展开
                           const isInlineReportTool =
                             isComplete &&
-                            INLINE_REPORT_TOOLS.has(reportToolName) &&
+                            (INLINE_REPORT_TOOLS.has(reportToolName) || reportToolName.startsWith('mcp__')) &&
                             previewData?.language !== 'diff';
                           const isInlineTool = isBashTool || isInlineReportTool;
                           const isInlineExpanded = isInlineTool && expandedInlineKeys.has(toolKey);
@@ -2593,6 +2624,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               <ToolReportCard
                                 label={previewData.title}
                                 content={previewData.content}
+                                input={previewData.input}
+                                structured={previewData.structured}
                               />
                             )}
                             </Fragment>
