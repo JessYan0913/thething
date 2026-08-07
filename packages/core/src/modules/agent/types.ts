@@ -238,6 +238,9 @@ export interface AgentToolInput {
 
   /** 任务描述 */
   task: string;
+
+  /** 关联的 todo ID（可选，子 Agent 完成后自动更新该 todo 状态） */
+  todoId?: string;
 }
 
 export interface AgentToolConfig {
@@ -302,6 +305,8 @@ export interface AgentTaskExecutionOptions {
   config: AgentToolConfig;
   toolCallId: string;
   abortSignal?: AbortSignal;
+  /** 关联的 todo ID（覆盖 config.todoId，子 Agent 完成后自动更新状态） */
+  todoId?: string;
   /** fork Skill 不继承父对话历史。 */
   includeParentMessages?: boolean;
   /** Skill 显式模型覆盖优先于 Agent definition.model。 */

@@ -8,6 +8,7 @@ import { createIdentitySection } from "./sections/identity";
 import { createCapabilitiesSection } from "./sections/capabilities";
 import { createRulesSection } from "./sections/rules";
 import { createActionsSection } from "./sections/actions";
+import { createTaskPlanningSection } from "./sections/task-planning";
 import { createErrorHandlingSection } from "./sections/error-handling";
 import {
   createSessionGuidanceSection,
@@ -78,6 +79,11 @@ const STATIC_SECTION_FACTORIES: SectionFactory[] = [
   {
     name: "error-handling",
     create: () => createErrorHandlingSection(),
+    cacheStrategy: "static",
+  },
+  {
+    name: "task-planning",
+    create: () => createTaskPlanningSection(),
     cacheStrategy: "static",
   },
 ];

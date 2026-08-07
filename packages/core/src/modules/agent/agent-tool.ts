@@ -14,6 +14,7 @@ export async function executeAgentTask({
   config,
   toolCallId,
   abortSignal,
+  todoId,
   includeParentMessages = true,
   modelOverride,
 }: AgentTaskExecutionOptions): Promise<AgentExecutionResult> {
@@ -54,7 +55,7 @@ export async function executeAgentTask({
       abortSignal: abortSignal ?? new AbortController().signal,
       toolCallId,
       todoStore: config.todoStore,
-      todoId: config.todoId,
+      todoId: todoId ?? config.todoId,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,
@@ -149,6 +150,9 @@ export function createAgentTool(config: AgentToolConfig) {
       'If not specified, auto-routes based on task keywords.'
     ),
     task: z.string().describe('The task for the sub-agent to complete'),
+    todoId: z.string().optional().describe(
+      'ID of the todo this task corresponds to. When provided, the todo is automatically marked in_progress on start and completed/failed on finish — no manual status update needed.'
+    ),
   });
 
   // 动态生成 agent 列表描述
@@ -174,9 +178,10 @@ Usage example: When user says "use test-agent to verify", call this tool with {a
 If no agentType specified, will auto-route based on task keywords (find→explore, research→research, plan→plan).`,
     inputSchema: AgentToolInputSchema,
 
-    execute: async ({ agentType, task }: AgentToolInput, options) => executeAgentTask({
+    execute: async ({ agentType, task, todoId }: AgentToolInput, options) => executeAgentTask({
       agentType,
       task,
+      todoId,
       config: { ...config, agentRegistry },
       toolCallId: options.toolCallId ?? `agent-${Date.now()}`,
       abortSignal: options.abortSignal,

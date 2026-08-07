@@ -63,23 +63,8 @@ export function createTodoOverviewSection(
 function buildTodoOverview(todos: Todo[], store: TodoStore): string {
   const lines: string[] = [];
 
-  // 规划指导
+  // 规划指引常驻在 task-planning section，这里只渲染清单本身
   lines.push('## 📋 当前任务清单');
-  lines.push('');
-  lines.push('### 任务规划规则');
-  lines.push('');
-  lines.push('当出现以下情况时，**必须主动规划任务**：');
-  lines.push('1. 用户请求涉及多个步骤或文件修改');
-  lines.push('2. 需要分阶段完成的工作（如"先做完 A 再做 B"）');
-  lines.push('3. 需要委托子 Agent 执行的任务');
-  lines.push('');
-  lines.push('规划步骤：');
-  lines.push('1. 用 `todo_create` 创建所有子任务，并通过 `blockedBy` 设置依赖关系');
-  lines.push('2. 按计划逐步推进，用 `todo_update` 更新状态（开始→完成/失败/取消）');
-  lines.push('3. 所有子任务完成后，标记主任务为完成');
-  lines.push('4. 任务清单会自动展示在上下文中，无需手动查询');
-  lines.push('');
-  lines.push('---');
   lines.push('');
 
   // 统计概览

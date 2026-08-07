@@ -35,6 +35,8 @@ interface ParallelTaskInput {
   task: string;
   /** 标签（用于结果标识） */
   label?: string;
+  /** 关联的 todo ID（可选，子 Agent 完成后自动更新该 todo 状态） */
+  todoId?: string;
 }
 
 interface ParallelAgentResult {
@@ -78,6 +80,9 @@ export function createParallelAgentTool(config: AgentToolConfig) {
             .describe('Agent type (optional, auto-routes by task keywords)'),
           task: z.string().min(1).describe('Task description for this sub-agent'),
           label: z.string().optional().describe('Label for result identification'),
+          todoId: z.string().optional().describe(
+            'ID of the todo this task corresponds to. When provided, the todo is automatically marked in_progress on start and completed/failed on finish.'
+          ),
         })
       )
       .min(2)
@@ -320,7 +325,7 @@ async function executeSingleTask(
       abortSignal: abortSignal ?? new AbortController().signal,
       toolCallId: taskToolCallId,
       todoStore: config.todoStore,
-      todoId: config.todoId,
+      todoId: taskInput.todoId ?? config.todoId,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,

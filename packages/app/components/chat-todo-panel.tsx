@@ -211,7 +211,7 @@ function TodoItem({ todo }: { todo: Todo }) {
     >
       {/* 状态指示器 */}
       <span className={cn(
-        "flex items-center justify-center shrink-0 mt-0.5 rounded-full",
+        "flex items-center justify-center shrink-0 rounded-full",
         cfg.bg,
         "h-5 w-5",
       )}>
@@ -233,12 +233,6 @@ function TodoItem({ todo }: { todo: Todo }) {
           </span>
         </div>
 
-        {todo.activeForm && (
-          <p className="text-xs text-blue-600 dark:text-blue-400 truncate flex items-center gap-1">
-            <span className="inline-block w-1 h-1 rounded-full bg-blue-500 shrink-0" />
-            {todo.activeForm}
-          </p>
-        )}
         {todo.metadata?.error && todo.status === "failed" && (
           <p className="text-xs text-red-600 dark:text-red-400 truncate flex items-center gap-1">
             <span className="inline-block w-1 h-1 rounded-full bg-red-500 shrink-0" />

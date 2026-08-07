@@ -94,8 +94,8 @@ IMPORTANT:
 - Tasks are created in order. dependsOnSteps uses 1-based indices referring to positions in the tasks array.
 - Example: task at index 1, task at index 2 with dependsOnSteps: [1] means task 2 depends on task 1.
 - Only forward references are allowed (can only depend on earlier tasks).
-- After creating tasks, use todo_update to mark them in_progress and completed as you work through them.
-- When delegating to a sub-agent, pass the todo's id as the taskId parameter.
+- After creating tasks, use todo_write (full list with ids) to update their status as you work through them.
+- When delegating to a sub-agent, pass the todo's id as the todoId parameter of the agent tool.
 
 For very simple work (1-2 steps), just use the tools directly without creating tasks.`,
     inputSchema: todoBatchCreateToolSchema,
@@ -169,8 +169,8 @@ IMPORTANT:
 - Tasks are created in order. dependsOnSteps uses 1-based indices referring to positions in the tasks array.
 - Example: task at index 1, task at index 2 with dependsOnSteps: [1] means task 2 depends on task 1.
 - Only forward references are allowed (can only depend on earlier tasks).
-- After creating tasks, use todo_update to mark them in_progress and completed as you work through them.
-- When delegating to a sub-agent, pass the todo's id as the taskId parameter.
+- After creating tasks, use todo_write (full list with ids) to update their status as you work through them.
+- When delegating to a sub-agent, pass the todo's id as the todoId parameter of the agent tool.
 
 For very simple work (1-2 steps), just use the tools directly without creating tasks.`,
     inputSchema: todoBatchCreateToolSchema,

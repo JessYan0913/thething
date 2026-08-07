@@ -3,14 +3,14 @@ import { z } from 'zod';
 import type { TodoStore, Todo } from '../types';
 
 /**
- * TodoListTool - List todos with compact snapshot
+ * TodoListTool - List todos with a compact snapshot, or get a single todo's full details
  *
- * Returns a compact snapshot of all todos, intelligently filtered to
- * show the most relevant information while saving context.
+ * 两种模式：
+ * - 不传 id → 返回紧凑清单快照（token 高效，适合看当前任务清单/进度）
+ * - 传 id → 返回单条完整详情（含 metadata、时间戳、result，适合引用某任务的完整上下文）
  *
- * The snapshot format is designed to be token-efficient:
- * - No metadata, no timestamps, no full descriptions
- * - Only id, subject, status, activeForm, blockedBy
+ * 合并自原 todo_list / todo_get：清单已自动注入系统提示，模型的查看需求主要剩
+ * "引用某条已完成任务的 result 作为后续输入"这一低频场景，用 id 参数覆盖。
  */
 export const todoListToolSchema = z.object({
   /** Optional: filter by status */
@@ -19,23 +19,38 @@ export const todoListToolSchema = z.object({
   /** Optional: conversation ID (auto-set when bound to conversation) */
   conversationId: z.string().optional()
     .describe('Conversation ID to list todos for'),
+  /** Optional: get full details of a single todo by ID */
+  id: z.string().optional()
+    .describe('Get full details of a single todo by ID (includes metadata, timestamps, result). Omit to list the task snapshot.'),
 });
 
 export type TodoListToolInput = z.infer<typeof todoListToolSchema>;
 
+type CompactTodo = {
+  id: string;
+  subject: string;
+  status: string;
+  activeForm: string | null;
+  claimedBy: string | null;
+  blockedBy: string[];
+  blocks: string[];
+};
+
+type FullTodo = CompactTodo & {
+  createdAt: number;
+  updatedAt: number;
+  completedAt: number | null;
+  metadata: Record<string, unknown>;
+};
+
 export type TodoListToolOutput = {
   success: true;
-  todos: Array<{
-    id: string;
-    subject: string;
-    status: string;
-    activeForm: string | null;
-    claimedBy: string | null;
-    blockedBy: string[];
-    blocks: string[];
-  }>;
+  todos: CompactTodo[];
   total: number;
   snapshot: string;
+} | {
+  success: true;
+  todo: FullTodo;
 } | {
   success: false;
   error: string;
@@ -110,6 +125,28 @@ function buildSnapshot(todos: Array<{
   return lines.join('\n');
 }
 
+function toCompact(todo: Todo): CompactTodo {
+  return {
+    id: todo.id,
+    subject: todo.subject,
+    status: todo.status,
+    activeForm: todo.activeForm,
+    claimedBy: todo.claimedBy,
+    blockedBy: todo.blockedBy,
+    blocks: todo.blocks,
+  };
+}
+
+function toFull(todo: Todo): FullTodo {
+  return {
+    ...toCompact(todo),
+    createdAt: todo.createdAt,
+    updatedAt: todo.updatedAt,
+    completedAt: todo.completedAt,
+    metadata: todo.metadata,
+  };
+}
+
 /**
  * Create a TodoListTool
  *
@@ -118,10 +155,25 @@ function buildSnapshot(todos: Array<{
  */
 export function createTodoListTool(store: TodoStore) {
   return tool({
-    description: 'List all todos with a compact snapshot. Use this to see the current task list, check progress, and understand what needs to be done next. The snapshot shows status, dependencies, and active work.',
+    description: 'Inspect todos. Without id: list all todos with a compact snapshot (status, dependencies, active work) to see the current task list and progress. With id: get the full details of a specific todo (metadata, timestamps, result) — e.g. to reference the result of a completed task as input for subsequent steps.',
     inputSchema: todoListToolSchema,
     execute: async (input: TodoListToolInput) => {
       try {
+        // 单条详情模式
+        if (input.id) {
+          const todo = store.getTodo(input.id);
+          if (!todo) {
+            return {
+              success: false as const,
+              error: `Todo ${input.id} not found`,
+            };
+          }
+          return {
+            success: true as const,
+            todo: toFull(todo),
+          };
+        }
+
         const convId = input.conversationId || 'default';
         let todos = store.getTodosByConversation(convId);
 
@@ -129,16 +181,7 @@ export function createTodoListTool(store: TodoStore) {
           todos = todos.filter(t => t.status === input.status);
         }
 
-        const compact = todos.map(t => ({
-          id: t.id,
-          subject: t.subject,
-          status: t.status,
-          activeForm: t.activeForm,
-          claimedBy: t.claimedBy,
-          blockedBy: t.blockedBy,
-          blocks: t.blocks,
-        }));
-
+        const compact = todos.map(toCompact);
         const snapshot = buildSnapshot(compact, store);
 
         return {
@@ -166,26 +209,32 @@ export function createTodoListTool(store: TodoStore) {
  */
 export function createTodoListToolForConversation(store: TodoStore, conversationId: string) {
   return tool({
-    description: 'List all todos with a compact snapshot. Use this to see the current task list, check progress, and understand what needs to be done next. The snapshot shows status, dependencies, and active work.',
+    description: 'Inspect todos. Without id: list all todos with a compact snapshot (status, dependencies, active work) to see the current task list and progress. With id: get the full details of a specific todo (metadata, timestamps, result) — e.g. to reference the result of a completed task as input for subsequent steps.',
     inputSchema: todoListToolSchema.omit({ conversationId: true }),
     execute: async (input: Omit<TodoListToolInput, 'conversationId'>) => {
       try {
+        // 单条详情模式
+        if (input.id) {
+          const todo = store.getTodo(input.id);
+          if (!todo) {
+            return {
+              success: false as const,
+              error: `Todo ${input.id} not found`,
+            };
+          }
+          return {
+            success: true as const,
+            todo: toFull(todo),
+          };
+        }
+
         let todos = store.getTodosByConversation(conversationId);
 
         if (input.status) {
           todos = todos.filter(t => t.status === input.status);
         }
 
-        const compact = todos.map(t => ({
-          id: t.id,
-          subject: t.subject,
-          status: t.status,
-          activeForm: t.activeForm,
-          claimedBy: t.claimedBy,
-          blockedBy: t.blockedBy,
-          blocks: t.blocks,
-        }));
-
+        const compact = todos.map(toCompact);
         const snapshot = buildSnapshot(compact, store);
 
         return {

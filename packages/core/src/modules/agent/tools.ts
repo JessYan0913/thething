@@ -145,6 +145,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     parentSystemPrompt: '',
     parentMessages: config.parentMessages ?? [],
     writerRef: config.writerRef ?? { current: null },
+    // todo 自动同步：子 Agent 带 todoId 启动时置 in_progress，结束时置 completed/failed
+    todoStore: config.sessionState.todoStore,
     cwd: config.sessionState.projectRoot,
     agentsLayoutDirs: config.sessionState.layout.resources.agents,
     provider: config.provider,

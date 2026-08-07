@@ -62,6 +62,9 @@ export {
   createRulesSection,
 } from "./sections/rules";
 export {
+  createTaskPlanningSection,
+} from "./sections/task-planning";
+export {
   createProjectContextSection,
   loadProjectContext,
   clearProjectContextCache,
