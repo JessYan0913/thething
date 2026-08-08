@@ -163,9 +163,15 @@ function formatTodoLine(todo: Todo, store: TodoStore): string {
     parts.push(`— ${todo.activeForm}`);
   }
 
+  // 完成标准（未完结任务展示，提示按此验证）
+  if (todo.metadata?.verify && (todo.status === 'pending' || todo.status === 'in_progress')) {
+    parts.push(`(verify: ${todo.metadata.verify})`);
+  }
+
   // 完成标记
   if (todo.status === 'completed') {
-    parts.push('✅');
+    const result = todo.metadata?.result ? `: ${todo.metadata.result}` : '';
+    parts.push(`✅${result}`);
   }
 
   // 失败标记

@@ -642,6 +642,8 @@ export interface TodoMetadata {
   error?: string;
   /** Result summary if todo completed */
   result?: string;
+  /** How to verify this todo is done (e.g. a command to run, an observable outcome) */
+  verify?: string;
   /** Stop reason if todo was stopped */
   stopReason?: string;
   /** Priority level */

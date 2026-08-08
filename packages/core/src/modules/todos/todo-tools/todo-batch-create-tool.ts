@@ -29,6 +29,9 @@ const BatchTaskSchema = z.object({
   /** 1-based index of steps this task depends on within this batch. Must be < current position. */
   dependsOnSteps: z.array(z.number().int().min(1)).optional()
     .describe('1-based indices of steps this task depends on'),
+  /** 完成标准（可执行的验证方式） */
+  verify: z.string().optional()
+    .describe('How to verify this task is done — an executable check where possible (e.g. "npx vitest run src/utils passes")'),
 });
 
 export const todoBatchCreateToolSchema = z.object({
@@ -131,6 +134,7 @@ async function executeBatchCreate(
         conversationId,
         subject: task.subject,
         blockedBy,
+        ...(task.verify ? { metadata: { verify: task.verify } } : {}),
       });
 
       created.push({

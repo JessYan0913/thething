@@ -108,4 +108,53 @@ describe('todo_write (full-list replace)', () => {
     expect(result.todos[0].id).not.toBe('nonexistent');
     expect(store.getTodosByConversation(CONV)).toHaveLength(1);
   });
+
+  it('persists verify on create and result/error on update into metadata', async () => {
+    const first = await execute({
+      todos: [
+        { subject: 'Task A', status: 'in_progress', verify: 'npx vitest run passes' },
+        { subject: 'Task B', status: 'pending' },
+      ],
+    });
+    const [a, b] = first.todos;
+    expect(store.getTodo(a.id)?.metadata.verify).toBe('npx vitest run passes');
+
+    await execute({
+      todos: [
+        { id: a.id, subject: 'Task A', status: 'completed', result: 'All 12 tests green' },
+        { id: b.id, subject: 'Task B', status: 'failed', error: 'Missing fixture file' },
+      ],
+    });
+
+    const aFinal = store.getTodo(a.id)!;
+    expect(aFinal.metadata.result).toBe('All 12 tests green');
+    // metadata 合并语义:更新 result 不应丢掉创建时的 verify
+    expect(aFinal.metadata.verify).toBe('npx vitest run passes');
+    expect(store.getTodo(b.id)?.metadata.error).toBe('Missing fixture file');
+  });
+
+  it('warns when completed without result or failed without error', async () => {
+    const result = await execute({
+      todos: [
+        { subject: 'Task A', status: 'completed' },
+        { subject: 'Task B', status: 'failed' },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('completed without a result');
+    expect(result.message).toContain('failed without an error');
+  });
+
+  it('does not warn when completed/failed carry result/error', async () => {
+    const result = await execute({
+      todos: [
+        { subject: 'Task A', status: 'completed', result: 'done and verified' },
+        { subject: 'Task B', status: 'failed', error: 'timeout' },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toBeUndefined();
+  });
 });

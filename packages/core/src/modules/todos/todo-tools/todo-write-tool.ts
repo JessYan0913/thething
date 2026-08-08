@@ -27,6 +27,15 @@ const TodoWriteItemSchema = z.object({
   /** 进行中时的现在进行时描述 */
   activeForm: z.string().optional()
     .describe('Present-tense label shown while in_progress (e.g. "Running tests")'),
+  /** 完成标准（可执行的验证方式） */
+  verify: z.string().optional()
+    .describe('How to verify this task is done — an executable check where possible (e.g. "npx vitest run src/utils passes"). Defining it upfront turns "done" into "verified".'),
+  /** 完成时的结论 */
+  result: z.string().optional()
+    .describe('When marking completed: one line on what was done and how it was verified. Later steps and sub-agents rely on this instead of conversation memory.'),
+  /** 失败原因 */
+  error: z.string().optional()
+    .describe('When marking failed: why it failed, so the plan can be revised instead of silently stalling.'),
 });
 
 export const todoWriteToolSchema = z.object({
@@ -45,6 +54,41 @@ export type TodoWriteToolOutput = {
   success: false;
   error: string;
 };
+
+/**
+ * 确定性的规划质量检查（lint 式返回值反馈，不阻断执行）。
+ * 放在返回值里比写进系统提示词有效：模型必读工具结果，且对弱模型同样生效。
+ */
+function collectPlanWarnings(todos: TodoWriteToolInput['todos']): string[] {
+  const warnings: string[] = [];
+
+  const inProgressCount = todos.filter((t) => t.status === 'in_progress').length;
+  if (inProgressCount > 1) {
+    warnings.push(`${inProgressCount} todos are in_progress. Keep exactly one in_progress at a time.`);
+  }
+
+  for (const t of todos) {
+    if (t.status === 'completed' && !t.result) {
+      warnings.push(`"${t.subject}" marked completed without a result. Record what was done and how it was verified.`);
+    }
+    if (t.status === 'failed' && !t.error) {
+      warnings.push(`"${t.subject}" marked failed without an error. Record why, so the plan can be revised.`);
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * 从工具入参提取 metadata 增量（只包含显式提供的字段，避免覆盖已有值）。
+ */
+function itemMetadata(item: TodoWriteToolInput['todos'][number]): Record<string, string> | undefined {
+  const meta: Record<string, string> = {};
+  if (item.verify !== undefined) meta.verify = item.verify;
+  if (item.result !== undefined) meta.result = item.result;
+  if (item.error !== undefined) meta.error = item.error;
+  return Object.keys(meta).length > 0 ? meta : undefined;
+}
 
 /**
  * Create a TodoWriteTool bound to a conversation
@@ -74,12 +118,10 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
         const seenIds = new Set<string>();
         const result: Array<{ id: string; subject: string; status: TodoStatus }> = [];
 
-        const inProgressCount = input.todos.filter((t) => t.status === 'in_progress').length;
-        const warning = inProgressCount > 1
-          ? `Warning: ${inProgressCount} todos are in_progress. Keep exactly one in_progress at a time.`
-          : undefined;
+        const warnings = collectPlanWarnings(input.todos);
 
         for (const item of input.todos) {
+          const metadata = itemMetadata(item);
           if (item.id && existingById.has(item.id)) {
             // 更新已有任务
             const updated = store.updateTodo({
@@ -87,6 +129,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
               subject: item.subject,
               status: item.status,
               activeForm: item.activeForm ?? null,
+              ...(metadata ? { metadata } : {}),
             });
             seenIds.add(item.id);
             if (updated) {
@@ -95,11 +138,12 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
           } else {
             // 新建任务（store 创建后默认 pending，需要时再置状态）
             const created = store.createTodo({ conversationId, subject: item.subject });
-            if (item.status !== 'pending' || item.activeForm) {
+            if (item.status !== 'pending' || item.activeForm || metadata) {
               store.updateTodo({
                 id: created.id,
                 status: item.status,
                 activeForm: item.activeForm ?? null,
+                ...(metadata ? { metadata } : {}),
               });
             }
             seenIds.add(created.id);
@@ -118,7 +162,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
         return {
           success: true as const,
           todos: result,
-          ...(warning ? { message: warning } : {}),
+          ...(warnings.length > 0 ? { message: `Warning: ${warnings.join(' ')}` } : {}),
         };
       } catch (error) {
         return {
