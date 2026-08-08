@@ -149,7 +149,7 @@ describe('system-prompt', () => {
         expect(includedSections).toContain('dynamic-boundary');
         const boundaryIdx = includedSections.indexOf('dynamic-boundary');
         // All session-level / static sections should be before the boundary
-        const cacheable = ['identity', 'capabilities', 'rules', 'actions', 'error-handling',
+        const cacheable = ['identity', 'capabilities', 'rules',
                            'project-context', 'skill-matching', 'mcp-tools',
                            'permissions', 'wiki-guidelines', 'custom-instructions'];
         for (const name of cacheable) {

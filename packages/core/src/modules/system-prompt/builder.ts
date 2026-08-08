@@ -7,9 +7,7 @@ import type {
 import { createIdentitySection } from "./sections/identity";
 import { createCapabilitiesSection } from "./sections/capabilities";
 import { createRulesSection } from "./sections/rules";
-import { createActionsSection } from "./sections/actions";
 import { createTaskPlanningSection } from "./sections/task-planning";
-import { createErrorHandlingSection } from "./sections/error-handling";
 import {
   createSessionGuidanceSection,
   createFirstMessageGuidance,
@@ -72,16 +70,6 @@ const STATIC_SECTION_FACTORIES: SectionFactory[] = [
     cacheStrategy: "static",
   },
   {
-    name: "actions",
-    create: () => createActionsSection(),
-    cacheStrategy: "static",
-  },
-  {
-    name: "error-handling",
-    create: () => createErrorHandlingSection(),
-    cacheStrategy: "static",
-  },
-  {
     name: "task-planning",
     create: () => createTaskPlanningSection(),
     cacheStrategy: "static",
@@ -128,11 +116,13 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
       const listing = options.skillListing
         ?? (skills.length > 0 ? formatSkillsWithinBudget(skills) : '');
 
-      const skillCreationNote = '技能是配置目录中的标准 SKILL.md 文件（不是 .py 脚本、不是 Wiki 页面）。标准 frontmatter 必须包含 name 和 description；启动时只索引这两个元数据，匹配后再按需加载正文和资源。\n\n创建或封装 Skill 时，优先使用 create-skill 提供的指南和模板；无论采用何种可用工具，最终产物都应是结构有效、能被加载器发现的 SKILL.md。Wiki 页面或独立脚本不能替代用户明确要求的 Skill 交付。';
+      // 保留原因：2026-07 多次生产事故——模型手写无 frontmatter 的 SKILL.md 或
+      // 用 Wiki 页面/脚本替代 Skill 交付（docs/skill-creation-reliability-plan.md）。
+      const skillCreationNote = '技能是配置目录中的标准 SKILL.md 文件（不是 .py 脚本、不是 Wiki 页面），frontmatter 必须包含 name 和 description；启动时只索引这两个元数据，匹配后再按需加载正文和资源。创建或封装 Skill 时用 create-skill 提供的指南和模板；最终产物都应是结构有效、能被加载器发现的 SKILL.md，Wiki 页面或独立脚本不能替代用户明确要求的 Skill 交付。';
 
       const content = listing
-        ? `## 技能\n\n${listing}\n\n如果有技能匹配用户需求，使用该技能。否则，按正常方式处理。\n\n${skillCreationNote}`
-        : `## 技能\n\n暂无可用技能。按正常方式处理。\n\n${skillCreationNote}`;
+        ? `## 技能\n\n${listing}\n\n如果有技能匹配用户需求，使用该技能。\n\n${skillCreationNote}`
+        : `## 技能\n\n暂无可用技能。\n\n${skillCreationNote}`;
 
       return {
         name: "skill-matching",
@@ -147,13 +137,12 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     name: "mcp-tools",
     create: (options) => {
       const serverList = options.mcpServerTools
-      const listBlock = serverList
-        ? `\n${serverList}\n`
-        : ''
 
       return {
         name: "mcp-tools",
-        content: `## MCP 工具\n\nMCP 提供对外部服务的访问。${listBlock}\n当用户需求涉及外部数据或服务时，可使用相关 MCP 工具。`,
+        content: serverList
+          ? `## MCP 工具\n\n${serverList}`
+          : null,
         cacheStrategy: "session" as const,
         priority: 31,
       }

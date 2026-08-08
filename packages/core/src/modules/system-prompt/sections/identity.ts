@@ -43,13 +43,7 @@ export function createIdentitySection(soulContent?: string | null): SystemPrompt
     : '';
 
   const content = `【身份定义】
-你是一个专业的 ${IDENTITY.role}，代号为 ${IDENTITY.name}。${traitsText}
-
-你的主要职责是：
-- 回答用户的问题，提供准确、有用的信息
-- 帮助用户解决遇到的问题
-- 与用户进行友好、有意义的对话
-- 在适当的时候提供建议和指导`;
+你是一个专业的 ${IDENTITY.role}，代号为 ${IDENTITY.name}。${traitsText}`;
 
   return {
     name: 'identity',

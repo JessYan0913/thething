@@ -62,11 +62,14 @@ describe('wiki maintenance guidelines', () => {
     }).success).toBe(true)
   })
 
-  it('requires explicit query provenance and preserves user-specified source semantics', () => {
-    expect(WIKI_GUIDELINES_PROMPT).toContain('必须显式传 origin: query')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('不能仅因为信息出现在当前对话中就改成 conversation 来源')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('仓库与 commit 应登记为 git 来源')
-    expect(WIKI_GUIDELINES_PROMPT).toContain('actions 传空数组')
+  it('requires explicit query provenance and preserves user-specified source semantics (in schema descriptions)', () => {
+    // 来源/阶段语义已下沉到 wikiActionSchema 的字段 describe（工具层就近呈现），
+    // 不再重复出现在常驻 WIKI_GUIDELINES_PROMPT 中。
+    const originDesc = wikiActionSchema.shape.origin.description ?? ''
+    const sourcesDesc = wikiActionSchema.shape.sources.description ?? ''
+    expect(originDesc).toContain('必须显式传 query')
+    expect(sourcesDesc).toContain('不能仅因为信息出现在当前对话中就改成 conversation 来源')
+    expect(sourcesDesc).toContain('仓库与 commit 应登记为 git 来源')
   })
 
   it('validates source schema with required type and value', () => {

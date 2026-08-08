@@ -48,6 +48,8 @@ export async function createRecalledWikiSection(
     name: 'recalled-wiki',
     content: recalledContent,
     cacheStrategy: 'dynamic',
-    priority: 46,
+    // 必须 > DYNAMIC_BOUNDARY_PRIORITY (50)：召回内容每轮变化，
+    // 排进可缓存前缀会导致整个 prompt cache 失效（builder fallback 同为 51）。
+    priority: 51,
   }
 }

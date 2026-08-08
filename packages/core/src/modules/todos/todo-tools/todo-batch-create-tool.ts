@@ -80,15 +80,9 @@ function validateDependsOnSteps(
 }
 
 /**
- * Create a TodoBatchCreateTool
- *
- * @param store - The todo store
- * @param conversationId - The conversation ID to associate todos with
- * @returns The tool definition
+ * Shared tool description (single source — both factory variants use it).
  */
-export function createTodoBatchCreateTool(store: TodoStore) {
-  return tool({
-    description: `Create multiple todos at once with dependency declarations. Use this to plan and track complex multi-step work.
+const TODO_BATCH_CREATE_DESCRIPTION = `Create multiple todos at once with dependency declarations. Use this to plan and track complex multi-step work.
 
 IMPORTANT:
 - Tasks are created in order. dependsOnSteps uses 1-based indices referring to positions in the tasks array.
@@ -97,60 +91,79 @@ IMPORTANT:
 - After creating tasks, use todo_write (full list with ids) to update their status as you work through them.
 - When delegating to a sub-agent, pass the todo's id as the todoId parameter of the agent tool.
 
-For very simple work (1-2 steps), just use the tools directly without creating tasks.`,
-    inputSchema: todoBatchCreateToolSchema,
-    execute: async (input: TodoBatchCreateToolInput) => {
-      try {
-        // Validate dependency references
-        const validationError = validateDependsOnSteps(input.tasks);
-        if (validationError) {
-          return {
-            success: false as const,
-            error: validationError,
-          };
-        }
+For very simple work (1-2 steps), just use the tools directly without creating tasks.`;
 
-        const created: Array<{ id: string; subject: string; status: string }> = [];
+/**
+ * Shared execute implementation for both factory variants.
+ */
+async function executeBatchCreate(
+  store: TodoStore,
+  conversationId: string,
+  input: TodoBatchCreateToolInput,
+): Promise<TodoBatchCreateToolOutput> {
+  try {
+    // Validate dependency references
+    const validationError = validateDependsOnSteps(input.tasks);
+    if (validationError) {
+      return {
+        success: false as const,
+        error: validationError,
+      };
+    }
 
-        for (let i = 0; i < input.tasks.length; i++) {
-          const task = input.tasks[i];
-          const blockedBy: string[] = [];
+    const created: Array<{ id: string; subject: string; status: string }> = [];
 
-          // Resolve dependsOnSteps (1-based) to actual todo IDs
-          if (task.dependsOnSteps) {
-            for (const step of task.dependsOnSteps) {
-              const depIndex = step - 1; // convert to 0-based
-              if (depIndex < created.length) {
-                blockedBy.push(created[depIndex].id);
-              }
-            }
+    for (let i = 0; i < input.tasks.length; i++) {
+      const task = input.tasks[i];
+      const blockedBy: string[] = [];
+
+      // Resolve dependsOnSteps (1-based) to actual todo IDs
+      if (task.dependsOnSteps) {
+        for (const step of task.dependsOnSteps) {
+          const depIndex = step - 1; // convert to 0-based
+          if (depIndex < created.length) {
+            blockedBy.push(created[depIndex].id);
           }
-
-          const todo = createTodo(store, {
-            conversationId: 'default',
-            subject: task.subject,
-            blockedBy,
-          });
-
-          created.push({
-            id: todo.id,
-            subject: todo.subject,
-            status: todo.status,
-          });
         }
-
-        return {
-          success: true as const,
-          created,
-          total: created.length,
-        };
-      } catch (error) {
-        return {
-          success: false as const,
-          error: error instanceof Error ? error.message : String(error),
-        };
       }
-    },
+
+      const todo = createTodo(store, {
+        conversationId,
+        subject: task.subject,
+        blockedBy,
+      });
+
+      created.push({
+        id: todo.id,
+        subject: todo.subject,
+        status: todo.status,
+      });
+    }
+
+    return {
+      success: true as const,
+      created,
+      total: created.length,
+    };
+  } catch (error) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Create a TodoBatchCreateTool
+ *
+ * @param store - The todo store
+ * @returns The tool definition
+ */
+export function createTodoBatchCreateTool(store: TodoStore) {
+  return tool({
+    description: TODO_BATCH_CREATE_DESCRIPTION,
+    inputSchema: todoBatchCreateToolSchema,
+    execute: (input: TodoBatchCreateToolInput) => executeBatchCreate(store, 'default', input),
   });
 }
 
@@ -163,68 +176,8 @@ For very simple work (1-2 steps), just use the tools directly without creating t
  */
 export function createTodoBatchCreateToolForConversation(store: TodoStore, conversationId: string) {
   return tool({
-    description: `Create multiple todos at once with dependency declarations. Use this to plan and track complex multi-step work.
-
-IMPORTANT:
-- Tasks are created in order. dependsOnSteps uses 1-based indices referring to positions in the tasks array.
-- Example: task at index 1, task at index 2 with dependsOnSteps: [1] means task 2 depends on task 1.
-- Only forward references are allowed (can only depend on earlier tasks).
-- After creating tasks, use todo_write (full list with ids) to update their status as you work through them.
-- When delegating to a sub-agent, pass the todo's id as the todoId parameter of the agent tool.
-
-For very simple work (1-2 steps), just use the tools directly without creating tasks.`,
+    description: TODO_BATCH_CREATE_DESCRIPTION,
     inputSchema: todoBatchCreateToolSchema,
-    execute: async (input: TodoBatchCreateToolInput) => {
-      try {
-        // Validate dependency references
-        const validationError = validateDependsOnSteps(input.tasks);
-        if (validationError) {
-          return {
-            success: false as const,
-            error: validationError,
-          };
-        }
-
-        const created: Array<{ id: string; subject: string; status: string }> = [];
-
-        for (let i = 0; i < input.tasks.length; i++) {
-          const task = input.tasks[i];
-          const blockedBy: string[] = [];
-
-          // Resolve dependsOnSteps (1-based) to actual todo IDs
-          if (task.dependsOnSteps) {
-            for (const step of task.dependsOnSteps) {
-              const depIndex = step - 1; // convert to 0-based
-              if (depIndex < created.length) {
-                blockedBy.push(created[depIndex].id);
-              }
-            }
-          }
-
-          const todo = createTodo(store, {
-            conversationId,
-            subject: task.subject,
-            blockedBy,
-          });
-
-          created.push({
-            id: todo.id,
-            subject: todo.subject,
-            status: todo.status,
-          });
-        }
-
-        return {
-          success: true as const,
-          created,
-          total: created.length,
-        };
-      } catch (error) {
-        return {
-          success: false as const,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
+    execute: (input: TodoBatchCreateToolInput) => executeBatchCreate(store, conversationId, input),
   });
 }
