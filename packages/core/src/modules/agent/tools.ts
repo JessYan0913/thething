@@ -27,6 +27,7 @@ import {
   createContextPinTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
+import { createSubmitPlanTool } from '../plan'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
 import { createMcpRegistry, type McpRegistry, createRegistryBoundMcpTool } from '../../modules/mcp'
 import { getAllConnectorTools } from '../../modules/connector'
@@ -88,6 +89,9 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
   })
 
   Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId))
+
+  // 计划确认：复杂请求先呈现计划供用户批准（审批走 tool-approval 通道）
+  tools.submit_plan = createSubmitPlanTool(config.sessionState.todoStore, config.conversationId)
 
   if (config.cronStore) {
     tools.cron = createCronTool({

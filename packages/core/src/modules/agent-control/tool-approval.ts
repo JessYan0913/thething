@@ -178,18 +178,25 @@ export async function catchAllApproval(options: {
   // ── 审批模式处理 ──────────────────────────────────────
   // 注：ask_user_question 是无 execute 的客户端工具（SDK 原生挂起等待前端
   // addToolOutput），不走审批通道，这里无需也不能为它做任何决策。
-  // 'full-trust': 所有已知工具自动放行
+  // 'full-trust': 所有已知工具自动放行（含计划确认，计划直接落 todo）
   if (ctx.approvalMode === 'full-trust') {
     if (TOOLS_WITH_APPROVAL.has(toolName)) return 'approved';
+    if (toolName === 'submit_plan') return 'approved';
     if (ctx.connectorToolNames?.has(toolName)) return 'approved';
     return undefined;
+  }
+
+  // 计划确认是产品流程而非安全门：smart/auto-review 下必须经用户确认
+  if (toolName === 'submit_plan') {
+    return 'user-approval';
   }
 
   // 'smart' / 'auto-review': 使用相同的上下文感知审批逻辑
   const decision = await runSmartDecision(toolName, input, ctx);
 
   // auto-review: 当决策为 user-approval 时，转交 reviewer agent
-  if (decision === 'user-approval' && ctx.approvalMode === 'auto-review' && ctx.reviewer) {
+  // （submit_plan 除外——计划确认必须由用户亲自完成，reviewer 不得代批）
+  if (decision === 'user-approval' && ctx.approvalMode === 'auto-review' && ctx.reviewer && toolName !== 'submit_plan') {
     const reviewResult = await ctx.reviewer(toolName, input, options.messages);
     // B: 当 reviewer 拒绝时，如果已存储拒绝原因，让工具执行层返回详细错误
     if (reviewResult === 'denied' && hasReviewerDenial()) {
@@ -239,6 +246,9 @@ async function runSmartDecision(
       if (typeof fp === 'string') return editFileApproval(fp, ctx);
       return 'user-approval';
     }
+    // 计划确认：每次呈现都必须经用户确认，不做任何自动放行
+    case 'submit_plan':
+      return 'user-approval';
     default:
       if (ctx.connectorToolNames?.has(toolName)) {
         return connectorToolApproval(toolName, input, ctx);

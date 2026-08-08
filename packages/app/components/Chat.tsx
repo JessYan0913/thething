@@ -43,6 +43,7 @@ import { ToolReportCard } from '@/components/ai-elements/tool-report-card';
 import { FileOutputsSummary, collectFileOutputs } from '@/components/ai-elements/file-outputs-summary';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
+import { PlanReviewPanel, type PlanReviewRequest } from '@/components/ai-elements/plan-review-panel';
 import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
@@ -443,6 +444,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }>;
   } | null>(null);
 
+  // 计划确认面板状态（用于 submit_plan）
+  const [planPanel, setPlanPanel] = useState<PlanReviewRequest | null>(null);
+
   // 消息编辑状态
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -797,6 +801,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           multiSelect?: boolean;
         }>;
       } | null = null;
+      let planRequest: PlanReviewRequest | null = null;
 
       for (const part of lastMsg.parts) {
         const isToolPart = part.type.startsWith('tool-') || part.type === 'dynamic-tool';
@@ -837,6 +842,21 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         const approvalId = toolPart.approval?.id;
         const toolInput = toolPart.input || {};
 
+        // 计划确认（submit_plan）：不走通用审批列表和会话自动放行，
+        // 必须由用户亲自确认，渲染专用计划卡
+        if (toolName === 'submit_plan' && approvalId && !seenApprovalIds.has(approvalId)) {
+          seenApprovalIds.add(approvalId);
+          const todos = (toolInput.todos as Array<{ subject: string; verify?: string }>) || [];
+          if (todos.length > 0) {
+            planRequest = {
+              approvalId,
+              toolCallId: toolPart.toolCallId,
+              todos,
+            };
+          }
+          continue;
+        }
+
         if (approvalId && !seenApprovalIds.has(approvalId)) {
           seenApprovalIds.add(approvalId);
           // 会话信任：如果该 scope 已在本次对话中被批准过，自动放行
@@ -876,8 +896,13 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         });
       }
 
+      // 更新计划确认面板
+      if (planRequest) {
+        setPlanPanel(planRequest);
+      }
+
       // 如果还有待审批的工具调用，不自动发送（等待用户处理所有审批）
-      if (pendingApprovals.length > 0) {
+      if (pendingApprovals.length > 0 || planRequest) {
         return false;
       }
 
@@ -1242,6 +1267,29 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       });
     }
   }, [addToolApprovalResponse, handleSuspendedApproval]);
+
+  // ── 计划确认（submit_plan）──
+  // 计划卡只在活跃 stream 上出现（模型刚调用 submit_plan 挂起），
+  // 与普通审批一样用 addToolApprovalResponse 续跑；批准后服务端 execute
+  // 把计划写入 todo，拒绝（附理由）则模型重新规划。
+  const handlePlanApprove = useCallback((approvalId: string) => {
+    stopRequestedRef.current = false;
+    setPlanPanel(null);
+    Promise.resolve(addToolApprovalResponse({
+      id: approvalId,
+      approved: true,
+    })).catch((err: unknown) => console.error('[Chat] addToolApprovalResponse error:', err));
+  }, [addToolApprovalResponse]);
+
+  const handlePlanReject = useCallback((approvalId: string, reason?: string) => {
+    stopRequestedRef.current = false;
+    setPlanPanel(null);
+    Promise.resolve(addToolApprovalResponse({
+      id: approvalId,
+      approved: false,
+      reason: reason,
+    })).catch((err: unknown) => console.error('[Chat] addToolApprovalResponse error:', err));
+  }, [addToolApprovalResponse]);
 
   // 停止 Agent 时清理未完成的 todo，避免 orphaned in_progress 状态
   const handleStop = useCallback(() => {
@@ -2790,7 +2838,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       {isInitialLoadDone && (
         <div className="shrink-0 border-t bg-background/80 backdrop-blur-md p-4">
           <div className="mx-auto max-w-3xl space-y-2">
-            {conversationId && !questionPanel && approvalRequests.length === 0 && (
+            {conversationId && !questionPanel && !planPanel && approvalRequests.length === 0 && (
               <TodoPanel conversationId={conversationId} streamData={streamTodoData} />
             )}
 
@@ -2800,6 +2848,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 questions={questionPanel.questions}
                 onComplete={handleQuestionsComplete}
                 onCancel={handleQuestionsCancel}
+              />
+            )}
+
+            {planPanel && (
+              <PlanReviewPanel
+                isOpen={true}
+                plan={planPanel}
+                onApprove={handlePlanApprove}
+                onReject={handlePlanReject}
               />
             )}
 
@@ -2814,7 +2871,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               />
             )}
 
-            {!questionPanel && approvalRequests.length === 0 && inputCard}
+            {!questionPanel && !planPanel && approvalRequests.length === 0 && inputCard}
           </div>
         </div>
       )}
