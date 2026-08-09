@@ -13,7 +13,7 @@ import { oneDark } from "@codemirror/theme-one-dark"
 import {
   PlusIcon, RefreshCwIcon, ServerIcon, TrashIcon,
   AlertCircleIcon, CodeIcon, MoreVerticalIcon, SearchIcon,
-  TerminalIcon, GlobeIcon, WifiIcon,
+  TerminalIcon, GlobeIcon, WifiIcon, KeyRoundIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,6 +49,8 @@ interface McpServerView {
   toolCount: number
   tools: Array<{ name: string; description?: string }>
   error: string | null
+  /** OAuth 授权状态（仅 transport.oauth 的服务器）：required=需要授权 / pending=授权中 / connected=已授权 */
+  auth?: "required" | "pending" | "connected"
 }
 
 // ============================================================
@@ -60,6 +62,7 @@ function configToView(config: Record<string, unknown>, snapshotEntry?: {
   toolCount: number
   tools?: Array<{ name: string; description?: string }>
   error?: string
+  auth?: "required" | "pending" | "connected"
 }): McpServerView {
   const transport = config.transport as Record<string, unknown> | undefined
   const rawType = transport?.type ?? "stdio"
@@ -84,6 +87,7 @@ function configToView(config: Record<string, unknown>, snapshotEntry?: {
     toolCount: snapshotEntry?.toolCount ?? 0,
     tools: snapshotEntry?.tools ?? [],
     error: snapshotEntry?.error ?? null,
+    auth: snapshotEntry?.auth,
   }
 }
 
@@ -105,7 +109,14 @@ const TRANSPORT_ICONS: Record<string, React.ReactNode> = {
   "streamable-http": <GlobeIcon className="size-3" />,
 }
 
-function StatusBadge({ status }: { status: McpServerView["status"] }) {
+function StatusBadge({ status, auth }: { status: McpServerView["status"]; auth?: McpServerView["auth"] }) {
+  // OAuth 状态优先于连接状态：授权中 / 需要授权 覆盖"未连接/错误"
+  if (auth === "pending") {
+    return <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/25 text-xs">授权中…</Badge>
+  }
+  if (auth === "required") {
+    return <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25 text-xs">需要授权</Badge>
+  }
   switch (status) {
     case "connected":
       return <Badge className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25 text-xs">已连接</Badge>
@@ -125,12 +136,16 @@ function ServerCard({
   onClick,
   onDelete,
   onTest,
+  onAuthorize,
+  onReauth,
   isTesting,
 }: {
   server: McpServerView
   onClick: () => void
   onDelete: () => void
   onTest: () => void
+  onAuthorize: () => void
+  onReauth: () => void
   isTesting: boolean
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -150,13 +165,15 @@ function ServerCard({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="font-medium text-sm truncate">{server.name}</span>
-              <StatusBadge status={server.status} />
+              <StatusBadge status={server.status} auth={server.auth} />
               <Badge variant="secondary" className="text-[10px] font-normal flex items-center gap-1">
                 {TRANSPORT_ICONS[server.transportType]}
                 {TRANSPORT_LABELS[server.transportType] ?? server.transportType}
               </Badge>
             </div>
-            {server.error && (
+            {/* OAuth 授权中（等待用户完成浏览器授权）的连接错误无意义，隐藏；
+                required 状态的 error 是真实的授权发起失败，必须显示原因 */}
+            {server.error && server.auth !== "pending" && (
               <p className="text-xs text-destructive line-clamp-1">{server.error}</p>
             )}
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pt-1">
@@ -187,6 +204,18 @@ function ServerCard({
 
         {/* Actions menu */}
         <div className="relative shrink-0 flex items-center gap-1">
+          {server.auth === "required" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2"
+              onClick={(e) => { e.stopPropagation(); onAuthorize() }}
+              disabled={isTesting}
+            >
+              <KeyRoundIcon className="size-3.5" />
+              授权
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -212,6 +241,19 @@ function ServerCard({
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                 <div className="absolute right-0 top-8 z-50 w-36 rounded-md border bg-popover shadow-md">
+                  {server.auth === "connected" && (
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer rounded-md"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMenuOpen(false)
+                        onReauth()
+                      }}
+                    >
+                      <KeyRoundIcon className="size-3.5" />
+                      重新授权
+                    </button>
+                  )}
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 cursor-pointer rounded-md"
                     onClick={(e) => {
@@ -356,6 +398,7 @@ export default function McpSettingsPage() {
           toolCount: number
           tools?: Array<{ name: string; description?: string }>
           error?: string
+          auth?: "required" | "pending" | "connected"
         }>
         setServers(configs.map((c: Record<string, unknown>) =>
           configToView(c, snapshotServers.find((s: { name: string }) => s.name === c.name)),
@@ -508,6 +551,48 @@ export default function McpSettingsPage() {
     }
   }, [])
 
+  const handleAuthorize = useCallback(async (name: string) => {
+    // 标记授权中（轮询会持续刷新状态直到连接成功）
+    setServers((prev) => prev.map((s) => (s.name === name ? { ...s, auth: "pending" } : s)))
+    try {
+      const res = await fetch("/api/mcp/oauth/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.authorizationUrl) {
+          // 打开系统浏览器完成授权；授权完成后浏览器重定向回本地回调
+          window.open(data.authorizationUrl, "_blank")
+        }
+      } else {
+        const err = await res.json()
+        setServers((prev) => prev.map((s) =>
+          s.name === name ? { ...s, auth: "required", error: err.error ?? "发起授权失败" } : s,
+        ))
+      }
+    } catch {
+      setServers((prev) => prev.map((s) =>
+        s.name === name ? { ...s, auth: "required", error: "发起授权失败" } : s,
+      ))
+    }
+  }, [])
+
+  const handleReauth = useCallback(async (name: string) => {
+    try {
+      const res = await fetch(`/api/mcp/oauth?name=${encodeURIComponent(name)}`, { method: "DELETE" })
+      if (res.ok) {
+        // 本地立即反映：回到「需要授权」；后续轮询会刷新真实状态
+        setServers((prev) => prev.map((s) =>
+          s.name === name
+            ? { ...s, status: "disconnected", auth: "required", error: null, toolCount: 0, tools: [] }
+            : s,
+        ))
+      }
+    } catch { /* ignore */ }
+  }, [])
+
   const filteredServers = useMemo(() => {
     if (!search) return servers
     const q = search.toLowerCase()
@@ -609,6 +694,8 @@ export default function McpSettingsPage() {
                 onClick={() => router.push(`/settings/mcp/${encodeURIComponent(server.name)}`)}
                 onDelete={() => setConfirmDelete(server)}
                 onTest={() => handleTest(server.name)}
+                onAuthorize={() => handleAuthorize(server.name)}
+                onReauth={() => handleReauth(server.name)}
                 isTesting={isTesting === server.name}
               />
             ))}

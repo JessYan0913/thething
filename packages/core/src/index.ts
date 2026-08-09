@@ -275,14 +275,18 @@ export type { AgentDefinition } from './modules/agent/types';
 export { serializeAgentMarkdown } from './modules/agent/loader';
 
 // MCP types
-export type { McpServerConfig, McpServerConfigSource } from './modules/mcp/types';
+export type { McpServerConfig, McpServerConfigSource, McpOAuthConfig } from './modules/mcp/types';
 export {
   createMcpRegistry,
+  createMcpOAuthProvider,
+  parseOAuthState,
   getMcpServerConfigs,
   getMcpServerConfig,
   addMcpServerConfig,
   updateMcpServerConfig,
   deleteMcpServerConfig,
+  type McpRegistryOptions,
+  type McpOAuthProviderHandle,
 } from './modules/mcp';
 
 // Connector types

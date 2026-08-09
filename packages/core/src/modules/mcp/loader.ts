@@ -174,6 +174,7 @@ async function loadDotAgentsMcpJson(
               type: tType,
               url: serverConfig.url as string,
               headers: serverConfig.headers as Record<string, string> | undefined,
+              oauth: serverConfig.oauth as { scope?: string } | undefined,
             };
           } else {
             logger.warn('McpLoader', `Skipping "${name}": unknown transport type "${tType}"`);

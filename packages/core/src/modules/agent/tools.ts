@@ -199,7 +199,10 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
       // 共享 registry 优先（即使当前配置为空——registry 可能已被 syncServers 热注入）；
       // 无共享 registry 时按本次配置新建 per-request registry。
       const sharedRegistry = config.mcpRegistry
-      const activeRegistry = sharedRegistry ?? (mcpConfigs.length > 0 ? createMcpRegistry(mcpConfigs) : undefined)
+      const activeRegistry = sharedRegistry ?? (mcpConfigs.length > 0 ? createMcpRegistry(mcpConfigs, {
+        oauthDataDir: config.sessionState.layout.dataDir,
+        oauthRedirectUrl: `http://127.0.0.1:${process.env.PORT ?? '3000'}/api/mcp/oauth/callback`,
+      }) : undefined)
       if (activeRegistry) {
         await activeRegistry.connectAll()
 

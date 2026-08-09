@@ -119,7 +119,11 @@ export async function createContext(options: CreateContextOptions): Promise<AppC
   // 创建共享 MCP 注册表（跨请求复用连接，延迟到首次 connectAll 时建立）。
   // 始终创建（空配置也创建）：registry 是运行时唯一状态源，后续可经
   // syncServers 热注入配置——避免"启动时加载为空 → registry 永久缺失"的死局。
-  const mcpRegistry = createMcpRegistry([...loaded.mcps]);
+  // OAuth：桌面应用 localhost redirect 回调由 Electron 启动时注入的 PORT 决定。
+  const mcpRegistry = createMcpRegistry([...loaded.mcps], {
+    oauthDataDir: layout.dataDir,
+    oauthRedirectUrl: `http://127.0.0.1:${process.env.PORT ?? '3000'}/api/mcp/oauth/callback`,
+  });
 
   const context: AppContext = {
     runtime,

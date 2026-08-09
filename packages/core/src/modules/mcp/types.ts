@@ -6,6 +6,16 @@ import { z } from 'zod';
 
 export type McpTransportType = 'sse' | 'http' | 'stdio' | 'streamable-http';
 
+/**
+ * OAuth 授权配置（仅 HTTP 类 transport 可用）。
+ * 声明后服务器要求标准 OAuth 授权时，registry 会用 OAuthClientProvider 走
+ * localhost redirect 授权流程（见 mcp-oauth.ts）。
+ */
+export interface McpOAuthConfig {
+  /** 请求的权限范围；不填则用授权服务器默认（最小化原则建议显式声明） */
+  scope?: string;
+}
+
 // ============================================================
 // MCP Server Config (运行时类型)
 // ============================================================
@@ -16,9 +26,9 @@ export type McpTransportType = 'sse' | 'http' | 'stdio' | 'streamable-http';
 export interface McpServerConfig {
   name: string;
   transport:
-    | { type: 'sse'; url: string; headers?: Record<string, string> }
-    | { type: 'http'; url: string; headers?: Record<string, string> }
-    | { type: 'streamable-http'; url: string; headers?: Record<string, string> }
+    | { type: 'sse'; url: string; headers?: Record<string, string>; oauth?: McpOAuthConfig }
+    | { type: 'http'; url: string; headers?: Record<string, string>; oauth?: McpOAuthConfig }
+    | { type: 'streamable-http'; url: string; headers?: Record<string, string>; oauth?: McpOAuthConfig }
     | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string> };
   enabled?: boolean;
   /** 是否在启动时自动连接，默认 true。设为 false 则注册但不连接，需要时手动启用 */
@@ -64,6 +74,10 @@ export interface McpClientConnection {
   error?: Error;
   /** 自动重连尝试次数（用于退避计算） */
   reconnectAttempts?: number;
+  /** OAuth provider（transport.oauth 已配置时存在），供 startOAuth/completeOAuth 复用 */
+  oauth?: import('./mcp-oauth').McpOAuthProviderHandle;
+  /** OAuth 授权状态：required=需要授权 / pending=授权进行中 / connected=已授权（有 token） */
+  auth?: 'required' | 'pending' | 'connected';
 }
 
 export interface ToolInfo {
@@ -79,6 +93,8 @@ export interface McpRegistrySnapshot {
     toolCount: number;
     tools: ToolInfo[];
     error?: string;
+    /** OAuth 授权状态（仅 transport.oauth 的服务器）：required/pending/connected */
+    auth?: 'required' | 'pending' | 'connected';
   }>;
   totalTools: number;
 }
@@ -113,22 +129,29 @@ const StdioTransportSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
 });
 
+const OAuthSchema = z.object({
+  scope: z.string().optional(),
+}).optional();
+
 const SseTransportSchema = z.object({
   type: z.literal('sse'),
   url: z.string(),
   headers: z.record(z.string(), z.string()).optional(),
+  oauth: OAuthSchema,
 });
 
 const HttpTransportSchema = z.object({
   type: z.literal('http'),
   url: z.string(),
   headers: z.record(z.string(), z.string()).optional(),
+  oauth: OAuthSchema,
 });
 
 const StreamableHttpTransportSchema = z.object({
   type: z.literal('streamable-http'),
   url: z.string(),
   headers: z.record(z.string(), z.string()).optional(),
+  oauth: OAuthSchema,
 });
 
 const TransportSchema = z.union([

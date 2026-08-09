@@ -12,11 +12,12 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-async function getRuntimeLayout(): Promise<{ resourceRoot: string; configDir: string }> {
+async function getRuntimeLayout(): Promise<{ resourceRoot: string; configDir: string; dataDir: string }> {
   const rt = await getServerRuntime();
   return {
     resourceRoot: rt.layout.resourceRoot,
     configDir: rt.layout.configDir,
+    dataDir: rt.layout.dataDir,
   };
 }
 
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
     const connect = searchParams.get('connect') === 'true';
 
     if (name) {
-      const { resourceRoot, configDir } = await getRuntimeLayout();
+      const { resourceRoot, configDir, dataDir } = await getRuntimeLayout();
       const config = await getMcpServerConfig(name, resourceRoot, configDir);
       if (!config) {
         return NextResponse.json({ error: 'Server not found' }, { status: 404 });
@@ -57,7 +58,10 @@ export async function GET(request: Request) {
         }
 
         // 不在共享 registry 中（如新建的服务器），创建临时连接测试
-        const registry = createMcpRegistry([config]);
+        const registry = createMcpRegistry([config], {
+          oauthDataDir: dataDir,
+          oauthRedirectUrl: `http://127.0.0.1:${process.env.PORT ?? '3000'}/api/mcp/oauth/callback`,
+        });
         try {
           await registry.connectAll();
           const snapshot = registry.snapshot();

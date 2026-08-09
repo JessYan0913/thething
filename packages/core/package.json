@@ -26,12 +26,12 @@
     "check:exports": "node scripts/check-export-surface.mjs"
   },
   "dependencies": {
-    "@ai-sdk/mcp": "^2.0.3",
+    "@ai-sdk/mcp": "^2.0.29",
     "@ai-sdk/openai-compatible": "^3.0.1",
-    "@ai-sdk/provider": "^4.0.0",
+    "@ai-sdk/provider": "^4.0.7",
     "@larksuiteoapi/node-sdk": "^1.66.0",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "ai": "^7.0.7",
     "better-sqlite3": "^12.8.0",
     "fast-check": "^4.9.0",

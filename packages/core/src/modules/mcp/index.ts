@@ -3,7 +3,15 @@
 // ============================================================
 
 // Registry
-export { McpRegistry, createMcpRegistry } from './registry';
+export { McpRegistry, createMcpRegistry, type McpRegistryOptions } from './registry';
+
+// OAuth
+export {
+  createMcpOAuthProvider,
+  parseOAuthState,
+  type McpOAuthProviderHandle,
+  type McpOAuthProviderOptions,
+} from './mcp-oauth';
 
 // 从模块内部 loader 导出（消除 modules → composition 反向依赖）
 export {
@@ -38,6 +46,7 @@ export {
   type McpRegistrySnapshot,
   type McpTransportType,
   type McpLoaderConfig,
+  type McpOAuthConfig,
 } from './types';
 
 // Tool Wrapper

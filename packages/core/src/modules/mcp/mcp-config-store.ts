@@ -56,6 +56,7 @@ function toDotAgentsEntry(config: McpServerConfig): Record<string, unknown> {
   } else {
     entry.url = t.url;
     if (t.headers) entry.headers = t.headers;
+    if (t.oauth) entry.oauth = t.oauth;
     entry.transport = t.type;
   }
 
@@ -93,6 +94,7 @@ function parseFlatTransport(
       type: tType,
       url: entry.url as string,
       headers: entry.headers as Record<string, string> | undefined,
+      oauth: entry.oauth as { scope?: string } | undefined,
     } as McpServerConfig['transport'];
   }
 
