@@ -454,11 +454,10 @@ async function resumeStream(
             const val = await ctx.publisher.get(`${ctx.keyPrefix}:sentinel:${streamId}`);
             if (val === DONE_VALUE) {
               resolve(null);
+              return; // 流已结束，不触发 error
             }
-            if (Date.now() - start > 1000) {
-              controller.error(new Error("Timeout waiting for ack"));
-              reject(new Error("Timeout waiting for ack"));
-            }
+            controller.error(new Error("Timeout waiting for ack"));
+            reject(new Error("Timeout waiting for ack"));
           }, 1000);
 
           // 订阅专属频道

@@ -759,6 +759,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   // 置位后 sendAutomaticallyWhen 一律返回 false；用户下一次主动操作时复位。
   const stopRequestedRef = useRef(false);
 
+  // 声明提前：onFinish 回调中需要在 todos fetch 兜底时调用 setStreamTodoData
+  const [streamTodoData, setStreamTodoData] = useState<import('@/lib/todos/types').Todo[] | null>(null);
+  const lastTodoUpdateRef = useRef('');
+
   const { messages, setMessages, sendMessage, regenerate, status, stop, error, addToolApprovalResponse, addToolOutput } = useChat({
     id: conversationId || 'pending',
     transport: transport as any,
@@ -917,6 +921,22 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
         // 中断/断连时服务端 stop 路径仍会把部分 assistant 消息落库并前移分支 tip;
         // 必须刷新投影,否则下一条消息带过期 expectedTipId → Branch tip conflict 500
         void refreshBranchProjection(conversationTree.revision);
+        // 断连时 SSE 流中的 data-todo-update 可能丢失，主动 fetch 最新状态
+        if (conversationId) {
+          try {
+            const res = await fetch(`/api/todos?conversationId=${encodeURIComponent(conversationId)}`);
+            if (res.ok) {
+              const data = await res.json() as { todos: import('@/lib/todos/types').Todo[] };
+              if (data.todos) {
+                const serialized = JSON.stringify(data.todos);
+                if (serialized !== lastTodoUpdateRef.current) {
+                  lastTodoUpdateRef.current = serialized;
+                  setStreamTodoData(data.todos);
+                }
+              }
+            }
+          } catch { /* 网络失败不影响主流程 */ }
+        }
         return;
       }
 
@@ -963,13 +983,28 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           if (timerId) clearTimeout(timerId);
         };
       }
+
+      // 正常完成路径：SSE 流最后一个 finish-step 后若断连可能丢失最终 todo 状态，主动兜底一次
+      if (conversationId) {
+        try {
+          const res = await fetch(`/api/todos?conversationId=${encodeURIComponent(conversationId)}`);
+          if (res.ok) {
+            const data = await res.json() as { todos: import('@/lib/todos/types').Todo[] };
+            if (data.todos) {
+              const serialized = JSON.stringify(data.todos);
+              if (serialized !== lastTodoUpdateRef.current) {
+                lastTodoUpdateRef.current = serialized;
+                setStreamTodoData(data.todos);
+              }
+            }
+          }
+        } catch { /* 网络失败不影响主流程 */ }
+      }
     },
   });
 
   // ── 流式 todo 更新：从 SSE 流中提取 data-todo-update 事件 ──
-  const [streamTodoData, setStreamTodoData] = useState<import('@/lib/todos/types').Todo[] | null>(null);
-  const lastTodoUpdateRef = useRef('');
-
+  // streamTodoData / lastTodoUpdateRef 已在 useChat 上方声明，此处仅保留 effect
   useEffect(() => {
     for (const msg of messages) {
       for (const part of msg.parts) {

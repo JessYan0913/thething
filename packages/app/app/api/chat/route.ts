@@ -636,6 +636,17 @@ export async function POST(request: Request) {
               // 用户 /stop 会先关闭 controller;后续 enqueue 抛 ERR_INVALID_STATE
               // 属预期竞态,标记后静默收尾,不能再走 controller.error(二次抛错)
               let controllerClosed = false;
+
+              // 每 20s 推一次 keep-alive ping，防止代理/负载均衡因空闲超时切断 SSE 连接
+              const keepAliveTimer = setInterval(() => {
+                if (controllerClosed) return;
+                try {
+                  controller.enqueue(JSON.stringify({ type: 'data-ping', id: `ping-${Date.now()}`, data: {} }));
+                } catch {
+                  // controller 已关闭，忽略
+                }
+              }, 20_000);
+
               try {
                 while (true) {
                   const { done, value } = await reader.read();
@@ -670,6 +681,7 @@ export async function POST(request: Request) {
               } catch (agentErr) {
                 console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
               }
+              clearInterval(keepAliveTimer);
               console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
               // 清理压缩状态回调
               compactionCallbackRef.current = null;
