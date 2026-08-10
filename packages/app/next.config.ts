@@ -1,8 +1,20 @@
 import type { NextConfig } from 'next';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+// 注入应用版本号，单一来源为 package.json，供客户端「关于」区块展示。
+// 用 fs 绝对路径读取而非 import JSON：兼容 Next 16 的 Node 原生 TS 加载器
+// （其对 JSON import 要求 with { type: 'json' } attribute）。
+const appPkg = JSON.parse(
+  readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'),
+) as { version: string };
 
 const nextConfig: NextConfig = {
   output: 'standalone',
   serverExternalPackages: ['@the-thing/core', 'better-sqlite3'],
+  env: {
+    NEXT_PUBLIC_APP_VERSION: appPkg.version,
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

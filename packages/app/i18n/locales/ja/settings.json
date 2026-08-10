@@ -34,6 +34,12 @@
         "en": "English",
         "ja": "日本語"
       }
+    },
+    "about": "情報",
+    "aboutSection": {
+      "version": "バージョン",
+      "repository": "リポジトリ",
+      "open": "開く"
     }
   },
   "models": {

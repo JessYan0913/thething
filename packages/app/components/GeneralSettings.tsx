@@ -9,6 +9,8 @@ import {
   FolderIcon,
   SaveIcon,
   RefreshCwIcon,
+  InfoIcon,
+  ExternalLinkIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -297,6 +299,48 @@ function DataDirSetting() {
 }
 
 // ============================================================
+// AboutSetting — 关于：版本号与项目仓库
+// ============================================================
+
+const APP_REPO_URL = "https://github.com/JessYan0913/thething"
+
+function AboutSetting() {
+  const { t } = useTranslation('settings')
+
+  return (
+    <>
+      <Separator />
+      <div className="px-4 py-2 border-b bg-muted/30">
+        <span className="text-xs font-medium text-muted-foreground">
+          {t('general.about')}
+        </span>
+      </div>
+      <SettingRow
+        icon={<InfoIcon className="size-4" />}
+        title={t('general.aboutSection.version')}
+        description="TheThing"
+      >
+        <span className="font-mono text-sm">
+          v{process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev'}
+        </span>
+      </SettingRow>
+      <Separator />
+      <SettingRow
+        icon={<ExternalLinkIcon className="size-4" />}
+        title={t('general.aboutSection.repository')}
+        description={APP_REPO_URL}
+      >
+        <Button asChild variant="outline" size="sm">
+          <a href={APP_REPO_URL} target="_blank" rel="noreferrer">
+            {t('general.aboutSection.open')}
+          </a>
+        </Button>
+      </SettingRow>
+    </>
+  )
+}
+
+// ============================================================
 // GeneralSettings — 通用设置页面
 // ============================================================
 
@@ -336,6 +380,7 @@ export default function GeneralSettings() {
           </SettingRow>
 
           <DataDirSetting />
+          <AboutSetting />
           </div>
         </div>
       </div>
