@@ -1,150 +1,87 @@
 # TheThing
 
-一个 AI Agent 框架，参考 Claude Code 架构设计，支持 CLI、Web UI 和 HTTP API 多种交互方式。
+> 参考 Claude Code 架构设计的 **个人全能 AI 助手** —— 本地优先、多形态，让知识与任务在对话中持续复利。
 
-## 项目结构
+TheThing 是一个本地优先的个人 AI 助手：以 Agent 对话为核心，配 Wiki 知识库、技能、任务管理与外部工具接入，通过 **桌面应用、CLI、Web、HTTP API** 多种形态为你持续工作。所有数据保存在本地（`~/.thething/`），兼容 Dot Agents 协议。
 
-```
-thething/
-├── packages/
-│   ├── core/              # 核心引擎 (@the-thing/core)
-│   ├── cli/               # 命令行工具 (@the-thing/cli)
-│   ├── app/               # Next.js Web 应用 (@the-thing/app)
-│   ├── desktop/           # 桌面应用 (@the-thing/desktop)
-│   └── resumable-stream/  # 可恢复流处理 (@the-thing/resumable-stream)
-├── docs/                  # 设计文档和指南
-└── pnpm-workspace.yaml
-```
+## ✨ 核心特性
 
-## 快速开始
+| 能力 | 说明 |
+|------|------|
+| 🤖 **多步 Agent** | 多步执行、子 Agent 并行、工具审批挂起、目标驱动（Goal）持续执行直至完成 |
+| 📚 **Wiki 知识库** | Agent 用工具读写的 Markdown 知识库，支持 `[[链接]]` 关系图与分类，**用宿主 git 做版本管理** |
+| 🧠 **用户记忆** | 用户级记忆 Wiki，跨会话沉淀复利知识 |
+| 🧩 **MCP 扩展** | 连接任意 MCP 服务器，OAuth 授权全链路、registry 常驻热更新 |
+| ⚡ **技能 Skills** | SKILL.md 能力包，按会话预算智能选入上下文；内置技能工作台 |
+| ✅ **任务 Todo** | 带依赖关系（blockedBy/blocks）的任务管理，Agent 自动拆解与跟踪 |
+| 🔌 **连接器 Connector** | YAML 定义外部 API 工具；入站支持飞书（HTTP/WS）、微信、任意 Webhook |
+| ✂️ **上下文压缩** | 自动管理上下文窗口，增量估算 + 分层压缩 + 后台 Checkpoint，长对话不失控 |
+| 🛤️ **对话路线图** | 任意消息处分叉多版本路线，随时切换/归档/固定 |
+| ⏰ **自动化** | 定时任务（Cron）与计划审批（Plan） |
 
-### 安装
+## 📦 安装
+
+### 桌面应用（推荐）
+
+下载最新版 **[TheThing 0.2.0](https://github.com/JessYan0913/thething/releases/tag/0.2.0)**：
+
+| 文件 | 适用 |
+|------|------|
+| `The.Thing-0.2.0-arm64.dmg` | Apple Silicon（M1/M2/M3/M4） |
+| `The.Thing-0.2.0.dmg` | Intel Mac |
+
+> 未签名构建：首次打开需在「系统设置 → 隐私与安全性 → 仍要打开」，或右键 → 打开。
+
+### 从源码运行
 
 ```bash
+git clone https://github.com/JessYan0913/thething.git
+cd thething
 pnpm install
+
+pnpm dev:cli        # CLI 交互
+pnpm dev:next       # Web 界面
+pnpm dev:desktop    # 桌面应用（Electron）
 ```
 
-### 开发
+## 🚀 快速开始
+
+启动后直接对话。输入 `/` 查看命令：
+
+| 命令 | 说明 |
+|------|------|
+| `/goal <目标>` | 设定目标，Agent 持续执行直到完成（CLI/Web） |
+| `/skill <技能> <提示>` | 调用技能（Web） |
+| `/model <name>` | 切换模型（default / fast / smart） |
+| `/mode <mode>` | 切换审批模式（smart / auto-review / full-trust） |
+| `/list` · `/resume <n>` | 列出 / 恢复最近会话（CLI） |
+| `/new` · `/delete <n>` | 新建 / 删除会话（CLI） |
+
+## 🏗️ 架构
+
+pnpm monorepo，5 个包：
+
+```
+packages/
+├── core/              # 核心引擎：Agent 编排、Wiki、Skill、Todo、MCP、Connector、权限
+├── app/               # Next.js Web 应用 + 全部 HTTP API（App Router）
+├── desktop/           # Electron 桌面应用（内置 Next standalone 服务，常驻进程）
+├── cli/               # 命令行交互（Ink TUI）
+└── resumable-stream/  # 可恢复 SSE 流（SQLite + 内存 Pub/Sub，断线续传）
+```
+
+HTTP API 覆盖：Chat（SSE 流、审批、分支、清理）、MCP、Connector（Webhook 入站）、Wiki、Agent/Skill 工作台、模型/权限/配置等。
+
+## 🛠️ 开发
 
 ```bash
-# CLI 模式
-pnpm dev:cli
-
-# Next.js Web 应用
-pnpm dev:next
-
-# 桌面应用
-pnpm dev:desktop
+pnpm dev:cli              # CLI 开发
+pnpm dev:next             # Web 开发
+pnpm build:desktop        # 打包桌面（DMG）
+cd packages/core && pnpm test   # 运行 core 测试
+pnpm typecheck            # 全仓类型检查
 ```
 
-### 构建
-
-```bash
-pnpm build:cli      # 构建 CLI
-pnpm build:next     # 构建 Next.js Web 应用
-pnpm build:desktop  # 构建桌面应用
-```
-
-## 核心模块 (packages/core)
-
-| 模块 | 功能 |
-|------|------|
-| `agent/` | Agent 创建和控制 |
-| `agent-control/` | Agent 运行控制（停止、切换模型等） |
-| `compaction/` | 对话压缩（auto-compact、micro-compact） |
-| `config/` | 配置管理（`behavior.ts`、`layout.ts`、`defaults.ts`） |
-| `connector/` | Connector Gateway（外部工具连接） |
-| `datastore/` | 数据存储抽象层 |
-| `mcp/` | MCP 协议支持 |
-| `memory/` | 记忆系统 |
-| `model-provider/` | 模型提供者抽象 |
-| `permissions/` | 权限管理 |
-| `session-state/` | 会话状态管理 |
-| `skills/` | 技能系统 |
-| `subagents/` | 子代理系统 |
-| `system-prompt/` | 系统提示生成 |
-| `tasks/` | 任务管理 |
-| `tools/` | 工具定义 |
-
-## 配置系统
-
-配置分为两个独立的对象：
-
-### LayoutConfig — 文件系统布局
-
-```typescript
-interface LayoutConfig {
-  resourceRoot: string;      // 项目根目录（必填）
-  configDirName?: string;    // 配置目录名（默认 '.thething'）
-  dataDir?: string;          // 数据目录
-  resources?: Partial<ResourceDirs>;  // 自定义资源目录
-  contextFileNames?: readonly string[];  // 项目上下文文件名
-}
-```
-
-### BehaviorConfig — 运行时行为
-
-```typescript
-interface BehaviorConfig {
-  maxStepsPerSession: number;        // 最大步骤数（默认 50）
-  maxBudgetUsdPerSession: number;    // 最大预算（默认 5.0）
-  maxContextTokens: number;          // 上下文限制（默认 128_000）
-  compactionThreshold: number;       // 压缩阈值（默认 25_000）
-  availableModels: ModelSpec[];      // 可用模型列表
-  modelAliases: { fast, smart, default };  // 模型快捷名映射
-  autoDowngradeCostThreshold: number;  // 自动降级阈值（默认 80）
-}
-```
-
-### 使用示例
-
-```typescript
-import { bootstrap, createContext, createAgent } from '@the-thing/core';
-
-// 最简场景
-const runtime = await bootstrap({
-  layout: { resourceRoot: process.cwd() }
-});
-
-// 替换应用名
-const runtime = await bootstrap({
-  layout: { resourceRoot: process.cwd(), configDirName: '.myapp' }
-});
-
-// 企业部署
-const runtime = await bootstrap({
-  layout: { resourceRoot: process.cwd(), dataDir: '/var/lib/app/data' },
-  behavior: {
-    maxBudgetUsdPerSession: 20.0,
-    availableModels: [{ id: 'gpt-4o', name: 'GPT-4o', costMultiplier: 1.0, capabilityTier: 3 }],
-  }
-});
-
-const context = await createContext({ runtime });
-const { agent } = await createAgent({ context, model: { apiKey, baseURL, modelName } });
-await runtime.dispose();
-```
-
-## 技术栈
-
-- **语言**: TypeScript
-- **包管理**: pnpm (monorepo)
-- **AI SDK**: Vercel AI SDK (`ai` package)
-- **MCP**: `@modelcontextprotocol/sdk`
-- **数据库**: better-sqlite3
-- **前端**: React + Vite + TailwindCSS
-- **服务端**: Hono
-
-## 文档
-
-| 文档 | 说明 |
-|------|------|
-| [配置重构方案](docs/config-refactor-complete.md) | 配置系统设计 |
-| [配置架构规范](docs/config-architecture-guide.md) | 配置层级规范 |
-| [Connector 设计](docs/connector-gateway-design-v2.md) | Connector Gateway |
-| [权限控制](docs/permission-control-design.md) | 权限系统 |
-| [预算管理](docs/context-budget-and-tool-output-management-design.md) | Token 预算 |
-
-## License
+## 📄 License
 
 MIT
