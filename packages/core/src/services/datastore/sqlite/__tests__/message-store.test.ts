@@ -69,32 +69,34 @@ describe('SQLiteMessageStore (immutable tree)', () => {
   })
 
   describe('commitUserMessage — regenerate (same id, same parts)', () => {
-    it('moves head back to the message; old answers become orphan branches', () => {
+    it('replaces the old answer: head moves back and the old chain is deleted (no orphan)', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
 
       const headId = store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       expect(headId).toBe('u1')
-      // 旧回答 a1 不再出现在活跃路径
+      // 旧回答 a1 从活跃路径消失
       expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1'])
+      // 直接替换：a1 已从表中删除，不留孤儿
+      expect(store.messageStore.getConversationTree(CONV).nodes.map((n) => n.id)).toEqual(['u1'])
 
       // 新回答挂到 u1 后
       store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')], headId)
       expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a2'])
     })
 
-    it('failed regeneration loses nothing permanently: old branch rows remain', () => {
+    it('failed regeneration leaves no orphan: the old answer is replaced, not retained', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1')) // regenerate 开始
-      // 新生成失败 → 什么都不 append。a1 行仍在表中（只是不在活跃路径）：
-      // 把 head 移回 a1 即可完整恢复（未来分支切换 UI 的基础）
+      // 新生成失败 → 什么都不 append。旧回答已被直接替换删除，不再可恢复
       expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1'])
+      expect(store.messageStore.getConversationTree(CONV).nodes.map((n) => n.id)).toEqual(['u1'])
     })
   })
 
   describe('commitUserMessage — edit-resend (same id, new parts)', () => {
-    it('inserts a NEW sibling node; old version and its subtree stay intact', () => {
+    it('replaces the old version: new node on active path, old version + subtree deleted', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
       store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'original'))
@@ -106,17 +108,51 @@ describe('SQLiteMessageStore (immutable tree)', () => {
       const active = store.messageStore.getMessagesByConversation(CONV)
       expect(active.map((m) => m.id)).toEqual(['u1', 'a1', newHeadId])
       expect(texts(active)).toEqual(['q1', 'r1', 'edited'])
+
+      // 被编辑替换的旧版本 u2 与旧回答 a2 已删除（直接替换，不留孤儿）
+      const allNodes = store.messageStore.getConversationTree(CONV).nodes.map((n) => n.id)
+      expect(allNodes).not.toContain('u2')
+      expect(allNodes).not.toContain('a2')
     })
 
-    it('edit history is recoverable: committing the original moves head back to the old node', () => {
+    it('edit is a replacement: the old version is deleted, not recoverable by re-commit', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'original'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'edited'))
 
-      // u1 原节点仍在树中：以原内容 commit 命中 regenerate 语义，head 移回 u1
-      const backToOld = store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'original'))
-      expect(backToOld).toBe('u1')
-      expect(texts(store.messageStore.getMessagesByConversation(CONV))).toEqual(['original'])
+      // 只剩编辑后的版本；旧版本 original 与旧回答 a1 都已删除
+      expect(texts(store.messageStore.getMessagesByConversation(CONV))).toEqual(['edited'])
+      expect(store.messageStore.getConversationTree(CONV).nodes.map((n) => n.id)).toHaveLength(1)
+    })
+  })
+
+  describe('commitUserMessage — orphan cleanup boundaries', () => {
+    it('keeps messages reachable from a fork branch tip', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      // 建 fork 分支，tip 指向 a1（fork 后该链属于分支，应保留）
+      store.branchStore.createBranch({
+        conversationId: CONV,
+        parentBranchId: null,
+        forkMessageId: 'u1',
+        tipMessageId: 'a1',
+        name: 'fork',
+        status: 'active',
+        createdBy: 'system',
+      })
+      // regenerate u1 → head 移回 u1；但 a1 是 fork 分支 tip，不得被删
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      const allNodes = store.messageStore.getConversationTree(CONV).nodes.map((n) => n.id)
+      expect(allNodes).toContain('u1')
+      expect(allNodes).toContain('a1')
+    })
+
+    it('normal send does not delete anything', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
+      const allNodes = store.messageStore.getConversationTree(CONV).nodes.map((n) => n.id)
+      expect(allNodes).toEqual(['u1', 'a1', 'u2'])
     })
   })
 
@@ -383,33 +419,30 @@ describe('SQLiteMessageStore (immutable tree)', () => {
   })
 
   describe('getBranchInfo / switchHead', () => {
-    it('reports sibling versions at regenerated positions', () => {
+    it('regenerate removes the old sibling version (no orphan candidates)', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1')) // regenerate
       store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')], 'u1')
 
+      // regenerate 直接替换：旧回答 a1 已删除，a2 无兄弟版本
       const { branches } = store.messageStore.getBranchInfo(CONV)
-      expect(branches['a2']).toEqual(['a1', 'a2']) // a1、a2 同为 u1 的孩子
-      expect(branches['u1']).toBeUndefined() // u1 无兄弟
+      expect(branches['a2']).toBeUndefined()
     })
 
-    it('switchHead descends to the tip of the target branch', () => {
+    it('switchHead descends to the leaf of the target branch', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
       store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
       store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')])
-      // regenerate a1 → 新分支只有 a1b
-      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
-      store.messageStore.appendMessages(CONV, [msg('a1b', 'assistant', 'r1b')], 'u1')
 
-      // 切回旧分支 a1 → head 应下行到旧分支叶子 a2
+      // 从 a1 下行：head 沿最新孩子链走到叶子 a2
       expect(store.messageStore.switchHead(CONV, 'a1')).toBe(true)
       expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id))
         .toEqual(['u1', 'a1', 'u2', 'a2'])
     })
 
-    it('switchHead with descendToTip=false parks head on the message (fork point)', () => {
+    it('switchHead to a fork point: subsequent messages without a branch tip are pruned (no orphan)', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'q1'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
       store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'q2'))
@@ -418,14 +451,15 @@ describe('SQLiteMessageStore (immutable tree)', () => {
       expect(store.messageStore.switchHead(CONV, 'a1', false)).toBe(true)
       expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a1'])
 
-      // headChildId 指向"后面的消息"入口
+      // headChildId 指向"后面的消息"入口（fork 前的后续路径）
       const { headChildId } = store.messageStore.getBranchInfo(CONV)
       expect(headChildId).toBe('u2')
 
-      // 从分叉点发新消息 → u2 的兄弟出现
+      // 从分叉点发新消息：无 branch 记录保护的后续路径（u2→a2）被清理。
+      // 真实 UI 的 fork 走 executeCommand 创建正式分支，branch tip 会保护后续链。
       store.messageStore.commitUserMessage(CONV, msg('u3', 'user', 'q3-branched'))
-      const { branches } = store.messageStore.getBranchInfo(CONV)
-      expect(branches['u3']).toEqual(['u2', 'u3'])
+      expect(store.messageStore.getMessagesByConversation(CONV).map((m) => m.id)).toEqual(['u1', 'a1', 'u3'])
+      expect(store.messageStore.getBranchInfo(CONV).headChildId).toBeNull()
     })
 
     it('switchHead returns false for a message not in the conversation', () => {
@@ -445,7 +479,7 @@ describe('SQLiteMessageStore (immutable tree)', () => {
   })
 
   describe('conversation tree projection and revision', () => {
-    it('returns every branch node with active-path flags and previews', () => {
+    it('returns active-path nodes with flags and previews (no orphan remnants)', () => {
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'question'))
       store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'first answer')])
       store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'question'))
@@ -453,13 +487,13 @@ describe('SQLiteMessageStore (immutable tree)', () => {
 
       const tree = store.messageStore.getConversationTree(CONV)
       expect(tree.activeTipId).toBe('a2')
-      expect(tree.nodes.map((node) => node.id)).toEqual(['u1', 'a1', 'a2'])
+      // regenerate 直接替换：旧回答 a1 已删除，树中只有活跃路径
+      expect(tree.nodes.map((node) => node.id)).toEqual(['u1', 'a2'])
       expect(tree.nodes.find((node) => node.id === 'u1')).toMatchObject({
         preview: 'question',
-        childCount: 2,
+        childCount: 1,
         isActivePath: true,
       })
-      expect(tree.nodes.find((node) => node.id === 'a1')?.isActivePath).toBe(false)
       expect(tree.nodes.find((node) => node.id === 'a2')).toMatchObject({
         preview: 'second answer',
         isActivePath: true,

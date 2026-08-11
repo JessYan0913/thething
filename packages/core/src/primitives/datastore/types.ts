@@ -340,7 +340,12 @@ export interface BranchStore {
   }): ConversationBranch | null;
   deleteBranch(branchId: string): boolean;
   switchBranch(conversationId: string, branchId: string): boolean;
-  getProjection(conversationId: string): ConversationProjection;
+  getProjection(conversationId: string, options?: {
+    /** 需要完整消息列表时传 true（默认 false → 返回空数组，避免全表读巨列） */
+    includeMessages?: boolean;
+    /** 需要完整消息树时传 true（默认 false → 返回空树，避免树构建全表自连接） */
+    includeTree?: boolean;
+  }): ConversationProjection;
   executeCommand(conversationId: string, command: ConversationCommand): ConversationCommandResult;
 }
 
@@ -419,6 +424,18 @@ export interface MessageStore {
    * drops all branches. Never use in the chat runtime paths.
    */
   replaceConversation(conversationId: string, messages: UIMessage[]): void;
+
+  /**
+   * Prune bloat from a conversation: strip transient data-* parts from all
+   * stored messages and delete orphan messages (unreachable from head or any
+   * branch tip — regenerate/edit leftovers). Keeps the active path and branch
+   * tips intact. Returns cleanup stats.
+   */
+  pruneConversation(conversationId: string): {
+    strippedMessages: number;
+    strippedBytes: number;
+    deletedOrphans: number;
+  };
 
   /**
    * Branch metadata for the active path:

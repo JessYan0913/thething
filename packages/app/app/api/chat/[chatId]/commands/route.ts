@@ -18,7 +18,11 @@ export async function POST(
     abortChat(conversationId);
     const rt = await getServerRuntime();
     const result = rt.dataStore.branchStore.executeCommand(conversationId, command);
-    const projection = rt.dataStore.branchStore.getProjection(conversationId);
+    // 分支切换/分叉后前端要重建完整消息列表与路线图 → 需要全量投影
+    const projection = rt.dataStore.branchStore.getProjection(conversationId, {
+      includeMessages: true,
+      includeTree: true,
+    });
     return NextResponse.json({ success: true, result, projection });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to execute conversation command';

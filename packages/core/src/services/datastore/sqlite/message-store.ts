@@ -30,10 +30,30 @@ interface MessageRow {
   content: string;
 }
 
-interface TreeMessageRow extends MessageRow {
+interface TreeMessageRow {
+  id: string;
+  parent_id: string | null;
   role: 'user' | 'assistant' | 'system';
   created_at: string;
   child_count: number;
+}
+
+// 瞬态 UI part 类型：流式期间实时显示（走 SSE，不经 message-store），
+// 持久化后无意义——前端渲染一律 return null，重载恢复有独立兜底来源
+// （todo → /api/todos，上下文水位 → conversations.context_usage）。
+// 写入时剥离，避免 DB 无限膨胀。data-sub-* 保留（子 Agent 过程回看）。
+const TRANSIENT_PART_TYPES = new Set([
+  'data-todo-update',
+  'data-bash-output',
+  'data-context-usage',
+  'data-compaction-status',
+]);
+
+/** 剥离瞬态 data-* part；无变化时返回原引用。 */
+function stripTransientParts(message: UIMessage): UIMessage {
+  if (!message.parts?.length) return message;
+  const parts = message.parts.filter((p) => !TRANSIENT_PART_TYPES.has(p.type));
+  return parts.length === message.parts.length ? message : { ...message, parts };
 }
 
 /**
@@ -49,24 +69,21 @@ export class SQLiteMessageStore implements MessageStore {
     const head = this.getHead(conversationId);
     if (!head) return [];
 
-    // 一次读出全会话消息，在内存里沿 parent 链回溯（避免递归 SQL，规模上完全够用）
+    // 递归 CTE 从 head 沿 parent 链回溯，只读活跃路径行，避免全表读巨列 content。
+    // 实测：255MB 大会话全表读 ~800ms vs CTE ~7ms。
     const rows = this.db
-      .prepare('SELECT id, parent_id, content FROM messages WHERE conversation_id = ?')
-      .all(conversationId) as unknown as MessageRow[];
-    const byId = new Map(rows.map((r) => [r.id, r]));
+      .prepare(
+        `WITH RECURSIVE r(id, parent_id, content) AS (
+           SELECT id, parent_id, content FROM messages WHERE id = ?
+           UNION ALL
+           SELECT m.id, m.parent_id, m.content FROM messages m JOIN r ON m.id = r.parent_id
+         )
+         SELECT id, parent_id, content FROM r`
+      )
+      .all(head) as unknown as MessageRow[];
 
-    const path: UIMessage[] = [];
-    let cursor: string | null = head;
-    while (cursor) {
-      const row = byId.get(cursor);
-      if (!row) {
-        logger.warn('MessageStore', `Broken parent chain in ${conversationId} at ${cursor}`);
-        break;
-      }
-      path.push(JSON.parse(row.content) as UIMessage);
-      cursor = row.parent_id;
-    }
-    return path.reverse();
+    // CTE 返回 head→root，反转成 root→head 的展示顺序
+    return rows.map((r) => JSON.parse(r.content) as UIMessage).reverse();
   }
 
   getConversationTree(conversationId: string): ConversationTree {
@@ -76,9 +93,11 @@ export class SQLiteMessageStore implements MessageStore {
         .get(conversationId) as { head_message_id: string | null; revision: number } | undefined;
       if (!conversation) return { revision: 0, activeTipId: null, nodes: [] };
 
+      // 只 SELECT 元数据列 + 孩子计数，不读 content 巨列：
+      // 旧查询把全会话 content（大时会话几百 MB）载入内存做自连接 + GROUP BY。
       const rows = this.db
         .prepare(
-          `SELECT m.id, m.parent_id, m.role, m.content, m.created_at,
+          `SELECT m.id, m.parent_id, m.role, m.created_at,
                   COUNT(c.id) AS child_count
              FROM messages m
              LEFT JOIN messages c
@@ -99,6 +118,20 @@ export class SQLiteMessageStore implements MessageStore {
         cursor = row.parent_id;
       }
 
+      // preview 需要解析 content；只对活跃路径节点读取（几十条，成本可忽略）。
+      // 非活跃分支节点不读 content，preview 置空（路线图面板对空 preview 不渲染文本）。
+      const activeContents = activeIds.size > 0
+        ? this.db
+            .prepare(
+              `SELECT id, content FROM messages
+                WHERE conversation_id = ? AND id IN (${[...activeIds].map(() => '?').join(',')})`
+            )
+            .all(conversationId, ...activeIds) as unknown as { id: string; content: string }[]
+        : [];
+      const previewById = new Map(
+        activeContents.map((r) => [r.id, this.getMessagePreview(r.content)])
+      );
+
       return {
         revision: conversation.revision,
         activeTipId: conversation.head_message_id,
@@ -106,7 +139,7 @@ export class SQLiteMessageStore implements MessageStore {
           id: row.id,
           parentId: row.parent_id,
           role: row.role,
-          preview: this.getMessagePreview(row.content),
+          preview: previewById.get(row.id) ?? '',
           createdAt: row.created_at,
           childCount: Number(row.child_count),
           isActivePath: activeIds.has(row.id),
@@ -119,7 +152,7 @@ export class SQLiteMessageStore implements MessageStore {
   commitUserMessage(conversationId: string, message: UIMessage): string {
     const transaction = this.db.transaction(() => {
       this.ensureConversation(conversationId, [message]);
-      const msg = { ...message, id: message.id || nanoid() };
+      const msg = { ...stripTransientParts(message), id: message.id || nanoid() };
 
       const existing = this.db
         .prepare('SELECT id, parent_id, content FROM messages WHERE conversation_id = ? AND id = ?')
@@ -142,6 +175,9 @@ export class SQLiteMessageStore implements MessageStore {
 
       this.setHead(conversationId, headId);
       this.updateActiveBranchTip(conversationId, headId);
+      // 直接替换：regenerate/编辑后被顶替的旧版本立即删除，不保留孤儿。
+      // 普通发送无旧链被替换，此处顺带清理历史孤儿（防累积）。
+      this.deleteOrphans(conversationId);
       this.bumpRevision(conversationId);
       this.invalidateSummaryIfAnchorOffPath(conversationId);
       return headId;
@@ -150,6 +186,8 @@ export class SQLiteMessageStore implements MessageStore {
   }
 
   commitAssistantContinuation(conversationId: string, message: UIMessage): string {
+    // 剥离瞬态 part，保证与 DB 中已剥离内容的一致性比较（幂等判断）
+    message = stripTransientParts(message);
     if (message.role !== 'assistant') {
       throw new Error('Assistant continuation must have role assistant');
     }
@@ -210,7 +248,7 @@ export class SQLiteMessageStore implements MessageStore {
       let parentId: string | null = anchor;
       let treeChanged = false;
       for (const message of messages) {
-        const msg = { ...message, id: message.id || nanoid() };
+        const msg = { ...stripTransientParts(message), id: message.id || nanoid() };
 
         // 同内容去重：同一 parent 下已有相同 parts 的消息 → 复用而非重复插入
         const dupId = this.findDupByContent(conversationId, parentId, msg);
@@ -253,7 +291,7 @@ export class SQLiteMessageStore implements MessageStore {
       const seenIds = new Set<string>();
       let parentId: string | null = null;
       for (const message of messages) {
-        let msg = { ...message, id: message.id || nanoid() };
+        let msg = { ...stripTransientParts(message), id: message.id || nanoid() };
         if (seenIds.has(msg.id)) {
           logger.warn('MessageStore', `replaceConversation: duplicate id ${msg.id}, reassigning`);
           msg = { ...msg, id: nanoid() };
@@ -270,6 +308,99 @@ export class SQLiteMessageStore implements MessageStore {
     transaction();
   }
 
+  pruneConversation(conversationId: string): {
+    strippedMessages: number;
+    strippedBytes: number;
+    deletedOrphans: number;
+  } {
+    const transaction = this.db.transaction(() => {
+      let strippedMessages = 0;
+      let strippedBytes = 0;
+
+      // 1. 剥离历史消息中的瞬态 part（幂等：已剥离的 no-op）
+      const rows = this.db
+        .prepare('SELECT id, content FROM messages WHERE conversation_id = ?')
+        .all(conversationId) as { id: string; content: string }[];
+      const updateContent = this.db.prepare('UPDATE messages SET content = ? WHERE id = ?');
+      for (const row of rows) {
+        try {
+          const message = JSON.parse(row.content) as UIMessage;
+          const stripped = stripTransientParts(message);
+          if (stripped !== message) {
+            const newContent = JSON.stringify(stripped);
+            updateContent.run(newContent, row.id);
+            strippedMessages++;
+            strippedBytes += Math.max(0, row.content.length - newContent.length);
+          }
+        } catch { /* malformed content, skip */ }
+      }
+
+      // 2. 清孤儿（复用 deleteOrphans：剥离与孤儿删除解耦）
+      const deletedOrphans = this.deleteOrphans(conversationId);
+
+      if (strippedMessages > 0 || deletedOrphans > 0) {
+        this.bumpRevision(conversationId);
+        // 摘要锚点若指向被删消息则失效
+        this.invalidateSummaryIfAnchorOffPath(conversationId);
+      }
+      return { strippedMessages, strippedBytes, deletedOrphans };
+    });
+    return transaction();
+  }
+
+  /**
+   * 删除当前不可达的消息（head + 所有 branch tip 沿 parent 回溯均不可达）：
+   * regenerate/编辑替换掉的旧版本，以及历史孤儿。fork 分支 tip 可达，不受影响。
+   * 同步清理指向被删消息的分支选择记录与摘要锚点。
+   * @returns 删除的消息数
+   */
+  private deleteOrphans(conversationId: string): number {
+    const allRows = this.db
+      .prepare('SELECT id, parent_id FROM messages WHERE conversation_id = ?')
+      .all(conversationId) as { id: string; parent_id: string | null }[];
+    if (allRows.length === 0) return 0;
+    const byId = new Map(allRows.map((r) => [r.id, r.parent_id]));
+
+    const reachable = new Set<string>();
+    const tips = new Set<string>();
+    const head = this.getHead(conversationId);
+    if (head) tips.add(head);
+    const branchTips = this.db
+      .prepare('SELECT tip_message_id FROM conversation_branches WHERE conversation_id = ?')
+      .all(conversationId) as { tip_message_id: string | null }[];
+    for (const b of branchTips) if (b.tip_message_id) tips.add(b.tip_message_id);
+
+    for (const tip of tips) {
+      let cursor: string | null = tip;
+      while (cursor && !reachable.has(cursor)) {
+        reachable.add(cursor);
+        cursor = byId.get(cursor) ?? null;
+      }
+    }
+
+    const orphanIds = allRows.map((r) => r.id).filter((id) => !reachable.has(id));
+    if (orphanIds.length === 0) return 0;
+
+    const delMsg = this.db.prepare('DELETE FROM messages WHERE id = ?');
+    const delSel = this.db.prepare(
+      `DELETE FROM conversation_branch_selections
+        WHERE conversation_id = ? AND (parent_message_id = ? OR selected_child_id = ?)`
+    );
+    const delSummary = this.db.prepare(
+      'DELETE FROM summaries WHERE conversation_id = ? AND anchor_message_id = ?'
+    );
+    for (const id of orphanIds) {
+      delMsg.run(id);
+      delSel.run(conversationId, id, id);
+      delSummary.run(conversationId, id);
+    }
+    logger.debug(
+      'MessageStore',
+      `deleteOrphans: removed ${orphanIds.length} unreachable messages in ${conversationId}`,
+    );
+    return orphanIds.length;
+  }
+
   // ── 分支查询 / 切换 ─────────────────────────────────────────
 
   getBranchInfo(conversationId: string): {
@@ -280,7 +411,19 @@ export class SQLiteMessageStore implements MessageStore {
     const head = this.getHead(conversationId);
     if (!head) return { branches, headChildId: null };
 
-    const activePath = this.getMessagesByConversation(conversationId);
+    // 轻量活跃路径：只需 id/role/branch_id 做 sibling 判定，不读 content 巨列。
+    // （旧实现内部再调 getMessagesByConversation，对大会话又是一轮全表读）
+    const activeRows = this.db
+      .prepare(
+        `WITH RECURSIVE r(id, parent_id, role, branch_id) AS (
+           SELECT id, parent_id, role, branch_id FROM messages WHERE id = ?
+           UNION ALL
+           SELECT m.id, m.parent_id, m.role, m.branch_id FROM messages m JOIN r ON m.id = r.parent_id
+         )
+         SELECT id, role, branch_id FROM r`
+      )
+      .all(head) as unknown as { id: string; role: string; branch_id: string | null }[];
+    const activePath = activeRows.reverse();
     const activeBranchId = this.getActiveBranchId(conversationId);
 
     // 查 siblings 时带上 branch_id，用于区分 fork（不同分支的 user 消息不应显示为版本）

@@ -474,6 +474,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const [branchPanelOpen, setBranchPanelOpen] = useState(false);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [branchSwitching, setBranchSwitching] = useState(false);
+  // 清理历史版本：剥离瞬态 part + 删除被丢弃的孤儿分支消息
+  const [pruning, setPruning] = useState(false);
+  const [pruneMessage, setPruneMessage] = useState<string | null>(null);
 
   // 文件预览分栏状态
   const [previewFile, setPreviewFile] = useState<{
@@ -1697,6 +1700,46 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }
   }, [conversationId, branchSwitching]);
 
+  // 清理历史版本：剥离瞬态 part + 删除孤儿分支消息（regenerate/编辑丢弃的版本）。
+  // 活跃对话与分支 tip 全部保留，清理后重新加载消息并刷新投影。
+  const handlePruneConversation = useCallback(async () => {
+    if (!conversationId) return;
+    if (!window.confirm('清理此会话的历史版本？将永久删除重新生成/编辑时被丢弃的分支数据（活跃对话与路线不受影响）。')) return;
+    setPruning(true);
+    setPruneMessage(null);
+    try {
+      const res = await fetch(`/api/chat/${encodeURIComponent(conversationId)}/prune`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const failure = await res.json().catch(() => ({})) as { error?: string };
+        setPruneMessage(failure.error ?? '清理失败');
+        return;
+      }
+      const data = await res.json() as { stats?: { strippedMessages: number; deletedOrphans: number } };
+      // 重新加载消息列表 + 刷新分支投影
+      const endpoint = apiEndpoint || '/api/chat';
+      const msgRes = await fetch(`${endpoint}?conversationId=${encodeURIComponent(conversationId)}`);
+      if (msgRes.ok) {
+        const msgData = await msgRes.json();
+        if (msgData.messages) {
+          initialMessageCountRef.current = msgData.messages.length;
+          setMessages(msgData.messages as UIMessage[]);
+        }
+      }
+      await refreshBranchProjection();
+      setPruneMessage(
+        data.stats && (data.stats.deletedOrphans > 0 || data.stats.strippedMessages > 0)
+          ? `已清理：删除 ${data.stats.deletedOrphans} 条历史版本`
+          : '无需清理（已是最新状态）',
+      );
+    } catch {
+      setPruneMessage('清理失败');
+    } finally {
+      setPruning(false);
+    }
+  }, [conversationId, apiEndpoint, setMessages, refreshBranchProjection]);
+
   const handleEditStart = useCallback((messageId: string, currentText: string, attachments?: Array<{ type: 'file'; mediaType?: string; url: string; filename?: string }>) => {
     setEditingMessageId(messageId);
     setEditingText(currentText);
@@ -1832,27 +1875,44 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           </PromptInputFooter>
         </PromptInput>
       </div>
-      {/* 对话路线按钮 — portal 到 header 区域 */}
+      {/* 对话路线 + 清理历史版本按钮 — portal 到 header 区域 */}
       {isInitialLoadDone && conversationTree.nodes.length > 0 && typeof document !== 'undefined' ? createPortal(
-        <Button
-          type="button"
-          size="sm"
-          variant={branchPanelOpen ? 'secondary' : 'ghost'}
-          className="h-7 gap-1.5 text-xs"
-          onClick={() => {
-            if (previewFile) {
-              setPreviewFile(null);
-              setPreviewedToolKey(null);
-            }
-            setBranchPanelOpen((open) => !open);
-          }}
-        >
-          <GitBranchIcon className="size-3.5" />
-          对话路线
-          <span className="rounded bg-background px-1 text-[10px] text-muted-foreground">
-            {branchSummaries.filter((b) => b.status !== 'archived').length}
-          </span>
-        </Button>,
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={branchPanelOpen ? 'secondary' : 'ghost'}
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => {
+              if (previewFile) {
+                setPreviewFile(null);
+                setPreviewedToolKey(null);
+              }
+              setBranchPanelOpen((open) => !open);
+            }}
+          >
+            <GitBranchIcon className="size-3.5" />
+            对话路线
+            <span className="rounded bg-background px-1 text-[10px] text-muted-foreground">
+              {branchSummaries.filter((b) => b.status !== 'archived').length}
+            </span>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 text-xs"
+            onClick={handlePruneConversation}
+            disabled={pruning}
+            title="清理此会话被丢弃的历史版本，缩小存储"
+          >
+            {pruning ? <Loader2Icon className="size-3.5 animate-spin" /> : <TrashIcon className="size-3.5" />}
+            清理历史
+          </Button>
+          {pruneMessage && (
+            <span className="max-w-40 truncate text-[10px] text-muted-foreground">{pruneMessage}</span>
+          )}
+        </div>,
         document.getElementById('branch-panel-toggle')!,
       ) : null}
     </div>

@@ -10,7 +10,10 @@ export async function GET(
   try {
     const { chatId: conversationId } = await params;
     const rt = await getServerRuntime();
-    return NextResponse.json(rt.dataStore.branchStore.getProjection(conversationId));
+    // 前端只用 tree/branches/activeBranchId；不带 messages（大会话全表读巨列的元凶）
+    return NextResponse.json(
+      rt.dataStore.branchStore.getProjection(conversationId, { includeTree: true })
+    );
   } catch (error) {
     console.error('[Conversation Projection API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load conversation projection' }, { status: 500 });

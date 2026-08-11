@@ -20,7 +20,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Branch not found' }, { status: 404 });
     }
     const branch = rt.dataStore.branchStore.updateBranch(branchId, update);
-    return NextResponse.json({ success: true, branch, projection: rt.dataStore.branchStore.getProjection(conversationId) });
+    return NextResponse.json({
+      success: true,
+      branch,
+      projection: rt.dataStore.branchStore.getProjection(conversationId, { includeTree: true }),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update branch';
     return NextResponse.json({ error: message }, { status: 400 });
@@ -39,7 +43,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Branch not found' }, { status: 404 });
     }
     rt.dataStore.branchStore.deleteBranch(branchId);
-    return NextResponse.json({ success: true, projection: rt.dataStore.branchStore.getProjection(conversationId) });
+    return NextResponse.json({
+      success: true,
+      projection: rt.dataStore.branchStore.getProjection(conversationId, { includeTree: true }),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete branch';
     return NextResponse.json({ error: message }, { status: 400 });

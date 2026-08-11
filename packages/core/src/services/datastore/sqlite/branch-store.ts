@@ -201,7 +201,10 @@ export class SQLiteBranchStore implements BranchStore {
     return transaction();
   }
 
-  getProjection(conversationId: string): ConversationProjection {
+  getProjection(
+    conversationId: string,
+    options: { includeMessages?: boolean; includeTree?: boolean } = {},
+  ): ConversationProjection {
     const conversation = this.db.prepare(
       'SELECT revision, active_branch_id, head_message_id FROM conversations WHERE id = ?'
     ).get(conversationId) as {
@@ -249,8 +252,14 @@ export class SQLiteBranchStore implements BranchStore {
       revision: conv.revision,
       activeBranchId: conv.active_branch_id,
       activeTipId: conv.head_message_id,
-      messages: this.messageStore.getMessagesByConversation(conversationId),
-      tree: this.messageStore.getConversationTree(conversationId),
+      // messages/tree 默认惰性：多数调用方只取标量字段，
+      // 全量投影（含 messages/tree）对大会话要全表读巨列 + 树自连接，按需显式请求
+      messages: options.includeMessages
+        ? this.messageStore.getMessagesByConversation(conversationId)
+        : [],
+      tree: options.includeTree
+        ? this.messageStore.getConversationTree(conversationId)
+        : { revision: 0, activeTipId: null, nodes: [] },
       branches,
     };
   }

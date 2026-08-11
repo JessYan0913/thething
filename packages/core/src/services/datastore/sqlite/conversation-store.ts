@@ -49,6 +49,27 @@ export class SQLiteConversationStore implements ConversationStore {
   }
 
   deleteConversation(id: string): void {
+    // FK 未启用（PRAGMA foreign_keys=0），ON DELETE CASCADE 不生效，
+    // 手动级联清理所有引用 conversation_id 的关联行（防孤儿残留膨胀）。
+    const relatedTables = [
+      'summaries',
+      'memory_usage',
+      'chat_costs',
+      'todos',
+      'pending_approvals',
+      'chat_stream_events',
+      'stream_chunks',
+      'agent_runs',
+      'agent_states',
+      'suspended_agent_states',
+      'messages',
+      'conversation_branches',
+      'conversation_branch_selections',
+      'conversation_runs',
+    ];
+    for (const table of relatedTables) {
+      this.db.prepare(`DELETE FROM ${table} WHERE conversation_id = ?`).run(id);
+    }
     const stmt = this.db.prepare('DELETE FROM conversations WHERE id = ?');
     stmt.run(id);
   }
