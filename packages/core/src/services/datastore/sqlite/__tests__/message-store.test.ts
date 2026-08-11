@@ -494,10 +494,34 @@ describe('SQLiteMessageStore (immutable tree)', () => {
         childCount: 1,
         isActivePath: true,
       })
+      // assistant 节点不参与路线图展示，preview 为空（只对 user 节点算 preview）
       expect(tree.nodes.find((node) => node.id === 'a2')).toMatchObject({
-        preview: 'second answer',
+        preview: '',
         isActivePath: true,
       })
+    })
+
+    it('provides previews for user nodes on inactive fork branches (route panel tooltip)', () => {
+      store.messageStore.commitUserMessage(CONV, msg('u1', 'user', 'branching point'))
+      store.messageStore.appendMessages(CONV, [msg('a1', 'assistant', 'r1')])
+      store.messageStore.commitUserMessage(CONV, msg('u2', 'user', 'later on main'))
+      store.messageStore.appendMessages(CONV, [msg('a2', 'assistant', 'r2')])
+
+      // 在 a1 分叉（真实 UI 路径：executeCommand 建正式分支，主分支 tip 保护 u2→a2）
+      const proj = store.branchStore.getProjection(CONV)
+      store.branchStore.executeCommand(CONV, {
+        type: 'fork',
+        sourceBranchId: proj.activeBranchId!,
+        fromMessageId: 'a1',
+        name: 'fork',
+      })
+      // 从分叉点发新消息 → 属于新分支；u2 成为未激活分支上的 user 节点
+      store.messageStore.commitUserMessage(CONV, msg('u3', 'user', 'branched'))
+
+      const tree = store.messageStore.getConversationTree(CONV)
+      // u2（未激活分支）仍有 preview，路线图悬浮提示可用
+      expect(tree.nodes.find((n) => n.id === 'u2')?.preview).toBe('later on main')
+      expect(tree.nodes.find((n) => n.id === 'u2')?.isActivePath).toBe(false)
     })
 
     it('increments revision for head changes and orphan branch inserts', () => {

@@ -118,18 +118,19 @@ export class SQLiteMessageStore implements MessageStore {
         cursor = row.parent_id;
       }
 
-      // preview 需要解析 content；只对活跃路径节点读取（几十条，成本可忽略）。
-      // 非活跃分支节点不读 content，preview 置空（路线图面板对空 preview 不渲染文本）。
-      const activeContents = activeIds.size > 0
+      // preview 需要解析 content；只对路线图会显示的节点（user 角色，含未激活
+      // 分支）读取，避免像旧查询那样把全会话巨列 content 载入自连接。
+      const previewTargets = rows.filter((row) => row.role === 'user').map((row) => row.id);
+      const previewContents = previewTargets.length > 0
         ? this.db
             .prepare(
               `SELECT id, content FROM messages
-                WHERE conversation_id = ? AND id IN (${[...activeIds].map(() => '?').join(',')})`
+                WHERE conversation_id = ? AND id IN (${previewTargets.map(() => '?').join(',')})`
             )
-            .all(conversationId, ...activeIds) as unknown as { id: string; content: string }[]
+            .all(conversationId, ...previewTargets) as unknown as { id: string; content: string }[]
         : [];
       const previewById = new Map(
-        activeContents.map((r) => [r.id, this.getMessagePreview(r.content)])
+        previewContents.map((r) => [r.id, this.getMessagePreview(r.content)])
       );
 
       return {
