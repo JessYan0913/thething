@@ -406,7 +406,10 @@ export function ConversationRoutePanel({
                         {row.node.preview}
                       </span>
                     )}
-                    {nodeBranches.length > 0 ? nodeBranches.map((branch) => (
+                    {/* 分支标题：只保留当前分支（当前路线末端的指示）。
+                        未激活分支的分支标题与节点预览重复，已去掉——切换分支可点击节点
+                        圆点，分支管理走底部面板 */}
+                    {nodeBranches.filter((branch) => branch.isCurrent).map((branch) => (
                       <button
                         key={branch.id}
                         type="button"
@@ -414,7 +417,6 @@ export function ConversationRoutePanel({
                         className={cn(
                           'rounded-md px-2 py-1 text-left text-[11px] transition-colors hover:bg-accent',
                           branch.id === selectedBranchId ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground',
-                          branch.status === 'archived' && 'line-through opacity-60',
                         )}
                         onMouseEnter={() => setHoveredBranchId(branch.id)}
                         onMouseLeave={() => setHoveredBranchId(null)}
@@ -430,13 +432,12 @@ export function ConversationRoutePanel({
                         <span className="flex items-center gap-1">
                           {branch.isPinned && <PinIcon className="size-2.5" />}
                           {getRouteLabel(branch, row.node.preview)}
-                          {branch.isCurrent && ' · 当前'}
+                          <span className="text-primary"> · 当前</span>
                         </span>
                       </button>
-                    )) : (
-                      isCurrentTip && (
-                        <span className="px-2 py-1 text-[11px] font-medium text-primary">你在这里</span>
-                      )
+                    ))}
+                    {nodeBranches.length === 0 && isCurrentTip && (
+                      <span className="px-2 py-1 text-[11px] font-medium text-primary">你在这里</span>
                     )}
                   </div>
                 </div>
