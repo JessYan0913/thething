@@ -350,6 +350,8 @@ export {
   rebuildIndex,
   readIndex,
   appendLog,
+  scanPageFiles,
+  migrateWikiToDirectories,
   pageNameToFilename,
   filenameToPageName,
   type WikiPageData,
@@ -357,16 +359,9 @@ export {
   type IndexEntry,
   // Wiki mutation lock（所有写入必须经过，与 Agent 工具共享同一队列）
   withWikiMutationLock,
-  // Wiki revisions
-  capturePageRevision,
-  initializeWikiRevisionBaselines,
-  listPageRevisions,
-  readPageRevision,
-  diffPageRevisions,
-  restorePageRevision,
-  type WikiRevisionRecord,
-  type WikiRevisionSnapshot,
-  type WikiRevisionDiff,
+  // Wiki git version control
+  ensureWikiGitRepo,
+  commitWiki,
   // Wiki sources & relations
   listWikiSources,
   listPagesForSource,

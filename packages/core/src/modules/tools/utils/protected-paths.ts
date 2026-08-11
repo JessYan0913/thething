@@ -81,6 +81,6 @@ export function findProtectedShellWriteMatch(
 export function protectedPathWriteMessage(protectedPath: string): string {
   return (
     `Managed Wiki path cannot be modified by general-purpose tools: ${protectedPath}. ` +
-    'Use save_wiki, ingest_wiki_source, or restore_wiki_revision so revisions, index, source relations, and log stay consistent.'
+    'Use save_wiki, ingest_wiki_source, or delete_wiki so index, source relations, log, and git history stay consistent.'
   );
 }

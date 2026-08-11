@@ -5,13 +5,12 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { ensureWikiDirExists } from '../wiki/wiki-paths'
-import { writePage, updatePage, mergePages, replacePage, invalidatePage, rebuildIndex, appendLog, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
-import { pageNameToFilename } from '../wiki/wiki-paths'
+import { writePage, updatePage, mergePages, replacePage, moveAndReplacePage, invalidatePage, rebuildIndex, appendLog, validateCrossReferences, checkContradictions, type WikiPageData } from '../wiki/wiki-io'
 import { resolveWikiPageFilename } from '../wiki/wiki-resolver'
 import { DEFAULT_WIKI_CONFIG, DEFAULT_WIKI_CATEGORY, type WikiConfig } from '../wiki/wiki-config'
 import { wikiActionSchema } from '../wiki/wiki-prompt'
 import { logger } from '../../primitives/logger'
-import { capturePageRevision, initializeWikiRevisionBaselines, type WikiRevisionOperation } from '../wiki/wiki-revisions'
+import { commitWiki, ensureWikiGitRepo } from '../wiki/git-vcs'
 import { rebuildSourcePageIndex } from '../wiki/wiki-relations'
 import { withWikiMutationLock } from '../wiki/wiki-mutation'
 import path from 'path'
@@ -83,8 +82,8 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
       const wikiDir = config.wikiBaseDir
       await ensureWikiDirExists(wikiDir)
-      // Existing pages from before Revision Store adoption receive one idempotent baseline.
-      await initializeWikiRevisionBaselines(wikiDir)
+      // 写入前初始化 git（首次启用时基线 commit 先于本次写入，保证每次写入有独立 commit）
+      await ensureWikiGitRepo(wikiDir)
 
       const now = new Date().toISOString()
       const logDetails: string[] = []
@@ -93,10 +92,11 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
 
       // 本批次将创建的页面。同批 Action 的交叉引用校验读取的 index 要到整批
       // 结束后才重建，引用同批新页面时不应误报缺失。
+      // 跨引用按页面名匹配（content 中引用 [[name]]，与存储路径无关）。
       const prospectivePages = new Set(
         input.actions
           .filter(a => a.action === 'create')
-          .map(a => pageNameToFilename(a.name)),
+          .map(a => a.name.toLowerCase().trim()),
       )
 
       for (const action of input.actions.slice(0, 5)) {
@@ -130,7 +130,7 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
           if (action.content) {
             const crossRefResult = await validateCrossReferences(wikiDir, action.content)
             const missingPages = crossRefResult.missingPages
-              .filter(name => !prospectivePages.has(pageNameToFilename(name)))
+              .filter(name => !prospectivePages.has(name.toLowerCase().trim()))
             if (missingPages.length > 0) {
               warnings.push(`交叉引用缺失: ${missingPages.join(', ')} 不存在`)
               logger.warn('SaveWiki', `Cross reference missing: ${missingPages.join(', ')}`)
@@ -160,14 +160,11 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
             }
           }
 
-          let revisionTarget: { filename: string; operation: WikiRevisionOperation } | undefined
-
           switch (action.action) {
             case 'create': {
-              const filename = pageNameToFilename(action.name)
+              // writePage 内部按 category 生成 category/name.md，这里以实际写入的为准
+              const filename = await writePage(wikiDir, baseData, action.content)
               logger.debug('SaveWiki', `create: name="${action.name}" filename="${filename}"`)
-              await writePage(wikiDir, baseData, action.content)
-              revisionTarget = { filename, operation: 'create' }
               logDetails.push(`create: [[${action.name}]] — ${action.description}`)
               results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               break
@@ -181,7 +178,6 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
                 const mode = action.mode === 'append' ? 'append' : 'replace'
                 logger.debug('SaveWiki', `update: target="${target}" mode="${mode}"`)
                 await updatePage(wikiDir, target, action.content, mode, { origin, sources: action.sources })
-                revisionTarget = { filename: target, operation: 'update' }
                 logDetails.push(`update: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -206,17 +202,8 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
                   target,
                   resolvedMergeTargets,
                   { origin, sources: action.sources },
-                  async (filename, raw) => {
-                    await capturePageRevision(wikiDir, {
-                      filename,
-                      operation: 'delete',
-                      raw,
-                      reason: `merged into ${action.name}`,
-                    })
-                  },
                 )
                 if (!mergedFilename) throw new Error(`No Wiki pages found for merge target: ${action.target}`)
-                revisionTarget = { filename: mergedFilename, operation: 'merge' }
                 logDetails.push(`merge: ${action.mergeTargets.join(', ')} → [[${action.name}]]`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
@@ -229,9 +216,9 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
                 ? await resolveWikiPageFilename(wikiDir, action.target)
                 : null
               if (target) {
-                await replacePage(wikiDir, target, baseData, action.content)
-                revisionTarget = { filename: target, operation: 'replace' }
-                logDetails.push(`replace: [[${action.target}]] — ${action.description}`)
+                const { newFilename, moved } = await moveAndReplacePage(wikiDir, target, baseData, action.content)
+                const moveNote = moved ? ` (moved → ${newFilename})` : ''
+                logDetails.push(`replace: [[${action.target}]]${moveNote} — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true, warnings: warnings.length > 0 ? warnings : undefined })
               } else {
                 results.push({ name: action.name, action: action.action, success: false, error: action.target ? `Page "${action.target}" not found` : 'replace requires target' })
@@ -243,7 +230,6 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
               const target = await resolveWikiPageFilename(wikiDir, action.target ?? action.name)
               if (target) {
                 await invalidatePage(wikiDir, target, action.content, { origin, sources: action.sources })
-                revisionTarget = { filename: target, operation: 'invalidate' }
                 logDetails.push(`invalidate: [[${action.name}]] — ${action.description}`)
                 results.push({ name: action.name, action: action.action, success: true })
               } else {
@@ -251,10 +237,6 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
               }
               break
             }
-          }
-
-          if (revisionTarget) {
-            await capturePageRevision(wikiDir, revisionTarget)
           }
         } catch (err) {
           logger.error('SaveWiki', `Failed to save "${action.name}": ${err}`)
@@ -285,8 +267,12 @@ export function createSaveWikiTool(config: SaveWikiToolConfig) {
         }, wikiConfig)
       }
 
+      // 提交到宿主 git（失败降级，不影响返回）
+      const succeeded = results.filter(r => r.success).length
+      await commitWiki(wikiDir, `save_wiki: ${succeeded} ops`)
+
       return {
-        saved: results.filter(r => r.success).length,
+        saved: succeeded,
         skipped: results.filter(r => r.action === 'skip').length,
         failed: results.filter(r => !r.success).length,
         results,

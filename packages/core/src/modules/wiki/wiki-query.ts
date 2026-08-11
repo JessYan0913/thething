@@ -6,7 +6,7 @@
 
 import fs from 'fs/promises'
 import path from 'path'
-import { ensureWikiDirExists, pageNameToFilename } from './wiki-paths'
+import { ensureWikiDirExists } from './wiki-paths'
 import { parseIndex, readPage, type IndexEntry } from './wiki-io'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
 
@@ -38,7 +38,7 @@ export async function loadWikiContext(
   const pages: Array<{ name: string; content: string }> = []
 
   for (const entry of entries) {
-    const filename = pageNameToFilename(entry.name)
+    const filename = entry.filename
     const page = await readPage(wikiDir, filename)
     if (page) {
       pages.push({ name: page.data.name, content: page.content })

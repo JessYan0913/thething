@@ -42,7 +42,7 @@ describe('ingest_wiki_source tool', () => {
     expect(result.snapshotCreated).toBe(true)
     expect(result.wiki.saved).toBe(2)
 
-    for (const filename of ['repository-architecture.md', 'repository-workflow.md']) {
+    for (const filename of ['project/repository-architecture.md', 'domain/repository-workflow.md']) {
       const page = await readFile(path.join(wikiBaseDir, filename), 'utf8')
       expect(page).toContain('origin: ingest')
       expect(page).toContain('owner/repo')

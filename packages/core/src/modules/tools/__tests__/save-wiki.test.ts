@@ -2,7 +2,6 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { listPageRevisions } from '../../wiki/wiki-revisions'
 import { createSaveWikiTool, validateWikiActionBoundary } from '../save-wiki'
 
 async function execute(tool: any, input: unknown): Promise<any> {
@@ -77,7 +76,7 @@ describe('save_wiki integrity boundaries', () => {
 
     expect(result.saved).toBe(1)
     expect(result.results[0].warnings).toBeUndefined()
-    expect(await readFile(path.join(wikiBaseDir, 'local-development-workflow.md'), 'utf8')).toContain('Local development workflow')
+    expect(await readFile(path.join(wikiBaseDir, 'project/local-development-workflow.md'), 'utf8')).toContain('Local development workflow')
   })
 
   it('saves pages with a custom category or no category at all', async () => {
@@ -103,8 +102,8 @@ describe('save_wiki integrity boundaries', () => {
     })
 
     expect(result.saved).toBe(2)
-    expect(await readFile(path.join(wikiBaseDir, 'framework-comparison.md'), 'utf8')).toContain('category: comparison')
-    expect(await readFile(path.join(wikiBaseDir, 'uncategorized-note.md'), 'utf8')).toContain('category: misc')
+    expect(await readFile(path.join(wikiBaseDir, 'comparison/framework-comparison.md'), 'utf8')).toContain('category: comparison')
+    expect(await readFile(path.join(wikiBaseDir, 'misc/uncategorized-note.md'), 'utf8')).toContain('category: misc')
 
     const index = await readFile(path.join(wikiBaseDir, 'index.md'), 'utf8')
     expect(index).toContain('## comparison')
@@ -135,7 +134,7 @@ describe('save_wiki integrity boundaries', () => {
     })
 
     expect(result.saved).toBe(1)
-    expect(await readFile(path.join(wikiBaseDir, 'legacy-concept.md'), 'utf8')).toContain('[已过期] Replaced by the current architecture.')
+    expect(await readFile(path.join(wikiBaseDir, 'domain/legacy-concept.md'), 'utf8')).toContain('[已过期] Replaced by the current architecture.')
   })
 
   it('persists optional sources and origin in frontmatter and merges sources on update', async () => {
@@ -156,7 +155,7 @@ describe('save_wiki integrity boundaries', () => {
       }],
     })
 
-    const raw = await readFile(path.join(wikiBaseDir, 'synthesized-analysis.md'), 'utf8')
+    const raw = await readFile(path.join(wikiBaseDir, 'domain/synthesized-analysis.md'), 'utf8')
     expect(raw).toContain('origin: ingest')
     expect(raw).toContain('https://example.com/article')
 
@@ -175,29 +174,14 @@ describe('save_wiki integrity boundaries', () => {
       }],
     })
 
-    const updated = await readFile(path.join(wikiBaseDir, 'synthesized-analysis.md'), 'utf8')
+    const updated = await readFile(path.join(wikiBaseDir, 'domain/synthesized-analysis.md'), 'utf8')
     expect(updated).toContain('origin: query')
     expect(updated).toContain('https://example.com/article')
     expect(updated).toContain('owner/repo')
     expect(updated).toContain('abc123')
   })
 
-  it('records revisions for create, update, replace and invalidate actions', async () => {
-    const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
-    const tool = createSaveWikiTool({ wikiBaseDir })
-    const filename = 'revision-actions.md'
-
-    await execute(tool, { actions: [{ action: 'create', category: 'domain', name: 'Revision Actions', description: 'Revision test', content: 'Create' }] })
-    await execute(tool, { actions: [{ action: 'update', category: 'domain', name: 'Revision Actions', target: filename, description: 'Revision test', content: 'Update' }] })
-    await execute(tool, { actions: [{ action: 'replace', category: 'domain', name: 'Revision Actions', target: filename, description: 'Revision test', content: 'Replace' }] })
-    await execute(tool, { actions: [{ action: 'invalidate', category: 'domain', name: 'Revision Actions', target: filename, description: 'Revision test', content: 'Outdated' }] })
-
-    expect((await listPageRevisions(wikiBaseDir, filename)).map(item => item.operation)).toEqual([
-      'create', 'update', 'replace', 'invalidate',
-    ])
-  })
-
-  it('resolves page names and non-canonical targets to one file and revision chain', async () => {
+  it('resolves page names and non-canonical targets to one file', async () => {
     const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
     const tool = createSaveWikiTool({ wikiBaseDir })
 
@@ -211,9 +195,6 @@ describe('save_wiki integrity boundaries', () => {
       action: 'replace', category: 'domain', name: 'Wiki 维护核心操作', target: 'wiki-维护核心操作', description: 'Canonical target', content: 'Replace',
     }] })
 
-    expect((await listPageRevisions(wikiBaseDir, 'wiki-维护核心操作.md')).map(item => item.operation)).toEqual([
-      'create', 'update', 'replace',
-    ])
     expect(await readdir(wikiBaseDir)).not.toContain('Wiki 维护核心操作.md')
 
     const duplicate = await execute(tool, { actions: [{
@@ -256,7 +237,7 @@ describe('save_wiki integrity boundaries', () => {
     expect(updateWarnings.join('\n')).toContain('Nonexistent Page')
   })
 
-  it('captures deleted merge sources before removing their current pages', async () => {
+  it('removes merge source pages after merging into target', async () => {
     const wikiBaseDir = await mkdtemp(path.join(os.tmpdir(), 'thething-wiki-'))
     const tool = createSaveWikiTool({ wikiBaseDir })
     await execute(tool, { actions: [
@@ -275,9 +256,7 @@ describe('save_wiki integrity boundaries', () => {
     }] })
 
     expect(result.saved).toBe(1)
-    expect((await listPageRevisions(wikiBaseDir, 'merge-source.md')).at(-1)?.operation).toBe('delete')
-    await expect(readFile(path.join(wikiBaseDir, 'merge-source.md'), 'utf8')).rejects.toThrow()
-    expect((await listPageRevisions(wikiBaseDir, 'merge-target.md')).at(-1)?.operation).toBe('merge')
+    await expect(readFile(path.join(wikiBaseDir, 'domain/merge-source.md'), 'utf8')).rejects.toThrow()
   })
 
   it('serializes concurrent saves for the same Wiki directory', async () => {

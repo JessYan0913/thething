@@ -88,6 +88,7 @@ export default function WikiGraph({
   const [localFilter, setLocalFilter] = useState<string | null>(null)
   const [redrawTick, setRedrawTick] = useState(0)
   const fgRef = useRef<any>(null)
+  const allEdgesRef = useRef<CustomLink[]>([])
   const observerRef = useRef<ResizeObserver | null>(null)
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -96,6 +97,9 @@ export default function WikiGraph({
   // (which would reinitialize the force simulation)
   const hoveredNodeRef = useRef<CustomNode | null>(null)
   const selectedNodeRef = useRef<CustomNode | null>(null)
+  // Nodes/links adjacent to hovered or selected node (for dim effect)
+  const highlightNodeIdsRef = useRef<Set<string>>(new Set())
+  const highlightLinkKeysRef = useRef<Set<string>>(new Set())
   // Separate state for UI elements (tooltip, detail panel) — only drives React rendering
   const [hoveredUI, setHoveredUI] = useState<CustomNode | null>(null)
   const [selectedUI, setSelectedUI] = useState<CustomNode | null>(null)
@@ -103,24 +107,53 @@ export default function WikiGraph({
   const activeFilter = externalFilter ?? localFilter
 
   // Load graph data
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch("/api/wiki/graph")
-        if (res.ok) {
-          const data = await res.json()
-          setAllNodes(data.nodes ?? [])
-          setAllEdges(data.edges ?? [])
+  const loadGraph = useCallback(async () => {
+    try {
+      const res = await fetch("/api/wiki/graph")
+      if (res.ok) {
+        const data = await res.json()
+        setAllNodes(data.nodes ?? [])
+        setAllEdges(data.edges ?? [])
+        allEdgesRef.current = data.edges ?? []
+        // 清理已不存在的选中/悬停节点
+        const nodeIds = new Set((data.nodes ?? []).map((n: CustomNode) => n.id))
+        if (hoveredNodeRef.current && !nodeIds.has(hoveredNodeRef.current.id)) {
+          hoveredNodeRef.current = null
+          setHoveredUI(null)
         }
-      } catch {
-        setAllNodes([])
-        setAllEdges([])
-      } finally {
-        setIsLoading(false)
+        if (selectedNodeRef.current && !nodeIds.has(selectedNodeRef.current.id)) {
+          selectedNodeRef.current = null
+          setSelectedUI(null)
+          highlightNodeIdsRef.current = new Set()
+          highlightLinkKeysRef.current = new Set()
+        }
       }
+    } catch {
+      setAllNodes([])
+      setAllEdges([])
+      allEdgesRef.current = []
+    } finally {
+      setIsLoading(false)
     }
-    load()
   }, [])
+
+  useEffect(() => {
+    loadGraph()
+  }, [loadGraph])
+
+  // 删除/新增可能发生在别处（Agent 工具、详情页编辑），切回图谱 tab 时同步刷新
+  useEffect(() => {
+    const onFocus = () => loadGraph()
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") loadGraph()
+    }
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [loadGraph])
 
   // Filter nodes
   const filteredNodeIds = useMemo(() => {
@@ -213,30 +246,56 @@ export default function WikiGraph({
     setRedrawTick((t) => t + 1)
   }, [])
 
+  // Build highlight sets for a focal node (hovered or selected)
+  const buildHighlight = useCallback((node: CustomNode | null) => {
+    const nodeIds = new Set<string>()
+    const linkKeys = new Set<string>()
+    if (node) {
+      nodeIds.add(node.id)
+      for (const edge of allEdgesRef.current) {
+        const src = typeof edge.source === "object" ? edge.source.id : edge.source
+        const tgt = typeof edge.target === "object" ? edge.target.id : edge.target
+        if (src === node.id || tgt === node.id) {
+          nodeIds.add(src)
+          nodeIds.add(tgt)
+          linkKeys.add(`${src}-${tgt}`)
+        }
+      }
+    }
+    highlightNodeIdsRef.current = nodeIds
+    highlightLinkKeysRef.current = linkKeys
+  }, [])
+
   const handleNodeClick = useCallback(
     (node: CustomNode) => {
       const prev = selectedNodeRef.current
       const next = prev?.id === node.id ? null : node
       selectedNodeRef.current = next
+      buildHighlight(next)
       setSelectedUI(next)
       requestRedraw()
     },
-    [requestRedraw],
+    [requestRedraw, buildHighlight],
   )
 
   const handleBackgroundClick = useCallback(() => {
     selectedNodeRef.current = null
+    buildHighlight(null)
     setSelectedUI(null)
     requestRedraw()
-  }, [requestRedraw])
+  }, [requestRedraw, buildHighlight])
 
   const handleNodeHover = useCallback(
     (node: CustomNode | null) => {
       hoveredNodeRef.current = node
+      // Only rebuild highlights from hover when nothing is selected
+      if (!selectedNodeRef.current) {
+        buildHighlight(node)
+      }
       setHoveredUI(node)
       requestRedraw()
     },
-    [requestRedraw],
+    [requestRedraw, buildHighlight],
   )
 
   // Zoom controls
@@ -272,16 +331,20 @@ export default function WikiGraph({
       const color = categoryColor(node.category)
       const isHovered = hoveredNodeRef.current?.id === node.id
       const isSelected = selectedNodeRef.current?.id === node.id
+      const hasFocus = highlightNodeIdsRef.current.size > 0
+      const isHighlighted = !hasFocus || highlightNodeIdsRef.current.has(node.id)
+      const isFocal = isHovered || isSelected
       const base = 5 + Math.min(node.linkCount * 2, 10)
       const r = base / globalScale
+      // Labels only appear when zoomed in enough or the node is highlighted
+      const showLabel = globalScale > 1.2 || isHighlighted
       const fontSize = Math.max(11 / globalScale, 2)
-      const label = node.name
 
-      // Glow on hover/selected
-      if (isHovered || isSelected) {
+      // Glow ring for focal node
+      if (isFocal) {
         ctx.beginPath()
         ctx.arc(node.x!, node.y!, r + 5 / globalScale, 0, 2 * Math.PI)
-        ctx.fillStyle = color + (isSelected ? "30" : "20")
+        ctx.fillStyle = color + (isSelected ? "40" : "28")
         ctx.fill()
       }
 
@@ -289,7 +352,8 @@ export default function WikiGraph({
       ctx.beginPath()
       ctx.arc(node.x!, node.y!, r, 0, 2 * Math.PI)
       ctx.fillStyle = color
-      ctx.globalAlpha = isHovered || isSelected ? 1 : 0.85
+      // Dim non-highlighted nodes when something is focused
+      ctx.globalAlpha = isFocal ? 1 : isHighlighted ? 0.9 : 0.15
       ctx.fill()
       ctx.strokeStyle = isSelected ? "#1e293b" : isHovered ? "#475569" : "#fff"
       ctx.lineWidth = (isSelected ? 2.5 : isHovered ? 2 : 1.5) / globalScale
@@ -297,11 +361,15 @@ export default function WikiGraph({
       ctx.globalAlpha = 1
 
       // Label
-      ctx.font = `${isHovered || isSelected ? "bold " : ""}${fontSize}px sans-serif`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "top"
-      ctx.fillStyle = isHovered || isSelected ? "#1e293b" : "#64748b"
-      ctx.fillText(label, node.x!, node.y! + r + 3 / globalScale)
+      if (showLabel) {
+        ctx.font = `${isFocal ? "bold " : ""}${fontSize}px sans-serif`
+        ctx.textAlign = "center"
+        ctx.textBaseline = "top"
+        ctx.globalAlpha = isFocal ? 1 : isHighlighted ? 0.9 : 0.15
+        ctx.fillStyle = isFocal ? "#1e293b" : "#64748b"
+        ctx.fillText(node.name, node.x!, node.y! + r + 3 / globalScale)
+        ctx.globalAlpha = 1
+      }
     },
     [],
   )
@@ -312,40 +380,35 @@ export default function WikiGraph({
       const targetNode = typeof link.target === "object" ? link.target : null
       if (!sourceNode || !targetNode) return
 
-      const isHighlighted =
-        hoveredNodeRef.current?.id === sourceNode.id ||
-        hoveredNodeRef.current?.id === targetNode.id ||
-        selectedNodeRef.current?.id === sourceNode.id ||
-        selectedNodeRef.current?.id === targetNode.id
+      const src = sourceNode.id
+      const tgt = targetNode.id
+      const hasFocus = highlightLinkKeysRef.current.size > 0
+      const isHighlighted = !hasFocus || highlightLinkKeysRef.current.has(`${src}-${tgt}`) || highlightLinkKeysRef.current.has(`${tgt}-${src}`)
 
       ctx.beginPath()
       ctx.moveTo(sourceNode.x!, sourceNode.y!)
       ctx.lineTo(targetNode.x!, targetNode.y!)
-      ctx.strokeStyle = isHighlighted ? "#94a3b8" : "#e2e8f0"
+      ctx.globalAlpha = isHighlighted ? 1 : 0.08
+      ctx.strokeStyle = isHighlighted ? "#94a3b8" : "#94a3b8"
       ctx.lineWidth = isHighlighted ? 1.5 : 0.6
       ctx.stroke()
+      ctx.globalAlpha = 1
 
       // Arrow for highlighted links
-      if (isHighlighted) {
+      if (isHighlighted && hasFocus) {
         const dx = targetNode.x! - sourceNode.x!
         const dy = targetNode.y! - sourceNode.y!
         const dist = Math.sqrt(dx * dx + dy * dy)
         if (dist > 0) {
-          const r = 5 + Math.min(targetNode.linkCount * 2, 10)
+          const r = 5 + Math.min((targetNode as CustomNode).linkCount * 2, 10)
           const endX = targetNode.x! - (dx / dist) * r
           const endY = targetNode.y! - (dy / dist) * r
           const size = 5
           const angle = Math.atan2(dy, dx)
           ctx.beginPath()
           ctx.moveTo(endX, endY)
-          ctx.lineTo(
-            endX - size * Math.cos(angle - Math.PI / 6),
-            endY - size * Math.sin(angle - Math.PI / 6),
-          )
-          ctx.lineTo(
-            endX - size * Math.cos(angle + Math.PI / 6),
-            endY - size * Math.sin(angle + Math.PI / 6),
-          )
+          ctx.lineTo(endX - size * Math.cos(angle - Math.PI / 6), endY - size * Math.sin(angle - Math.PI / 6))
+          ctx.lineTo(endX - size * Math.cos(angle + Math.PI / 6), endY - size * Math.sin(angle + Math.PI / 6))
           ctx.closePath()
           ctx.fillStyle = "#94a3b8"
           ctx.fill()
@@ -400,10 +463,14 @@ export default function WikiGraph({
           onNodeClick={handleNodeClick}
           onNodeHover={handleNodeHover}
           onBackgroundClick={handleBackgroundClick}
-          cooldownTicks={100}
-          d3VelocityDecay={0.3}
-          minZoom={0.3}
-          maxZoom={4}
+          warmupTicks={60}
+          cooldownTicks={80}
+          d3VelocityDecay={0.4}
+          d3AlphaDecay={0.02}
+          d3Force="charge"
+          d3ForceStrength={-60}
+          minZoom={0.2}
+          maxZoom={6}
           enableNodeDrag={true}
           enableZoomInteraction={true}
           enablePanInteraction={true}

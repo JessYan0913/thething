@@ -6,7 +6,7 @@
 import crypto from 'node:crypto'
 import fs from 'fs/promises'
 import path from 'path'
-import { ensureWikiDirExists, pageNameToFilename, directoryExists } from './wiki-paths'
+import { ensureWikiDirExists, pageNameToFilename, pagePathFromData, directoryExists } from './wiki-paths'
 import { DEFAULT_WIKI_CONFIG, DEFAULT_WIKI_CATEGORY, type WikiConfig } from './wiki-config'
 import { logger } from '../../primitives/logger'
 
@@ -171,7 +171,7 @@ export async function readPageRaw(
 }
 
 /**
- * 写入新 wiki 页面
+ * 写入新 wiki 页面（存储路径：wikiDir/category/name.md）
  */
 export async function writePage(
   wikiDir: string,
@@ -180,7 +180,7 @@ export async function writePage(
 ): Promise<string> {
   await ensureWikiDirExists(wikiDir)
 
-  const filename = pageNameToFilename(data.name)
+  const filename = pagePathFromData(data.name, data.category)
   const fileContent = formatFrontmatter(data) + '\n\n' + content
   await atomicWriteText(path.join(wikiDir, filename), fileContent)
 
@@ -199,6 +199,40 @@ export async function writePage(
  */
 function normalizeFilename(filename: string): string {
   return filename.endsWith('.md') ? filename : filename + '.md'
+}
+
+/**
+ * 递归扫描 wikiDir，返回所有 .md 页面文件的相对路径（排除 index.md / log.md / system/）
+ */
+export async function scanPageFiles(
+  wikiDir: string,
+  config: WikiConfig = DEFAULT_WIKI_CONFIG,
+): Promise<string[]> {
+  const results: string[] = []
+  async function walk(dir: string, prefix: string) {
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (entry.name === 'system') continue  // skip system/ dir
+        await walk(path.join(dir, entry.name), rel)
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith('.md') &&
+        entry.name !== config.indexFile &&
+        entry.name !== config.logFile
+      ) {
+        results.push(rel)
+      }
+    }
+  }
+  await walk(wikiDir, '')
+  return results
 }
 
 function mergeSources(
@@ -318,6 +352,36 @@ export async function replacePage(
 }
 
 /**
+ * 替换页面内容，如果 name/category 变化导致路径不同则自动移动文件。
+ * 返回 { newFilename, moved }，调用方负责对旧路径记录 delete revision。
+ */
+export async function moveAndReplacePage(
+  wikiDir: string,
+  oldFilename: string,
+  data: WikiPageData,
+  content: string,
+): Promise<{ newFilename: string; moved: boolean }> {
+  const normalizedOld = normalizeFilename(oldFilename)
+  const existing = await readPage(wikiDir, normalizedOld)
+  const now = new Date().toISOString()
+  const updatedData: WikiPageData = {
+    ...data,
+    created: existing?.data.created ?? data.created,
+    updated: now,
+    origin: data.origin ?? existing?.data.origin,
+    sources: mergeSources(existing?.data.sources, data.sources),
+  }
+  const newFilename = pagePathFromData(data.name, data.category)
+  const fileContent = formatFrontmatter(updatedData) + '\n\n' + content
+  await atomicWriteText(path.join(wikiDir, newFilename), fileContent)
+  const moved = newFilename !== normalizedOld
+  if (moved) {
+    await fs.unlink(path.join(wikiDir, normalizedOld)).catch(() => {})
+  }
+  return { newFilename, moved }
+}
+
+/**
  * 标记页面为已过期
  */
 export async function invalidatePage(
@@ -358,7 +422,7 @@ export async function deletePage(
 // ============================================================
 
 /**
- * 重建 index.md
+ * 重建 index.md（条目格式含 filename，供 parseIndex 回读正确路径）
  */
 export async function rebuildIndex(
   wikiDir: string,
@@ -366,26 +430,17 @@ export async function rebuildIndex(
 ): Promise<void> {
   const entries: IndexEntry[] = []
 
-  // 扫描所有 .md 文件（排除 index.md 和 log.md）
-  try {
-    const files = await fs.readdir(wikiDir)
-    const mdFiles = files.filter(f =>
-      f.endsWith('.md') && f !== config.indexFile && f !== config.logFile
-    )
-
-    for (const filename of mdFiles) {
-      const page = await readPage(wikiDir, filename)
-      if (page) {
-        entries.push({
-          name: page.data.name,
-          description: page.data.description,
-          category: page.data.category,
-          filename,
-        })
-      }
+  const files = await scanPageFiles(wikiDir, config)
+  for (const filename of files) {
+    const page = await readPage(wikiDir, filename)
+    if (page) {
+      entries.push({
+        name: page.data.name,
+        description: page.data.description,
+        category: page.data.category,
+        filename,
+      })
     }
-  } catch {
-    // 目录可能不存在
   }
 
   // 按 category 分组
@@ -402,7 +457,6 @@ export async function rebuildIndex(
     '',
   ]
 
-  // 分组从实际存在的分类生成：config.categories 只决定优先排序，其余按名称排序追加。
   const orderedCategories = [
     ...config.categories.filter(category => grouped[category]?.length),
     ...Object.keys(grouped).filter(category => !config.categories.includes(category)).sort(),
@@ -416,8 +470,8 @@ export async function rebuildIndex(
     lines.push('')
 
     for (const entry of catEntries) {
-      const link = `[[${entry.name}]]`
-      lines.push(`- ${link} — ${entry.description}`)
+      // 格式: - [[name]] (path/to/file.md) — description
+      lines.push(`- [[${entry.name}]] (${entry.filename}) — ${entry.description}`)
     }
 
     lines.push('')
@@ -444,6 +498,8 @@ export async function readIndex(
 
 /**
  * 解析 index.md 内容为条目列表
+ * 支持新格式：- [[name]] (category/file.md) — description
+ * 兼容旧格式：- [[name]] — description（回退到 pageNameToFilename）
  */
 export function parseIndex(content: string): IndexEntry[] {
   const entries: IndexEntry[] = []
@@ -451,21 +507,32 @@ export function parseIndex(content: string): IndexEntry[] {
   let currentCategory = ''
 
   for (const line of lines) {
-    // 匹配 category header: ## identity（分类为自由字符串，可含中文或连字符）
     const categoryMatch = line.match(/^## (.+)$/)
     if (categoryMatch) {
       currentCategory = categoryMatch[1].trim()
       continue
     }
 
-    // 匹配条目: - [[name]] — description
-    const entryMatch = line.match(/^- \[\[(.+?)\]\]\s*—\s*(.+)$/)
-    if (entryMatch && currentCategory) {
+    // 新格式: - [[name]] (path/file.md) — description
+    const newFmt = line.match(/^- \[\[(.+?)\]\]\s*\(([^)]+)\)\s*—\s*(.+)$/)
+    if (newFmt && currentCategory) {
       entries.push({
-        name: entryMatch[1],
-        description: entryMatch[2],
+        name: newFmt[1],
+        description: newFmt[3],
         category: currentCategory,
-        filename: pageNameToFilename(entryMatch[1]),
+        filename: newFmt[2],
+      })
+      continue
+    }
+
+    // 旧格式: - [[name]] — description（向前兼容）
+    const oldFmt = line.match(/^- \[\[(.+?)\]\]\s*—\s*(.+)$/)
+    if (oldFmt && currentCategory) {
+      entries.push({
+        name: oldFmt[1],
+        description: oldFmt[2],
+        category: currentCategory,
+        filename: pageNameToFilename(oldFmt[1]),
       })
     }
   }
@@ -636,27 +703,69 @@ export async function appendLog(
 // ============================================================
 
 /**
- * 读取 wiki 目录中所有页面
+ * 读取 wiki 目录中所有页面（递归扫描子目录）
  */
 export async function readAllPages(
   wikiDir: string,
   config: WikiConfig = DEFAULT_WIKI_CONFIG,
 ): Promise<WikiPage[]> {
   const pages: WikiPage[] = []
+  const files = await scanPageFiles(wikiDir, config)
+  for (const filename of files) {
+    const page = await readPage(wikiDir, filename)
+    if (page) pages.push(page)
+  }
+  return pages
+}
 
+// ============================================================
+// 迁移：将平铺文件移入 category/ 子目录
+// ============================================================
+
+/**
+ * 将 wikiDir 根目录下的平铺 .md 文件迁移到对应的 category/ 子目录。
+ * 返回迁移记录：{ from, to }[]
+ */
+export async function migrateWikiToDirectories(
+  wikiDir: string,
+  config: WikiConfig = DEFAULT_WIKI_CONFIG,
+): Promise<Array<{ from: string; to: string }>> {
+  const migrated: Array<{ from: string; to: string }> = []
+
+  let rootEntries: import('fs').Dirent[]
   try {
-    const files = await fs.readdir(wikiDir)
-    const mdFiles = files.filter(f =>
-      f.endsWith('.md') && f !== config.indexFile && f !== config.logFile
-    )
-
-    for (const filename of mdFiles) {
-      const page = await readPage(wikiDir, filename)
-      if (page) pages.push(page)
-    }
+    rootEntries = await fs.readdir(wikiDir, { withFileTypes: true })
   } catch {
-    // 目录可能不存在
+    return migrated
   }
 
-  return pages
+  // 只处理根目录下的 .md 页面文件（排除 index.md / log.md）
+  const flatFiles = rootEntries
+    .filter(e => e.isFile() && e.name.endsWith('.md') && e.name !== config.indexFile && e.name !== config.logFile)
+    .map(e => e.name)
+
+  for (const filename of flatFiles) {
+    const page = await readPage(wikiDir, filename)
+    if (!page) continue
+
+    const newPath = pagePathFromData(page.data.name, page.data.category)
+    if (newPath === filename) continue  // 已经在正确位置
+
+    const src = path.join(wikiDir, filename)
+    const dst = path.join(wikiDir, newPath)
+
+    // 目标已存在则跳过（手动处理冲突）
+    try { await fs.access(dst); continue } catch { /* 不存在，继续 */ }
+
+    await fs.mkdir(path.dirname(dst), { recursive: true })
+    await fs.rename(src, dst)
+    migrated.push({ from: filename, to: newPath })
+  }
+
+  // 迁移后重建索引
+  if (migrated.length > 0) {
+    await rebuildIndex(wikiDir, config)
+  }
+
+  return migrated
 }

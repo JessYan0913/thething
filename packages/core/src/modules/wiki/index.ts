@@ -19,6 +19,7 @@ export {
   updatePage,
   mergePages,
   replacePage,
+  moveAndReplacePage,
   invalidatePage,
   deletePage,
   rebuildIndex,
@@ -26,6 +27,8 @@ export {
   parseIndex,
   appendLog,
   readAllPages,
+  scanPageFiles,
+  migrateWikiToDirectories,
   type WikiPageData,
   type WikiSourceData,
   type WikiPage,
@@ -66,19 +69,8 @@ export {
   type WikiSourcePageRelation,
 } from './wiki-relations'
 
-// Revisions
-export {
-  capturePageRevision,
-  initializeWikiRevisionBaselines,
-  listPageRevisions,
-  readPageRevision,
-  diffPageRevisions,
-  restorePageRevision,
-  type WikiRevisionOperation,
-  type WikiRevisionRecord,
-  type WikiRevisionSnapshot,
-  type WikiRevisionDiff,
-} from './wiki-revisions'
+// Git version control
+export { ensureWikiGitRepo, commitWiki } from './git-vcs'
 
 // Mutation serialization
 export { withWikiMutationLock, clearWikiMutationLocks } from './wiki-mutation'

@@ -1,4 +1,6 @@
 import { getServerRuntime } from '@/lib/runtime';
+import fs from 'fs/promises';
+import path from 'path';
 import { NextResponse } from 'next/server';
 import {
   readAllPages,
@@ -12,8 +14,8 @@ import {
   pageNameToFilename,
   DEFAULT_WIKI_CATEGORY,
   withWikiMutationLock,
-  capturePageRevision,
-  initializeWikiRevisionBaselines,
+  commitWiki,
+  ensureWikiGitRepo,
   appendLog,
   type WikiPageData,
 } from '@the-thing/core';
@@ -36,6 +38,17 @@ export async function GET() {
 
     const pages = await readAllPages(wikiDir);
 
+    // 统计待迁移的平铺文件（根目录下直接放置的 .md，未归入 category/ 子目录）
+    let pendingMigration = 0;
+    try {
+      const rootEntries = await fs.readdir(wikiDir, { withFileTypes: true });
+      pendingMigration = rootEntries.filter(
+        (e) => e.isFile() && e.name.endsWith('.md') && e.name !== 'index.md' && e.name !== 'log.md',
+      ).length;
+    } catch {
+      // 目录可能不存在，忽略
+    }
+
     const view = pages.map((p) => ({
       name: p.data.name,
       description: p.data.description,
@@ -50,14 +63,14 @@ export async function GET() {
       sizeKb: Buffer.byteLength(p.content, 'utf-8') / 1024,
     }));
 
-    return NextResponse.json({ pages: view });
+    return NextResponse.json({ pages: view, pendingMigration });
   } catch (error) {
     console.error('[Wiki API] GET error:', error);
     return NextResponse.json({ error: 'Failed to load wiki pages' }, { status: 500 });
   }
 }
 
-// UI 写入与 Agent 工具共享同一受管路径：mutation lock + revision + index + log。
+// UI 写入与 Agent 工具共享同一受管路径：mutation lock + index + log + git commit。
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -74,7 +87,7 @@ export async function POST(request: Request) {
 
     const filename = await withWikiMutationLock(wikiDir, async () => {
       await ensureWikiDirExists(wikiDir);
-      await initializeWikiRevisionBaselines(wikiDir);
+      await ensureWikiGitRepo(wikiDir);
 
       const now = new Date().toISOString();
       const data: WikiPageData = {
@@ -86,7 +99,6 @@ export async function POST(request: Request) {
       };
 
       const written = await writePage(wikiDir, data, content);
-      await capturePageRevision(wikiDir, { filename: written, operation: 'create', reason: '用户在界面创建' });
       await rebuildIndex(wikiDir);
       await appendLog(wikiDir, {
         timestamp: now,
@@ -94,6 +106,7 @@ export async function POST(request: Request) {
         description: `用户创建页面 ${written}`,
         details: [`create: [[${name}]] — ${description || ''}`],
       });
+      await commitWiki(wikiDir, `manual: 创建 ${written}`);
       return written;
     });
 
@@ -119,8 +132,7 @@ export async function PUT(request: Request) {
     }
 
     await withWikiMutationLock(wikiDir, async () => {
-      await initializeWikiRevisionBaselines(wikiDir);
-
+      await ensureWikiGitRepo(wikiDir);
       // If name or category changed, use replacePage; otherwise updatePage
       const normalizedName = pageNameToFilename(name).replace('.md', '');
       const oldName = filename.replace('.md', '');
@@ -135,10 +147,8 @@ export async function PUT(request: Request) {
           updated: now,
         };
         await replacePage(wikiDir, filename, data, content);
-        await capturePageRevision(wikiDir, { filename, operation: 'replace', reason: '用户在界面编辑' });
       } else {
         await updatePage(wikiDir, filename, content, 'replace');
-        await capturePageRevision(wikiDir, { filename, operation: 'update', reason: '用户在界面编辑' });
       }
 
       await rebuildIndex(wikiDir);
@@ -149,6 +159,7 @@ export async function PUT(request: Request) {
         description: `用户编辑页面 ${filename}`,
         details: [`update: [[${name}]]`],
       });
+      await commitWiki(wikiDir, `manual: 编辑 ${filename}`);
     });
 
     return NextResponse.json({ success: true });
@@ -172,9 +183,7 @@ export async function DELETE(request: Request) {
     }
 
     await withWikiMutationLock(wikiDir, async () => {
-      await initializeWikiRevisionBaselines(wikiDir);
-      // 删除前保存最后一版快照，历史仍可追溯
-      await capturePageRevision(wikiDir, { filename, operation: 'delete', reason: '用户在界面删除' });
+      await ensureWikiGitRepo(wikiDir);
       await deletePage(wikiDir, filename);
       await rebuildIndex(wikiDir);
       await rebuildSourcePageIndex(wikiDir);
@@ -184,6 +193,7 @@ export async function DELETE(request: Request) {
         description: `用户删除页面 ${filename}`,
         details: [`delete: ${filename}`],
       });
+      await commitWiki(wikiDir, `manual: 删除 ${filename}`);
     });
 
     return NextResponse.json({ success: true });

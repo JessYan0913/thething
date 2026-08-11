@@ -35,10 +35,14 @@ export async function GET() {
 
     const pages = await readAllPages(wikiDir);
 
-    // Build filename → page name mapping
+    // Build filename → page name mapping, and page-name → real filename mapping.
+    // 页面链接引用的是 name（[[name]]），但节点 id 是真实相对路径（category/name.md），
+    // 因此需要 name 反查真实 filename，保证 edge 两端都是有效 node id。
     const filenameToName = new Map<string, string>();
+    const nameToFilename = new Map<string, string>();
     for (const page of pages) {
       filenameToName.set(page.filename, page.data.name);
+      nameToFilename.set(pageNameToFilename(page.data.name), page.filename);
     }
 
     // Build nodes and extract edges from [[wiki-link]] references
@@ -60,10 +64,10 @@ export async function GET() {
       const links = page.content.match(/\[\[(.+?)\]\]/g) || [];
       for (const link of links) {
         const linkName = link.replace(/\[\[|\]\]/g, '');
-        const targetFilename = pageNameToFilename(linkName);
+        const targetFilename = nameToFilename.get(pageNameToFilename(linkName));
 
         // Only add edge if target exists as a page
-        if (filenameToName.has(targetFilename)) {
+        if (targetFilename && filenameToName.has(targetFilename)) {
           const edgeKey = `${page.filename}→${targetFilename}`;
           if (!edgeSet.has(edgeKey)) {
             edgeSet.add(edgeKey);

@@ -51,7 +51,7 @@ export const wikiActionSchema = z.object({
     .string()
     .max(30)
     .optional()
-    .describe('可选分类，用于索引分组。分类由实践演化，不是固定制度；常见分类如 user(用户)、agent(Agent规则)、project(项目)、domain(领域)、entity(实体)，也可以按内容使用更贴切的分类。省略时归入 misc'),
+    .describe('可选分类，用于索引分组。常用分类：user / agent / project / domain / entity。省略时归入 misc'),
   name: z
     .string()
     .max(40)
@@ -82,7 +82,7 @@ export type WikiAction = z.infer<typeof wikiActionSchema>
 
 export const lintIssueSchema = z.object({
   type: z
-    .enum(['contradiction', 'orphan', 'stale', 'inconsistent', 'missing-crossref', 'missing-page'])
+    .enum(['contradiction', 'orphan', 'stale', 'inconsistent', 'missing-crossref', 'missing-page', 'wrong-category'])
     .describe('问题类型'),
   severity: z
     .enum(['low', 'medium', 'high'])
@@ -125,6 +125,12 @@ export const LINT_PROMPT = `你是一个知识库健康检查员。检查以下�
 3. **缺失检测**：根据已有知识，是否有重要主题缺失？
    - 用户多次提到但没有对应页面的主题
    - 已有知识之间的空白区域
+
+4. **分类错误**：category 与内容实质不符？
+   - agent：描述 TheThing 系统架构、机制、工具、Pipeline 注入流程的内部知识
+   - project：TheThing 项目的具体规划、决策、功能方案
+   - domain：外部领域知识（书摘、市场报告、行业理论），与当前系统无直接关联
+   - 如 category=domain 的页面实质是系统内部架构或项目决策，标记 wrong-category，severity=medium，suggestion 给出建议的正确 category 和原因
 
 ## 输出格式
 

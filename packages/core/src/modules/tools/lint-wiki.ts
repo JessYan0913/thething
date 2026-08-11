@@ -48,7 +48,8 @@ export function createLintWikiTool(config: LintWikiToolConfig) {
         const semanticIssues = report.issues.filter(
           issue => issue.type === 'contradiction'
             || issue.type === 'missing-crossref'
-            || issue.type === 'missing-page',
+            || issue.type === 'missing-page'
+            || issue.type === 'wrong-category',
         )
 
         logger.debug(

@@ -5,7 +5,7 @@ import {
   SearchIcon, TrashIcon, PlusIcon, RefreshCwIcon, BrainIcon,
   UserIcon, BotIcon, FolderIcon, GlobeIcon, BoxIcon,
   MoreVerticalIcon, NetworkIcon, ListIcon, HeartPulseIcon,
-  ScrollTextIcon, XIcon, Loader2Icon,
+  ScrollTextIcon, XIcon, Loader2Icon, ChevronRightIcon,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -156,7 +156,7 @@ export default function MemorySettings() {
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<WikiPageView | null>(null)
-  const [viewMode, setViewMode] = useState<"list" | "graph">("list")
+  const [viewMode, setViewMode] = useState<"list" | "graph">("graph")
 
   // Lint 健康检查
   const [lintRunning, setLintRunning] = useState(false)
@@ -165,9 +165,10 @@ export default function MemorySettings() {
     fixed: number
     issues: Array<{ type: string; severity: string; pages: string[]; description: string; suggestion?: string }>
   } | null>(null)
+  const [lintDialogOpen, setLintDialogOpen] = useState(false)
 
   // 操作日志时间线
-  const [showLog, setShowLog] = useState(false)
+  const [logDialogOpen, setLogDialogOpen] = useState(false)
   const [logLoading, setLogLoading] = useState(false)
   const [logEntries, setLogEntries] = useState<Array<{
     timestamp: string
@@ -175,6 +176,9 @@ export default function MemorySettings() {
     description: string
     details: string[]
   }>>([])
+
+  // 列表分组折叠状态
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   // 创建对话框
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -185,6 +189,10 @@ export default function MemorySettings() {
   const [formSaving, setFormSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  // 待迁移的平铺文件数量（根目录下未归入 category/ 子目录的 .md）
+  const [pendingMigration, setPendingMigration] = useState(0)
+  const [migrating, setMigrating] = useState(false)
+
   const loadPages = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -192,6 +200,7 @@ export default function MemorySettings() {
       if (res.ok) {
         const data = await res.json()
         setPages(data.pages ?? [])
+        setPendingMigration(data.pendingMigration ?? 0)
       }
     } catch {
       setPages([])
@@ -201,6 +210,17 @@ export default function MemorySettings() {
   }, [])
 
   useEffect(() => { loadPages() }, [loadPages])
+
+  // 迁移：把平铺文件移入分类目录（lint 内部会迁移 + 重建索引）
+  const handleMigrate = useCallback(async () => {
+    setMigrating(true)
+    try {
+      await fetch("/api/wiki/lint", { method: "POST" })
+      await loadPages()
+    } finally {
+      setMigrating(false)
+    }
+  }, [loadPages])
 
   const filtered = useMemo(() => {
     let result = pages
@@ -276,12 +296,12 @@ export default function MemorySettings() {
 
   const handleLint = useCallback(async () => {
     setLintRunning(true)
+    setLintDialogOpen(true)
     try {
       const res = await fetch("/api/wiki/lint", { method: "POST" })
       if (res.ok) {
         const data = await res.json()
         setLintReport(data.report ?? null)
-        // 自动修复可能改动了索引，刷新列表
         await loadPages()
       }
     } finally {
@@ -289,12 +309,8 @@ export default function MemorySettings() {
     }
   }, [loadPages])
 
-  const handleToggleLog = useCallback(async () => {
-    if (showLog) {
-      setShowLog(false)
-      return
-    }
-    setShowLog(true)
+  const handleOpenLog = useCallback(async () => {
+    setLogDialogOpen(true)
     setLogLoading(true)
     try {
       const res = await fetch("/api/wiki/log?limit=50")
@@ -307,7 +323,16 @@ export default function MemorySettings() {
     } finally {
       setLogLoading(false)
     }
-  }, [showLog])
+  }, [])
+
+  const toggleGroup = useCallback((category: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }, [])
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -374,9 +399,8 @@ export default function MemorySettings() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={handleToggleLog}
+          onClick={handleOpenLog}
           title="操作日志"
-          className={cn(showLog && "bg-accent")}
         >
           <ScrollTextIcon className="size-4" />
         </Button>
@@ -388,81 +412,34 @@ export default function MemorySettings() {
         </Button>
       </div>
 
-      {/* Lint report banner */}
-      {lintReport && (
-        <div className="shrink-0 px-6 py-2 border-b bg-muted/20 flex items-start gap-3">
-          <div className="flex-1 min-w-0 text-xs space-y-1">
-            <p className="text-muted-foreground">
-              健康检查完成：检查 {lintReport.checked} 个页面，
-              自动修复 {lintReport.fixed} 项，
-              {lintReport.issues.length > 0 ? `发现 ${lintReport.issues.length} 个建议` : "没有发现问题"}
-            </p>
-            {lintReport.issues.slice(0, 5).map((issue, i) => (
-              <p key={i} className="text-muted-foreground/80 truncate">
-                <span className={cn(
-                  "inline-block px-1 rounded text-[10px] mr-1.5",
-                  issue.severity === "high" ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                    : issue.severity === "medium" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                      : "bg-muted text-muted-foreground",
-                )}>{issue.type}</span>
-                {issue.description}
-              </p>
-            ))}
-            {lintReport.issues.length > 5 && (
-              <p className="text-muted-foreground/60">… 另有 {lintReport.issues.length - 5} 个建议</p>
-            )}
-          </div>
-          <Button variant="ghost" size="icon" className="size-6 shrink-0" onClick={() => setLintReport(null)}>
-            <XIcon className="size-3.5" />
+      {/* 迁移提示条：存在旧结构平铺文件时提示归档 */}
+      {pendingMigration > 0 && (
+        <div className="shrink-0 px-6 py-2 border-b bg-amber-500/10 flex items-center gap-3">
+          <p className="text-xs text-muted-foreground flex-1 min-w-0">
+            发现 {pendingMigration} 个页面尚未归入分类目录。
+            <span className="text-muted-foreground/60">迁移到 category/ 目录整理存储，内容与链接不受影响。</span>
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs shrink-0"
+            onClick={handleMigrate}
+            disabled={migrating}
+          >
+            {migrating && <Loader2Icon className="size-3 animate-spin mr-1" />}
+            {migrating ? "迁移中..." : "立即迁移"}
           </Button>
         </div>
       )}
 
-      {/* Log timeline panel */}
-      {showLog && (
-        <div className="shrink-0 border-b bg-muted/10 max-h-64 overflow-y-auto px-6 py-3">
-          {logLoading ? (
-            <div className="flex items-center text-muted-foreground text-xs py-2">
-              <Loader2Icon className="size-3.5 animate-spin mr-2" />
-              加载日志...
-            </div>
-          ) : logEntries.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">还没有操作日志。</p>
-          ) : (
-            <div className="space-y-2">
-              {logEntries.map((entry, i) => (
-                <div key={i} className="text-xs">
-                  <p className="flex items-center gap-2">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                      {entry.operation}
-                    </span>
-                    <span className="truncate">{entry.description}</span>
-                    <span className="text-muted-foreground/50 text-[10px] ml-auto shrink-0">
-                      {new Date(entry.timestamp).toLocaleString()}
-                    </span>
-                  </p>
-                  {entry.details.length > 0 && (
-                    <ul className="mt-0.5 ml-4 space-y-0.5 text-muted-foreground/70">
-                      {entry.details.map((detail, j) => (
-                        <li key={j} className="truncate">{detail}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Content */}
-      <div className="flex-1 min-h-0 overflow-auto px-6 py-4 pb-8">
+      <div className={viewMode === "graph" ? "flex-1 min-h-0 relative" : "flex-1 min-h-0 overflow-auto px-6 py-4 pb-8"}>
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             加载中...
           </div>
         ) : viewMode === "graph" ? (
-          <div className="relative h-full min-h-125 -mx-6 -my-4">
+          <div className="absolute inset-0">
             <WikiGraph
               onSelectPage={(filename) =>
                 router.push(`/settings/wiki/${encodeURIComponent(filename)}`)
@@ -486,15 +463,70 @@ export default function MemorySettings() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
-            {filtered.map((page) => (
-              <WikiCard
-                key={page.filename}
-                page={page}
-                onClick={() => router.push(`/settings/wiki/${encodeURIComponent(page.filename)}`)}
-                onDelete={() => setConfirmDelete(page)}
-              />
-            ))}
+          <div className="space-y-1">
+            {categoryFilters.filter(f => f.value !== "all").map(({ value: cat, label }) => {
+              const group = filtered.filter(p => p.category === cat)
+              if (group.length === 0) return null
+              const collapsed = collapsedGroups.has(cat)
+              const config = getCategoryView(cat)
+              return (
+                <div key={cat}>
+                  <button
+                    onClick={() => toggleGroup(cat)}
+                    className="w-full flex items-center gap-2 px-1 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded transition-colors group"
+                  >
+                    <ChevronRightIcon className={cn("size-3.5 shrink-0 transition-transform", !collapsed && "rotate-90")} />
+                    <span className={cn("size-3.5 shrink-0", config.color)}>{config.icon}</span>
+                    <span className="font-medium">{label}</span>
+                    <span className="ml-1 text-muted-foreground/50">{group.length}</span>
+                  </button>
+                  {!collapsed && (
+                    <div className="ml-5 grid grid-cols-1 lg:grid-cols-2 gap-3 pb-2">
+                      {group.map((page) => (
+                        <WikiCard
+                          key={page.filename}
+                          page={page}
+                          onClick={() => router.push(`/settings/wiki/${encodeURIComponent(page.filename)}`)}
+                          onDelete={() => setConfirmDelete(page)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {/* 搜索时可能有分类 filter 外的孤立结果，兜底渲染 */}
+            {(() => {
+              const knownCats = new Set(categoryFilters.filter(f => f.value !== "all").map(f => f.value))
+              const orphans = filtered.filter(p => !knownCats.has(p.category))
+              if (orphans.length === 0) return null
+              const collapsed = collapsedGroups.has("__other__")
+              return (
+                <div>
+                  <button
+                    onClick={() => toggleGroup("__other__")}
+                    className="w-full flex items-center gap-2 px-1 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded transition-colors"
+                  >
+                    <ChevronRightIcon className={cn("size-3.5 shrink-0 transition-transform", !collapsed && "rotate-90")} />
+                    <BrainIcon className="size-3.5 shrink-0" />
+                    <span className="font-medium">其他</span>
+                    <span className="ml-1 text-muted-foreground/50">{orphans.length}</span>
+                  </button>
+                  {!collapsed && (
+                    <div className="ml-5 grid grid-cols-1 lg:grid-cols-2 gap-3 pb-2">
+                      {orphans.map((page) => (
+                        <WikiCard
+                          key={page.filename}
+                          page={page}
+                          onClick={() => router.push(`/settings/wiki/${encodeURIComponent(page.filename)}`)}
+                          onDelete={() => setConfirmDelete(page)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
@@ -523,6 +555,96 @@ export default function MemorySettings() {
           </div>
         </div>
       )}
+
+      {/* Log Dialog */}
+      <Dialog open={logDialogOpen} onOpenChange={setLogDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>操作日志</DialogTitle>
+            <DialogDescription>最近 50 条知识库操作记录</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-96 overflow-y-auto space-y-2 py-1">
+            {logLoading ? (
+              <div className="flex items-center text-muted-foreground text-xs py-4 justify-center">
+                <Loader2Icon className="size-3.5 animate-spin mr-2" />加载日志...
+              </div>
+            ) : logEntries.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">还没有操作日志。</p>
+            ) : (
+              logEntries.map((entry, i) => (
+                <div key={i} className="text-xs border-b last:border-0 pb-2 last:pb-0">
+                  <p className="flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+                      {entry.operation}
+                    </span>
+                    <span className="truncate flex-1">{entry.description}</span>
+                    <span className="text-muted-foreground/50 text-[10px] shrink-0">
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </span>
+                  </p>
+                  {entry.details.length > 0 && (
+                    <ul className="mt-1 ml-4 space-y-0.5 text-muted-foreground/70">
+                      {entry.details.map((detail, j) => (
+                        <li key={j} className="truncate">{detail}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lint Dialog */}
+      <Dialog open={lintDialogOpen} onOpenChange={setLintDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>知识库健康检查</DialogTitle>
+            <DialogDescription>扫描并自动修复常见问题</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            {lintRunning ? (
+              <div className="flex items-center text-muted-foreground text-sm py-6 justify-center gap-2">
+                <Loader2Icon className="size-4 animate-spin" />检查中...
+              </div>
+            ) : !lintReport ? (
+              <p className="text-sm text-muted-foreground text-center py-6">检查结果将在这里显示</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  检查 <span className="font-medium text-foreground">{lintReport.checked}</span> 个页面，
+                  自动修复 <span className="font-medium text-foreground">{lintReport.fixed}</span> 项，
+                  {lintReport.issues.length > 0
+                    ? <span>发现 <span className="font-medium text-amber-600 dark:text-amber-400">{lintReport.issues.length}</span> 个建议</span>
+                    : <span className="text-green-600 dark:text-green-400">没有发现问题 ✓</span>
+                  }
+                </p>
+                {lintReport.issues.length > 0 && (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {lintReport.issues.map((issue, i) => (
+                      <div key={i} className="text-xs rounded-md border p-2.5 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "px-1.5 py-0.5 rounded text-[10px] font-medium",
+                            issue.severity === "high" ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                              : issue.severity === "medium" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground",
+                          )}>{issue.type}</span>
+                          <span className="text-foreground">{issue.description}</span>
+                        </div>
+                        {issue.suggestion && (
+                          <p className="text-muted-foreground/70 pl-0.5">建议：{issue.suggestion}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -31,7 +31,7 @@ export async function ensureWikiDirExists(dirPath: string): Promise<void> {
 }
 
 /**
- * 将页面名称转换为 kebab-case 文件名
+ * 将页面名称转换为 kebab-case 文件名（仅文件名，不含目录）
  */
 export function pageNameToFilename(name: string): string {
   return name
@@ -40,6 +40,29 @@ export function pageNameToFilename(name: string): string {
     .replace(/^-|-$/g, '')
     .toLowerCase()
     + '.md'
+}
+
+/**
+ * 将分类名规范化为目录路径（支持多级，如 domain/finance → domain/finance）
+ * 每段独立 kebab-case 化，`/` 保留为目录分隔符。
+ */
+export function categoryToDir(category: string): string {
+  return category
+    .split('/')
+    .map(seg => seg
+      .replace(/[^a-zA-Z0-9一-鿿-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase())
+    .filter(Boolean)
+    .join('/')
+}
+
+/**
+ * 根据 name + category 生成带目录的相对路径：category/name.md
+ */
+export function pagePathFromData(name: string, category: string): string {
+  return categoryToDir(category) + '/' + pageNameToFilename(name)
 }
 
 /**

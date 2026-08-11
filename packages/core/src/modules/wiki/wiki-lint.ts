@@ -7,7 +7,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { generateText, Output, type LanguageModel } from 'ai'
 import { ensureWikiDirExists, pageNameToFilename } from './wiki-paths'
-import { readAllPages, rebuildIndex, appendLog, type WikiPage } from './wiki-io'
+import { readAllPages, rebuildIndex, appendLog, scanPageFiles, type WikiPage } from './wiki-io'
 import { LINT_PROMPT, lintOutputSchema, type LintIssue } from './wiki-prompt'
 import { DEFAULT_WIKI_CONFIG, type WikiConfig } from './wiki-config'
 import { logger } from '../../primitives/logger'
@@ -34,18 +34,9 @@ async function checkIndexSync(
   wikiDir: string,
   config: WikiConfig,
 ): Promise<{ missing: string[]; extra: string[] }> {
-  // 获取实际文件列表
-  let actualFiles: string[] = []
-  try {
-    const files = await fs.readdir(wikiDir)
-    actualFiles = files.filter(f =>
-      f.endsWith('.md') && f !== config.indexFile && f !== config.logFile
-    )
-  } catch {
-    return { missing: [], extra: [] }
-  }
+  const actualFiles = await scanPageFiles(wikiDir, config)
+  const actualSet = new Set(actualFiles)
 
-  // 获取索引中的文件列表
   let indexContent = ''
   try {
     indexContent = await fs.readFile(path.join(wikiDir, config.indexFile), 'utf-8')
@@ -56,17 +47,16 @@ async function checkIndexSync(
   const indexFiles = new Set<string>()
   const lines = indexContent.split('\n')
   for (const line of lines) {
-    const match = line.match(/^- \[\[(.+?)\]\]/)
-    if (match) {
-      const filename = pageNameToFilename(match[1])
-      indexFiles.add(filename)
-    }
+    // 新格式: - [[name]] (path/file.md) — desc
+    const newFmt = line.match(/^- \[\[.+?\]\]\s*\(([^)]+)\)/)
+    if (newFmt) { indexFiles.add(newFmt[1]); continue }
+    // 旧格式: - [[name]] — desc（用 pageNameToFilename 推断）
+    const oldFmt = line.match(/^- \[\[(.+?)\]\]/)
+    if (oldFmt) indexFiles.add(pageNameToFilename(oldFmt[1]))
   }
 
-  const actualSet = new Set(actualFiles)
   const missing = actualFiles.filter(f => !indexFiles.has(f))
   const extra = Array.from(indexFiles).filter(f => !actualSet.has(f))
-
   return { missing, extra }
 }
 
@@ -114,13 +104,14 @@ async function checkOrphans(
     const links = page.content.match(/\[\[(.+?)\]\]/g) || []
     for (const link of links) {
       const name = link.replace(/\[\[|\]\]/g, '')
-      allLinks.add(pageNameToFilename(name))
+      // 按 page name 比较（不依赖 filename 路径格式）
+      allLinks.add(name.toLowerCase().trim())
     }
   }
 
-  // 检查哪些页面从未被引用
+  // 检查哪些页面从未被引用（按 name 比较）
   for (const page of pages) {
-    if (!allLinks.has(page.filename)) {
+    if (!allLinks.has(page.data.name.toLowerCase().trim())) {
       issues.push({
         type: 'orphan',
         severity: 'low',

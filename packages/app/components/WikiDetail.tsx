@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
-  TrashIcon, PencilIcon, HistoryIcon,
+  TrashIcon, PencilIcon,
   BrainIcon, UserIcon, BotIcon, FolderIcon,
   GlobeIcon, BoxIcon, Loader2Icon, LinkIcon,
 } from "lucide-react"
@@ -15,7 +15,6 @@ import { getWikiCategoryMeta } from "@/lib/wiki-category"
 import { DetailPageHeader, type MenuItem } from "@/components/ui/detail-page-header"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { FileLink } from "@/components/ui/file-link"
-import WikiHistoryPanel from "@/components/WikiHistoryPanel"
 
 interface WikiSourceView {
   type: string
@@ -87,9 +86,6 @@ export default function WikiDetail({
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState("")
   const [editSaving, setEditSaving] = useState(false)
-
-  // 修订历史面板
-  const [showHistory, setShowHistory] = useState(false)
 
   // 删除确认
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -188,11 +184,6 @@ export default function WikiDetail({
         label: "编辑",
         icon: <PencilIcon className="size-3.5" />,
         onClick: handleStartEdit,
-      },
-      {
-        label: "修订历史",
-        icon: <HistoryIcon className="size-3.5" />,
-        onClick: () => setShowHistory(true),
       },
     ] : []),
     { divider: true, label: "", icon: null, onClick: () => {} },
@@ -321,17 +312,6 @@ export default function WikiDetail({
             </div>
           )}
         </div>
-
-        {/* History panel */}
-        {showHistory && !editing && (
-          <div className="w-96 shrink-0 min-h-0">
-            <WikiHistoryPanel
-              filename={page.filename}
-              onClose={() => setShowHistory(false)}
-              onRestored={loadPage}
-            />
-          </div>
-        )}
       </div>
 
       <DeleteConfirmDialog
