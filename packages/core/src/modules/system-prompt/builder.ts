@@ -15,6 +15,7 @@ import {
   DYNAMIC_BOUNDARY,
 } from "./sections/session";
 import { createWikiGuidelinesSection, createRecalledWikiSection } from "./sections/wiki";
+import { createMemoryGuidelinesSection, createRecalledMemorySection } from "./sections/memory";
 import { createPermissionsSection } from "./sections/permissions";
 import { createTodoOverviewSection } from "./sections/todo-overview";
 import { formatSkillsWithinBudget } from '../skills/budget-formatter';
@@ -148,6 +149,27 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
       }
     },
     cacheStrategy: "session",
+  },
+  {
+    name: "memory-guidelines",
+    create: (options) => {
+      if (options.memoryBaseDir) {
+        return createMemoryGuidelinesSection();
+      }
+      return { name: "memory-guidelines", content: null, cacheStrategy: "session" as const, priority: 43 };
+    },
+    cacheStrategy: "session",
+  },
+  {
+    name: "recalled-memory",
+    create: async (options) => {
+      if (options.memoryBaseDir) {
+        const section = await createRecalledMemorySection(options.memoryBaseDir, options.memoryQuery);
+        return section ?? { name: "recalled-memory", content: null, cacheStrategy: "dynamic" as const, priority: 44 };
+      }
+      return { name: "recalled-memory", content: null, cacheStrategy: "dynamic" as const, priority: 44 };
+    },
+    cacheStrategy: "dynamic",
   },
   {
     name: "wiki-guidelines",

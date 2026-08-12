@@ -39,6 +39,12 @@ export interface BuildInstructionsOptions {
   /** 要跳过的 section 名称列表（如 ['identity'] 用于自定义 Agent） */
   excludeSections?: string[]
 
+  /** 用户记忆基础目录 */
+  memoryBaseDir?: string
+
+  /** 当前用户消息（用于记忆 relevance 打分） */
+  memoryQuery?: string
+
   /** 任务存储（用于自动注入当前会话的任务清单） */
   todoStore?: TodoStore
 
@@ -60,6 +66,8 @@ export async function buildAgentInstructions(
     conversationMeta: options?.conversationMeta ?? undefined,
     wikiContext: wikiContext ?? undefined,
     wikiBaseDir: options?.wikiBaseDir,
+    memoryBaseDir: options?.memoryBaseDir,
+    memoryQuery: options?.memoryQuery,
     customInstructions: options?.customInstructions ?? null,
     agentIdentity: options?.agentIdentity ?? null,
     mcpServerTools: options?.mcpServerTools,

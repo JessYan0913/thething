@@ -369,6 +369,21 @@ export {
   type WikiSourceRecord,
 } from './modules/wiki';
 
+// Memory（用户记忆：偏好/身份/纠正）
+export {
+  writeMemory,
+  readAllMemories,
+  deleteMemory,
+  updateMemory,
+  ensureMemoryDirExists,
+  getPrimaryMemoryDir,
+  rankMemories,
+  formatMemoryForPrompt,
+  MEMORY_GUIDELINES_PROMPT,
+  extractMemoriesFromHistory,
+} from './modules/memory';
+export type { MemoryEntry, MemoryType, MemoryRankOptions, ExtractMemoriesResult } from './modules/memory';
+
 // Title generation
 export { generateConversationTitle } from './modules/compaction';
 

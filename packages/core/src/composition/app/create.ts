@@ -30,6 +30,7 @@ import type { AgentDefinition } from '../../modules/agent/types'
 import { resolveModelAlias, isInheritAlias } from '../../services/model/alias'
 import { logger } from '../../primitives/logger'
 import { getPrimaryWikiDir } from '../../modules/wiki'
+import { getPrimaryMemoryDir } from '../../modules/memory'
 import { loadWikiContextForAgent } from '../../modules/agent/context/wiki-context'
 import type { McpRegistry, McpServerConfig } from '../../modules/mcp'
 
@@ -86,6 +87,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
 
   const projectRoot = sessionOptions.projectRoot ?? context.layout.resourceRoot
   const wikiBaseDir = getPrimaryWikiDir(context.layout)
+  const memoryBaseDir = getPrimaryMemoryDir(context.layout)
 
   // ============================================================
   // Agent 定义查找（如果指定了 agentType）
@@ -113,6 +115,20 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // Agent 看到匹配的 skill 后通过 skill tool 按需加载完整指令。
   // ============================================================
   const messagesWithAttachments = messages
+
+  // 最后一条用户消息文本，作为记忆 relevance 打分 query（从后往前找）
+  const memoryQuery = (() => {
+    for (let i = messagesWithAttachments.length - 1; i >= 0; i--) {
+      const m = messagesWithAttachments[i]
+      if (m.role !== 'user') continue
+      const texts = (m.parts ?? [])
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map(p => p.text)
+        .filter(Boolean)
+      if (texts.length > 0) return texts.join('\n')
+    }
+    return ''
+  })()
 
   // ============================================================
   // Session 状态
@@ -197,6 +213,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     agentIdentity: selectedAgentDef?.instructions,
     // 当选择自定义 Agent 时，跳过默认 identity 和 capabilities（"通用智能助手"身份声明）
     excludeSections: selectedAgentDef ? ['identity', 'capabilities'] : undefined,
+    memoryBaseDir,
+    memoryQuery,
   })
 
   // ============================================================
@@ -278,6 +296,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     tasksDir: context.runtime.tasksDir,
     userId,
     wikiBaseDir,
+    memoryBaseDir,
   })
 
   // 如果 Agent 定义了工具白名单/能力开关，过滤工具集

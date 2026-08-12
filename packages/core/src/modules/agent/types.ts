@@ -419,6 +419,8 @@ export interface LoadToolsConfig {
   userId?: string
   /** 知识库基础目录 */
   wikiBaseDir?: string
+  /** 用户记忆基础目录 */
+  memoryBaseDir?: string
 }
 
 export interface WikiContext {

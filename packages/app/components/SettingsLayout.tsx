@@ -24,6 +24,7 @@ import {
   CpuIcon,
   TimerIcon,
   FileTextIcon,
+  BrainIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -47,6 +48,7 @@ export default function SettingsLayout({ children }: { children: unknown }) {
     { to: "/settings/connectors", icon: CableIcon, label: t('sidebar.connectors') },
     { to: "/settings/mcp", icon: PlugIcon, label: t('sidebar.mcpServers') },
     { to: "/settings/wiki", icon: DatabaseIcon, label: t('sidebar.memory') },
+    { to: "/settings/memory", icon: BrainIcon, label: t('sidebar.userMemory') },
     { to: "/settings/permissions", icon: ShieldIcon, label: t('sidebar.permissions') },
     { to: "/settings/automation", icon: TimerIcon, label: t('sidebar.automation') },
   ]

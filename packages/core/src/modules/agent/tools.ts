@@ -24,6 +24,8 @@ import {
   createIngestWikiSourceTool,
   createDeleteWikiTool,
   createContextPinTool,
+  createSaveMemoryTool,
+  createDeleteMemoryTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
 import { createSubmitPlanTool } from '../plan'
@@ -116,6 +118,16 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     })
     tools.delete_wiki = createDeleteWikiTool({
       wikiBaseDir: config.wikiBaseDir,
+    })
+  }
+
+  // 注册 Memory 工具（需要 memoryBaseDir）
+  if (config.memoryBaseDir) {
+    tools.save_memory = createSaveMemoryTool({
+      memoryBaseDir: config.memoryBaseDir,
+    })
+    tools.delete_memory = createDeleteMemoryTool({
+      memoryBaseDir: config.memoryBaseDir,
     })
   }
 

@@ -59,6 +59,12 @@ export interface BuildSystemPromptOptions {
   /** 知识库根目录 */
   wikiBaseDir?: string;
 
+  /** 用户记忆根目录 */
+  memoryBaseDir?: string;
+
+  /** 当前用户消息（用于记忆 relevance 打分） */
+  memoryQuery?: string;
+
   /** 已连接的 MCP 服务器及工具列表文本（由调用方格式化） */
   mcpServerTools?: string;
 

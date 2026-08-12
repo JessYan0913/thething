@@ -16,6 +16,8 @@ export { createLintWikiTool } from './lint-wiki';
 export { createIngestWikiSourceTool } from './ingest-wiki-source';
 export { createDeleteWikiTool } from './delete-wiki';
 export { createContextPinTool } from './context-pin';
+export { createSaveMemoryTool } from './save-memory';
+export { createDeleteMemoryTool } from './delete-memory';
 
 // Text processing utilities (BOM, line endings)
 export { stripBom, detectLineEnding, normalizeToLF, restoreLineEndings } from './utils/text';

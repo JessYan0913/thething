@@ -10,6 +10,7 @@
     "agents": "智能体管理",
     "permissions": "权限管理",
     "memory": "知识库",
+    "userMemory": "用户记忆",
     "automation": "自动化任务",
     "backToChat": "返回聊天",
     "systemSettings": "系统设置",
