@@ -121,6 +121,7 @@ export const CONVERSATION_SCOPED_TABLES = [
   'messages', 'messages_tree', 'summaries', 'todos', 'pending_approvals',
   'conversation_branches', 'conversation_branch_selections', 'conversation_runs',
   'agent_runs', 'stream_chunks', 'agent_status', 'suspended_agent_states', 'chat_costs',
+  'message_text',
 ] as const;
 
 /** wiki 目录（首个资源路径），不存在返回 null。 */

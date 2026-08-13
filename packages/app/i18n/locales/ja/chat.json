@@ -47,5 +47,16 @@
     "glob": "ファイル検索",
     "grep": "内容検索",
     "webSearch": "Web検索"
+  },
+  "search": {
+    "title": "会話を検索",
+    "placeholder": "会話とメッセージを検索…",
+    "empty": "キーワードを入力して検索",
+    "noResults": "一致する会話やメッセージがありません",
+    "loading": "検索中…",
+    "role_user": "ユーザー",
+    "role_assistant": "アシスタント",
+    "role_system": "システム",
+    "matches": "{{count}}件の一致"
   }
 }

@@ -47,5 +47,16 @@
     "glob": "搜索文件",
     "grep": "搜索内容",
     "webSearch": "网络搜索"
+  },
+  "search": {
+    "title": "搜索会话",
+    "placeholder": "搜索会话与消息…",
+    "empty": "输入关键词开始搜索",
+    "noResults": "未找到匹配的会话或消息",
+    "loading": "搜索中…",
+    "role_user": "用户",
+    "role_assistant": "助手",
+    "role_system": "系统",
+    "matches": "{{count}} 处命中"
   }
 }

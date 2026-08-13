@@ -6,9 +6,10 @@
 
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
+import { extractMessageText } from './message-store';
 
 // 当前 schema 版本。doctor 诊断用 user_version 与其比对。
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -515,6 +516,46 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
       }
     }
     logger.debug('Schema', 'Migrated to v18: added ContextBudgetSnapshot columns');
+  }
+
+  if (currentVersion < 19) {
+    // v19: message_text 镜像表 —— 只存每条消息 text part 的纯文本，供会话全文检索。
+    // 不直接对 messages.content（含瞬态工具 JSON 的巨列）做 LIKE 扫描，检索在镜像表上进行。
+    // 写路径在 message-store.ts insertNode/replaceConversation/deleteOrphans 同步维护，
+    // 删除会话级联见 conversation-store.deleteConversation 的 relatedTables。
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS message_text (
+        message_id      TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role            TEXT NOT NULL,
+        text            TEXT NOT NULL,
+        created_at      TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_message_text_conversation
+        ON message_text(conversation_id);
+    `);
+
+    // 回填存量消息（v11 迁移已在前，messages 已是 tree 形态；空库/新库为 no-op）
+    const backfillRows = db
+      .prepare('SELECT id, conversation_id, role, content FROM messages')
+      .all() as { id: string; conversation_id: string; role: string; content: string }[];
+    if (backfillRows.length > 0) {
+      const insertText = db.prepare(
+        'INSERT OR REPLACE INTO message_text (message_id, conversation_id, role, text) VALUES (?, ?, ?, ?)'
+      );
+      const backfill = db.transaction(() => {
+        for (const row of backfillRows) {
+          try {
+            const text = extractMessageText(JSON.parse(row.content));
+            if (text) insertText.run(row.id, row.conversation_id, row.role, text);
+          } catch { /* malformed content, skip */ }
+        }
+      });
+      backfill();
+    }
+    logger.debug('Schema', `Migrated to v19: added message_text search mirror (${backfillRows.length} messages scanned)`);
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

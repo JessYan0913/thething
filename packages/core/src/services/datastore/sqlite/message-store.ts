@@ -16,6 +16,7 @@
 
 import type { UIMessage } from 'ai';
 import type {
+  ConversationSearchResult,
   ConversationStore,
   ConversationTree,
   MessageStore,
@@ -37,6 +38,21 @@ interface TreeMessageRow {
   role: 'user' | 'assistant' | 'system';
   created_at: string;
   child_count: number;
+}
+
+/**
+ * 提取 UIMessage 的纯文本（仅 text part，按消息内顺序 join '\n'）。
+ * 供 message_text 镜像表写入、v19 schema 回填、searchMessages 摘要共用。
+ * 无 text part（纯工具/附件消息）返回 null → 不建镜像行。
+ * 注意：不折叠空白、不截断——matchIndex 需对原始存储字节定位。
+ */
+export function extractMessageText(message: UIMessage): string | null {
+  const text = message.parts
+    ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n')
+    .trim();
+  return text ? text : null;
 }
 
 /**
@@ -345,6 +361,8 @@ export class SQLiteMessageStore implements MessageStore {
     const transaction = this.db.transaction(() => {
       this.ensureConversation(conversationId, messages);
       this.db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(conversationId);
+      // 镜像同步清空（新链由 insertNode 重新写入）
+      this.db.prepare('DELETE FROM message_text WHERE conversation_id = ?').run(conversationId);
 
       const seenIds = new Set<string>();
       let parentId: string | null = null;
@@ -417,6 +435,7 @@ export class SQLiteMessageStore implements MessageStore {
     if (orphanIds.length === 0) return 0;
 
     const delMsg = this.db.prepare('DELETE FROM messages WHERE id = ?');
+    const delText = this.db.prepare('DELETE FROM message_text WHERE message_id = ?');
     const delSel = this.db.prepare(
       `DELETE FROM conversation_branch_selections
         WHERE conversation_id = ? AND (parent_message_id = ? OR selected_child_id = ?)`
@@ -426,6 +445,7 @@ export class SQLiteMessageStore implements MessageStore {
     );
     for (const id of orphanIds) {
       delMsg.run(id);
+      delText.run(id);
       delSel.run(conversationId, id, id);
       delSummary.run(conversationId, id);
     }
@@ -531,6 +551,137 @@ export class SQLiteMessageStore implements MessageStore {
     return transaction();
   }
 
+  searchMessages(query: string, opts: {
+    source?: string;
+    sourceId?: string;
+    projectId?: string;
+    limit?: number;
+  } = {}): ConversationSearchResult[] {
+    const q = query.trim();
+    if (!q) return [];
+    const limit = Math.min(opts.limit ?? 20, 50);
+
+    // LIKE 转义：用户输入的 % _ \ 按字面匹配（ESCAPE '\'），而非通配符
+    const esc = q.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const like = `%${esc}%`;
+    const { source = null, sourceId = null, projectId = null } = opts;
+    // 三个过滤用成对绑定；`? IS NULL OR c.x = ?` 区分"未过滤"与"值恰为 null"
+    const filterParams = [source, source, sourceId, sourceId, projectId, projectId];
+
+    // 1) 消息命中：按会话最近更新倒序、会话内最早命中优先
+    const msgRows = this.db
+      .prepare(
+        `SELECT mt.message_id, mt.conversation_id, mt.role, mt.text,
+                instr(lower(mt.text), lower(?)) - 1 AS match_index,
+                c.id, c.updated_at
+           FROM message_text mt
+           JOIN conversations c ON c.id = mt.conversation_id
+          WHERE mt.text LIKE ? ESCAPE '\\'
+            AND (? IS NULL OR c.source = ?)
+            AND (? IS NULL OR c.source_id = ?)
+            AND (? IS NULL OR c.project_id = ?)
+          ORDER BY c.updated_at DESC, mt.created_at ASC
+          LIMIT ?`
+      )
+      .all(q, like, ...filterParams, limit * 4) as unknown as Array<{
+        message_id: string;
+        conversation_id: string;
+        role: 'user' | 'assistant' | 'system';
+        text: string;
+        match_index: number;
+        id: string;
+        updated_at: string;
+      }>;
+
+    // JS 分组：每会话取首行作 snippet；其余行计入 count
+    const grouped = new Map<string, {
+      row: (typeof msgRows)[number];
+      count: number;
+    }>();
+    for (const row of msgRows) {
+      const existing = grouped.get(row.conversation_id);
+      if (existing) {
+        existing.count++;
+      } else {
+        grouped.set(row.conversation_id, { row, count: 1 });
+      }
+      if (grouped.size >= limit) break;
+    }
+
+    // 精确 matchCount（窗口外可能还有同会话命中）
+    if (grouped.size > 0) {
+      const ids = [...grouped.keys()];
+      const placeholders = ids.map(() => '?').join(',');
+      const counts = this.db
+        .prepare(
+          `SELECT conversation_id, COUNT(*) AS cnt FROM message_text
+             WHERE conversation_id IN (${placeholders}) AND text LIKE ? ESCAPE '\\'
+             GROUP BY conversation_id`
+        )
+        .all(...ids, like) as unknown as Array<{ conversation_id: string; cnt: number }>;
+      for (const c of counts) {
+        const entry = grouped.get(c.conversation_id);
+        if (entry) entry.count = Number(c.cnt);
+      }
+    }
+
+    const results: ConversationSearchResult[] = [];
+    const surfacedIds = new Set<string>();
+    for (const [convId, { row, count }] of grouped) {
+      const conversation = this.conversationStore.getConversation(convId);
+      if (!conversation) continue; // 查询间隙被删，跳过
+      surfacedIds.add(convId);
+      results.push({
+        conversation,
+        snippet: { messageId: row.message_id, role: row.role, text: row.text, matchIndex: row.match_index },
+        matchCount: count,
+      });
+    }
+
+    // 2) 标题命中：仅未被消息命中覆盖的会话（snippet.messageId = null）
+    const remaining = limit - results.length;
+    if (remaining > 0) {
+      const excluded = [...surfacedIds];
+      const exclusionClause = excluded.length > 0
+        ? `AND c.id NOT IN (${excluded.map(() => '?').join(',')})`
+        : '';
+      const titleRows = this.db
+        .prepare(
+          `SELECT c.id, c.title, c.updated_at,
+                  instr(lower(c.title), lower(?)) - 1 AS match_index
+             FROM conversations c
+            WHERE c.title LIKE ? ESCAPE '\\'
+              AND (? IS NULL OR c.source = ?)
+              AND (? IS NULL OR c.source_id = ?)
+              AND (? IS NULL OR c.project_id = ?)
+              ${exclusionClause}
+            ORDER BY c.updated_at DESC
+            LIMIT ?`
+        )
+        .all(q, like, ...filterParams, ...excluded, remaining) as unknown as Array<{
+          id: string;
+          title: string;
+          updated_at: string;
+          match_index: number;
+        }>;
+      for (const row of titleRows) {
+        const conversation = this.conversationStore.getConversation(row.id);
+        if (!conversation) continue;
+        results.push({
+          conversation,
+          snippet: { messageId: null, role: null, text: row.title, matchIndex: Math.max(0, row.match_index) },
+          matchCount: 1,
+        });
+      }
+    }
+
+    // 合并后按最近更新倒序（消息命中先入，标题命中排其后，统一再排序）
+    results.sort((a, b) =>
+      (b.conversation.updatedAt ?? '').localeCompare(a.conversation.updatedAt ?? '')
+    );
+    return results.slice(0, limit);
+  }
+
   // ── private helpers ─────────────────────────────────────────
 
   private insertNode(conversationId: string, msg: UIMessage, parentId: string | null): void {
@@ -548,6 +699,18 @@ export class SQLiteMessageStore implements MessageStore {
         'INSERT INTO messages (id, conversation_id, parent_id, branch_id, role, content) VALUES (?, ?, ?, ?, ?, ?)'
       )
       .run(msg.id, conversationId, parentId, activeBranch, msg.role, JSON.stringify(msg));
+
+    // message_text 检索镜像同步写入（insertNode 是 messages 唯一插入口，
+    // 覆盖 commitUserMessage / commitAssistantContinuation / appendMessages /
+    // replaceConversation / branch-store 全部路径；无文本消息不建行）
+    const text = extractMessageText(msg);
+    if (text) {
+      this.db
+        .prepare(
+          'INSERT OR REPLACE INTO message_text (message_id, conversation_id, role, text) VALUES (?, ?, ?, ?)'
+        )
+        .run(msg.id, conversationId, msg.role, text);
+    }
   }
 
   /**

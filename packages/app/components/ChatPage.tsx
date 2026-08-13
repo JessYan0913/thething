@@ -75,6 +75,8 @@ export default function ChatPage() {
   const conversationId = params?.chatId ? decodeURIComponent(params.chatId as string) : null;
   const projectId = params?.projectId;
   const initialMessage = searchParams.get("msg") || undefined;
+  // 检索跳转目标消息（SearchDialog 点击结果带入 ?message=）
+  const jumpToMessageId = searchParams.get("message") || null;
 
   // 从会话列表中取得当前会话的上下文水位（新 schema 类型）
   const conversation = conversations.find(c => c.id === conversationId);
@@ -122,6 +124,7 @@ export default function ChatPage() {
       initialMessage={initialMessage}
       projectPath={projectPath}
       contextBudget={contextBudget}
+      jumpToMessageId={jumpToMessageId}
     />
   );
 }

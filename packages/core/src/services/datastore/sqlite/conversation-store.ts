@@ -66,9 +66,16 @@ export class SQLiteConversationStore implements ConversationStore {
       'conversation_branches',
       'conversation_branch_selections',
       'conversation_runs',
+      'message_text',
     ];
     for (const table of relatedTables) {
-      this.db.prepare(`DELETE FROM ${table} WHERE conversation_id = ?`).run(id);
+      // 部分关联表（memory_usage/chat_stream_events/agent_states 等）由外部模块
+      // 按需创建，全新库上未必存在——缺失时跳过，避免级联删除整体失败。
+      try {
+        this.db.prepare(`DELETE FROM ${table} WHERE conversation_id = ?`).run(id);
+      } catch (e: any) {
+        if (!e.message?.includes('no such table')) throw e;
+      }
     }
     const stmt = this.db.prepare('DELETE FROM conversations WHERE id = ?');
     stmt.run(id);

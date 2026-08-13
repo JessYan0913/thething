@@ -37,6 +37,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
   Loader2Icon,
+  SearchIcon,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -213,6 +214,7 @@ export type ConversationSidebarProps = {
   onCreateConversation: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
+  onOpenSearch?: () => void;
   isLoading?: boolean;
   activeFilter?: string;
   projects?: ProjectItem[];
@@ -229,6 +231,7 @@ export const ConversationSidebar = ({
   onCreateConversation,
   onDeleteConversation,
   onRenameConversation,
+  onOpenSearch,
   isLoading = false,
   activeFilter = "user",
   projects = [],
@@ -267,6 +270,22 @@ export const ConversationSidebar = ({
             TheThing
           </span>
         </div>
+
+        {/* 全局检索 — 所有过滤视图下都可用 */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={onOpenSearch}
+              tooltip={t('chat:search.title')}
+            >
+              <SearchIcon />
+              <span>{t('chat:search.title')}</span>
+              <span className="ml-auto hidden group-data-[collapsible=icon]:hidden text-[10px] text-muted-foreground">
+                ⌘K
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
 
         {/* New conversation — only in user mode */}
         {activeFilter === 'user' && (

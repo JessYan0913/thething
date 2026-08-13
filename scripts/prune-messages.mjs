@@ -84,6 +84,7 @@ let totalConvs = 0;
 const conversations = db.prepare('SELECT id FROM conversations').all();
 const updateContent = db.prepare('UPDATE messages SET content = ? WHERE id = ?');
 const delMsg = db.prepare('DELETE FROM messages WHERE id = ?');
+const delText = db.prepare('DELETE FROM message_text WHERE message_id = ?');
 const delSel = db.prepare(
   'DELETE FROM conversation_branch_selections WHERE conversation_id = ? AND (parent_message_id = ? OR selected_child_id = ?)',
 );
@@ -120,6 +121,7 @@ for (const conv of conversations) {
   const orphanIds = allRows.map((r) => r.id).filter((id) => !reachable.has(id));
   if (!dryRun) {
     for (const id of orphanIds) delMsg.run(id);
+    for (const id of orphanIds) delText.run(id);
     for (const id of orphanIds) delSel.run(cid, id, id);
   }
 

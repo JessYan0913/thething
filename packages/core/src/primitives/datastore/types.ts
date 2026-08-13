@@ -369,6 +369,24 @@ export interface ConversationRunStore {
 }
 
 /**
+ * 会话全文检索结果：命中消息所属会话 + 最佳摘要 + 会话内命中数。
+ * snippet.messageId 为 null 表示仅标题命中（text 为标题文本）。
+ */
+export interface ConversationSearchResult {
+  conversation: Conversation;
+  snippet: {
+    messageId: string | null;
+    role: 'user' | 'assistant' | 'system' | null;
+    /** 命中消息的全文文本（或标题文本） */
+    text: string;
+    /** 命中子串在 text 中的起始字符下标（高亮用） */
+    matchIndex: number;
+  };
+  /** 该会话内命中的消息数 */
+  matchCount: number;
+}
+
+/**
  * Message storage interface
  */
 export interface MessageStore {
@@ -467,6 +485,20 @@ export interface MessageStore {
    * @returns false if the message doesn't belong to the conversation
    */
   switchHead(conversationId: string, messageId: string, descendToTip?: boolean): boolean;
+
+  /**
+   * 全会话全文检索（跨消息文本与会话标题）。
+   * 子串匹配（大小写不敏感，`%`/`_`/`\` 按字面处理），按会话最近更新倒序，
+   * 每个会话返回一条结果（最佳命中消息作摘要；无消息命中但标题命中时
+   * snippet.messageId 为 null）。searchMessages 基于 message_text 镜像表，
+   * 不扫描 messages.content 巨列。
+   */
+  searchMessages(query: string, opts?: {
+    source?: string;
+    sourceId?: string;
+    projectId?: string;
+    limit?: number;
+  }): ConversationSearchResult[];
 }
 
 /**

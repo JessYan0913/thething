@@ -139,6 +139,7 @@ export type {
   ConversationCommand,
   ConversationCommandResult,
   ConversationProjection,
+  ConversationSearchResult,
 } from './primitives/datastore/types';
 
 // Model

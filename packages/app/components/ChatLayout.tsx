@@ -2,6 +2,7 @@ import {
   ConversationSidebar,
   type ConversationItem,
 } from "@/components/ConversationSidebar";
+import SearchDialog from "@/components/SearchDialog";
 import {
   Select,
   SelectContent,
@@ -121,6 +122,9 @@ export default function ChatLayout({ children }: { children: unknown }) {
   // Conversation list state
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+
+  // 全局会话检索对话框（⌘K 与侧边栏按钮共享开关）
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Project state - now derived from URL
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -465,6 +469,7 @@ export default function ChatLayout({ children }: { children: unknown }) {
             onSelectProject={handleSelectProject}
             onCreateProject={handleCreateProject}
             onDeleteProject={handleDeleteProject}
+            onOpenSearch={() => setSearchOpen(true)}
           />
 
           {/* Main Content - changes per route */}
@@ -494,6 +499,8 @@ export default function ChatLayout({ children }: { children: unknown }) {
           </SidebarInset>
         </div>
       </SidebarProvider>
+      {/* 全局会话检索（⌘K / 侧边栏按钮）——覆盖全部 /chat/* 路由 */}
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </ChatContext.Provider>
   );
 }

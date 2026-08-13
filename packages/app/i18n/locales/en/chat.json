@@ -47,5 +47,16 @@
     "glob": "Search files",
     "grep": "Search content",
     "webSearch": "Web search"
+  },
+  "search": {
+    "title": "Search conversations",
+    "placeholder": "Search conversations & messages…",
+    "empty": "Type to search your conversations",
+    "noResults": "No matching conversations or messages",
+    "loading": "Searching…",
+    "role_user": "User",
+    "role_assistant": "Assistant",
+    "role_system": "System",
+    "matches": "{{count}} matches"
   }
 }

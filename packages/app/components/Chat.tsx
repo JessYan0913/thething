@@ -410,9 +410,11 @@ export interface ChatProps {
   projectPath?: string;
   /** 上下文水位数据（新 schema）。从会话数据库读取传入，SSE 流推送时会覆盖此值。 */
   contextBudget?: import('@the-thing/core').ContextBudgetSnapshot | null;
+  /** 检索跳转目标消息 id：加载完成后滚动定位并临时高亮（不存在则优雅回退） */
+  jumpToMessageId?: string | null;
 }
 
-export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath, contextBudget }: ChatProps) {
+export default function Chat({ conversationId: propConversationId, onTitleUpdated, apiEndpoint, onTurnFinish, extraBody, initialMessage, showAgentSelector = true, projectPath, contextBudget, jumpToMessageId = null }: ChatProps) {
   const { t } = useTranslation('chat');
   const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(propConversationId ?? null);
@@ -421,6 +423,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const originalTitleRef = useRef<string | null>(null);
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const initialMessageSentRef = useRef(false);
+
+  // 检索跳转：目标消息加载后滚动定位 + 临时高亮
+  const jumpHandledRef = useRef<string | null>(null);
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
 
   // 审批对话框状态（用于工具审批）- 支持批量审批
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
@@ -1521,6 +1527,45 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }
   }, [isInitialLoadDone, initialMessage, sendMessage]);
 
+  // 检索跳转定位：加载完成后滚动到目标消息并临时高亮。
+  // 目标消息不在活跃路径（被 regenerate/编辑顶替、压缩移除）时优雅回退（不滚动）。
+  // 同一会话内二次跳转（目标变化）会重新定位；定位成功后经 replaceState 清除 ?message。
+  useEffect(() => {
+    if (!isInitialLoadDone) return;
+    if (!jumpToMessageId) {
+      jumpHandledRef.current = null;
+      setHighlightMessageId(null);
+      return;
+    }
+    const target = jumpToMessageId;
+    if (jumpHandledRef.current === target) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
+      const el = document.getElementById(`message-${target}`);
+      if (!el) {
+        // 元素尚未渲染或不在活跃路径：短暂重试后放弃
+        if (attempts++ < 10) setTimeout(tryScroll, 100);
+        return;
+      }
+      jumpHandledRef.current = target;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setHighlightMessageId(target);
+      setTimeout(() => setHighlightMessageId(null), 2000);
+      window.history.replaceState({}, document.title);
+    };
+    // 首次滚动 + 二次补位（防 AutoScrollToBottom 首载回底竞态；幂等）
+    const t1 = setTimeout(tryScroll, 120);
+    const t2 = setTimeout(tryScroll, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [jumpToMessageId, isInitialLoadDone, messages]);
+
   const thinkingState = useMemo(() => {
     if (status !== 'submitted' && status !== 'streaming') return null;
 
@@ -1966,7 +2011,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 const mcpAppKeys = new Set<string>();
 
                 return (
-                  <Message from={message.role} key={message.id}>
+                  <Message
+                    from={message.role}
+                    key={message.id}
+                    id={`message-${message.id}`}
+                    className={cn(
+                      highlightMessageId === message.id &&
+                        'rounded-lg ring-2 ring-primary/60 transition-shadow'
+                    )}
+                  >
                     {message.role === 'user' && isEditing ? (
                       <div className="ml-auto w-full max-w-2xl rounded-xl border bg-background px-4 py-3 shadow-sm">
                         <textarea

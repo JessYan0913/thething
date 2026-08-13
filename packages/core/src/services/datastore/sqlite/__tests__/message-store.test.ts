@@ -554,4 +554,135 @@ describe('SQLiteMessageStore (immutable tree)', () => {
       expect(store.messageStore.getMessagesByConversation('nope')).toEqual([])
     })
   })
+
+  describe('searchMessages', () => {
+    it('matches Chinese substring across user/assistant text, earliest match as snippet, counts all matches', () => {
+      store.conversationStore.createConversation('convA', '部署讨论')
+      store.messageStore.commitUserMessage('convA', msg('a1', 'user', '帮我部署一下那个服务'))
+      store.messageStore.appendMessages('convA', [msg('a2', 'assistant', '已经部署完成，端口 8080 可访问')])
+
+      const res = store.messageStore.searchMessages('部署')
+      expect(res.map((r) => r.conversation.id)).toEqual(['convA'])
+      expect(res[0].snippet.messageId).toBe('a1') // 会话内最早命中作摘要
+      expect(res[0].snippet.text).toBe('帮我部署一下那个服务')
+      expect(res[0].snippet.matchIndex).toBe(2)  // '部署' 起始下标
+      expect(res[0].matchCount).toBe(2)          // user + assistant 两条命中
+    })
+
+    it('orders results by most recent conversation updated_at', async () => {
+      store.conversationStore.createConversation('convOld', '旧会话')
+      store.messageStore.commitUserMessage('convOld', msg('o1', 'user', '部署 A 服务'))
+      // datetime('now') 秒级精度：跨秒创建，保证排序确定
+      await new Promise((r) => setTimeout(r, 1100))
+      store.conversationStore.createConversation('convNew', '新会话')
+      store.messageStore.commitUserMessage('convNew', msg('n1', 'user', '部署 B 服务'))
+
+      const res = store.messageStore.searchMessages('部署')
+      expect(res.map((r) => r.conversation.id)).toEqual(['convNew', 'convOld'])
+    })
+
+    it('returns a title-only match with messageId null when only the title hits', () => {
+      store.conversationStore.createConversation('convTitle', '季度复盘规划')
+      store.messageStore.commitUserMessage('convTitle', msg('t1', 'user', '完全没有关键词的内容'))
+
+      const res = store.messageStore.searchMessages('季度')
+      expect(res).toHaveLength(1)
+      expect(res[0].conversation.id).toBe('convTitle')
+      expect(res[0].snippet.messageId).toBeNull()
+      expect(res[0].snippet.text).toBe('季度复盘规划')
+      expect(res[0].snippet.matchIndex).toBe(0)
+      expect(res[0].matchCount).toBe(1)
+    })
+
+    it('merges message and title matches, deduped by conversation', async () => {
+      store.conversationStore.createConversation('convMsg', '无关标题')
+      store.messageStore.commitUserMessage('convMsg', msg('m1', 'user', '部署实战记录'))
+      await new Promise((r) => setTimeout(r, 1100))
+      store.conversationStore.createConversation('convTitle', '部署规划指南')
+      store.messageStore.commitUserMessage('convTitle', msg('m2', 'user', '一些内容'))
+
+      const res = store.messageStore.searchMessages('部署')
+      expect(res.map((r) => r.conversation.id)).toEqual(['convTitle', 'convMsg'])
+      expect(res[0].snippet.messageId).toBeNull() // 标题命中
+      expect(res[1].snippet.messageId).toBe('m1')
+    })
+
+    it('treats % _ \\ as literals, not LIKE wildcards', () => {
+      store.conversationStore.createConversation('convEsc', '转义测试')
+      store.messageStore.commitUserMessage('convEsc', msg('e1', 'user', '进度 50% 完成，包含 a_b 与 x\\y'))
+
+      expect(store.messageStore.searchMessages('50%')).toHaveLength(1)
+      expect(store.messageStore.searchMessages('a_b')).toHaveLength(1)
+      expect(store.messageStore.searchMessages('x\\y')).toHaveLength(1)
+      // '%' 与 '_' 不作为通配符：不匹配任意字符串
+      expect(store.messageStore.searchMessages('50_0')).toHaveLength(0)
+      expect(store.messageStore.searchMessages('10%')).toHaveLength(0)
+    })
+
+    it('is case-insensitive for ASCII', () => {
+      store.conversationStore.createConversation('convCase', '大小写')
+      store.messageStore.commitUserMessage('convCase', msg('c1', 'user', 'Hello World'))
+
+      const res = store.messageStore.searchMessages('hello')
+      expect(res).toHaveLength(1)
+      expect(res[0].snippet.matchIndex).toBe(0)
+    })
+
+    it('returns [] for empty/whitespace query and skips tool-only messages', () => {
+      store.conversationStore.createConversation('convTools', '工具消息')
+      store.messageStore.commitUserMessage('convTools', msg('t1', 'user', '正文'))
+      store.messageStore.appendMessages('convTools', [toolMsg('t2', 'output-available')])
+
+      expect(store.messageStore.searchMessages('   ')).toEqual([])
+      expect(store.messageStore.searchMessages('')).toEqual([])
+      // 纯工具消息无 text part → 无镜像行 → 搜不到其输入 JSON
+      expect(store.messageStore.searchMessages('questions')).toHaveLength(0)
+    })
+
+    it('filters by source/sourceId/projectId and respects limit', () => {
+      store.conversationStore.createConversation('convUser', '用户会话', { source: 'user' })
+      store.messageStore.commitUserMessage('convUser', msg('u1', 'user', '部署记录'))
+      store.conversationStore.createConversation('convFeishu', '飞书会话', { source: 'connector', sourceId: 'feishu' })
+      store.messageStore.commitUserMessage('convFeishu', msg('f1', 'user', '部署记录'))
+      store.projectStore.createProject('proj-1', '项目', '/tmp/proj')
+      store.conversationStore.createConversation('convProj', '项目会话', { source: 'user', projectId: 'proj-1' })
+      store.messageStore.commitUserMessage('convProj', msg('p1', 'user', '部署记录'))
+
+      expect(store.messageStore.searchMessages('部署', { source: 'connector' }).map((r) => r.conversation.id)).toEqual(['convFeishu'])
+      expect(store.messageStore.searchMessages('部署', { sourceId: 'feishu' }).map((r) => r.conversation.id)).toEqual(['convFeishu'])
+      expect(store.messageStore.searchMessages('部署', { projectId: 'proj-1' }).map((r) => r.conversation.id)).toEqual(['convProj'])
+      expect(store.messageStore.searchMessages('部署', { limit: 2 })).toHaveLength(2)
+    })
+
+    it('mirror consistency: replaceConversation drops old text from search', () => {
+      store.messageStore.commitUserMessage('convRebuild', msg('r1', 'user', '旧内容 secret'))
+      // 避免旧文本留在自动生成的标题里（标题也会被检索）
+      store.conversationStore.updateConversationTitle('convRebuild', '重建会话')
+      store.messageStore.replaceConversation('convRebuild', [msg('r2', 'user', '新内容')])
+
+      expect(store.messageStore.searchMessages('secret')).toHaveLength(0)
+      const res = store.messageStore.searchMessages('新内容')
+      expect(res.map((r) => r.snippet.messageId)).toEqual(['r2'])
+    })
+
+    it('mirror consistency: regenerate/edited orphans are removed from search', () => {
+      store.messageStore.commitUserMessage('convReg', msg('u1', 'user', 'q1'))
+      store.messageStore.appendMessages('convReg', [msg('a1', 'assistant', '旧答案 r1')])
+      expect(store.messageStore.searchMessages('旧答案')).toHaveLength(1)
+
+      // regenerate：head 移回 u1，a1 被 deleteOrphans 删除
+      store.messageStore.commitUserMessage('convReg', msg('u1', 'user', 'q1'))
+      expect(store.messageStore.searchMessages('旧答案')).toHaveLength(0)
+    })
+
+    it('does not search deleted conversations', () => {
+      store.conversationStore.createConversation('convDel', '待删除')
+      store.messageStore.commitUserMessage('convDel', msg('d1', 'user', '要删除的内容'))
+      expect(store.messageStore.searchMessages('要删除')).toHaveLength(1)
+
+      store.conversationStore.deleteConversation('convDel')
+      expect(store.messageStore.searchMessages('要删除')).toHaveLength(0)
+      expect(store.messageStore.searchMessages('待删除')).toHaveLength(0)
+    })
+  })
 })
