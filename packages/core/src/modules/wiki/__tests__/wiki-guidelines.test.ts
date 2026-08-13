@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { WIKI_GUIDELINES_PROMPT, wikiActionSchema, wikiSourceSchema } from '../wiki-prompt'
+import { WIKI_GUIDELINES_PROMPT, LINT_PROMPT, wikiActionSchema, wikiSourceSchema, lintIssueSchema } from '../wiki-prompt'
 
 describe('wiki maintenance guidelines', () => {
   it('describes the wiki as a persistent compounding artifact maintained by the agent', () => {
@@ -86,5 +86,21 @@ describe('wiki maintenance guidelines', () => {
     expect(wikiSourceSchema.safeParse({
       type: 'url',
     }).success).toBe(false)
+  })
+
+  it('detects user facts mixed into wiki and suggests migration to memory (self-healing loop)', () => {
+    // 类型枚举支持 user-fact
+    expect(lintIssueSchema.safeParse({
+      type: 'user-fact',
+      severity: 'high',
+      pages: ['用户-偏好.md'],
+      description: '页面内容是用户偏好，属于记忆而非知识库',
+      suggestion: '用 save_memory 迁移到记忆，然后 invalidate 该页面',
+    }).success).toBe(true)
+
+    // LINT_PROMPT 包含用户事实混入检查项与迁移建议
+    expect(LINT_PROMPT).toContain('用户事实混入')
+    expect(LINT_PROMPT).toContain('save_memory')
+    expect(LINT_PROMPT).toContain('invalidate')
   })
 })

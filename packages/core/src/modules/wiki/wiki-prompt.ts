@@ -51,7 +51,7 @@ export const wikiActionSchema = z.object({
     .string()
     .max(30)
     .optional()
-    .describe('可选分类，用于索引分组。常用分类：user / agent / project / domain / entity。省略时归入 misc'),
+    .describe('可选分类，用于索引分组。常用分类：agent / project / domain / entity / misc。user 分类已废弃——关于用户的偏好/身份/行为纠正请用 save_memory 写入记忆，不要写入 Wiki。省略时归入 misc'),
   name: z
     .string()
     .max(40)
@@ -82,7 +82,7 @@ export type WikiAction = z.infer<typeof wikiActionSchema>
 
 export const lintIssueSchema = z.object({
   type: z
-    .enum(['contradiction', 'orphan', 'stale', 'inconsistent', 'missing-crossref', 'missing-page', 'wrong-category'])
+    .enum(['contradiction', 'orphan', 'stale', 'inconsistent', 'missing-crossref', 'missing-page', 'wrong-category', 'user-fact'])
     .describe('问题类型'),
   severity: z
     .enum(['low', 'medium', 'high'])
@@ -132,6 +132,10 @@ export const LINT_PROMPT = `你是一个知识库健康检查员。检查以下�
    - domain：外部领域知识（书摘、市场报告、行业理论），与当前系统无直接关联
    - 如 category=domain 的页面实质是系统内部架构或项目决策，标记 wrong-category，severity=medium，suggestion 给出建议的正确 category 和原因
 
+5. **用户事实混入**：页面内容实质是关于用户的偏好/身份/行为纠正（主语是用户，如"我喜欢 X"、"我是 X"、"不要做 X"），而非关于世界/业务的知识？
+   - 用户事实属于记忆模块（Memory），不属于知识库（Wiki）
+   - 如发现，标记 user-fact，severity=high，suggestion 给出迁移步骤：用 save_memory 将事实写入记忆，然后 invalidate（或 delete_wiki）使该页面失效
+
 ## 输出格式
 
 \`\`\`json
@@ -150,6 +154,13 @@ export const LINT_PROMPT = `你是一个知识库健康检查员。检查以下�
       "pages": ["编程-偏好.md", "当前-项目.md"],
       "description": "两个页面都提到 TypeScript，但没有互相引用",
       "suggestion": "在具体页面中添加对泛化页面的引用"
+    },
+    {
+      "type": "user-fact",
+      "severity": "high",
+      "pages": ["用户-偏好.md"],
+      "description": "页面内容是用户偏好（不喜欢表格、偏好文字回复），属于记忆而非知识库",
+      "suggestion": "用 save_memory 迁移到记忆，然后 invalidate 该页面"
     }
   ]
 }
@@ -164,7 +175,7 @@ export const LINT_PROMPT = `你是一个知识库健康检查员。检查以下�
 // 工具清单靠各工具自身的 description 呈现；sources/origin 等字段语义
 // 写在 wikiActionSchema 的 .describe() 中，不在此重复。
 
-export const WIKI_GUIDELINES_PROMPT = `## 知识库（你的长期记忆）
+export const WIKI_GUIDELINES_PROMPT = `## 知识库
 
 你有一个持久化的知识库（Wiki）：由你增量构建和维护的、相互链接的 Markdown 页面，是持续复利的知识工件。它位于原始来源与当前对话之间：读取来源和完成探索后，将有价值的理解整合进已有页面，而不是让它们消失在聊天记录中。
 
@@ -179,4 +190,4 @@ Wiki 由你负责维护。页面结构、分类和工作流不是固定制度，
 - 结论来自具体外部来源时，通过 ingest_wiki_source 或 sources 字段记录来源，便于后续冲突判断和追溯。
 - 不要求预先归入固定知识类型，也不必等到知识完全稳定才记录；允许先形成有来源的工作理解，之后持续修正。
 - 当前任务仍应得到直接回答或交付；Wiki 更新是探索成果的积累，不是替代。
-- 知识库中有相关信息时直接使用，不要说"根据记忆"。`
+- 知识库中有相关信息时直接使用。`
