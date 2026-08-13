@@ -219,7 +219,8 @@ export async function scanPageFiles(
     for (const entry of entries) {
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name
       if (entry.isDirectory()) {
-        if (entry.name === 'system') continue  // skip system/ dir
+        // system/ 与 raw/ 均为 gitignored 派生数据（索引/快照可重建），不计入页面
+        if (entry.name === 'system' || entry.name === 'raw') continue
         await walk(path.join(dir, entry.name), rel)
       } else if (
         entry.isFile() &&
