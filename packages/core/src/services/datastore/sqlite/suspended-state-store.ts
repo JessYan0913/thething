@@ -42,12 +42,13 @@ export class SQLiteSuspendedStateStore implements SuspendedStateStore {
       DELETE FROM suspended_agent_states WHERE conversation_id = ?
     `);
 
+    // expires_at 存 ISO 字符串，需 datetime() 解析后才能与 datetime('now') 比较
     this.getConversationsStmt = db.prepare(`
-      SELECT conversation_id FROM suspended_agent_states WHERE expires_at > datetime('now')
+      SELECT conversation_id FROM suspended_agent_states WHERE datetime(expires_at) > datetime('now')
     `);
 
     this.cleanupStmt = db.prepare(`
-      DELETE FROM suspended_agent_states WHERE expires_at <= datetime('now')
+      DELETE FROM suspended_agent_states WHERE datetime(expires_at) <= datetime('now')
     `);
   }
 
