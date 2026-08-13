@@ -438,6 +438,16 @@ export interface MessageStore {
   };
 
   /**
+   * 只统计不写库的清理预览（doctor 诊断用）：
+   * 同 pruneConversation 的语义，返回将剥离的瞬态 part 数与将删除的孤儿数。
+   */
+  analyzePrune(conversationId: string): {
+    strippedMessages: number;
+    strippedBytes: number;
+    deletedOrphans: number;
+  };
+
+  /**
    * Branch metadata for the active path:
    * - branches: active-path message id → ALL sibling ids at that position
    *   (same parent, insertion order), only for positions with ≥ 2 versions

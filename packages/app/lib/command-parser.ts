@@ -9,7 +9,7 @@ export type CommandResult =
   | { type: 'none'; text: string };
 
 // 前端命令列表（不发送给 AI，由前端直接处理）
-const FRONTEND_COMMANDS = ['agent', 'model', 'mode'];
+const FRONTEND_COMMANDS = ['agent', 'model', 'mode', 'doctor'];
 
 // AI 命令列表（发送给 AI 处理）
 const AI_COMMANDS = ['skill', 'goal'];
@@ -64,6 +64,8 @@ export function getCommandDisplayName(command: string): string {
       return 'Model';
     case 'mode':
       return 'Mode';
+    case 'doctor':
+      return 'Doctor';
     case 'skill':
       return 'Skill';
     case 'goal':
@@ -84,6 +86,8 @@ export function getCommandArgsHint(command: string): string {
       return 'Model type (e.g., default, fast, smart)';
     case 'mode':
       return 'Approval mode (e.g., smart, auto-review, full-trust)';
+    case 'doctor':
+      return 'Diagnose and repair data dir / database';
     case 'skill':
       return 'Skill name and prompt';
     case 'goal':

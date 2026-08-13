@@ -23,6 +23,7 @@ import type {
 } from '../../../primitives/datastore/types';
 import { nanoid } from 'nanoid';
 import { logger } from '../../../primitives/logger';
+import { stripTransientParts } from './transient-parts';
 
 interface MessageRow {
   id: string;
@@ -38,22 +39,78 @@ interface TreeMessageRow {
   child_count: number;
 }
 
-// 瞬态 UI part 类型：流式期间实时显示（走 SSE，不经 message-store），
-// 持久化后无意义——前端渲染一律 return null，重载恢复有独立兜底来源
-// （todo → /api/todos，上下文水位 → conversations.context_usage）。
-// 写入时剥离，避免 DB 无限膨胀。data-sub-* 保留（子 Agent 过程回看）。
-const TRANSIENT_PART_TYPES = new Set([
-  'data-todo-update',
-  'data-bash-output',
-  'data-context-usage',
-  'data-compaction-status',
-]);
+/**
+ * 计算某会话中不可达的消息 id（head + 所有 branch tip 沿 parent 回溯均不可达）：
+ * regenerate/编辑替换掉的旧版本，以及历史孤儿。fork 分支 tip 可达，不受影响。
+ *
+ * 模块级纯函数（给定连接即可用）——message-store 的 deleteOrphans/analyzePrune
+ * 与 doctor 诊断共用，避免多份可达性实现漂移。
+ */
+export function computeConversationOrphans(
+  db: SqliteDatabase,
+  conversationId: string,
+): string[] {
+  const allRows = db
+    .prepare('SELECT id, parent_id FROM messages WHERE conversation_id = ?')
+    .all(conversationId) as { id: string; parent_id: string | null }[];
+  if (allRows.length === 0) return [];
+  const byId = new Map(allRows.map((r) => [r.id, r.parent_id]));
 
-/** 剥离瞬态 data-* part；无变化时返回原引用。 */
-function stripTransientParts(message: UIMessage): UIMessage {
-  if (!message.parts?.length) return message;
-  const parts = message.parts.filter((p) => !TRANSIENT_PART_TYPES.has(p.type));
-  return parts.length === message.parts.length ? message : { ...message, parts };
+  const reachable = new Set<string>();
+  const tips = new Set<string>();
+  const head = db
+    .prepare('SELECT head_message_id FROM conversations WHERE id = ?')
+    .get(conversationId) as { head_message_id: string | null } | undefined;
+  if (head?.head_message_id) tips.add(head.head_message_id);
+  const branchTips = db
+    .prepare('SELECT tip_message_id FROM conversation_branches WHERE conversation_id = ?')
+    .all(conversationId) as { tip_message_id: string | null }[];
+  for (const b of branchTips) if (b.tip_message_id) tips.add(b.tip_message_id);
+
+  for (const tip of tips) {
+    let cursor: string | null = tip;
+    while (cursor && !reachable.has(cursor)) {
+      reachable.add(cursor);
+      cursor = byId.get(cursor) ?? null;
+    }
+  }
+
+  return allRows.map((r) => r.id).filter((id) => !reachable.has(id));
+}
+
+/**
+ * 某会话的清理统计（doctor 诊断用；apply=true 时顺带执行瞬态 part 剥离）。
+ * 孤儿删除（含分支选择/摘要锚点级联）不在本函数内，由 MessageStore 的
+ * pruneConversation/deleteOrphans 负责——此处只统计。
+ */
+export function analyzeConversationPrune(
+  db: SqliteDatabase,
+  conversationId: string,
+  opts: { apply?: boolean } = {},
+): { strippedMessages: number; strippedBytes: number; deletedOrphans: number } {
+  const rows = db
+    .prepare('SELECT id, content FROM messages WHERE conversation_id = ?')
+    .all(conversationId) as { id: string; content: string }[];
+  const updateContent = db.prepare('UPDATE messages SET content = ? WHERE id = ?');
+  let strippedMessages = 0;
+  let strippedBytes = 0;
+  for (const row of rows) {
+    try {
+      const message = JSON.parse(row.content) as UIMessage;
+      const stripped = stripTransientParts(message);
+      if (stripped !== message) {
+        const newContent = JSON.stringify(stripped);
+        if (opts.apply) updateContent.run(newContent, row.id);
+        strippedMessages++;
+        strippedBytes += Math.max(0, row.content.length - newContent.length);
+      }
+    } catch { /* malformed content, skip */ }
+  }
+  return {
+    strippedMessages,
+    strippedBytes,
+    deletedOrphans: computeConversationOrphans(db, conversationId).length,
+  };
 }
 
 /**
@@ -315,28 +372,9 @@ export class SQLiteMessageStore implements MessageStore {
     deletedOrphans: number;
   } {
     const transaction = this.db.transaction(() => {
-      let strippedMessages = 0;
-      let strippedBytes = 0;
-
       // 1. 剥离历史消息中的瞬态 part（幂等：已剥离的 no-op）
-      const rows = this.db
-        .prepare('SELECT id, content FROM messages WHERE conversation_id = ?')
-        .all(conversationId) as { id: string; content: string }[];
-      const updateContent = this.db.prepare('UPDATE messages SET content = ? WHERE id = ?');
-      for (const row of rows) {
-        try {
-          const message = JSON.parse(row.content) as UIMessage;
-          const stripped = stripTransientParts(message);
-          if (stripped !== message) {
-            const newContent = JSON.stringify(stripped);
-            updateContent.run(newContent, row.id);
-            strippedMessages++;
-            strippedBytes += Math.max(0, row.content.length - newContent.length);
-          }
-        } catch { /* malformed content, skip */ }
-      }
-
-      // 2. 清孤儿（复用 deleteOrphans：剥离与孤儿删除解耦）
+      const { strippedMessages, strippedBytes } = analyzeConversationPrune(this.db, conversationId, { apply: true });
+      // 2. 清孤儿（剥离与孤儿删除解耦）
       const deletedOrphans = this.deleteOrphans(conversationId);
 
       if (strippedMessages > 0 || deletedOrphans > 0) {
@@ -350,36 +388,32 @@ export class SQLiteMessageStore implements MessageStore {
   }
 
   /**
-   * 删除当前不可达的消息（head + 所有 branch tip 沿 parent 回溯均不可达）：
+   * 只统计不写库的清理预览（doctor 诊断用）：
+   * 同 pruneConversation 的语义，返回将剥离的瞬态 part 数与将删除的孤儿数。
+   */
+  analyzePrune(conversationId: string): {
+    strippedMessages: number;
+    strippedBytes: number;
+    deletedOrphans: number;
+  } {
+    return analyzeConversationPrune(this.db, conversationId);
+  }
+
+  /**
+   * 计算当前不可达的消息 id（head + 所有 branch tip 沿 parent 回溯均不可达）：
    * regenerate/编辑替换掉的旧版本，以及历史孤儿。fork 分支 tip 可达，不受影响。
-   * 同步清理指向被删消息的分支选择记录与摘要锚点。
+   * 复用模块级 computeConversationOrphans（doctor 诊断同源）。
+   */
+  private computeOrphans(conversationId: string): string[] {
+    return computeConversationOrphans(this.db, conversationId);
+  }
+
+  /**
+   * 删除当前不可达的消息。同步清理指向被删消息的分支选择记录与摘要锚点。
    * @returns 删除的消息数
    */
   private deleteOrphans(conversationId: string): number {
-    const allRows = this.db
-      .prepare('SELECT id, parent_id FROM messages WHERE conversation_id = ?')
-      .all(conversationId) as { id: string; parent_id: string | null }[];
-    if (allRows.length === 0) return 0;
-    const byId = new Map(allRows.map((r) => [r.id, r.parent_id]));
-
-    const reachable = new Set<string>();
-    const tips = new Set<string>();
-    const head = this.getHead(conversationId);
-    if (head) tips.add(head);
-    const branchTips = this.db
-      .prepare('SELECT tip_message_id FROM conversation_branches WHERE conversation_id = ?')
-      .all(conversationId) as { tip_message_id: string | null }[];
-    for (const b of branchTips) if (b.tip_message_id) tips.add(b.tip_message_id);
-
-    for (const tip of tips) {
-      let cursor: string | null = tip;
-      while (cursor && !reachable.has(cursor)) {
-        reachable.add(cursor);
-        cursor = byId.get(cursor) ?? null;
-      }
-    }
-
-    const orphanIds = allRows.map((r) => r.id).filter((id) => !reachable.has(id));
+    const orphanIds = this.computeOrphans(conversationId);
     if (orphanIds.length === 0) return 0;
 
     const delMsg = this.db.prepare('DELETE FROM messages WHERE id = ?');

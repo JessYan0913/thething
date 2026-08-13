@@ -56,6 +56,8 @@ import { McpAppToolPart } from '@/components/mcp-app-tool-part';
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu';
 import { parseCommand } from '@/lib/command-parser';
 import { cn } from '@/lib/utils';
+import { DoctorReportPanel } from '@/components/doctor-report-panel';
+import type { DoctorReport, RepairOutcome } from '@the-thing/core';
 
 import { BranchAction, ConversationRoutePanel } from '@/components/conversation-route-panel';
 import type {
@@ -478,6 +480,55 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const [pruning, setPruning] = useState(false);
   const [pruneMessage, setPruneMessage] = useState<string | null>(null);
 
+  // /doctor 诊断面板状态
+  const [doctorOpen, setDoctorOpen] = useState(false);
+  const [doctorReport, setDoctorReport] = useState<DoctorReport | null>(null);
+  const [doctorLoading, setDoctorLoading] = useState(false);
+  const [doctorError, setDoctorError] = useState<string | null>(null);
+
+  // 运行 /doctor 诊断：GET /api/doctor → 报告（确定性引擎，不走 LLM）
+  const runDoctor = useCallback(async () => {
+    setDoctorOpen(true);
+    setDoctorLoading(true);
+    setDoctorError(null);
+    try {
+      const res = await fetch('/api/doctor');
+      if (!res.ok) {
+        const failure = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(failure.error ?? '诊断失败');
+      }
+      setDoctorReport(await res.json() as DoctorReport);
+    } catch (e) {
+      setDoctorError(e instanceof Error ? e.message : '诊断失败');
+      setDoctorReport(null);
+    } finally {
+      setDoctorLoading(false);
+    }
+  }, []);
+
+  // 执行修复（POST /api/doctor）后刷新报告
+  const handleDoctorRepair = useCallback(async (repairId: string, confirm: boolean): Promise<RepairOutcome> => {
+    try {
+      const res = await fetch('/api/doctor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repairId, confirm }),
+      });
+      if (!res.ok) {
+        const failure = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(failure.error ?? '修复失败');
+      }
+      const outcome = await res.json() as RepairOutcome;
+      if (outcome.status !== 'needs-confirmation') {
+        // 修复已执行，刷新报告
+        await runDoctor();
+      }
+      return outcome;
+    } catch (e) {
+      return { status: 'error', message: e instanceof Error ? e.message : '修复失败' };
+    }
+  }, [runDoctor]);
+
   // 文件预览分栏状态
   const [previewFile, setPreviewFile] = useState<{
     path: string;
@@ -589,6 +640,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       { id: 'goal:clear', type: 'goal', label: '/goal clear', description: 'Clear active goal' },
     );
 
+    // Doctor 诊断
+    items.push(
+      { id: 'doctor:run', type: 'doctor', label: '/doctor', description: 'Diagnose and repair data dir / database' },
+    );
+
     return items;
   }, [slashCommandAgents, slashCommandModels, slashCommandSkills]);
 
@@ -643,6 +699,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           handleApprovalModeChange(item.id.replace('mode:', ''));
           if (textarea) { textarea.value = ''; textarea.focus(); }
           break;
+        case 'doctor':
+          runDoctor();
+          if (textarea) { textarea.value = ''; textarea.focus(); }
+          break;
         case 'skill':
           if (textarea) { textarea.value = `/skill ${item.label} `; textarea.focus(); }
           break;
@@ -666,7 +726,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       // Prevent the menu from re-opening on the next input change
       slashCommandJustSelectedRef.current = true;
     },
-    [handleAgentChange, handleModelChange, handleApprovalModeChange],
+    [handleAgentChange, handleModelChange, handleApprovalModeChange, runDoctor],
   );
 
   // Detect / at start of input to open slash command menu
@@ -1526,6 +1586,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
           case 'mode':
             handleApprovalModeChange(commandResult.args || 'smart');
             break;
+          case 'doctor':
+            runDoctor();
+            break;
         }
         // 清空输入框
         const textarea = document.querySelector('textarea[name="message"]') as HTMLTextAreaElement;
@@ -1568,7 +1631,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       pendingOperationRef.current = 'append';
       sendMessage({ text, files: files.length > 0 ? files : undefined });
     },
-    [sendMessage, handleAgentChange, handleModelChange, handleApprovalModeChange],
+    [sendMessage, handleAgentChange, handleModelChange, handleApprovalModeChange, runDoctor],
   );
 
   const handleCopy = useCallback((content: string) => {
@@ -2963,6 +3026,16 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 onApproveAll={handleApproveAll}
                 onDeny={handleDeny}
                 onDenyAll={handleDenyAll}
+              />
+            )}
+
+            {!questionPanel && !planPanel && approvalRequests.length === 0 && doctorOpen && (
+              <DoctorReportPanel
+                report={doctorReport}
+                loading={doctorLoading}
+                error={doctorError}
+                onClose={() => setDoctorOpen(false)}
+                onRepair={handleDoctorRepair}
               />
             )}
 

@@ -16,7 +16,8 @@
     "typecheck:core": "pnpm --filter @the-thing/core typecheck",
     "check:layers": "node scripts/check-layer-deps.mjs",
     "check:isolation": "node scripts/check-interface-isolation.mjs",
-    "check:exports": "node scripts/check-export-surface.mjs"
+    "check:exports": "node scripts/check-export-surface.mjs",
+    "doctor": "pnpm --filter @the-thing/core exec tsx ../../scripts/doctor.ts"
   },
   "dependencies": {
     "@the-thing/core": "workspace:*"

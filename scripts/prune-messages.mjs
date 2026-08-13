@@ -28,6 +28,7 @@ const coreRequire = createRequire(
 const Database = coreRequire('better-sqlite3');
 
 // 与 core message-store 的 TRANSIENT_PART_TYPES 保持一致（剥离范围需同步维护）
+// 权威定义：packages/core/src/services/datastore/sqlite/transient-parts.ts
 const TRANSIENT_PART_TYPES = new Set([
   'data-todo-update',
   'data-bash-output',

@@ -384,6 +384,26 @@ export {
 } from './modules/memory';
 export type { MemoryEntry, MemoryType, MemoryRankOptions, ExtractMemoriesResult } from './modules/memory';
 
+// Doctor（诊断 + 修复：/doctor 指令、/api/doctor、CLI 共用）
+export {
+  createDoctorContext,
+  runDoctor,
+  applyRepair,
+  resolveTheThingLayout,
+  CHECKS,
+  REPAIRS,
+} from './modules/doctor';
+export type {
+  DoctorContext,
+  DoctorReport,
+  CheckResult,
+  CheckDef,
+  CheckStatus,
+  CheckCategory,
+  RepairOutcome,
+  RepairDef,
+} from './modules/doctor';
+
 // Title generation
 export { generateConversationTitle } from './modules/compaction';
 

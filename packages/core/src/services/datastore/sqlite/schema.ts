@@ -7,7 +7,8 @@
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
 import { logger } from '../../../primitives/logger';
 
-const SCHEMA_VERSION = 18;
+// 当前 schema 版本。doctor 诊断用 user_version 与其比对。
+export const SCHEMA_VERSION = 18;
 
 /**
  * Ensure the database schema is up-to-date.

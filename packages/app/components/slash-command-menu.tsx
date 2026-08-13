@@ -1,12 +1,12 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { Bot, Cpu, Shield, Wrench, Sparkles } from 'lucide-react';
+import { Bot, Cpu, Shield, Wrench, Sparkles, Stethoscope } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
 export interface SlashCommandItem {
   id: string;
-  type: 'agent' | 'model' | 'mode' | 'skill' | 'goal';
+  type: 'agent' | 'model' | 'mode' | 'skill' | 'goal' | 'doctor';
   label: string;
   description?: string;
 }
@@ -24,6 +24,7 @@ const TYPE_META: Record<string, { label: string; icon: typeof Bot }> = {
   mode: { label: 'Approval Mode', icon: Shield },
   skill: { label: 'Skills', icon: Wrench },
   goal: { label: 'Goal', icon: Sparkles },
+  doctor: { label: 'Diagnostics', icon: Stethoscope },
 };
 
 export function SlashCommandMenu({ items, selectedIndex, onSelect, onHover }: SlashCommandMenuProps) {
