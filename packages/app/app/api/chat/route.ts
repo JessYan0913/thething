@@ -637,7 +637,7 @@ export async function POST(request: Request) {
               // 属预期竞态,标记后静默收尾,不能再走 controller.error(二次抛错)
               let controllerClosed = false;
 
-              // 每 20s 推一次 keep-alive ping，防止代理/负载均衡因空闲超时切断 SSE 连接
+              // 每 5s 推一次 keep-alive ping，防止代理/负载均衡因空闲超时切断 SSE 连接
               const keepAliveTimer = setInterval(() => {
                 if (controllerClosed) return;
                 try {
@@ -645,7 +645,7 @@ export async function POST(request: Request) {
                 } catch {
                   // controller 已关闭，忽略
                 }
-              }, 20_000);
+              }, 5_000);
 
               try {
                 while (true) {
@@ -768,6 +768,7 @@ export async function POST(request: Request) {
       headers: {
         'X-Conversation-Id': conversationId,
         'X-Stream-Id': conversationId, // 使用 conversationId 作为 streamId
+        'X-Accel-Buffering': 'no',     // 禁止 Nginx 缓冲 SSE 响应
       },
     });
   } catch (error) {

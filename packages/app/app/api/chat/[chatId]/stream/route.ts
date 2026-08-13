@@ -40,6 +40,15 @@ export async function GET(
     const encoder = new TextEncoder();
     const sseStream = new ReadableStream({
       start: async (controller) => {
+        // 每 5s 推一次 keep-alive，防止代理因空闲超时切断重连 SSE
+        const keepAliveTimer = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(': ping\n\n'));
+          } catch {
+            // controller 已关闭
+          }
+        }, 5_000);
+
         try {
           const reader = resumedStream.getReader();
 
@@ -65,6 +74,8 @@ export async function GET(
           } catch (e) {
             // 流可能已关闭
           }
+        } finally {
+          clearInterval(keepAliveTimer);
         }
       },
     });
@@ -74,6 +85,7 @@ export async function GET(
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
       },
     });
   } catch (error) {

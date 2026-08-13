@@ -448,7 +448,6 @@ async function resumeStream(
             await ctx.subscriber.unsubscribe(`${ctx.keyPrefix}:chunk:${listenerId}`);
           };
 
-          const start = Date.now();
           const timeout = setTimeout(async () => {
             await cleanup();
             const val = await ctx.publisher.get(`${ctx.keyPrefix}:sentinel:${streamId}`);
@@ -458,7 +457,7 @@ async function resumeStream(
             }
             controller.error(new Error("Timeout waiting for ack"));
             reject(new Error("Timeout waiting for ack"));
-          }, 1000);
+          }, 5000);
 
           // 订阅专属频道
           await ctx.subscriber.subscribe(
