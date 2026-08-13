@@ -52,7 +52,12 @@ export interface CompletedMessage {
   parts?: StreamPart[]
   reasoning?: string
   cost?: StreamState['cost']
+  /** 工具调用折叠摘要：工具数 >= TOOL_FOLD_THRESHOLD 时组装，供 MessageList 折叠展示 */
+  collapsedToolCallSummary?: { count: number; errorCount: number }
 }
+
+/** 工具调用折叠阈值：工具数达到该值才折叠为一行摘要（流式与完成后均折叠） */
+export const TOOL_FOLD_THRESHOLD = 3
 
 export interface CommandResult {
   type: 'handled' | 'exit' | 'unknown'

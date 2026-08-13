@@ -41,6 +41,7 @@ import { WriteFileStreamingCard } from '@/components/ai-elements/write-file-stre
 import { BashStreamingCard, BashOutputCard } from '@/components/ai-elements/bash-streaming-card';
 import { ToolReportCard } from '@/components/ai-elements/tool-report-card';
 import { FileOutputsSummary, collectFileOutputs } from '@/components/ai-elements/file-outputs-summary';
+import { ToolCallsSummaryRow, collectToolCallSummary } from '@/components/ai-elements/tool-calls-summary';
 import { ApprovalPanel, type ApprovalRequest } from '@/components/ai-elements/approval-panel';
 import { UserQuestionPanel } from '@/components/ai-elements/user-question-panel';
 import { PlanReviewPanel, type PlanReviewRequest } from '@/components/ai-elements/plan-review-panel';
@@ -78,6 +79,9 @@ const TODO_TOOL_TYPES = new Set([
   'tool-todo_write',
   'tool-todo_delete',
 ]);
+
+// 工具调用折叠阈值：一条消息的工具数达到该值才折叠为一行摘要（流式与完成后均折叠）
+const TOOL_FOLD_THRESHOLD = 3;
 
 // 报告/列表类工具：输出本质是摘要而非文件，点击内联展开报告卡（替代右侧文件预览面板）
 // 文件类（write/read/edit_file/read_wiki_page）与 web_fetch 仍走右侧面板
@@ -543,6 +547,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   const [previewedToolKey, setPreviewedToolKey] = useState<string | null>(null);
   // 点击工具行内联展开输出卡的 toolKey 集合（bash 终端卡 + 报告类工具报告卡，不走右侧文件预览面板）
   const [expandedInlineKeys, setExpandedInlineKeys] = useState<Set<string>>(new Set());
+  // 用户手动展开工具调用列表的消息 id 集合（默认折叠，点击摘要行加入集合后展开）
+  const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(new Set());
 
   // 模型、Agent、审批模式选择状态（持久化到 ~/.thething/preferences.json + localStorage）
   const {
@@ -2010,6 +2016,70 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 // 同一条消息中相同 (toolName + input) 的 MCP App 只渲染一个 iframe
                 const mcpAppKeys = new Set<string>();
 
+                // ── 工具调用折叠派生值（流式与完成后均生效）──
+                const isStreamingMessage =
+                  messageIndex === messages.length - 1 && (status === 'streaming' || status === 'submitted');
+                const toolSummary = collectToolCallSummary(message.parts as Array<{ type: string; state?: string }>, {
+                  exclude: TODO_TOOL_TYPES,
+                  resolveTitle: (part) => {
+                    const isDyn = part.type === 'dynamic-tool';
+                    return getToolTitleAndIcon(
+                      part.type,
+                      (part as { input?: Record<string, unknown> | null }).input ?? null,
+                      isDyn ? (part as { toolName?: string }).toolName : undefined,
+                    )?.title;
+                  },
+                });
+                // 交互阻塞点（审批 / 等待用户提问回答）永不折叠，必须可见
+                const hasMustShow = message.parts.some((p) => {
+                  if (p.type !== 'tool-ask_user_question' && p.type !== 'dynamic-tool' && !p.type.startsWith('tool-')) {
+                    return false;
+                  }
+                  const state = (p as { state?: string }).state;
+                  if (state === 'approval-requested') return true;
+                  return p.type === 'tool-ask_user_question' && state === 'input-available';
+                });
+                const isFoldable =
+                  toolSummary.count >= TOOL_FOLD_THRESHOLD &&
+                  !hasMustShow;
+                const isExpanded = expandedMessageIds.has(message.id);
+                const shouldCollapse = isFoldable && !isExpanded;
+                const firstToolIndex = message.parts.findIndex(
+                  (p) =>
+                    (p.type.startsWith('tool-') || p.type === 'dynamic-tool') &&
+                    !TODO_TOOL_TYPES.has(p.type),
+                );
+                // 折叠摘要行：折叠与展开两态都渲染（展开态箭头翻转），保证可反复展开/收起
+                const foldSummary = (expanded: boolean) => (
+                  <ToolCallsSummaryRow
+                    summary={toolSummary}
+                    isStreaming={isStreamingMessage}
+                    expanded={expanded}
+                    onToggle={() =>
+                      setExpandedMessageIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(message.id)) next.delete(message.id);
+                        else next.add(message.id);
+                        return next;
+                      })
+                    }
+                  />
+                );
+
+                // ── 推理集中到消息顶部（单个 Thought 块，原始设计）──
+                // 收集本消息全部 reasoning part，join 为一段，在消息顶部渲染一个折叠块；
+                // parts.map 内跳过 reasoning，避免工具折叠后暴露多个零散推理片段
+                const reasoningParts = message.parts.filter(
+                  (p) => p.type === 'reasoning',
+                ) as Array<{ type: string; text: string }>;
+                const reasoningText = reasoningParts.map((p) => p.text).join('\n\n');
+                const hasReasoning = reasoningParts.length > 0;
+                const lastPart = message.parts[message.parts.length - 1];
+                const isReasoningStreaming =
+                  messageIndex === messages.length - 1 &&
+                  status === 'streaming' &&
+                  lastPart?.type === 'reasoning';
+
                 return (
                   <Message
                     from={message.role}
@@ -2080,32 +2150,20 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                       </div>
                     ) : (
                       <MessageContent>
+                        {hasReasoning && (
+                          <Reasoning
+                            key={`${message.id}-reasoning`}
+                            className="w-full"
+                            isStreaming={isReasoningStreaming}
+                          >
+                            <ReasoningTrigger />
+                            <ReasoningContent>{reasoningText}</ReasoningContent>
+                          </Reasoning>
+                        )}
                         {message.parts.map((part, index) => {
                           if (part.type === 'reasoning') {
-                            // 同一步思考可能被流拆成多个相邻 reasoning part：
-                            // 只在连续段的第一个渲染，把相邻段合并进同一个折叠块
-                            if (index > 0 && message.parts[index - 1].type === 'reasoning') {
-                              return null;
-                            }
-                            let end = index;
-                            while (end + 1 < message.parts.length && message.parts[end + 1].type === 'reasoning') {
-                              end += 1;
-                            }
-                            const reasoningText = message.parts
-                              .slice(index, end + 1)
-                              .map((p) => (p as { text: string }).text)
-                              .join('\n\n');
-                            // 仅当该消息的最后一个 part 就是这段思考且正在流式时才显示思考中动画
-                            const isReasoningStreaming =
-                              messageIndex === messages.length - 1 &&
-                              status === 'streaming' &&
-                              end === message.parts.length - 1;
-                            return (
-                              <Reasoning key={`${message.id}-${index}`} className="w-full" isStreaming={isReasoningStreaming}>
-                                <ReasoningTrigger />
-                                <ReasoningContent>{reasoningText}</ReasoningContent>
-                              </Reasoning>
-                            );
+                            // 推理已集中到消息顶部单个 Thought 块，此处跳过
+                            return null;
                           }
 
                           if (part.type === 'text') {
@@ -2191,6 +2249,16 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
                             if (TODO_TOOL_TYPES.has(toolPart.type)) {
                               return null;
+                            }
+
+                            // 折叠态：工具行压缩为一行摘要（摘要行持久，可反复展开/收起；mcpAppSlot 交互式 App 永不隐藏）
+                            if (shouldCollapse) {
+                              return (
+                                <Fragment key={`${message.id}-${index}`}>
+                                  {mcpAppSlot}
+                                  {index === firstToolIndex && foldSummary(false)}
+                                </Fragment>
+                              );
                             }
 
                           // 处理 approval-requested 状态 - 显示等待审批的 UI
@@ -2678,6 +2746,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             return (
                               <Fragment key={toolKey}>
                                 {mcpAppSlot}
+                                {isFoldable && isExpanded && index === firstToolIndex && foldSummary(true)}
                                 <SubAgentCard parts={subParts} toolCallId={toolCallId} />
                               </Fragment>
                             );
@@ -2702,6 +2771,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           return (
                             <Fragment key={toolKey}>
                             {mcpAppSlot}
+                            {isFoldable && isExpanded && index === firstToolIndex && foldSummary(true)}
                             <div
                               className={`flex w-full items-center gap-2 text-sm transition-colors ${
                                 isComplete && (previewData || isInlineTool)

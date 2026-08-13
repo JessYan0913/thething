@@ -56,6 +56,9 @@ export type ReasoningProps = ComponentProps<typeof Collapsible> & {
 
 const AUTO_CLOSE_DELAY = 1000;
 const MS_IN_S = 1000;
+// 推理文本超过该长度时跳过 Streamdown 富文本渲染（code/math/mermaid 插件在
+// 展开挂载时同步渲染大文本会阻塞主线程导致卡顿），回退为纯文本保证展开流畅。
+const REASONING_PLAIN_TEXT_THRESHOLD = 6000;
 
 export const Reasoning = memo(
   ({
@@ -220,6 +223,8 @@ export const ReasoningContent = memo(
       }
     }, [isStreaming, isOpen, children]);
 
+    const isLarge = typeof children === "string" && children.length > REASONING_PLAIN_TEXT_THRESHOLD;
+
     return (
       <CollapsibleContent
         className={cn(
@@ -230,7 +235,11 @@ export const ReasoningContent = memo(
         {...props}
       >
         <div ref={scrollRef} className="max-h-64 overflow-y-auto">
-          <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+          {isLarge ? (
+            <div className="whitespace-pre-wrap break-words">{children}</div>
+          ) : (
+            <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+          )}
         </div>
       </CollapsibleContent>
     );

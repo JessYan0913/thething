@@ -2,20 +2,31 @@ import React from 'react'
 import { Box, Text } from 'ink'
 import { MarkdownText } from './MarkdownText.js'
 import { ToolCallLine } from './ToolCallLine.js'
+import { ToolCallsSummaryLine } from './ToolCallsSummaryLine.js'
 import { ReasoningBlock } from './ReasoningBlock.js'
 import { CostSummary } from './CostSummary.js'
 import { ApprovalPrompt } from './ApprovalPrompt.js'
-import type { StreamState, ApprovalResponse } from '../lib/types.js'
-
+import { TOOL_FOLD_THRESHOLD, type StreamState, type ApprovalResponse } from '../lib/types.js'
 interface Props {
   state: StreamState
   onApprovalResponse: (response: ApprovalResponse) => void
   sessionApprovedScopes: Set<string>
+  toolCallsExpanded: boolean
+  onToggleToolCalls: () => void
 }
 
-export function StreamingResponse({ state, onApprovalResponse, sessionApprovedScopes }: Props) {
+export function StreamingResponse({ state, onApprovalResponse, sessionApprovedScopes, toolCallsExpanded, onToggleToolCalls }: Props) {
   const elapsed = state.reasoningStartTime
     ? (Date.now() - state.reasoningStartTime) / 1000
+    : 0
+
+  const folded = state.toolCalls.size >= TOOL_FOLD_THRESHOLD && !toolCallsExpanded
+  const firstToolPartIndex = folded ? state.parts.findIndex(p => p.type === 'tool-call') : -1
+  const runningTool = folded
+    ? [...state.toolCalls.values()].find(tc => tc.status === 'running' || tc.status === 'queued')
+    : undefined
+  const errorCount = folded
+    ? [...state.toolCalls.values()].filter(tc => tc.status === 'error').length
     : 0
 
   return (
@@ -35,6 +46,20 @@ export function StreamingResponse({ state, onApprovalResponse, sessionApprovedSc
           ) : null
         }
         if (part.type === 'tool-call') {
+          if (folded) {
+            if (i !== firstToolPartIndex) return null
+            return (
+              <ToolCallsSummaryLine
+                key="tool-summary"
+                count={state.toolCalls.size}
+                errorCount={errorCount}
+                isStreaming
+                runningSummary={runningTool?.summary}
+                expanded={toolCallsExpanded}
+                onToggle={onToggleToolCalls}
+              />
+            )
+          }
           const tc = state.toolCalls.get(part.toolCallId)
           return tc ? <ToolCallLine key={part.toolCallId} tool={tc} /> : null
         }

@@ -10,7 +10,7 @@ import { useSlashCommands } from './hooks/useSlashCommands.js'
 import { StreamingResponse } from './components/StreamingResponse.js'
 import { InputBar } from './components/InputBar.js'
 import { MessageList } from './components/MessageList.js'
-import type { CompletedMessage } from './lib/types.js'
+import { TOOL_FOLD_THRESHOLD, type CompletedMessage } from './lib/types.js'
 
 function extractLastAssistantText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -49,6 +49,7 @@ export function App({
   const { exit } = useApp()
   const [modelName, setModelName] = useState(initialModel)
   const [completedItems, setCompletedItems] = useState<CompletedMessage[]>([])
+  const [toolCallsExpanded, setToolCallsExpanded] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [goalState, setGoalState] = useState<GoalState | null>(null)
   const sessionApprovedScopes = useRef(new Set<string>())
@@ -100,14 +101,22 @@ export function App({
 
       const text = streamText || finishedText
 
+      const toolCalls = [...stream.state.toolCalls.values()]
+      const errorCount = toolCalls.filter(tc => tc.status === 'error').length
+
       const item: CompletedMessage = {
         id: nanoid(),
         role: 'assistant',
         text,
-        toolCalls: [...stream.state.toolCalls.values()],
+        toolCalls,
         parts: stream.state.parts,
         reasoning: stream.state.reasoning || undefined,
         cost: stream.state.cost,
+        // 达到阈值才组装摘要：MessageList 据此折叠为一行（含 error 的也折叠，摘要标红）
+        collapsedToolCallSummary:
+          toolCalls.length >= TOOL_FOLD_THRESHOLD
+            ? { count: toolCalls.length, errorCount }
+            : undefined,
       }
       setCompletedItems(prev => [...prev, item])
 
@@ -157,6 +166,14 @@ export function App({
     }
   }, [stream.state.phase, goalState])
 
+  const isStreaming = stream.state.phase === 'streaming' || stream.state.phase === 'awaiting-approval'
+
+  // Ctrl+E 切换当前工具调用的折叠/展开（用修饰键，裸 'e' 会与 ink-text-input 的文本输入冲突）
+  const lastCompletedItem = completedItems[completedItems.length - 1]
+  const hasCollapsibleToolContext = isStreaming
+    ? stream.state.toolCalls.size >= TOOL_FOLD_THRESHOLD
+    : !!lastCompletedItem?.collapsedToolCallSummary
+
   useInput((_input, key) => {
     if (key.ctrl && _input === 'c') {
       if (stream.state.phase === 'streaming' || stream.state.phase === 'awaiting-approval') {
@@ -165,13 +182,25 @@ export function App({
         runtime.dispose().then(() => exit())
       }
     }
+    if (key.ctrl && _input === 'e' && hasCollapsibleToolContext) {
+      setToolCallsExpanded(v => !v)
+    }
   })
 
-  const isStreaming = stream.state.phase === 'streaming' || stream.state.phase === 'awaiting-approval'
+  // 新一轮流式开始时重置为折叠态
+  useEffect(() => {
+    if (stream.state.phase === 'streaming' || stream.state.phase === 'awaiting-approval') {
+      setToolCallsExpanded(false)
+    }
+  }, [stream.state.phase])
 
   return (
     <Box flexDirection="column">
-      <MessageList items={completedItems} />
+      <MessageList
+        items={completedItems}
+        toolCallsExpanded={toolCallsExpanded}
+        onToggleToolCalls={() => setToolCallsExpanded(v => !v)}
+      />
 
       {isStreaming && (
         <Box flexDirection="column" marginTop={1}>
@@ -179,6 +208,8 @@ export function App({
             state={stream.state}
             onApprovalResponse={stream.respondApproval}
             sessionApprovedScopes={sessionApprovedScopes.current}
+            toolCallsExpanded={toolCallsExpanded}
+            onToggleToolCalls={() => setToolCallsExpanded(v => !v)}
           />
         </Box>
       )}
