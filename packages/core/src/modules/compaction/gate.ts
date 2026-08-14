@@ -13,17 +13,17 @@
 
 import type { Tool } from 'ai';
 
-import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
+import { estimateRequestBudget, type RequestBudgetEstimation } from './request-budget';
 import { logger } from '../../primitives/logger';
 
 export interface GateResult {
   /** 闸门是否通过 */
   passed: boolean;
-  /** 请求总 token 数 */
+  /** 请求总 token 数（含校准 buffer） */
   totalTokens: number;
   /** 上下文窗口上限 */
   contextLimit: number;
-  /** 利用率百分比 */
+  /** 利用率百分比（含校准 buffer） */
   utilizationPercent: number;
   /** 分项明细 */
   breakdown: {
@@ -31,6 +31,7 @@ export interface GateResult {
     instructions: number;
     tools: number;
     outputReserve: number;
+    tokenizerBuffer: number;
   };
   /** 决策日志（REJECT 时含原因，WARN 时含预警） */
   decision: string;
@@ -56,28 +57,35 @@ export async function assertContextInvariant(
   modelName: string,
   contextLimit?: number,
 ): Promise<GateResult> {
-  const estimation = await estimateFullRequest(messages, instructions, tools, modelName, contextLimit);
+  // 用含校准 buffer 的总量判定硬不变量(见 compaction-redesign.md L1)——
+  // 否则字符估算低估时可能放行一个 provider 实际会拒的超标请求。
+  const estimation: RequestBudgetEstimation = await estimateRequestBudget(
+    messages, instructions, tools, modelName, contextLimit,
+  );
+  const totalTokens = estimation.totalTokensWithBuffer;
+  const exceeds = estimation.exceedsLimitWithBuffer;
 
   const result: GateResult = {
-    passed: !estimation.exceedsLimit,
-    totalTokens: estimation.totalTokens,
+    passed: !exceeds,
+    totalTokens,
     contextLimit: estimation.modelLimit,
-    utilizationPercent: estimation.utilizationPercent,
+    utilizationPercent: estimation.modelLimit > 0 ? (totalTokens / estimation.modelLimit) * 100 : 0,
     breakdown: {
       messages: estimation.messagesTokens,
       instructions: estimation.instructionsTokens,
       tools: estimation.toolsTokens,
       outputReserve: estimation.outputReserve ?? 0,
+      tokenizerBuffer: estimation.tokenizerBuffer,
     },
     decision: '',
   };
 
   if (!result.passed) {
-    const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve ?? 0} = ${estimation.totalTokens} > ${estimation.modelLimit}`;
+    const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve ?? 0}+buf=${estimation.tokenizerBuffer} = ${totalTokens} > ${estimation.modelLimit}`;
     result.decision = `REJECT: ${reason}`;
     logger.warn('Gate', result.decision);
-  } else if (estimation.utilizationPercent > 80) {
-    result.decision = `WARN: ${estimation.utilizationPercent.toFixed(1)}% utilization`;
+  } else if (result.utilizationPercent > 80) {
+    result.decision = `WARN: ${result.utilizationPercent.toFixed(1)}% utilization`;
     logger.info('Gate', result.decision, {
       msgTokens: estimation.messagesTokens,
       instTokens: estimation.instructionsTokens,
@@ -85,7 +93,7 @@ export async function assertContextInvariant(
       limit: estimation.modelLimit,
     });
   } else {
-    result.decision = `PASS: ${estimation.utilizationPercent.toFixed(1)}%`;
+    result.decision = `PASS: ${result.utilizationPercent.toFixed(1)}%`;
   }
 
   return result;

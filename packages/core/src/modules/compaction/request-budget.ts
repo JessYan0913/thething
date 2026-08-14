@@ -24,10 +24,12 @@ import { getEstimatorInfra } from './tokenizer';
 import { deriveBudget } from './prompt-budget-policy';
 
 export interface RequestBudgetEstimation extends FullRequestEstimation {
-  /** 校准 buffer（tokens）：baseTokens × (driftRatio − 1) */
+  /** 校准 buffer（tokens）：baseTokens × (driftRatio − 1)，对全部模型统一生效 */
   tokenizerBuffer: number;
   /** 含校准 buffer 的总量（上报水位 / 触发判断用） */
   totalTokensWithBuffer: number;
+  /** 触发判断硬不变量：含校准 buffer 的总量是否超过窗口（闸门用此而非 exceedsLimit） */
+  exceedsLimitWithBuffer: boolean;
   /** 主动压缩触发线（deriveBudget.triggerTokens） */
   triggerTokens: number;
   /** 强制降级硬限（deriveBudget.hardLimitTokens） */
@@ -40,8 +42,13 @@ export interface RequestBudgetEstimation extends FullRequestEstimation {
 
 /**
  * 完整请求估算 + 校准 buffer + 策略判断。
- * 复用 estimateFullRequest 的基线（BPE 精确计数 + 消息级缓存），叠加
- * usage 真值校准的 tokenizerBuffer，并从同一 policy 推导触发线/硬限。
+ *
+ * 校准只在聚合层应用一次（见 compaction-redesign.md L1）：计数源头 drift-agnostic
+ * 以保证与消息级缓存兼容，此处按 base × (driftRatio − 1) 统一叠加校准 buffer，
+ * totalTokensWithBuffer 是决策/闸门的权威口径。
+ *
+ * 复用 estimateFullRequest 的基线（BPE 精确计数 + 消息级缓存），并从同一 policy
+ * 推导触发线/硬限。
  */
 export async function estimateRequestBudget(
   messages: import('ai').ModelMessage[],
@@ -56,6 +63,7 @@ export async function estimateRequestBudget(
   const baseTokens = base.messagesTokens + base.instructionsTokens + base.toolsTokens;
   const tokenizerBuffer = Math.round(baseTokens * bufferRatio);
   const totalTokensWithBuffer = base.totalTokens + tokenizerBuffer;
+  const exceedsLimitWithBuffer = totalTokensWithBuffer > base.modelLimit;
 
   const policy = deriveBudget(base.modelLimit, base.outputReserve, modelName);
   const shouldTrigger = totalTokensWithBuffer >= policy.triggerTokens;
@@ -65,6 +73,7 @@ export async function estimateRequestBudget(
     ...base,
     tokenizerBuffer,
     totalTokensWithBuffer,
+    exceedsLimitWithBuffer,
     triggerTokens: policy.triggerTokens,
     hardLimitTokens: policy.hardLimitTokens,
     shouldTrigger,

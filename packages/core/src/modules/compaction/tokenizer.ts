@@ -50,9 +50,14 @@ export function getEstimatorInfra(): { calibrator: UsageCalibrator; tokenCache: 
 }
 
 // ── 核心计数（接三级引擎） ──
+// 计数源头 drift-agnostic（不乘校准系数）——否则与消息级 token 缓存冲突：
+// 缓存 key 不含 drift，校准更新后旧缓存永不刷新 → 源头校准基本失效；
+// 且若再叠加预算层 tokenizerBuffer 会双重放大。校准统一在 request-budget
+// 聚合层应用（totalWithBuffer = base × (1 + driftRatio − 1)），见
+// docs/compaction-redesign.md L1。
 function estimateTokens(text: string, modelName?: string): number {
   if (!text) return 0
-  return countTokensForModel(text, modelName, calibrator.getDriftRatio(modelName ?? ''))
+  return countTokensForModel(text, modelName)
 }
 
 // ============================================================
@@ -95,7 +100,7 @@ export async function countTokens(text: string, modelName?: string): Promise<num
 }
 
 export async function countTokensBatch(texts: string[], modelName?: string): Promise<number[]> {
-  return countTokensBatchForModel(texts, modelName, calibrator.getDriftRatio(modelName ?? ''))
+  return countTokensBatchForModel(texts, modelName)
 }
 
 export function countTokensSync(text: string, modelName?: string): number {
@@ -109,7 +114,7 @@ export function tryCountTokensSync(text: string, modelName?: string): number | n
 export const tokenCounter = {
   count: async (text: string, modelName?: string) => estimateTokens(text, modelName),
   countBatch: async (texts: string[], modelName?: string) =>
-    countTokensBatchForModel(texts, modelName, calibrator.getDriftRatio(modelName ?? '')),
+    countTokensBatchForModel(texts, modelName),
   countSync: (text: string, modelName?: string) => estimateTokens(text, modelName),
   tryCountSync: (text: string, modelName?: string) => estimateTokens(text, modelName),
   isReady: (_modelName: string) => true,

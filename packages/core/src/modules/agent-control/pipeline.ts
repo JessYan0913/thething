@@ -244,9 +244,9 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       sessionState.lastEstimation = estimation;
 
       // 不静默发超标请求出去被 provider 拒。pre-stream 闸门见 create.ts;此处覆盖运行中增长。
-      // 硬不变量:总量超过窗口上限才拒绝;达触发线(shouldTrigger)由 manageCompaction 负责升档压缩。
-      if (estimation.exceedsLimit) {
-        const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve} = ${estimation.totalTokens} > ${estimation.modelLimit}`;
+      // 硬不变量:含校准 buffer 的总量超过窗口上限才拒绝;达触发线(shouldTrigger)由 manageCompaction 负责升档压缩。
+      if (estimation.exceedsLimitWithBuffer) {
+        const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve}+buf=${estimation.tokenizerBuffer} = ${estimation.totalTokensWithBuffer} > ${estimation.modelLimit}`;
         logger.warn('Gate', `[REJECT] 运行中压缩后仍超限: ${reason} | conv=${sessionState.conversationId}`);
         throw new Error(`CONTEXT_BUDGET_EXCEEDED: 运行中压缩后仍超限(${reason})`);
       }

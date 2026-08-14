@@ -172,10 +172,15 @@ handleReactiveRetry (retry.ts) —— context-length 错误 → 激进 Layer 2
 
 **usage 真值校准**（`usage-calibrator.ts`）：每步估算 base → 下一步 `usage.inputTokens` 配对 → EMA（α=0.3）→ `driftRatio` clamp [0.85, 1.6]；异常样本拒绝（<0.5 或 >3）；模型切换重置（词表不同不可迁移）。
 
+> **实施修正（2026-08-14）**：校准**只在预算层聚合应用**，计数源头（`countTokensForModel` 及各 `countTokens*`）**保持 drift-agnostic**。原因：
+> 1. 消息级缓存 key 不含 drift——源头乘校准后，drift 更新旧缓存永不刷新，源头校准基本失效；
+> 2. 源头校准 + 聚合 tokenizerBuffer 会**双重放大**（char 路径实测 ×1.3 变 ×1.69）。
+> 因此 `totalTokensWithBuffer` 是决策/闸门的唯一权威口径（含 `exceedsLimitWithBuffer` 硬不变量）。
+
 **组装**（`request-budget.ts`）：
 ```
 totalWithBuffer = messagesTokens + instructionsTokens + toolsTokens + outputReserve
-                + tokenizerBuffer        // tokenizerBuffer = baseTokens × (driftRatio − 1)
+                + tokenizerBuffer        // tokenizerBuffer = baseTokens × (driftRatio − 1),对全部模型统一
 ```
 
 ### 4.2 L1 预算策略层（单一事实来源）
@@ -317,14 +322,14 @@ perStep(messages):
 ### 5.3 usage 真值校准闭环
 
 ```
-prepareStep: base = estimateFullRequest(不含 buffer)
+prepareStep: base = estimateFullRequest(不含 buffer)   // 计数源头 drift-agnostic
 next usage: actualInputTokens = provider usage.inputTokens
 sample = actualInputTokens / base
 异常拒绝(<0.5 或 >3) → 忽略（估算基准与本次请求不对应）
 EMA: ratio = clamp(α·sample + (1−α)·ratio),  α=0.3, clamp [0.85, 1.6]
-tokenizerBuffer = baseTokens × (ratio − 1)
+tokenizerBuffer = baseTokens × (ratio − 1)            // 聚合层统一应用（见 §4.1 实施修正）
 ```
-冷启动 ratio=1 → buffer=0，由 `deriveBudget` 的静态 encode-level buffer 兜底；首个真值样本接管后收敛。**这替代"拍脑袋 buffer"，把估算误差变成可自我修正的闭环。**
+冷启动 ratio=1 → buffer=0，由 `deriveBudget` 的静态 encode-level buffer 兜底；首个真值样本接管后收敛。**这替代"拍脑袋 buffer"，把估算误差变成可自我修正的闭环。** 校准只作用于聚合 `totalWithBuffer`（触发/闸门口径），不污染逐条缓存。
 
 ### 5.4 最小消息预算保护
 

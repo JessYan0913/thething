@@ -64,7 +64,23 @@ const textMessageGen = fc.record({
 
 /** 随机对话:首条 user + 随机混合文本/工具消息 */
 const conversationGen = fc.tuple(textMessageGen, fc.array(fc.oneof(toolMessageGen, textMessageGen), { maxLength: 25 }))
-  .map(([first, rest]) => [first, ...rest]);
+  .map(([first, rest]) => {
+    const all = [first, ...rest];
+    // 给每个 tool part 分配唯一 toolCallId:fast-check 的 fc.string 随机碰撞会产生
+    // 重复 id,导致快照断言(INV-A)按 id 匹配时失真偶发失败(见 2026-08-14 复现)。
+    // 属性测试只关心 id 唯一性,不依赖具体值。
+    let idx = 0;
+    for (const m of all) {
+      const parts = (m as unknown as { parts?: any[] }).parts;
+      if (!Array.isArray(parts)) continue;
+      for (const p of parts) {
+        if (typeof p.type === 'string' && p.type.startsWith('tool-')) {
+          p.toolCallId = `tc-${idx++}`;
+        }
+      }
+    }
+    return all;
+  });
 
 /** 从消息里抽取所有 tool part 的 (id, input, isError) 快照 */
 interface ToolSnapshot { toolCallId: string; input: unknown; isError: boolean; }

@@ -55,4 +55,63 @@ describe('estimateRequestBudget', () => {
     expect(est.shouldTrigger).toBe(true);
     expect(est.exceedsLimit).toBe(false);
   });
+
+  it('char model: 校准不双重放大——聚合 buffer 生效,源头计数不被放大', async () => {
+    getEstimatorInfra().calibrator.clear();
+    getEstimatorInfra().tokenCache.clear();
+    // 内容: 5000 chars → char 估算 ≈1250 tokens（drift=1 基线）
+    const msgs = [{ role: 'user' as const, content: 'word '.repeat(1000) }];
+    const base0 = await estimateRequestBudget(msgs, 'sys', {}, 'unknown-model');
+    const baseTokens = base0.messagesTokens + base0.instructionsTokens + base0.toolsTokens;
+    expect(baseTokens).toBeGreaterThan(1000);
+
+    // 喂 usage 真值 = 1.3 × base → driftRatio → 1.3
+    recordUsageSample('unknown-model', baseTokens, Math.round(baseTokens * 1.3));
+    // 清空消息缓存强制重算（否则缓存掩盖源头校准）
+    getEstimatorInfra().tokenCache.clear();
+    const est = await estimateRequestBudget(msgs, 'sys', {}, 'unknown-model');
+
+    // 源头计数不应被校准放大（固定代码 = 基线 b；双重 bug = 1.3×b）
+    expect(est.messagesTokens).toBeLessThan(baseTokens * 1.1);
+    // 聚合校准: totalWithBuffer − outputReserve ≈ 1.3 × base
+    const calibratedTotal = est.totalTokensWithBuffer - est.outputReserve;
+    expect(calibratedTotal).toBeGreaterThan(baseTokens * 1.2);
+    expect(calibratedTotal).toBeLessThan(baseTokens * 1.4);
+  });
+
+  it('校准闭环(char): 多步 估算→usage 配对后 totalWithBuffer 收敛到真值', async () => {
+    getEstimatorInfra().calibrator.clear();
+    getEstimatorInfra().tokenCache.clear();
+    const msgs = [{ role: 'user' as const, content: 'word '.repeat(1000) }];
+    // 真值比率 1.25（provider 比本地多计 25%）
+    for (let step = 0; step < 5; step++) {
+      const est = await estimateRequestBudget(msgs, 'sys', {}, 'unknown-model');
+      const baseTokens = est.messagesTokens + est.instructionsTokens + est.toolsTokens;
+      recordUsageSample('unknown-model', baseTokens, Math.round(baseTokens * 1.25));
+    }
+    const final = await estimateRequestBudget(msgs, 'sys', {}, 'unknown-model');
+    const base = final.messagesTokens + final.instructionsTokens + final.toolsTokens;
+    const estimatedWithBuffer = final.totalTokensWithBuffer - final.outputReserve;
+    // 收敛后估算(含 buffer) ≈ 1.25 × base
+    expect(estimatedWithBuffer / base).toBeGreaterThan(1.2);
+    expect(estimatedWithBuffer / base).toBeLessThan(1.31);
+  });
+
+  it('校准闭环(BPE 近似模型): tokenizerBuffer 对非 char 模型同样生效', async () => {
+    getEstimatorInfra().calibrator.clear();
+    getEstimatorInfra().tokenCache.clear();
+    const text = 'The quick brown fox jumps over the lazy dog while the model analyzes source files and measures tokens for the context window. '.repeat(30);
+    const msgs = [{ role: 'user' as const, content: text }];
+    for (let step = 0; step < 4; step++) {
+      const est = await estimateRequestBudget(msgs, 'sys', {}, 'claude-opus-4-6');
+      const baseTokens = est.messagesTokens + est.instructionsTokens + est.toolsTokens;
+      recordUsageSample('claude-opus-4-6', baseTokens, Math.round(baseTokens * 1.2));
+    }
+    const final = await estimateRequestBudget(msgs, 'sys', {}, 'claude-opus-4-6');
+    const base = final.messagesTokens + final.instructionsTokens + final.toolsTokens;
+    expect(final.tokenizerBuffer).toBeGreaterThan(0);
+    const estimatedWithBuffer = final.totalTokensWithBuffer - final.outputReserve;
+    expect(estimatedWithBuffer / base).toBeGreaterThan(1.15);
+    expect(estimatedWithBuffer / base).toBeLessThan(1.26);
+  });
 });

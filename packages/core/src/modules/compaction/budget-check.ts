@@ -149,17 +149,17 @@ export async function checkInitialBudget(
     currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
     logger.debug('Budget', `After extreme mode: ${currentEstimation.totalTokens} tokens`);
 
-    if (!currentEstimation.exceedsLimit) {
+    if (!currentEstimation.exceedsLimitWithBuffer) {
       return { passed: true, estimation: currentEstimation, actions, adjustedTools: currentTools, adjustedMessages: currentMessages };
     }
   }
 
-  // 所有策略已用尽(仍超窗口 = 硬不变量失败)
+  // 所有策略已用尽(含校准 buffer 仍超窗口 = 硬不变量失败)
   const finalEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
-  logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimit ? 'EXCEEDS' : 'OK'}`);
+  logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimitWithBuffer ? 'EXCEEDS' : 'OK'}`);
 
   return {
-    passed: !finalEstimation.exceedsLimit,
+    passed: !finalEstimation.exceedsLimitWithBuffer,
     estimation: finalEstimation,
     actions,
     adjustedTools: currentTools,
