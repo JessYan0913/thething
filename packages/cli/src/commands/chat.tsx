@@ -3,13 +3,11 @@ import path from 'path'
 import chalk from 'chalk'
 import * as readline from 'readline'
 import { nanoid } from 'nanoid'
-import { render } from 'ink'
-import React from 'react'
+import { runAgentTUI } from '@ai-sdk/tui'
 import { getDataDirConfig } from '../lib/data-dir.js'
 import { loadConfig, saveConfig, type GlobalConfig } from '../lib/config-store.js'
-import { bootstrap, createContext, resolveProjectDir } from '@the-thing/core'
+import { bootstrap, createContext, createAgent, resolveProjectDir } from '@the-thing/core'
 import { ENV_MODEL } from '../lib/env-names.js'
-import { App } from '../interactive/App.js'
 
 export interface ChatOptions {
   conversation?: string
@@ -179,40 +177,25 @@ export default async function chat(options: ChatOptions): Promise<void> {
   const modelName = options.model || configResult.modelName
   const enableThinking = process.env.THETHING_ENABLE_THINKING === 'true'
 
-  const { waitUntilExit } = render(
-    <App
-      runtime={runtime}
-      context={context}
-      store={runtime.dataStore}
-      initialConversationId={options.conversation || nanoid()}
-      initialModel={modelName}
-      apiKey={configResult.apiKey}
-      baseURL={configResult.baseURL}
-      enableThinking={enableThinking}
-    />,
-    { exitOnCtrlC: false },
-  )
+  // 创建 Agent 并交给 @ai-sdk/tui 渲染（自研 Ink 交互层已移除）
+  const agentResult = await createAgent({
+    context,
+    conversationId: options.conversation || nanoid(),
+    messages: [],
+    model: {
+      apiKey: configResult.apiKey,
+      baseURL: configResult.baseURL,
+      modelName,
+      enableThinking,
+    },
+  })
 
-  const origLog = console.log
-  const origWarn = console.warn
-  const origError = console.error
-  const suppress = /\[ConnectorRegistry\]|\[TitleGenerator\]|DEP0040|punycode|APICallError|AI_APICallError/
-  console.log = (...args: any[]) => {
-    if (args.some(a => typeof a === 'string' && suppress.test(a))) return
-    origLog(...args)
-  }
-  console.warn = (...args: any[]) => {
-    if (args.some(a => typeof a === 'string' && suppress.test(a))) return
-    origWarn(...args)
-  }
-  console.error = (...args: any[]) => {
-    if (args.some(a => typeof a === 'string' && suppress.test(a))) return
-    origError(...args)
-  }
+  await runAgentTUI({
+    title: 'TheThing',
+    agent: agentResult.agent as never, // ToolLoopAgent -> Agent<any,any,any,any>
+    tools: 'auto-collapsed',
+    reasoning: 'collapsed',
+  })
 
-  await waitUntilExit()
-  console.log = origLog
-  console.warn = origWarn
-  console.error = origError
   await runtime.dispose()
 }

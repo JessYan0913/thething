@@ -52,7 +52,7 @@
     "@the-thing/resumable-stream": "workspace:*",
     "@types/dompurify": "^3.2.0",
     "@types/js-yaml": "^4.0.9",
-    "ai": "^7.0.7",
+    "ai": "^7.0.65",
     "ai-elements": "^1.9.0",
     "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.1",
