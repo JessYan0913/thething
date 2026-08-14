@@ -20,21 +20,18 @@ interface ToolLikePart {
 }
 
 export interface CollectToolCallSummaryOptions {
-  /** 类型命中该集合（如 tool-todo_write）的 part 不计入 */
-  exclude?: Set<string>;
   /** 解析工具标题，仅用于 runningTitle */
   resolveTitle?: (part: ToolLikePart) => string | undefined;
 }
 
 /**
- * 扫描一条 assistant 消息的 parts，聚合工具调用数 / 失败数 / 当前运行工具。
- * 供「完成后自动折叠为一行摘要」使用。
+ * 扫描一个折叠组的工具 parts，聚合工具调用数 / 失败数 / 当前运行工具。
+ * 供「折叠为一行摘要」使用。
  */
 export function collectToolCallSummary(
   parts: Array<{ type: string; state?: string }>,
   options?: CollectToolCallSummaryOptions,
 ): ToolCallSummary {
-  const exclude = options?.exclude;
   let count = 0;
   let errorCount = 0;
   const activeTitles: string[] = [];
@@ -42,7 +39,6 @@ export function collectToolCallSummary(
   for (const part of parts) {
     const isTool = part.type.startsWith("tool-") || part.type === "dynamic-tool";
     if (!isTool) continue;
-    if (exclude?.has(part.type)) continue;
 
     count++;
     if (part.state === "output-error" || part.state === "output-denied") {

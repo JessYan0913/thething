@@ -7,6 +7,7 @@ import { ReasoningBlock } from './ReasoningBlock.js'
 import { CostSummary } from './CostSummary.js'
 import { ApprovalPrompt } from './ApprovalPrompt.js'
 import { TOOL_FOLD_THRESHOLD, type StreamState, type ApprovalResponse } from '../lib/types.js'
+import { computeToolClusters } from '../lib/tool-clusters.js'
 interface Props {
   state: StreamState
   onApprovalResponse: (response: ApprovalResponse) => void
@@ -20,14 +21,8 @@ export function StreamingResponse({ state, onApprovalResponse, sessionApprovedSc
     ? (Date.now() - state.reasoningStartTime) / 1000
     : 0
 
-  const folded = state.toolCalls.size >= TOOL_FOLD_THRESHOLD && !toolCallsExpanded
-  const firstToolPartIndex = folded ? state.parts.findIndex(p => p.type === 'tool-call') : -1
-  const runningTool = folded
-    ? [...state.toolCalls.values()].find(tc => tc.status === 'running' || tc.status === 'queued')
-    : undefined
-  const errorCount = folded
-    ? [...state.toolCalls.values()].filter(tc => tc.status === 'error').length
-    : 0
+  const { clusters, clusterOfIndex } = computeToolClusters(state.parts, id => state.toolCalls.get(id))
+  const expanded = toolCallsExpanded
 
   return (
     <Box flexDirection="column">
@@ -46,16 +41,22 @@ export function StreamingResponse({ state, onApprovalResponse, sessionApprovedSc
           ) : null
         }
         if (part.type === 'tool-call') {
-          if (folded) {
-            if (i !== firstToolPartIndex) return null
+          const ci = clusterOfIndex.get(i)
+          const cluster = ci !== undefined ? clusters[ci] : undefined
+          const collapsible = !!cluster && cluster.count >= TOOL_FOLD_THRESHOLD
+          if (collapsible && !expanded) {
+            if (i !== cluster!.firstIndex) return null
+            const runningTool = cluster!.toolCallIds
+              .map(id => state.toolCalls.get(id))
+              .find(tc => tc && (tc.status === 'running' || tc.status === 'queued'))
             return (
               <ToolCallsSummaryLine
-                key="tool-summary"
-                count={state.toolCalls.size}
-                errorCount={errorCount}
+                key={`tool-summary-${i}`}
+                count={cluster!.count}
+                errorCount={cluster!.errorCount}
                 isStreaming
                 runningSummary={runningTool?.summary}
-                expanded={toolCallsExpanded}
+                expanded={expanded}
                 onToggle={onToggleToolCalls}
               />
             )

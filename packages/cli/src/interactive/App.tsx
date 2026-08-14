@@ -10,7 +10,8 @@ import { useSlashCommands } from './hooks/useSlashCommands.js'
 import { StreamingResponse } from './components/StreamingResponse.js'
 import { InputBar } from './components/InputBar.js'
 import { MessageList } from './components/MessageList.js'
-import { TOOL_FOLD_THRESHOLD, type CompletedMessage } from './lib/types.js'
+import type { CompletedMessage } from './lib/types.js'
+import { hasCollapsibleCluster } from './lib/tool-clusters.js'
 
 function extractLastAssistantText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -102,7 +103,6 @@ export function App({
       const text = streamText || finishedText
 
       const toolCalls = [...stream.state.toolCalls.values()]
-      const errorCount = toolCalls.filter(tc => tc.status === 'error').length
 
       const item: CompletedMessage = {
         id: nanoid(),
@@ -112,11 +112,6 @@ export function App({
         parts: stream.state.parts,
         reasoning: stream.state.reasoning || undefined,
         cost: stream.state.cost,
-        // 达到阈值才组装摘要：MessageList 据此折叠为一行（含 error 的也折叠，摘要标红）
-        collapsedToolCallSummary:
-          toolCalls.length >= TOOL_FOLD_THRESHOLD
-            ? { count: toolCalls.length, errorCount }
-            : undefined,
       }
       setCompletedItems(prev => [...prev, item])
 
@@ -170,9 +165,10 @@ export function App({
 
   // Ctrl+E 切换当前工具调用的折叠/展开（用修饰键，裸 'e' 会与 ink-text-input 的文本输入冲突）
   const lastCompletedItem = completedItems[completedItems.length - 1]
+  const lastTcMap = new Map((lastCompletedItem?.toolCalls ?? []).map(tc => [tc.toolCallId, tc]))
   const hasCollapsibleToolContext = isStreaming
-    ? stream.state.toolCalls.size >= TOOL_FOLD_THRESHOLD
-    : !!lastCompletedItem?.collapsedToolCallSummary
+    ? hasCollapsibleCluster(stream.state.parts, id => stream.state.toolCalls.get(id))
+    : hasCollapsibleCluster(lastCompletedItem?.parts ?? [], id => lastTcMap.get(id))
 
   useInput((_input, key) => {
     if (key.ctrl && _input === 'c') {
