@@ -55,12 +55,12 @@ export type SubmitPlanToolOutput = {
  */
 export function createSubmitPlanTool(store: TodoStore, conversationId: string) {
   return tool({
-    description: `Present a full plan for user approval BEFORE starting complex work. Use this for multi-step requests (multiple steps, multiple files, several tool calls): lay out the plan with an executable verification per step, then the user approves, rejects, or asks for changes.
+    description: `Present a plan for user approval BEFORE executing high-stakes or user-requested-confirmation work. Use ONLY when (a) the user explicitly asked you to show or confirm a plan first, or (b) the work is high-stakes (irreversible actions, sending external messages, deleting data). For ordinary multi-step work, use todo_write instead — do not call this tool for normal multi-step tasks.
 
-The plan becomes the active task list once approved. Prefer this over starting to work directly on complex requests. For simple single-step work or Q&A, skip it.
+The plan becomes the active task list once approved. For simple single-step work or Q&A, skip both this tool and todo_write.
 
 Usage:
-- Include every step in the plan, each with a concrete verify (e.g. "npx vitest run src/utils passes").
+- Include every step in the plan, each with a concrete verify (how to check it's done).
 - After approval, execute the steps in order and keep the task list updated with todo_write.
 - If the user rejects, revise the plan based on their feedback and call this tool again.`,
     inputSchema: submitPlanToolSchema,

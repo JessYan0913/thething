@@ -17,9 +17,9 @@ import type { SystemPromptSection } from '../types';
 export function createTaskPlanningSection(): SystemPromptSection {
   const content = `【任务规划】
 
-需要 3 个以上步骤、涉及多个文件或多次工具调用、用户提出多项要求、或需要委托子 Agent 时，先用 todo_write 列出计划再动手；清单会自动展示在上下文中，用户也能实时看到进展。单步小任务和纯问答不需要。
+需要多个步骤、涉及多项交付物或多次操作、用户提出多项要求、或需要委托子 Agent 时，先用 todo_write 建立任务清单再动手；清单会自动展示在上下文中，用户也能实时看到进展。单步小任务和纯问答不需要。
 
-复杂请求先调用 submit_plan 呈现完整计划（每步含可执行的完成标准）供用户确认，获批后再动手执行；被拒绝时按反馈修订并重新提交。`;
+submit_plan 仅用于用户明确要求先确认计划、或任务高风险（如不可逆操作、对外发送消息）的场景：呈现完整计划（每步含可执行的完成标准）供用户确认，获批后执行；被拒绝时按反馈修订并重新提交。其余多步任务一律用 todo_write 规划，不要调用 submit_plan。`;
 
   return {
     name: 'task-planning',

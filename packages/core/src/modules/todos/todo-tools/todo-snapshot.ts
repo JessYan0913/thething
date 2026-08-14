@@ -26,12 +26,14 @@ export function buildCompactTaskSnapshot(todos: Todo[], store: TodoStore): strin
   const lines: string[] = [];
   const inProgress = todos.filter(t => t.status === 'in_progress');
   const pending = todos.filter(t => t.status === 'pending');
+  const failed = todos.filter(t => t.status === 'failed');
   const completed = todos.filter(t => t.status === 'completed');
 
   // Stats line
   const stats = [
     inProgress.length > 0 ? `进行中: ${inProgress.length}` : '',
     pending.length > 0 ? `待办: ${pending.length}` : '',
+    failed.length > 0 ? `失败: ${failed.length}` : '',
     completed.length > 0 ? `已完成: ${completed.length}` : '',
   ].filter(Boolean).join(' | ');
 
@@ -39,11 +41,11 @@ export function buildCompactTaskSnapshot(todos: Todo[], store: TodoStore): strin
     lines.push(`[任务清单] ${stats}`);
   }
 
-  // In progress
+  // In progress (含完成标准——压缩后续做的依据)
   for (const todo of inProgress) {
     const active = todo.activeForm ? ` — ${todo.activeForm}` : '';
     const owner = todo.claimedBy ? ` (${todo.claimedBy})` : '';
-    lines.push(`[→] #${todo.id} ${todo.subject}${active}${owner}`);
+    lines.push(`[→] #${todo.id} ${todo.subject}${active}${owner}${verifySuffix(todo)}`);
   }
 
   // Pending (unblocked first)
@@ -51,14 +53,26 @@ export function buildCompactTaskSnapshot(todos: Todo[], store: TodoStore): strin
   const blocked = pending.filter(t => t.blockedBy.length > 0);
 
   for (const todo of unblocked) {
-    lines.push(`[ ] #${todo.id} ${todo.subject}`);
+    lines.push(`[ ] #${todo.id} ${todo.subject}${verifySuffix(todo)}`);
   }
   for (const todo of blocked) {
     const depNames = todo.blockedBy.map(id => {
       const dep = store.getTodo(id);
       return dep ? `#${dep.id} ${dep.subject}` : `#${id} (已删除)`;
     });
-    lines.push(`[ ] #${todo.id} ${todo.subject} (被 ${depNames.join(', ')} 阻塞)`);
+    lines.push(`[ ] #${todo.id} ${todo.subject} (被 ${depNames.join(', ')} 阻塞)${verifySuffix(todo)}`);
+  }
+
+  // Failed (recent 3，含失败原因——修订计划的依据)
+  if (failed.length > 0) {
+    const recent = failed.slice(-3);
+    for (const todo of recent) {
+      const error = todo.metadata?.error ? `: ${todo.metadata.error}` : '';
+      lines.push(`[!] #${todo.id} ${todo.subject}${error}`);
+    }
+    if (failed.length > 3) {
+      lines.push(`... 还有 ${failed.length - 3} 条失败`);
+    }
   }
 
   // Completed (last 3)
@@ -74,4 +88,10 @@ export function buildCompactTaskSnapshot(todos: Todo[], store: TodoStore): strin
   }
 
   return lines.join('\n');
+}
+
+/** 未完结任务附上完成标准，供压缩/续做时知道"怎样算做完"。 */
+function verifySuffix(todo: Todo): string {
+  const v = todo.metadata?.verify;
+  return v ? ` (verify: ${v})` : '';
 }
