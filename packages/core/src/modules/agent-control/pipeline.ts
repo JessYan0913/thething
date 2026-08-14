@@ -6,12 +6,7 @@ import { recordUsageSample } from '../compaction/tokenizer';
 import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
-import {
-  isTrivialRequest,
-  buildPlanPrompt,
-  buildEmptyTodoReminder,
-  getLastUserText,
-} from './multi-step-detector';
+import { buildPlanPrompt, buildEmptyTodoReminder } from './plan-prompt';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -94,14 +89,13 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     // 压缩状态机：每步入口 tick（让 justCompacted 自动回 idle）
     sessionState.compactionTracker.tickStep(stepNumber);
 
-    // Phase A 规划提示：先取用户请求文本（可能在下方被注入/压缩改动）。
-    // 判断"是否多步"交给模型——开工前对非超短请求轻问一句即可，不做关键词预判。
-    const lastUserText = getLastUserText(messages as Array<{ role: string; content: unknown }>);
+    // Phase A 规划提示：判断一律交给模型——代码只做确定性的机械活（每条请求开工前
+    // 轻问一句，不做任何关键词/字数预判）。
     const todoStore = sessionState.todoStore;
 
     if (stepNumber === 0) {
       const todosEmpty = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? []).length === 0;
-      if (todosEmpty && !isTrivialRequest(lastUserText)) {
+      if (todosEmpty) {
         messages = [...messages, {
           role: 'user',
           content: buildPlanPrompt(),
@@ -243,7 +237,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           content: `${prefix}\n${snapshot}`,
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Task snapshot injected: revision=${currentRevision} changed=${revisionChanged} compact=${compactionJustRan} inactive=${inactivityThreshold}`);
-      } else if (inactivityThreshold && !isTrivialRequest(lastUserText)) {
+      } else if (inactivityThreshold) {
         // Phase A 兜底：干了几步仍未建单 → 注入提醒（不预判是否多步，由模型再判断；
         // 此前 todo 为空时此路径是死的）
         messages = [...messages, {

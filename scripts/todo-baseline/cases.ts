@@ -41,6 +41,14 @@ export const CASES: BaselineCase[] = [
       '重构 src/utils/store.ts：把类里的 getItems 和 addItem 两个方法拆到独立的文件 src/utils/store-queries.ts，' +
       '保持对外行为完全不变，并更新 store.ts 里的引用。',
   },
+  {
+    id: 'c03',
+    category: 'multi-code',
+    label: '短句但复杂的任务：贪吃蛇游戏',
+    expectTodo: true,
+    request:
+      '写个贪吃蛇小游戏', // 极短措辞——验证不因"短"被跳过，由模型自行判断复杂度
+  },
   // ── 非编码域多步（触发词汇错配区）──────────────────────────────
   {
     id: 'g01',
