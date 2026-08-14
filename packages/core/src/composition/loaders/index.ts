@@ -43,14 +43,19 @@ import type { AgentDefinition } from '../../modules/agent/types';
 import type { McpServerConfig } from '../../modules/mcp/types';
 import type { ConnectorFrontmatter } from '../../modules/connector/loader';
 import type { PermissionRule } from '../../modules/permissions/types';
-import type { LoadSkillsOptions, LoadAgentsOptions, LoadMcpsOptions, LoadConnectorsOptions, LoadPermissionsOptions } from './index';
-import {
-  loadSkills,
-  loadAgents,
-  loadMcpServers,
-  loadConnectors,
-  loadPermissions,
-} from './index';
+// 直接导入来源模块，避免对自身 index 的自导入：
+// esbuild 打包异步模块时，自导入会在模块工厂内生成 `await init_x()` 自等待 → 死锁
+//（表现为 CLI 构建产物启动时卡在 unsettled top-level await）。
+import type { LoadSkillsOptions } from '../../modules/skills/loader';
+import type { LoadAgentsOptions } from '../../modules/agent/loader';
+import type { LoadMcpsOptions } from '../../modules/mcp/loader';
+import type { LoadConnectorsOptions } from '../../modules/connector/loader-internal';
+import type { LoadPermissionsOptions } from './permissions';
+import { loadSkills } from '../../modules/skills/loader';
+import { loadAgents } from '../../modules/agent/loader';
+import { loadMcpServers } from '../../modules/mcp/loader';
+import { loadConnectors } from '../../modules/connector/loader-internal';
+import { loadPermissions } from './permissions';
 
 export interface LoadAllOptions {
   cwd?: string;

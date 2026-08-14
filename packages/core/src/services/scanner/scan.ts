@@ -6,12 +6,11 @@ import { minimatch } from 'minimatch';
 import type { ScanOptions, ScanConfig, ScanResult } from './types';
 import type { ConfigSource } from '../../primitives/constants';
 
-// Dynamic imports: avoid Turbopack Edge Runtime static analysis on Node.js built-ins.
-// Use indirect string to prevent Turbopack from statically resolving the module name.
-const _path = 'path'
-const _fs = 'fs/promises'
-const { default: fs } = await import(/* webpackIgnore: true */ _fs);
-const { default: path } = await import(/* webpackIgnore: true */ _path);
+// 运行时获取 Node 内置模块：process.getBuiltinModule 是运行时 API，
+// Turbopack/Webpack 无法静态分析、不会打包 Node 内置模块（与动态 import + webpackIgnore 同效果）；
+// 且是同步调用，避免 top-level await——tsx 以 CJS 编译 core 时不支持顶层 await，会导致 CLI 无法启动。
+const fs = process.getBuiltinModule('fs/promises') as typeof import('fs/promises');
+const path = process.getBuiltinModule('path') as typeof import('path');
 
 export type { ScanOptions, ScanConfig, ScanResult };
 
