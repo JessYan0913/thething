@@ -17,7 +17,7 @@ import type { PermissionRule } from '../../modules/permissions/types';
 import type { Skill, SkillEffort } from '../../modules/skills/types';
 import type { ModelMessage } from 'ai';
 import type { GoalState } from '../../modules/goal/types';
-import type { FullRequestEstimation } from '../compaction/token-counter';
+import type { RequestBudgetEstimation } from '../compaction/request-budget';
 
 // ============================================================
 // 1. TokenBudget - 上下文窗口预算（compaction/pipeline 消费）
@@ -148,8 +148,8 @@ export interface PipelineContext {
   consecutiveReasoningOnlySteps: number;
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
-  /** prepareStep 最近一次全量估算结果，供 onStepEnd 推送前端当前窗口占用 + 明细 */
-  lastEstimation?: FullRequestEstimation | null;
+  /** prepareStep 最近一次请求预算估算结果（含策略触发线），供 onStepEnd 推送前端 + 校准配对 */
+  lastEstimation?: RequestBudgetEstimation | null;
   /** 更新会话上下文水位到数据库。pipeline 每步估算后调用。 */
   updateContextBudget?: (estimation: {
     utilizationPercent: number;

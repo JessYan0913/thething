@@ -1,0 +1,73 @@
+// ============================================================
+// Request Budget - 完整请求估算组装（策略 + 校准 buffer）
+// ============================================================
+// 统一预算策略（见 docs/compaction-redesign.md L1）：
+//
+//   totalTokensWithBuffer = messages + instructions + tools + outputReserve
+//                         + tokenizerBuffer
+//   tokenizerBuffer = (messages+instructions+tools) × (driftRatio − 1)
+//
+// tokenizerBuffer 由 usage 真值 EMA 校准（usage-calibrator）驱动，替代静态
+// "拍脑袋"buffer。冷启动为 0（不额外加 buffer），首个真值样本接管后收敛；
+// 静态兜底由 deriveBudget 的 encode-level buffer 承担。
+//
+// 触发判断用 totalTokensWithBuffer 对比 policy.triggerTokens / hardLimitTokens
+// （见 compaction-redesign.md L1 触发语义），确保小窗口（如 22.8k）也按真实
+// 可用预算决策，而不是等 100% 超限。
+
+import type { Tool } from 'ai';
+import {
+  estimateFullRequest,
+  type FullRequestEstimation,
+} from './token-counter';
+import { getEstimatorInfra } from './tokenizer';
+import { deriveBudget } from './prompt-budget-policy';
+
+export interface RequestBudgetEstimation extends FullRequestEstimation {
+  /** 校准 buffer（tokens）：baseTokens × (driftRatio − 1) */
+  tokenizerBuffer: number;
+  /** 含校准 buffer 的总量（上报水位 / 触发判断用） */
+  totalTokensWithBuffer: number;
+  /** 主动压缩触发线（deriveBudget.triggerTokens） */
+  triggerTokens: number;
+  /** 强制降级硬限（deriveBudget.hardLimitTokens） */
+  hardLimitTokens: number;
+  /** 达到触发线：应主动升档压缩 */
+  shouldTrigger: boolean;
+  /** 达到硬限：应强制降级 */
+  shouldForce: boolean;
+}
+
+/**
+ * 完整请求估算 + 校准 buffer + 策略判断。
+ * 复用 estimateFullRequest 的基线（BPE 精确计数 + 消息级缓存），叠加
+ * usage 真值校准的 tokenizerBuffer，并从同一 policy 推导触发线/硬限。
+ */
+export async function estimateRequestBudget(
+  messages: import('ai').ModelMessage[],
+  instructions: string,
+  tools: Record<string, Tool>,
+  modelName: string,
+  contextLimitOverride?: number,
+): Promise<RequestBudgetEstimation> {
+  const base = await estimateFullRequest(messages, instructions, tools, modelName, contextLimitOverride);
+  const { calibrator } = getEstimatorInfra();
+  const bufferRatio = calibrator.getTokenizerBufferRatio(modelName);
+  const baseTokens = base.messagesTokens + base.instructionsTokens + base.toolsTokens;
+  const tokenizerBuffer = Math.round(baseTokens * bufferRatio);
+  const totalTokensWithBuffer = base.totalTokens + tokenizerBuffer;
+
+  const policy = deriveBudget(base.modelLimit, base.outputReserve, modelName);
+  const shouldTrigger = totalTokensWithBuffer >= policy.triggerTokens;
+  const shouldForce = totalTokensWithBuffer >= policy.hardLimitTokens;
+
+  return {
+    ...base,
+    tokenizerBuffer,
+    totalTokensWithBuffer,
+    triggerTokens: policy.triggerTokens,
+    hardLimitTokens: policy.hardLimitTokens,
+    shouldTrigger,
+    shouldForce,
+  };
+}

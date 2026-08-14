@@ -44,6 +44,8 @@ import { compressMessagesDeterministic } from './deterministic-compressor';
 import { forceTruncateMessages } from './force-truncate';
 import { emergencySummarize } from './emergency-summary';
 import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
+import { estimateRequestBudget, type RequestBudgetEstimation } from './request-budget';
+import { targetTokensFor, messageTargetTokensFor, MIN_MESSAGE_BUDGET_TOKENS, DEFAULT_TARGET_PERCENT, EMERGENCY_TARGET_PERCENT } from './prompt-budget-policy';
 import { updateViewAfterL3, type CompactionView } from './compaction-view';
 
 // ============================================================
@@ -946,17 +948,33 @@ export async function manageCompaction(
     durationMs: Date.now() - startTime,
   });
 
-  // 估算 + 按预算升档(用 estimateFullRequest,不用增量缓存--压缩后缓存失效)
-  let estimation: FullRequestEstimation | undefined;
+  // 估算 + 按预算升档(用 estimateRequestBudget:含校准 buffer + 策略触发线)
+  let estimation: RequestBudgetEstimation | undefined;
   if (context.tools && context.instructions) {
-    estimation = await estimateFullRequest(
+    estimation = await estimateRequestBudget(
       current, context.instructions, context.tools, context.modelName, context.contextLimit,
     );
 
-    if (estimation.exceedsLimit && context.model) {
+    // 触发语义(见 compaction-redesign.md L1):总量+校准buffer 达到触发线即主动
+    // 升档(不再等 100% 超限);达到硬限用更激进的目标水位。
+    if (estimation.shouldTrigger && context.model) {
+      const targetPercent = estimation.shouldForce ? EMERGENCY_TARGET_PERCENT : DEFAULT_TARGET_PERCENT;
+      // 消息预算 = 目标请求 − 固定开销(instructions+tools+outputReserve),带下限保护
+      // (见 compaction-redesign.md 5.4:小窗口下防止消息预算为 0 → 全历史摘要化)
+      const targetRequestTokens = targetTokensFor(estimation.modelLimit, targetPercent);
+      const fixedOverhead = estimation.instructionsTokens + estimation.toolsTokens + estimation.outputReserve;
+      const messageTarget = messageTargetTokensFor(targetRequestTokens, fixedOverhead);
+      if (targetRequestTokens - fixedOverhead < MIN_MESSAGE_BUDGET_TOKENS) {
+        logger.warn(
+          'Compaction',
+          `消息预算触底: limit=${estimation.modelLimit}, 固定开销=${fixedOverhead} ` +
+          `(inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve}), ` +
+          `目标请求=${targetRequestTokens}, 消息目标强制 ${MIN_MESSAGE_BUDGET_TOKENS}`,
+        );
+      }
       logger.warn(
         'Compaction',
-        `Layer 2 后仍超限 (${estimation.utilizationPercent.toFixed(1)}%)，升档至紧急压缩`,
+        `Layer 2 后达触发线 (${estimation.utilizationPercent.toFixed(1)}%${estimation.shouldForce ? ', HARD LIMIT' : ''})，升档至紧急压缩`,
       );
       current = await applyEmergencyCompression(current, {
         model: context.model,
@@ -965,7 +983,8 @@ export async function manageCompaction(
         contextLimit: context.contextLimit,
         tools: context.tools,
         instructions: context.instructions,
-        targetTokens: estimation.modelLimit * 0.8,
+        // 目标水位从统一策略推导(触发 0.7 / 硬限 0.6),再扣固定开销得消息预算
+        targetTokens: messageTarget,
         compactionView: context.compactionView,
         telemetry: context.telemetry,
       });
@@ -1029,7 +1048,8 @@ export async function applyEmergencyCompression(
   const summaryResult = await emergencySummarize(current, {
     model: context.model,
     fallbackModels: context.fallbackModels,
-    targetPercent: 0.6,
+    // 紧急摘要目标从统一策略取（与 targetTokensFor 同源）
+    targetPercent: EMERGENCY_TARGET_PERCENT,
   });
 
   if (summaryResult.success) {

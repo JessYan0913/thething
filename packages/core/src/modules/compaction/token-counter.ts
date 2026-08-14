@@ -16,7 +16,9 @@ import {
   preloadTokenizer,
   setTokenizerDir,
   tryCountTokensSync,
+  getEstimatorInfra,
 } from "./tokenizer";
+import { cacheFingerprint, getEncodingLevel } from '../../primitives/tokenizer';
 import { getToolOutputString } from './message-utils';
 
 // ============================================================
@@ -26,10 +28,23 @@ import { getToolOutputString } from './message-utils';
 /** 消息结构开销 tokens（role 标记、格式等） */
 const MESSAGE_OVERHEAD_TOKENS = 10;
 
+/** 图片/文件消息的保守估算（provider 按分辨率/tile 计费，本地无法精确；
+ *  此前完全不计导致多图会话严重低估、L3 延迟触发超限） */
+const IMAGE_TOKENS = 1500;
+
 /** 工具 Schema 相关常量 */
 const TOOL_NAME_TOKENS = 4;
 const TOOL_SCHEMA_OVERHEAD = 50;
 const TOOL_ARRAY_OVERHEAD = 20;
+
+/** 已压缩工具结果（CompactedToolResult）：只计 summary 文本，跳过元数据 */
+function compactedSummary(output: unknown): string | null {
+  if (output && typeof output === 'object') {
+    const o = output as Record<string, unknown>;
+    if (o._compacted === true && typeof o.summary === 'string') return o.summary;
+  }
+  return null;
+}
 
 // ============================================================
 // 同步估算（仅当 tokenizer 已加载时可用）
@@ -67,6 +82,12 @@ export async function estimateTextTokens(text: string, modelName?: string): Prom
  * @param modelName 可选的模型名称
  */
 export async function estimateMessageTokens(message: import('ai').ModelMessage, modelName?: string): Promise<number> {
+  // 消息级 tokenCache：内容敏感指纹，压缩改写后指纹变 → 自动 miss 重算
+  const { tokenCache } = getEstimatorInfra();
+  const cacheKey = cacheFingerprint(message, modelName);
+  const cached = tokenCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
   let tokens = MESSAGE_OVERHEAD_TOKENS;
 
   if (!hasParts(message)) {
@@ -90,8 +111,11 @@ export async function estimateMessageTokens(message: import('ai').ModelMessage, 
             try { textChunks.push(JSON.stringify(args)); } catch { /* ignore */ }
           }
         } else if (c.type === 'tool-result' && c.output) {
-          const str = getToolOutputString(c.output);
+          // 已压缩输出只计 summary 文本，跳过 _originalSize 等元数据
+          const str = compactedSummary(c.output) ?? getToolOutputString(c.output);
           if (str) textChunks.push(str);
+        } else if (c.type === 'image' || c.type === 'file') {
+          tokens += IMAGE_TOKENS;
         }
       }
       if (textChunks.length > 0) {
@@ -99,6 +123,7 @@ export async function estimateMessageTokens(message: import('ai').ModelMessage, 
         tokens += tokenCounts.reduce((sum: number, t: number) => sum + t, 0);
       }
     }
+    tokenCache.set(cacheKey, tokens);
     return tokens;
   }
 
@@ -109,11 +134,13 @@ export async function estimateMessageTokens(message: import('ai').ModelMessage, 
       textParts.push(part.text);
     } else if (part.type === "reasoning") {
       textParts.push(part.text);
+    } else if (part.type === "image" || part.type === "file") {
+      tokens += IMAGE_TOKENS;
     } else if (part.type?.startsWith("tool-") || part.type === "dynamic-tool") {
       const toolPart = part as Record<string, unknown>;
       const output = toolPart.output as Record<string, unknown> | undefined;
       if (output) {
-        textParts.push(JSON.stringify(output));
+        textParts.push(compactedSummary(output) ?? JSON.stringify(output));
       }
       const input = toolPart.input as Record<string, unknown> | undefined;
       if (input) {
@@ -126,6 +153,7 @@ export async function estimateMessageTokens(message: import('ai').ModelMessage, 
   const tokenCounts = await countTokensBatch(textParts, modelName);
   tokens += tokenCounts.reduce((sum: number, t: number) => sum + t, 0);
 
+  tokenCache.set(cacheKey, tokens);
   return tokens;
 }
 
@@ -353,9 +381,12 @@ export async function estimateFullRequest(
 }
 
 /**
- * 从模型名称推断 tokenizer repo 信息（用于日志）
+ * 从模型名称推断估算级别（用于日志，见估算地基三级策略）
  */
-function inferTokenizerVersion(_modelName: string): string {
+function inferTokenizerVersion(modelName: string): string {
+  const level = getEncodingLevel(modelName);
+  if (level === 'exact') return 'bpe-exact';
+  if (level === 'approximate') return 'bpe-approximate';
   return 'char-estimation';
 }
 

@@ -37,6 +37,7 @@
     "fast-check": "^4.9.0",
     "fast-glob": "^3.3.3",
     "gray-matter": "^4.0.3",
+    "js-tiktoken": "^1.0.21",
     "js-yaml": "^4.1.0",
     "minimatch": "^10.2.5",
     "nanoid": "^5.1.7",

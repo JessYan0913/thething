@@ -6,8 +6,10 @@
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
+import type { Tool } from 'ai';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 import { manageToolOutputLifecycle } from './lifecycle';
+import { estimateRequestBudget } from './request-budget';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -50,6 +52,9 @@ export async function handleReactiveRetry(
     conversationId: string;
     dataStore: DataStore;
     contextLimit?: number;
+    /** 用于诊断分解的完整请求构成（可选，缺省时诊断只含消息侧） */
+    instructions?: string;
+    tools?: Record<string, Tool>;
   },
 ): Promise<{ messages: import('ai').ModelMessage[] }> {
   if (!isContextLengthError(error)) throw error;
@@ -65,8 +70,28 @@ export async function handleReactiveRetry(
   }).messages;
 
   // 2. 同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
-  //    改为 Layer 2 激进压缩后若仍超限，直接抛出 CONTEXT_BUDGET_EXCEEDED。
-  //    见 docs/context-compaction-architecture.md。
+  //    改为 Layer 2 激进压缩后若仍超限,直接抛出带估算分解的诊断错误
+  //    (见 compaction-redesign.md 4.6 / P2-2)——不再发必然失败的请求。
+  const est = await estimateRequestBudget(
+    current,
+    context.instructions ?? '',
+    context.tools ?? {},
+    context.modelName,
+    context.contextLimit,
+  );
+  if (est.exceedsLimit) {
+    const breakdown =
+      `msgs=${est.messagesTokens}` +
+      (context.instructions !== undefined ? `+inst=${est.instructionsTokens}` : '') +
+      (context.tools !== undefined ? `+tools=${est.toolsTokens}` : '') +
+      `+out=${est.outputReserve} = ${est.totalTokens} > ${est.modelLimit}` +
+      (context.contextLimit ? ` (configured limit=${context.contextLimit})` : '');
+    throw new Error(
+      `CONTEXT_BUDGET_EXCEEDED: 激进压缩后仍超限(${breakdown}) | ` +
+      `本地估算=${est.totalTokens}, 模型窗口=${est.modelLimit}, ` +
+      `calibration=${est.tokenizerBuffer > 0 ? `+${est.tokenizerBuffer}` : 0}`,
+    );
+  }
 
   return { messages: current };
 }

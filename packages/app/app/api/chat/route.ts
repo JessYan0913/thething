@@ -554,6 +554,7 @@ export async function POST(request: Request) {
                         modelName: chatModelConfig.modelName || '',
                         conversationId,
                         dataStore: store,
+                        contextLimit: chatModelConfig.contextLimit,
                       },
                     );
                     console.log(`[Chat API] Reactive retry: compressed ${finalMessages.length} → ${retryResult.messages.length} messages`);

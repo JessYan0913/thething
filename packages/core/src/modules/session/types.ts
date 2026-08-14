@@ -131,8 +131,8 @@ export interface SessionState {
   /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
   compactionStepCounter: { current: number };
 
-  /** 上次完整请求 token 估算结果，供 onStepEnd 推送前端 + 写库使用 */
-  lastEstimation?: import('../compaction/token-counter').FullRequestEstimation;
+  /** 上次请求预算估算结果（含策略触发线），供 onStepEnd 推送前端 + 校准配对 + 写库使用 */
+  lastEstimation?: import('../compaction/request-budget').RequestBudgetEstimation;
 
   /** 压缩消息 */
   compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult>;

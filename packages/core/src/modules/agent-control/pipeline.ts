@@ -1,7 +1,8 @@
 import type { LanguageModel, ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, UIMessage, Tool, StepResult } from 'ai';
 
 import type { PipelineContext } from '../session/interfaces';
-import { estimateFullRequest, type FullRequestEstimation } from '../compaction/token-counter';
+import { estimateRequestBudget, type RequestBudgetEstimation } from '../compaction/request-budget';
+import { recordUsageSample } from '../compaction/tokenizer';
 import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
@@ -89,6 +90,18 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     // accumulate 已在 route 的 onStepEnd 中完成，此处不再重复
     const lastStep = steps[steps.length - 1];
+
+    // usage 真值校准配对(见 compaction-redesign.md L0):上一步估算 ↔ 本步真实 usage。
+    // lastEstimation 是上次 prepareStep 为本请求发出的估算;lastStep.usage 是其真实 input。
+    // 仅当两者都可用时配对(per-session,无跨会话污染)。
+    const lastEstForCalibration = sessionState.lastEstimation;
+    if (lastStep?.usage?.inputTokens && lastEstForCalibration) {
+      recordUsageSample(
+        sessionState.model,
+        lastEstForCalibration.totalTokens - lastEstForCalibration.outputReserve,
+        lastStep.usage.inputTokens,
+      );
+    }
     // 注：阶段 3 改用 estimation 替代 tokenBudget.getSummary()（累计数学错）。
     // getSummary() 删除后会报 TS 错，先保留兼容性 fallback。
     const fallbackSummary = sessionState.tokenBudget.getSummary();
@@ -171,11 +184,13 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     const compactResult = await sessionState.compact(messages as import('ai').ModelMessage[]);
     sessionState.compactionTracker.recordResult(compactResult.tokensFreed ?? 0);
     if (compactResult.executed) {
-      // UI 展示的是配置的压缩阈值，而不是会话累计 token 的动态百分比。
-      // triggerPercent 的配置单位为 0-1，这里转为 0-100，并做边界保护。
-      const triggerWatermark = Math.min(100, Math.max(0, (config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT) * 100));
+      // UI 水位与真实触发线一致:优先用 policy 推导的 triggerTokens/modelLimit
+      // (lastEst 为本会话上次请求的策略估值),缺省回退用户配置 triggerPercent(0-1)。
+      const triggerWatermark = lastEst?.triggerTokens && lastEst.modelLimit
+        ? (lastEst.triggerTokens / lastEst.modelLimit) * 100
+        : Math.min(100, Math.max(0, (config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT) * 100));
       config.compactionCallbackRef?.current?.({ status: 'start', triggerWatermark });
-      debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens at configured ${triggerWatermark.toFixed(0)}% watermark`);
+      debugLog(debugEnabled, `[Agent] Compaction freed ${compactResult.tokensFreed} tokens at ${triggerWatermark.toFixed(0)}% watermark`);
       messages = compactResult.messages as ModelMessageType[];
       sessionState.tokenBudget.reportCompaction(compactResult, triggerWatermark);
       sessionState.costTracker.reportCompaction(compactResult.tokensFreed ?? 0);
@@ -213,21 +228,23 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     }
 
     // Context usage progress bar + 闸门(复用同一次估算,零新增开销)
+    // 估算用 estimateRequestBudget:含校准 buffer + 策略触发线,UI TRIGGER 与真实升档一致
     if (config.instructions != null && config.tools) {
-      const estimation = await estimateFullRequest(
+      const estimation = await estimateRequestBudget(
         messages as import('ai').ModelMessage[],
         config.instructions,
         config.tools,
         sessionState.model,
         config.contextLimit,
       );
-      logger.info('Context', formatContextBar(estimation, estimation.modelLimit, config.triggerPercent ?? DEFAULT_TRIGGER_PERCENT));
+      logger.info('Context', formatContextBar(estimation, estimation.modelLimit));
       // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)
       sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);
       // 缓存估算结果,供 onStepEnd 推送前端当前窗口占用 + 明细
       sessionState.lastEstimation = estimation;
 
       // 不静默发超标请求出去被 provider 拒。pre-stream 闸门见 create.ts;此处覆盖运行中增长。
+      // 硬不变量:总量超过窗口上限才拒绝;达触发线(shouldTrigger)由 manageCompaction 负责升档压缩。
       if (estimation.exceedsLimit) {
         const reason = `msgs=${estimation.messagesTokens}+inst=${estimation.instructionsTokens}+tools=${estimation.toolsTokens}+out=${estimation.outputReserve} = ${estimation.totalTokens} > ${estimation.modelLimit}`;
         logger.warn('Gate', `[REJECT] 运行中压缩后仍超限: ${reason} | conv=${sessionState.conversationId}`);
@@ -252,18 +269,20 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function formatContextBar(est: FullRequestEstimation, contextLimit: number, triggerPercent: number = DEFAULT_TRIGGER_PERCENT): string {
-  const used = est.messagesTokens + est.instructionsTokens + est.toolsTokens + est.outputReserve;
+function formatContextBar(est: RequestBudgetEstimation, contextLimit: number): string {
+  // 用含校准 buffer 的总量计算水位;TRIGGER 标记与真实升档(shouldTrigger)一致
+  const used = est.totalTokensWithBuffer;
   const pct = contextLimit > 0 ? used / contextLimit : 0;
   const filled = Math.min(BAR_WIDTH, Math.round(pct * BAR_WIDTH));
   const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
   const pctStr = (pct * 100).toFixed(1);
-  const trigger = pct >= triggerPercent ? ' ⚠ TRIGGER' : '';
+  const trigger = est.shouldTrigger ? ' ⚠ TRIGGER' : '';
   return (
     `${bar} ${pctStr}% (${formatTokens(used)}/${formatTokens(contextLimit)})${trigger}` +
     ` │ msgs ${formatTokens(est.messagesTokens)}` +
     ` │ sys ${formatTokens(est.instructionsTokens)}` +
     ` │ tools ${formatTokens(est.toolsTokens)}` +
-    ` │ out ${formatTokens(est.outputReserve)}`
+    ` │ out ${formatTokens(est.outputReserve)}` +
+    ` │ buf ${formatTokens(est.tokenizerBuffer)}`
   );
 }
