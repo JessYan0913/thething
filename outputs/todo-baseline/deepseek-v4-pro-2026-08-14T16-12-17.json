@@ -1,0 +1,747 @@
+{
+  "model": "deepseek-v4-pro",
+  "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+  "timestamp": "2026-08-14T16:12:17.561Z",
+  "cases": [
+    {
+      "id": "c02#1",
+      "category": "multi-code",
+      "label": "重构拆文件+保持行为",
+      "expectTodo": true,
+      "request": "重构 src/utils/store.ts：把类里的 getItems 和 addItem 两个方法拆到独立的文件 src/utils/store-queries.ts，保持对外行为完全不变，并更新 store.ts 里的引用。",
+      "created": 3,
+      "firstPlanStep": 3,
+      "plannedButEmpty": false,
+      "statuses": {
+        "in_progress": 1,
+        "completed": 2
+      },
+      "progressed": true,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_file",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "grep"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "glob",
+            "grep"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "write_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 6,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 7,
+          "tools": [
+            "edit_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 8,
+          "tools": [
+            "edit_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 9,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 10,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 11,
+          "tools": [
+            "bash",
+            "glob"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 3,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，导出 getItems 和 addItem 函数\",\"更新 store.ts：导入 store-queries 的函数并在类方法中委托调用\",\"验证对外行为不变：Store 实例仍可调用 getItems() 和 addItem()\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-4ecIEv8y\",\"subject\":\"创建 src/utils/store-queries.ts，导出 getItems 和 addItem 函数\",\"status\":\"in_progress\"},{\"id\":\"todo-ujI-zLt_\",\"subject\":\"更新 store.ts：导入 store-queries 的函数并在类方法中委托调用\",\"status\":\"pending\"},{\"id\":\"todo-lNRen_0g\",\"subject\":\"验证对外行为不变：Store 实例仍可调用 getItems()"
+        },
+        {
+          "step": 6,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，导出 getItems 和 addItem 函数\",\"更新 store.ts：导入 store-queries 的函数并在类方法中委托调用\",\"验证对外行为不变：Store 实例仍可调用 getItems() 和 addItem()\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-4ecIEv8y\",\"subject\":\"创建 src/utils/store-queries.ts，导出 getItems 和 addItem 函数\",\"status\":\"completed\"},{\"id\":\"todo-ujI-zLt_\",\"subject\":\"更新 store.ts：导入 store-queries 的函数并在类方法中委托调用\",\"status\":\"in_progress\"},{\"id\":\"todo-lNRen_0g\",\"subject\":\"验证对外行为不变：Store 实例仍可调用 getItems"
+        },
+        {
+          "step": 10,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，导出 getItems 和 addItem 函数\",\"更新 store.ts：导入 store-queries 的函数并在类方法中委托调用\",\"验证对外行为不变：Store 实例仍可调用 getItems() 和 addItem()\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-4ecIEv8y\",\"subject\":\"创建 src/utils/store-queries.ts，导出 getItems 和 addItem 函数\",\"status\":\"completed\"},{\"id\":\"todo-ujI-zLt_\",\"subject\":\"更新 store.ts：导入 store-queries 的函数并在类方法中委托调用\",\"status\":\"completed\"},{\"id\":\"todo-lNRen_0g\",\"subject\":\"验证对外行为不变：Store 实例仍可调用 getItems()"
+        }
+      ],
+      "toolSequence": [
+        "read_file",
+        "glob",
+        "grep",
+        "glob",
+        "grep",
+        "todo_write",
+        "read_file",
+        "write_file",
+        "todo_write",
+        "edit_file",
+        "edit_file",
+        "read_file",
+        "todo_write",
+        "bash",
+        "glob"
+      ],
+      "stepCount": 12,
+      "inputTokens": 178774,
+      "outputTokens": 3378,
+      "finishReason": "tool-calls",
+      "finalText": ""
+    },
+    {
+      "id": "c02#2",
+      "category": "multi-code",
+      "label": "重构拆文件+保持行为",
+      "expectTodo": true,
+      "request": "重构 src/utils/store.ts：把类里的 getItems 和 addItem 两个方法拆到独立的文件 src/utils/store-queries.ts，保持对外行为完全不变，并更新 store.ts 里的引用。",
+      "created": 3,
+      "firstPlanStep": 4,
+      "plannedButEmpty": false,
+      "statuses": {
+        "in_progress": 1,
+        "pending": 1,
+        "completed": 1
+      },
+      "progressed": true,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_file",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "bash",
+            "glob",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "read_file",
+            "read_file",
+            "read_file",
+            "read_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 6,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 7,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 8,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 4,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"分析当前 store.ts 和 store-queries.ts 的状态\",\"验证 TypeScript 编译通过\",\"确认对外行为完全不变\"]",
+          "output": ""
+        },
+        {
+          "step": 6,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"分析当前 store.ts 和 store-queries.ts 的状态\",\"验证 TypeScript 编译通过\",\"确认对外行为完全不变\"]",
+          "output": ""
+        }
+      ],
+      "toolSequence": [],
+      "stepCount": 9,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "finishReason": "",
+      "finalText": "",
+      "error": "timeout"
+    },
+    {
+      "id": "g01#1",
+      "category": "multi-general",
+      "label": "规划行程+预算+清单",
+      "expectTodo": true,
+      "request": "帮我规划一次三天两夜的北京周末游：给出每天的行程安排、总预算估算、和一份行李清单。",
+      "created": 4,
+      "firstPlanStep": 0,
+      "plannedButEmpty": false,
+      "statuses": {
+        "completed": 4
+      },
+      "progressed": true,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "web_fetch",
+            "web_fetch"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "web_fetch",
+            "web_fetch"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 3,
+          "failed": 0
+        },
+        {
+          "stepIndex": 6,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 0,
+          "completed": 4,
+          "failed": 0
+        },
+        {
+          "stepIndex": 7,
+          "tools": [],
+          "todoCount": 4,
+          "inProgress": 0,
+          "completed": 4,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"研究北京热门景点，规划三天两夜行程\",\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"整理一份完整的行李清单\",\"整合成最终回复呈现给用户\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-A41k1DaO\",\"subject\":\"研究北京热门景点，规划三天两夜行程\",\"status\":\"in_progress\"},{\"id\":\"todo-vINSzW2v\",\"subject\":\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"status\":\"pending\"},{\"id\":\"todo-xL8tjVQw\",\"subject\":\"整理一份完整的行李清单\",\"status\":\"pending\"},{\"id\":\"todo-g0JrsoMT\",\"subject\":\"整合成最终回复呈现给用户\",\"status\":\""
+        },
+        {
+          "step": 3,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"\",\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"整理一份完整的行李清单\",\"整合成最终回复呈现给用户\"]",
+          "output": "\"\""
+        },
+        {
+          "step": 4,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"研究北京热门景点，规划三天两夜行程\",\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"整理一份完整的行李清单\",\"整合成最终回复呈现给用户\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-A41k1DaO\",\"subject\":\"研究北京热门景点，规划三天两夜行程\",\"status\":\"completed\"},{\"id\":\"todo-vINSzW2v\",\"subject\":\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"status\":\"in_progress\"},{\"id\":\"todo-xL8tjVQw\",\"subject\":\"整理一份完整的行李清单\",\"status\":\"pending\"},{\"id\":\"todo-g0JrsoMT\",\"subject\":\"整合成最终回复呈现给用户\",\"status\""
+        },
+        {
+          "step": 5,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"研究北京热门景点，规划三天两夜行程\",\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"整理一份完整的行李清单\",\"整合成最终回复呈现给用户\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-A41k1DaO\",\"subject\":\"研究北京热门景点，规划三天两夜行程\",\"status\":\"completed\"},{\"id\":\"todo-vINSzW2v\",\"subject\":\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"status\":\"completed\"},{\"id\":\"todo-xL8tjVQw\",\"subject\":\"整理一份完整的行李清单\",\"status\":\"completed\"},{\"id\":\"todo-g0JrsoMT\",\"subject\":\"整合成最终回复呈现给用户\",\"status\""
+        },
+        {
+          "step": 6,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"研究北京热门景点，规划三天两夜行程\",\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"整理一份完整的行李清单\",\"整合成最终回复呈现给用户\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-A41k1DaO\",\"subject\":\"研究北京热门景点，规划三天两夜行程\",\"status\":\"completed\"},{\"id\":\"todo-vINSzW2v\",\"subject\":\"估算总预算（交通、住宿、门票、餐饮、其他）\",\"status\":\"completed\"},{\"id\":\"todo-xL8tjVQw\",\"subject\":\"整理一份完整的行李清单\",\"status\":\"completed\"},{\"id\":\"todo-g0JrsoMT\",\"subject\":\"整合成最终回复呈现给用户\",\"status\""
+        }
+      ],
+      "toolSequence": [
+        "todo_write",
+        "web_fetch",
+        "web_fetch",
+        "web_fetch",
+        "web_fetch",
+        "todo_write",
+        "todo_write",
+        "todo_write",
+        "todo_write"
+      ],
+      "stepCount": 8,
+      "inputTokens": 116501,
+      "outputTokens": 2282,
+      "finishReason": "stop",
+      "finalText": "所有任务已完成！以上就是你的**北京三天两夜周末游完整攻略**，包含每日行程、预算估算和行李清单。如果出发城市较远，建议周五晚上就出发，最大化利用周末时间。祝旅途愉快！🎉"
+    },
+    {
+      "id": "g01#2",
+      "category": "multi-general",
+      "label": "规划行程+预算+清单",
+      "expectTodo": true,
+      "request": "帮我规划一次三天两夜的北京周末游：给出每天的行程安排、总预算估算、和一份行李清单。",
+      "created": 4,
+      "firstPlanStep": 0,
+      "plannedButEmpty": false,
+      "statuses": {
+        "in_progress": 1,
+        "completed": 3
+      },
+      "progressed": true,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "web_fetch",
+            "web_fetch"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "web_fetch",
+            "web_fetch"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 3,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"调研北京热门景点、交通、住宿信息\",\"制定三天两夜行程安排\",\"估算总预算\",\"整理行李清单\"]",
+          "output": ""
+        },
+        {
+          "step": 3,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"调研北京热门景点、交通、住宿信息\",\"制定三天两夜行程安排\",\"估算总预算\",\"整理行李清单\"]",
+          "output": ""
+        },
+        {
+          "step": 4,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"调研北京热门景点、交通、住宿信息\",\"制定三天两夜行程安排\",\"估算总预算\",\"整理行李清单\"]",
+          "output": ""
+        },
+        {
+          "step": 5,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"调研北京热门景点、交通、住宿信息\",\"制定三天两夜行程安排\",\"估算总预算\",\"整理行李清单\"]",
+          "output": ""
+        }
+      ],
+      "toolSequence": [],
+      "stepCount": 6,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "finishReason": "",
+      "finalText": "",
+      "error": "timeout"
+    },
+    {
+      "id": "g02#1",
+      "category": "multi-general",
+      "label": "整理待办+排序+合并",
+      "expectTodo": true,
+      "request": "整理一下我最近要处理的事情：列出最重要的五件事，按优先级排序，标注哪些可以合并处理，最后给我一页简洁的总结。",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_wiki_page",
+            "context_pin"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "read_file",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "read_file",
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [],
+      "toolSequence": [
+        "read_wiki_page",
+        "context_pin",
+        "bash",
+        "read_file",
+        "glob",
+        "read_file",
+        "read_file"
+      ],
+      "stepCount": 5,
+      "inputTokens": 60620,
+      "outputTokens": 838,
+      "finishReason": "stop",
+      "finalText": "我现在对你的情况有了基本了解。当前工作目录是一个 `baseline-sandbox` 项目，包含一个标记为\"待重构\"的 Store 类。但我这里没有任何关于你个人待办事项的记忆或数据。\n\n要帮你整理，我需要你提供信息。你可以：\n\n- **直接告诉我**：最近有哪些事情在忙、哪些还没处理\n- **贴一段文字**：比如聊天记录、笔记、邮件里的待办列表\n- **给个文件路径**：如果有 TODO 文件或笔记，我可以读取\n\n你方便用哪种方式？"
+    },
+    {
+      "id": "g02#2",
+      "category": "multi-general",
+      "label": "整理待办+排序+合并",
+      "expectTodo": true,
+      "request": "整理一下我最近要处理的事情：列出最重要的五件事，按优先级排序，标注哪些可以合并处理，最后给我一页简洁的总结。",
+      "created": 4,
+      "firstPlanStep": 1,
+      "plannedButEmpty": false,
+      "statuses": {
+        "pending": 3,
+        "in_progress": 1
+      },
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_wiki_page"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 1,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"向你收集所有待处理事项\",\"分析并排序，选出最重要的五件事\",\"识别可合并处理的事项\",\"输出一页简洁总结\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-dbxx3sAn\",\"subject\":\"向你收集所有待处理事项\",\"status\":\"in_progress\"},{\"id\":\"todo-EM7ULt-U\",\"subject\":\"分析并排序，选出最重要的五件事\",\"status\":\"pending\"},{\"id\":\"todo-uKFE-Nqq\",\"subject\":\"识别可合并处理的事项\",\"status\":\"pending\"},{\"id\":\"todo-Wr3lXi4b\",\"subject\":\"输出一页简洁总结\",\"status\":\"pending\"}]}"
+        }
+      ],
+      "toolSequence": [
+        "read_wiki_page",
+        "todo_write"
+      ],
+      "stepCount": 3,
+      "inputTokens": 35172,
+      "outputTokens": 631,
+      "finishReason": "stop",
+      "finalText": "要帮你整理，我需要先知道你手头有哪些事情。请把最近要处理的事项全部列出来——不用排序，不用筛选，想到什么写什么。工作、生活、个人项目都行，越多越全越好。"
+    }
+  ],
+  "metrics": {
+    "total": 6,
+    "multi": 6,
+    "multiCreated": 5,
+    "multiCreationRate": 0.8333333333333334,
+    "multiCodeCreated": 2,
+    "multiCodeRate": 1,
+    "multiGeneralCreated": 3,
+    "multiGeneralRate": 0.75,
+    "single": 0,
+    "singleFalsePositive": 0,
+    "ambiguous": 0,
+    "ambiguousCreated": 0,
+    "ambiguousRate": 0,
+    "plannedButEmpty": 0,
+    "progressRate": 0.8,
+    "avgFirstPlanStep": 1.6,
+    "resultCoverage": 1
+  }
+}

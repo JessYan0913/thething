@@ -1,0 +1,577 @@
+{
+  "model": "deepseek-v4-pro",
+  "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+  "timestamp": "2026-08-14T15:42:04.952Z",
+  "cases": [
+    {
+      "id": "c02#1",
+      "category": "multi-code",
+      "label": "重构拆文件+保持行为",
+      "expectTodo": true,
+      "request": "重构 src/utils/store.ts：把类里的 getItems 和 addItem 两个方法拆到独立的文件 src/utils/store-queries.ts，保持对外行为完全不变，并更新 store.ts 里的引用。",
+      "created": 3,
+      "firstPlanStep": 4,
+      "plannedButEmpty": false,
+      "statuses": {
+        "completed": 2,
+        "in_progress": 1
+      },
+      "progressed": true,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "grep"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "grep"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 6,
+          "tools": [
+            "write_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 7,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 8,
+          "tools": [
+            "edit_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 9,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 10,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 11,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 4,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"验证 TypeScript 编译无报错\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-OXdV-1Pz\",\"subject\":\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"status\":\"pending\"},{\"id\":\"todo-TGcWEjCC\",\"subject\":\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"status\":\"pending\"},{\"id\":\"todo-HcV6gjmu\",\"subject\":\"验证 TypeScript 编译无报错\",\""
+        },
+        {
+          "step": 5,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"验证 TypeScript 编译无报错\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-OXdV-1Pz\",\"subject\":\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"status\":\"in_progress\"},{\"id\":\"todo-TGcWEjCC\",\"subject\":\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"status\":\"pending\"},{\"id\":\"todo-HcV6gjmu\",\"subject\":\"验证 TypeScript 编译无报"
+        },
+        {
+          "step": 7,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"验证 TypeScript 编译无报错\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-OXdV-1Pz\",\"subject\":\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"status\":\"completed\"},{\"id\":\"todo-TGcWEjCC\",\"subject\":\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"status\":\"in_progress\"},{\"id\":\"todo-HcV6gjmu\",\"subject\":\"验证 TypeScript 编译"
+        },
+        {
+          "step": 10,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"验证 TypeScript 编译无报错\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-OXdV-1Pz\",\"subject\":\"创建 src/utils/store-queries.ts，提取 getItems 和 addItem 的纯函数实现\",\"status\":\"completed\"},{\"id\":\"todo-TGcWEjCC\",\"subject\":\"更新 src/utils/store.ts，用 store-queries.ts 的函数替换原有方法实现\",\"status\":\"completed\"},{\"id\":\"todo-HcV6gjmu\",\"subject\":\"验证 TypeScript 编译无报"
+        }
+      ],
+      "toolSequence": [
+        "read_file",
+        "grep",
+        "grep",
+        "read_file",
+        "todo_write",
+        "todo_write",
+        "write_file",
+        "todo_write",
+        "edit_file",
+        "read_file",
+        "todo_write",
+        "bash"
+      ],
+      "stepCount": 12,
+      "inputTokens": 168339,
+      "outputTokens": 3283,
+      "finishReason": "tool-calls",
+      "finalText": ""
+    },
+    {
+      "id": "c02#2",
+      "category": "multi-code",
+      "label": "重构拆文件+保持行为",
+      "expectTodo": true,
+      "request": "重构 src/utils/store.ts：把类里的 getItems 和 addItem 两个方法拆到独立的文件 src/utils/store-queries.ts，保持对外行为完全不变，并更新 store.ts 里的引用。",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "glob",
+            "glob",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "read_file",
+            "bash"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "glob",
+            "glob",
+            "glob",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "grep",
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 6,
+          "tools": [],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [],
+      "toolSequence": [
+        "read_file",
+        "glob",
+        "glob",
+        "glob",
+        "read_file",
+        "bash",
+        "glob",
+        "glob",
+        "glob",
+        "glob",
+        "grep",
+        "glob",
+        "bash"
+      ],
+      "stepCount": 7,
+      "inputTokens": 92543,
+      "outputTokens": 2267,
+      "finishReason": "stop",
+      "finalText": "重构已经完成，无需进一步操作。以下是当前状态验证：\n\n**`src/utils/store.ts`** — 类保留，方法委托给独立函数：\n```typescript\nimport { getItems, addItem } from './store-queries';\n\nexport class Store {\n  private items: string[] = [];\n\n  getItems(): string[] {\n    return getItems(this.items);\n  }\n\n  addItem(item: string): void {\n    addItem(this.items, item);\n  }\n}\n```\n\n**`src/utils/store-queries.ts`** — 独立的纯函数：\n```typescript\nexport function getItems(items: string[]): string[] {\n  return [...items];\n}\n\nexport function addItem(items: string[], item: string): void {\n  items.push(item);\n}\n```\n\n**对外行为保持不变：**\n- `Store.getItems()` 仍然返回 items 的"
+    },
+    {
+      "id": "g01#1",
+      "category": "multi-general",
+      "label": "规划行程+预算+清单",
+      "expectTodo": true,
+      "request": "帮我规划一次三天两夜的北京周末游：给出每天的行程安排、总预算估算、和一份行李清单。",
+      "created": 5,
+      "firstPlanStep": 0,
+      "plannedButEmpty": false,
+      "statuses": {
+        "pending": 4,
+        "in_progress": 1
+      },
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 5,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "parallel_agent"
+          ],
+          "todoCount": 5,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_write",
+          "inputSummary": "list=5 [\"搜索北京旅游核心信息\",\"规划三天两夜详细行程安排\",\"编制总预算估算\",\"整理行李清单\",\"汇总输出完整方案\"]",
+          "output": ""
+        }
+      ],
+      "toolSequence": [],
+      "stepCount": 2,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "finishReason": "",
+      "finalText": "",
+      "error": "timeout"
+    },
+    {
+      "id": "g01#2",
+      "category": "multi-general",
+      "label": "规划行程+预算+清单",
+      "expectTodo": true,
+      "request": "帮我规划一次三天两夜的北京周末游：给出每天的行程安排、总预算估算、和一份行李清单。",
+      "created": 5,
+      "firstPlanStep": 0,
+      "plannedButEmpty": false,
+      "statuses": {
+        "pending": 4,
+        "in_progress": 1
+      },
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 5,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "parallel_agent"
+          ],
+          "todoCount": 5,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_write",
+          "inputSummary": "list=5 [\"调研北京热门景点、门票、交通信息\",\"调研北京住宿和餐饮费用行情\",\"制定三天两夜行程安排\",\"编制总预算估算\",\"整理行李清单\"]",
+          "output": ""
+        }
+      ],
+      "toolSequence": [],
+      "stepCount": 2,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "finishReason": "",
+      "finalText": "",
+      "error": "timeout"
+    },
+    {
+      "id": "g02#1",
+      "category": "multi-general",
+      "label": "整理待办+排序+合并",
+      "expectTodo": true,
+      "request": "整理一下我最近要处理的事情：列出最重要的五件事，按优先级排序，标注哪些可以合并处理，最后给我一页简洁的总结。",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_wiki_page",
+            "todo_list",
+            "cron"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "context_pin"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_list",
+          "inputSummary": "id=(snapshot)",
+          "output": "{\"success\":true,\"todos\":[],\"total\":0,\"snapshot\":\"当前没有任务。\"}"
+        }
+      ],
+      "toolSequence": [
+        "read_wiki_page",
+        "todo_list",
+        "cron",
+        "context_pin"
+      ],
+      "stepCount": 3,
+      "inputTokens": 34773,
+      "outputTokens": 692,
+      "finishReason": "stop",
+      "finalText": "目前的情况是：系统中**没有记录任何待办事项**，Wiki 也是空的，所以我没有找到你之前留下的任务清单。\n\n不过，我发现了你设置的两个**自动化定时任务**，它们可能是你关心的事情：\n\n| # | 定时任务 | 频率 | 下次执行 |\n|---|---------|------|----------|\n| 1 | **每日金价分析与操作建议** | 每天 09:00 | 2026-08-15（明天） |\n| 2 | **每周金价走势总结报告** | 每周一 09:00 | 2026-08-17（下周一） |\n\n---\n\n要让我帮你整理\"最近要处理的事情\"，我需要你先补充一些信息。你可以：\n\n- **直接告诉我**：最近要处理哪些事，我来帮你排优先级、找合并点、出总结。\n- **或者告诉我**：这些事之前是否在别的对话里讨论过、有没有文档/邮件/笔记可以让我参考。\n\n你更方便哪种方式？"
+    },
+    {
+      "id": "g02#2",
+      "category": "multi-general",
+      "label": "整理待办+排序+合并",
+      "expectTodo": true,
+      "request": "整理一下我最近要处理的事情：列出最重要的五件事，按优先级排序，标注哪些可以合并处理，最后给我一页简洁的总结。",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_wiki_page",
+            "context_pin"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "glob",
+            "glob",
+            "glob",
+            "cron"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "read_file",
+            "read_file",
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [],
+      "toolSequence": [
+        "read_wiki_page",
+        "context_pin",
+        "glob",
+        "glob",
+        "glob",
+        "cron",
+        "glob",
+        "read_file",
+        "read_file",
+        "read_file"
+      ],
+      "stepCount": 5,
+      "inputTokens": 60508,
+      "outputTokens": 955,
+      "finishReason": "stop",
+      "finalText": "说实话，这是一个全新的对话会话，我没有关于你最近待办事项的历史记录。目前我能看到的只有两个自动化的定时任务：\n\n- 📊 **每日金价分析与操作建议** — 每天上午 9:00 自动执行\n- 📈 **每周金价走势总结报告** — 每周一上午 9:00 自动执行\n\n除此之外，工作目录里只有一个待重构的 `Store` 类（baseline 沙箱），没有其他任务记录。\n\n---\n\n要帮你整理，我需要你提供一下信息。你可以：\n\n1. **直接告诉我** — 把最近要处理的事情列出来，我来帮你排序、合并、总结。\n2. **指向来源** — 如果有任务管理工具、笔记、文档等，告诉我位置，我去抓取。\n\n你方便的话，现在就可以把待办事项扔给我 👇"
+    }
+  ],
+  "metrics": {
+    "total": 6,
+    "multi": 6,
+    "multiCreated": 3,
+    "multiCreationRate": 0.5,
+    "multiCodeCreated": 1,
+    "multiCodeRate": 0.5,
+    "multiGeneralCreated": 2,
+    "multiGeneralRate": 0.5,
+    "single": 0,
+    "singleFalsePositive": 0,
+    "ambiguous": 0,
+    "ambiguousCreated": 0,
+    "ambiguousRate": 0,
+    "plannedButEmpty": 0,
+    "progressRate": 0.3333333333333333,
+    "avgFirstPlanStep": 1.3333333333333333,
+    "resultCoverage": 1
+  }
+}

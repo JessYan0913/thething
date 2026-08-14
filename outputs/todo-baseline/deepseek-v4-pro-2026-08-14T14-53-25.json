@@ -1,0 +1,214 @@
+{
+  "model": "deepseek-v4-pro",
+  "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+  "timestamp": "2026-08-14T14:53:25.030Z",
+  "cases": [
+    {
+      "id": "c01",
+      "category": "multi-code",
+      "label": "写函数+单测+运行",
+      "expectTodo": true,
+      "request": "写一个 TypeScript 工具函数 parseCsv（要正确处理引号转义和字段内换行），放到 src/utils/parse-csv.ts，并为它写 vitest 单测，覆盖正常输入、含引号字段、空行三个边界情况，然后尝试运行测试验证结果。",
+      "created": 3,
+      "firstPlanStep": 3,
+      "plannedButEmpty": false,
+      "statuses": {
+        "completed": 3
+      },
+      "progressed": true,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "glob",
+            "glob",
+            "glob",
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "glob"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 2,
+          "tools": [
+            "read_file"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 3,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 4,
+          "tools": [
+            "write_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 5,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 6,
+          "tools": [
+            "write_file"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 1,
+          "failed": 0
+        },
+        {
+          "stepIndex": 7,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 8,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 9,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 10,
+          "tools": [
+            "bash"
+          ],
+          "todoCount": 3,
+          "inProgress": 1,
+          "completed": 2,
+          "failed": 0
+        },
+        {
+          "stepIndex": 11,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 3,
+          "inProgress": 0,
+          "completed": 3,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 3,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"运行 vitest 验证测试通过\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-ZNVUhDe7\",\"subject\":\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"status\":\"in_progress\"},{\"id\":\"todo-s-ERpPUB\",\"subject\":\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"status\":\"pending\"},{\"id\":\"todo-VpPqTLhe\",\"subject\":\"运行 vitest 验证测试通过\",\"status\":\"pending\"}]}"
+        },
+        {
+          "step": 5,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"运行 vitest 验证测试通过\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-ZNVUhDe7\",\"subject\":\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"status\":\"completed\"},{\"id\":\"todo-s-ERpPUB\",\"subject\":\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"status\":\"in_progress\"},{\"id\":\"todo-VpPqTLhe\",\"subject\":\"运行 vitest 验证测试通过\",\"status\":\"pending\"}],\"message\":\"Warning: \\"
+        },
+        {
+          "step": 7,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"运行 vitest 验证测试通过\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-ZNVUhDe7\",\"subject\":\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"status\":\"completed\"},{\"id\":\"todo-s-ERpPUB\",\"subject\":\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"status\":\"completed\"},{\"id\":\"todo-VpPqTLhe\",\"subject\":\"运行 vitest 验证测试通过\",\"status\":\"in_progress\"}],\"message\":\"Warning:"
+        },
+        {
+          "step": 11,
+          "name": "todo_write",
+          "inputSummary": "list=3 [\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"运行 vitest 验证测试通过\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-ZNVUhDe7\",\"subject\":\"创建 src/utils/parse-csv.ts 实现 parseCsv 函数\",\"status\":\"completed\"},{\"id\":\"todo-s-ERpPUB\",\"subject\":\"创建测试文件并覆盖正常输入、含引号字段、空行三个边界\",\"status\":\"completed\"},{\"id\":\"todo-VpPqTLhe\",\"subject\":\"运行 vitest 验证测试通过\",\"status\":\"completed\"}]}"
+        }
+      ],
+      "toolSequence": [
+        "glob",
+        "glob",
+        "glob",
+        "read_file",
+        "glob",
+        "read_file",
+        "todo_write",
+        "write_file",
+        "todo_write",
+        "write_file",
+        "todo_write",
+        "bash",
+        "bash",
+        "bash",
+        "todo_write"
+      ],
+      "stepCount": 12,
+      "inputTokens": 167364,
+      "outputTokens": 3683,
+      "finishReason": "tool-calls",
+      "finalText": ""
+    }
+  ],
+  "metrics": {
+    "total": 1,
+    "multi": 1,
+    "multiCreated": 1,
+    "multiCreationRate": 1,
+    "multiCodeCreated": 1,
+    "multiCodeRate": 1,
+    "multiGeneralCreated": 0,
+    "multiGeneralRate": 0,
+    "single": 0,
+    "singleFalsePositive": 0,
+    "ambiguous": 0,
+    "ambiguousCreated": 0,
+    "ambiguousRate": 0,
+    "plannedButEmpty": 0,
+    "progressRate": 1,
+    "avgFirstPlanStep": 3,
+    "resultCoverage": 1
+  }
+}
