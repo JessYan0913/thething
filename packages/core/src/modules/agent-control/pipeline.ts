@@ -6,6 +6,15 @@ import { recordUsageSample } from '../compaction/tokenizer';
 import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
+import {
+  looksMultiStep,
+  executionIntent,
+  workedWithoutPlanning,
+  buildPlanFirstInjection,
+  buildStrictPlanFirstInjection,
+  buildEmptyTodoReminder,
+  getLastUserText,
+} from './multi-step-detector';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -87,6 +96,30 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     // 压缩状态机：每步入口 tick（让 justCompacted 自动回 idle）
     sessionState.compactionTracker.tickStep(stepNumber);
+
+    // Phase A 确定性触发：先取用户请求文本（可能在下方被注入/压缩改动）
+    const lastUserText = getLastUserText(messages as Array<{ role: string; content: unknown }>);
+    const todoStore = sessionState.todoStore;
+
+    // 多步请求建单注入：执行型（对代码/文件/外部系统动手）收紧——无出口 +
+    // 只要没建清单就开始干活就反复提醒；内容型（输出即答案）保留出口由模型判断。
+    const isMulti = looksMultiStep(lastUserText);
+    const isExec = executionIntent(lastUserText);
+    const todosEmpty = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? []).length === 0;
+    if (todosEmpty && isMulti) {
+      const lastStep = steps[steps.length - 1];
+      const startedWork = workedWithoutPlanning(lastStep as { toolCalls?: Array<{ toolName?: string; name?: string }> } | undefined);
+      if (stepNumber === 0 || (isExec && startedWork)) {
+        messages = [...messages, {
+          role: 'user',
+          content: isExec ? buildStrictPlanFirstInjection() : buildPlanFirstInjection(),
+        } as ModelMessageType];
+        debugLog(
+          debugEnabled,
+          `[Agent] Multi-step injection: step=${stepNumber} exec=${isExec} startedWork=${startedWork} ${isExec ? 'STRICT' : 'soft'}`,
+        );
+      }
+    }
 
     // accumulate 已在 route 的 onStepEnd 中完成，此处不再重复
     const lastStep = steps[steps.length - 1];
@@ -199,7 +232,6 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
 
     // ── Task Context Injection ──
     // 三步触发：revision 变更、压缩后、5 步无活动
-    const todoStore = sessionState.todoStore;
     const currentRevision = todoStore?.getRevision() ?? 0;
     sessionState.stepsSinceTodoMutation = (sessionState.stepsSinceTodoMutation ?? 0) + 1;
     const stepsSinceMutation = sessionState.stepsSinceTodoMutation;
@@ -222,6 +254,13 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           content: `${prefix}\n${snapshot}`,
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Task snapshot injected: revision=${currentRevision} changed=${revisionChanged} compact=${compactionJustRan} inactive=${inactivityThreshold}`);
+      } else if (inactivityThreshold && looksMultiStep(lastUserText)) {
+        // Phase A 兜底：多步请求跑了 5 步仍未建单 → 注入提醒（此前 todo 为空时此路径是死的）
+        messages = [...messages, {
+          role: 'user',
+          content: buildEmptyTodoReminder(),
+        } as ModelMessageType];
+        debugLog(debugEnabled, `[Agent] Empty todo + multi-step + 5 steps inactive, injected reminder`);
       }
       sessionState.lastTodoRevision = currentRevision;
       sessionState.stepsSinceTodoMutation = 0;
