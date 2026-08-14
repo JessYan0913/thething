@@ -7,11 +7,8 @@ import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
 import {
-  looksMultiStep,
-  executionIntent,
-  workedWithoutPlanning,
-  buildPlanFirstInjection,
-  buildStrictPlanFirstInjection,
+  isTrivialRequest,
+  buildPlanPrompt,
   buildEmptyTodoReminder,
   getLastUserText,
 } from './multi-step-detector';
@@ -97,27 +94,19 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     // 压缩状态机：每步入口 tick（让 justCompacted 自动回 idle）
     sessionState.compactionTracker.tickStep(stepNumber);
 
-    // Phase A 确定性触发：先取用户请求文本（可能在下方被注入/压缩改动）
+    // Phase A 规划提示：先取用户请求文本（可能在下方被注入/压缩改动）。
+    // 判断"是否多步"交给模型——开工前对非超短请求轻问一句即可，不做关键词预判。
     const lastUserText = getLastUserText(messages as Array<{ role: string; content: unknown }>);
     const todoStore = sessionState.todoStore;
 
-    // 多步请求建单注入：执行型（对代码/文件/外部系统动手）收紧——无出口 +
-    // 只要没建清单就开始干活就反复提醒；内容型（输出即答案）保留出口由模型判断。
-    const isMulti = looksMultiStep(lastUserText);
-    const isExec = executionIntent(lastUserText);
-    const todosEmpty = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? []).length === 0;
-    if (todosEmpty && isMulti) {
-      const lastStep = steps[steps.length - 1];
-      const startedWork = workedWithoutPlanning(lastStep as { toolCalls?: Array<{ toolName?: string; name?: string }> } | undefined);
-      if (stepNumber === 0 || (isExec && startedWork)) {
+    if (stepNumber === 0) {
+      const todosEmpty = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? []).length === 0;
+      if (todosEmpty && !isTrivialRequest(lastUserText)) {
         messages = [...messages, {
           role: 'user',
-          content: isExec ? buildStrictPlanFirstInjection() : buildPlanFirstInjection(),
+          content: buildPlanPrompt(),
         } as ModelMessageType];
-        debugLog(
-          debugEnabled,
-          `[Agent] Multi-step injection: step=${stepNumber} exec=${isExec} startedWork=${startedWork} ${isExec ? 'STRICT' : 'soft'}`,
-        );
+        debugLog(debugEnabled, `[Agent] Plan prompt injected at step 0`);
       }
     }
 
@@ -254,13 +243,14 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           content: `${prefix}\n${snapshot}`,
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Task snapshot injected: revision=${currentRevision} changed=${revisionChanged} compact=${compactionJustRan} inactive=${inactivityThreshold}`);
-      } else if (inactivityThreshold && looksMultiStep(lastUserText)) {
-        // Phase A 兜底：多步请求跑了 5 步仍未建单 → 注入提醒（此前 todo 为空时此路径是死的）
+      } else if (inactivityThreshold && !isTrivialRequest(lastUserText)) {
+        // Phase A 兜底：干了几步仍未建单 → 注入提醒（不预判是否多步，由模型再判断；
+        // 此前 todo 为空时此路径是死的）
         messages = [...messages, {
           role: 'user',
           content: buildEmptyTodoReminder(),
         } as ModelMessageType];
-        debugLog(debugEnabled, `[Agent] Empty todo + multi-step + 5 steps inactive, injected reminder`);
+        debugLog(debugEnabled, `[Agent] Empty todo + 5 steps inactive, injected reminder`);
       }
       sessionState.lastTodoRevision = currentRevision;
       sessionState.stepsSinceTodoMutation = 0;
