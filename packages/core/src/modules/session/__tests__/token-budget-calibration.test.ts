@@ -3,7 +3,7 @@ import { TokenBudgetTracker } from '../token-budget';
 
 // ============================================================
 // 8.2 usage 反馈校准 token 估算
-// 见 docs/context-compaction-architecture.md 步骤 8.2
+// 见 docs/compaction-redesign.md
 // ============================================================
 
 function usage(inputTokens: number) {

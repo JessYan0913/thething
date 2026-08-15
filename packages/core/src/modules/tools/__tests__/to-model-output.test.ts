@@ -7,7 +7,7 @@ import { createBashTool } from '../bash';
 
 // ============================================================
 // 8.7 read_file/bash 加 toModelOutput 纯文本输出
-// 见 docs/context-compaction-architecture.md 步骤 8.7
+// 见 docs/compaction-redesign.md
 // ============================================================
 
 // toModelOutput 把结构化结果转成发给模型的纯文本,规避 JSON 转义开销。

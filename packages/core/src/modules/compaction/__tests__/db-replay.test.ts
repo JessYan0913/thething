@@ -12,7 +12,7 @@ import { extractActionLog } from '../action-log';
 // ============================================================
 // 从真实 DB 抽样对话,回放压缩,断言四条不变式。
 // DB 不存在时跳过(本地/CI 无 DB 时不阻塞)。
-// 见 docs/compaction-road-to-excellent.md 差距三。
+// 见 docs/compaction-redesign.md。
 
 const DB_PATH = join(homedir(), '.thething', 'data', 'chat.db');
 const SKIP = !existsSync(DB_PATH);

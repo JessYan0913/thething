@@ -1,18 +1,22 @@
 # 上下文压缩重构设计（V3）
 
-> 日期：2026-08-14
+> 日期：2026-08-15（文档合并重构，收敛为单一权威文档）
 > 范围：`packages/core/src/modules/compaction/` 及其调用链（`composition/app/create.ts`、`modules/agent-control/pipeline.ts`、`modules/session/state.ts`、`composition/finalize.ts`）
-> 状态：**设计稿 + 实施记录**。基于已提交的 V1（7 月架构）重新思考，吸收三代教训。
-> 参考：
-> - `docs/CORE_COMPACTION_FIRST_PRINCIPLES_SOLUTION.md`（5月20号设计，第一性原理）
-> - `docs/context-compaction-architecture.md`（V1 架构，已实施）
-> - `docs/model-driven-compaction-design.md`（模型主动压缩草案）
-> - 已回退的 `COMPACTION_V2_DESIGN.md` / `compaction-bug-analysis.md` / token-estimation-v3 基座（本设计将其精华正式纳入）
+> 状态：**设计稿 + 实施记录 + 历史档案**。输入侧（塞得进）为主体，输出侧（写不完）见 §10。
+>
+> **本文档是上下文压缩的唯一权威文档**，已并入并取代以下文档（均已删除）：
+> - V1 架构（原 `docs/context-compaction-architecture.md`）→ §12.1 历史档案
+> - 减负重构计划（原 `docs/compaction-refactoring-plan.md`）→ §12.2
+> - 模型驱动压缩草案（原 `docs/model-driven-compaction-design.md`）→ §12.3
+> - 输出侧问题记录（原 `docs/output-truncation-and-compaction.md`）→ §10
+> - 历史/已回退：5月20号第一性原理设计、`COMPACTION_V2_DESIGN.md`、`compaction-bug-analysis.md`、token-estimation-v3 基座（精华已并入正文）
+> - 外部对标来源见 §11.1（Anthropic context engineering / MemGPT / externalization）
 
-> **实施状态（2026-08-14）**：
+> **实施状态（2026-08-15）**：
 > - ✅ Step 1（L0 估算地基）、Step 2（L1 统一预算策略）、Step 3（触发语义主动水位）已实施。
 > - ✅ §5.4 最小消息预算保护、§4.6 reactive retry 诊断错误、§4.8 UI 水位从 policy 读已实施（A 组补全）。
 > - ⏸ Step 4（增量扫描）已推迟，见 §5.1 实施决定。
+> - 📐 §10 输出侧预算模型（写不完）为**设计稿，未实施**；修复候选见 §10.7。
 
 ---
 
@@ -71,6 +75,12 @@ handleReactiveRetry (retry.ts) —— context-length 错误 → 激进 Layer 2
 - 5月20设计的核心原则（单一 `PromptBudgetPolicy`）未完全落地；`outputReserve`/`buffer` 与窗口关系没有统一推导。
 - `targetPercent` 配置存在（types.ts 默认 0.7），但各调用点各自硬编码（emergency 0.6、force-truncate 0.15、budget-check 0.3/0.05）。
 
+**P0-4 输出侧"写不完"（静默截断，详见 §10）**
+- 应用**未给模型设 `max_tokens`** → 用 provider 默认输出上限；`capabilities.ts:100` 的 `outputReserve = min(defaultOutputTokens, 20000)` 是**静态预留**，不随上下文占用动态调整。
+- 长任务多轮累积 + 续做时历史已占大量窗口，输出空间被挤压；模型生成中途耗尽输出预算 → **静默截断**。
+- 循环层**无截断检测**：最后一步只有文本、无工具调用即视为完成（`ToolLoopAgent`）→ 半截结果被当最终答案，run 正常 `committed`、任务实际未完成。
+- 真实复现：conversation_id=`sKYk66c0Q3N5rc4EL-WIc`（证据与诊断见 §10.1/§10.2）。
+
 **P1-1 每步全量重扫的代价**
 - `manageToolOutputLifecycle` 每步对全量消息 map：`extractToolResultView`（序列化输出算 size）、全局扫描（`analyzeReads`/`findReferencedResults`/`detectReadLoops`）、`applyCompactionPatches`。长对话 O(n) + 字符串开销每步重复。
 - `incremental-estimation.ts` 已存在，但 `manageCompaction` 注释明确"压缩后缓存失效"绕过它，每步全量 `estimateFullRequest`。
@@ -96,6 +106,9 @@ handleReactiveRetry (retry.ts) —— context-length 错误 → 激进 Layer 2
 | G4 | 每步代价有界 | 不随历史线性增长，O(delta) |
 | G5 | 系统副作用有反馈闭环 | 读循环/过度压缩 → 自动 pin |
 | G6 | 复杂度可维护 | 单一心智模型、阈值单一来源 |
+| G7 | 输出必可写完 | 每步显式预留输出预算；长输出不因预算耗尽被静默截断 |
+| G8 | 截断可检测 | 任何截断均被识别（finishReason / 文本完整性），不误判完成 |
+| G9 | 截断可恢复 | 检测到截断后自动压缩/续写，不丢失已产出内容 |
 
 ### 2.2 原则（不变式，贯穿所有档位）
 
@@ -107,6 +120,7 @@ handleReactiveRetry (retry.ts) —— context-length 错误 → 激进 Layer 2
 6. **P6 DB 永远是全量真相**：压缩只在内存对请求生效，绝不改写 DB 历史；加载/自愈一律以 DB 为准。
 7. **P7 摘要只在后台**：不在每步同步调 LLM（濒死时刻是最差时机）；checkpoint + compaction view 保证前缀稳定。
 8. **P8 可观测 + 自纠**：每个决策可追溯（telemetry/ledger），并有自我纠错机制（过度压缩检测 → autoPin）。
+9. **P9 输出与输入共享同一预算对象**：`totalWithBuffer` 含输出预留；上下文占用大 → 输出预留紧 → 触发更早（§10.4.4）。压缩既管"塞得进"也管"写得完"。
 
 ---
 
@@ -132,6 +146,8 @@ handleReactiveRetry (retry.ts) —— context-length 错误 → 激进 Layer 2
         ▼
    DB 全量历史（永不被压缩改写）⇄ 内存压缩视图（仅对请求生效）
 ```
+
+> **输出侧（§10）**：以上分层管"输入塞得进"。输出侧"写得完"是另一条正交预算线——动态输出预留 + 截断检测 + 截断后续写，与输入侧共享同一个 `BudgetPolicy`（P9）。
 
 ### 3.2 模块布局建议（文件映射）
 
@@ -182,6 +198,8 @@ handleReactiveRetry (retry.ts) —— context-length 错误 → 激进 Layer 2
 totalWithBuffer = messagesTokens + instructionsTokens + toolsTokens + outputReserve
                 + tokenizerBuffer        // tokenizerBuffer = baseTokens × (driftRatio − 1),对全部模型统一
 ```
+
+> `outputReserve` 目前是静态常量（`capabilities.ts:100`，`min(defaultOutputTokens, 20000)`）——这是输出侧"写不完"病灶的一部分，动态化设计见 §10.4.1。
 
 ### 4.2 L1 预算策略层（单一事实来源）
 
@@ -364,6 +382,10 @@ tokenizerBuffer = baseTokens × (ratio − 1)            // 聚合层统一应�
 - 未来触发条件：长会话 profile 显示每步 >20ms 或消息数持续 >5000。
 - 低风险第一步（可先做）：`findReferencedResults` 改为单调 `referencedPaths` 集合。
 
+**Step 5 输出侧预算（§10）— 📐 设计稿，未实施**
+- 动态 `outputReserve`（随窗口余量推导）+ 截断检测（finishReason/文本完整性）+ 截断后续写；与 §4.1/§4.3 统一到同一 `BudgetPolicy`。
+- 验证：长任务多轮续做不再静默截断；构造截断能被检测且不 committed；截断后自动续写产出完整。
+
 **兼容**：`compactBeforeStep` / `checkInitialBudget` / `handleReactiveRetry` 对外签名不变；所有新增模块是内聚新增，先并行后替换。
 
 ---
@@ -379,6 +401,9 @@ tokenizerBuffer = baseTokens × (ratio − 1)            // 聚合层统一应�
 | LLM 摘要质量退化 | 低 | 保留质量验证 + 模板 fallback + provenance 段；摘要频率低（后台/trigger 级） |
 | 触发提前导致过度压缩（体验变差） | 中 | targetPercent 可配；过度压缩检测 → autoPin 反馈闭环兜底 |
 | 迁移回归（不变式被破坏） | 高 | 现有 scenario-invariants / guaranteed-compaction / db-replay 测试作为回归基线，每步全绿 |
+| 截断检测漏判（finishReason 不可靠） | 高 | 多信号融合：finishReason + 文本完整性启发式 + 预期长度比对（§10.4.2） |
+| 续写引入重复/漂移 | 中 | 续写请求显式携带"已产出文本截至位置"，要求模型接续而非重写（§10.4.3） |
+| 动态 outputReserve 挤压输入空间 | 中 | 与 §4.3 触发语义联动：预留变紧 → 更早压缩，由同一 policy 保证不自相矛盾 |
 
 ---
 
@@ -391,6 +416,7 @@ tokenizerBuffer = baseTokens × (ratio − 1)            // 聚合层统一应�
 - ~~增量：长对话每步只扫 delta；跨步路径去重；TTL 惰性老化。~~（推迟，见 §5.1；若实施则补）
 - 校准：EMA 收敛、异常样本拒绝、clamp、模型切换重置。
 - 失败：reactive retry 诊断错误包含估算分解；重试只一次。
+- 输出侧（§10）：模型调用显式设 `maxOutputTokens`；构造 `finishReason='length'` 的截断响应能被检测且 run 不 committed；截断后自动续写产出完整；动态 outputReserve 随上下文占用收紧。
 
 **场景测试（复用现有框架）**
 - 22.8k 小窗口 + 大工具 schema（9.2k）——不因魔法阈值漏触发。
@@ -410,15 +436,222 @@ tokenizerBuffer = baseTokens × (ratio − 1)            // 聚合层统一应�
 4. ~~每步代价 O(delta)~~（推迟，见 §5.1 实施决定；当前每步成本实测已温和且有上界）。
 5. 三层（load / per-step / retry）行为一致、可观测（telemetry/ledger 完整）。
 6. 四条不变式 + DB 全量真相在全部档位成立；回归测试全绿。
+7. 输出侧（§10）：每步显式预留输出预算（动态 `outputReserve`）；任何截断被检测且不误判完成；截断后可自动续写。
+
+---
+
+## 10. 输出侧预算模型（写不完）——设计稿
+
+> 本节为**输出侧**设计稿（📐 未实施）。来源：`output-truncation-and-compaction.md`（已并入本节省略原文）+ 2026-08-15 业界对标（§11）。
+> 与 §3-§9 的关系：§3-§9 管**输入侧"塞不进"**，本节管**输出侧"写不完"**，两者统一到同一预算模型（P9）。
+> **实施计划（P0-P3：输出侧落地 / 外部化读回 / 模型主动 / 精益化）见 `docs/context-usage-redesign.md` §14**。
+
+### 10.1 问题定义
+
+压缩系统目前的全部注意力在**输入侧**："这一次请求能不能塞进窗口"（`request-budget.ts`、`capabilities.ts` 的 `outputReserve`）。它防的是**"塞不进"**。但长任务真正的瓶颈往往是**输出侧**：**"写不完"**。截断是"写不完"的极端形态，而它发生在**多轮累积 + 续做**场景下，正是压缩系统最该介入却没介入的地方。
+
+**真实复现（有数据）**：本地 Web 跑 2000 字深度长文任务（六步：大纲→三部分→润色→总览），中途停止再发"继续"续做：
+1. 续做正确续完第二部分（`todo_write` 置 completed）✓
+2. 写第三部分时，输出从"在个人效"处被**硬截断**（断在词中间，明显非正常收尾）
+3. **`ToolLoopAgent` 把不完整文字当成"最终答案"，run 正常 `committed`、无任何 error**
+4. 结果：第三部分 `in_progress` 卡住、润色/总览未做——**任务静默地没完成**
+
+**关键证据**：`conversation_runs` 两次 run 均 `status='committed'`、`error=None`；续跑 assistant 消息最后一个 text part 以"在个人效"结尾（词被切断）；全链路 grep 不到 `maxTokens`/`max_tokens`（`models.json` 里模型条目只有 `{id}`）。
+
+### 10.2 现状盘点
+
+| 病灶 | 位置 | 后果 |
+|---|---|---|
+| 未设 `max_tokens` | 模型创建/调用层（`createLanguageModel` 等） | 用 provider 默认输出上限 |
+| thinking 占输出预算 | deepseek-v4-pro 开 thinking | 推理 token 大量占输出，正文剩余不足 → 截断 |
+| `outputReserve` 静态 | `capabilities.ts:100` = `min(defaultOutputTokens, 20000)` | 不随上下文占用动态调整；上下文越大输出空间越紧 |
+| 无截断检测 | `ToolLoopAgent`（node_modules/ai） | 最后一步纯文本即视为完成；半截结果进库 |
+
+### 10.3 设计目标
+
+| 编号 | 目标 | 可验证标准 |
+|------|------|-----------|
+| G7 | 输出必可写完 | 每步显式预留输出预算；长输出不因预算耗尽被静默截断 |
+| G8 | 截断可检测 | 任何截断均被识别（finishReason / 文本完整性），不误判完成 |
+| G9 | 截断可恢复 | 检测到截断后自动压缩/续写，不丢失已产出内容 |
+
+### 10.4 机制设计
+
+**10.4.1 动态输出预留（outputReserve）**
+
+现状：`outputReserve = min(defaultOutputTokens, 20000)` 静态，不随上下文变化。
+
+```
+reserve = clamp(目标输出预算,
+                minReserve,               // 下限：保证"写完"的最小空间（对齐 §5.4 最小预算保护）
+                availableWindow)          // 上限：窗口余量 = contextLimit − 当前输入占用
+```
+
+- 输入占用 = messages + instructions + tools（含校准 buffer）。
+- 上下文占用越大 → 可用窗口越小 → 输出预留越紧 → **联动 §4.3 触发语义更早压缩**（压缩释放输入空间 → 输出预留恢复）。
+- 与 §4.1 的关系：`totalWithBuffer` 本就含 `outputReserve`，本设计把它的取值从"静态常量"改为"随窗口余量推导"，并让 §4.2 `deriveBudget` 在推导 trigger/hardLimit 时纳入动态预留。
+
+**10.4.2 截断检测**
+
+多信号融合，任一命中即判截断：
+1. **provider/模型层**：`finishReason === 'length'`（AI SDK 暴露的 stop reason）；模型调用需显式设 `maxTokens`，截断才有信号可依。
+2. **文本完整性启发式**：末尾是否断在词中间、是否有未闭合结构（markdown 代码块/列表）、是否以预期收尾终止。
+3. **预期长度比对**：输出显著短于该步任务预期时标记可疑（待 §10.6 调查确认信号可用性）。
+
+检测到截断 → 该步**不 committed**，进入 10.4.3。
+
+**10.4.3 截断后行为（自动续写）**
+
+1. 把已产出文本（截至截断点）作为上下文追加，显式要求模型"从该处继续，不要重写"。
+2. 若上下文已满（续写请求塞不进）→ **先压缩（§4）再续写**。
+3. **分片输出（对齐 externalization，§11.2）**：长任务拆成多段输出，模型分段生成、已产出落盘/追加，下一段续写——从源头避免单次输出耗尽预算。与"超大工具输出落盘 + 分片读"是同一机制的两面：输出侧分片写、输入侧分片读。
+
+**10.4.4 与输入侧的统一预算模型**
+
+请求预算 = 输入预算 + 输出预留。输出侧不再是"别的东西"，而是 `BudgetPolicy` 的组成部分：
+- `outputReserve` 成为 policy 字段，参与 §4.2 `deriveBudget` 的 trigger/hardLimit 推导。
+- §4.3 触发语义补一条：上下文占用大 → 输出预留紧张 → 触发更早（输出侧与输入侧共享同一水位线）。
+
+### 10.5 输入侧 vs 输出侧对照
+
+| | 输入侧（塞得进，§3-§9） | 输出侧（写得完，本节） |
+|---|---|---|
+| 核心机制 | 估算 / 触发 / 降级 / 摘要 | 预留 / 检测 / 续写 |
+| 关键动作 | value 阶梯 + compaction | 动态 outputReserve + 截断检测 + 自动续写 |
+| 共用 | BudgetPolicy、triggerTokens、checkpoint 落库 | 同左 |
+
+### 10.6 待调查问题（作业清单）
+
+1. **截断检测**：如何可靠判断"响应被 provider 截断"？（`finishReason` 是否含 `length`/`max_tokens`？AI SDK 是否暴露截断信号？文本是否完整收尾？）
+2. **截断后行为**：检测到截断后应该怎样——自动续写？先压缩上下文再续？还是应预先把 `max_tokens` 设够？
+3. **输出预算自适应**：`outputReserve` 是否应随上下文占用动态调整（上下文越大，输出预留越紧张）？
+4. **续做/多轮累积下的压缩触发**：长任务多轮后，压缩是否该更早介入，给输出留空间？
+5. **与输入侧的统一**：输入侧（估算/时机/代价）与输出侧（写不完）如何统一到同一个预算模型？
+
+### 10.7 修复候选
+
+- **治标（已可做）**：模型调用显式设 `maxOutputTokens`（如 8192+），长输出不再静默截断。
+- **治本（属压缩域，待做）**：截断检测 + 自动压缩后续写；输出预算随上下文自适应。
+- 方向应作为压缩系统的"输出侧"一等公民并入，而非补丁。
+
+---
+
+## 11. 外部参考与业界对标
+
+### 11.1 来源（2026-08-15 联网检索）
+
+- Anthropic 官方《Effective context engineering for AI agents》— https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+- MemGPT《Towards LLMs as Operating Systems》— https://arxiv.org/abs/2310.08560
+- 《Let Me Take This Outside：On the Importance of Externalization for Computation Offloading in LLM-Based Agents》— https://www.semanticscholar.org/search?q=%22Let%20Me%20Take%20This%20Outside%22%20externalization&sort=relevance
+
+### 11.2 学到的心智模型
+
+1. **上下文是有限资源 + context rot**：不只"塞不下"——上下文越长，模型召回精度越低（context rot）。目标是"最小高信号 token 集"，而非"塞进去就行"。→ 压缩动机 = 防溢出 + 保质量，故水位未满时就应主动介入（对应 §4.3 主动水位）。
+2. **compaction 与 tool result clearing 是两种机制**：
+   - compaction = 有损摘要（调 LLM，贵）；
+   - tool result clearing / context editing = 手术式定点删除旧工具输出（零成本）。
+   - 后者是最轻量优先手段（Anthropic 称 tool result clearing 为"最安全最轻量的压缩"）。对应我们的 value 阶梯（完整→截断→meta→evict）。
+3. **externalization / just-in-time retrieval**：上下文只留轻量指针（文件路径/查询/URL），运行时按需加载（`head`/`tail`/`grep` 渐进披露）。超大内容落盘 + 分片读，避免一次性加载撑爆窗口（→ 对应 §10.4.3 分片写）。
+4. **记忆分层（MemGPT）**：工作记忆（窗口）vs 长期记忆（外存/持久化笔记）。对应我们的 checkpoint + provenance 段（机器生成的行动日志，不靠 LLM 听话）。
+5. **sub-agent 架构**：每个子代理干净窗口，探索用几万 token 只回传 1-2k 浓缩摘要。与压缩正交的杠杆——压缩在同一窗口省，子代理给每个任务独立窗口（独立方向，非本文档范围）。
+
+### 11.3 对标表（业界概念 → TheThing 实现 → 差距）
+
+| 业界概念 | TheThing 实现 | 差距 |
+|---|---|---|
+| tool result clearing | value 阶梯（完整→截断→meta→evict）+ 跨消息预算 ✓ | — |
+| compaction | L1-L3 阶梯 + checkpoint + compaction view ✓ | — |
+| context rot / 主动水位 | §4.3 触发语义提前到水位线 ✓ | 输出侧质量监控缺失（§10 待做） |
+| externalization | outputs/ 移出 git（2026-08-15）；超大工具输出落盘已有雏形 | 超限自动落盘 + 分片读 未做 → §10.4.3 |
+| memory tiers | checkpoint + provenance 段 ✓ | — |
+| sub-agent | 独立方向 | 与压缩正交，另行评估 |
+
+---
+
+## 12. 历史档案（附录）
+
+> 本节为被合并/删除文档的归档。正文（§1-§11）是现行权威设计；本节保留历史与未实施草案，供追溯与未来评估。V1 的"四条不变式"现已是 §2.2 的现行原则，此处保留历史出处与事故由来。
+
+### 12.1 V1 架构（2026-07 已实施，原 context-compaction-architecture.md）
+
+压缩系统从"agent 的行动记忆"视角设计，而非"待压缩的 token 预算"。核心是**四条不变式**贯穿所有压缩路径（lifecycle / 确定性压缩 / 紧急 LLM 摘要 / checkpoint），保证压缩不破坏 agent 继续任务的能力。
+
+**历史教训**：2026-07-25 对话 A5j5lHn 暴露四个 bug（读循环、孤儿锚点、guard 误触发、摘要丢 provenance），都是"删了该删的 key"的变体。根因是 `extractMessageText` 把工具调用输入（key=provenance）和工具结果输出（value=内容）当同类 content 处理。修复：立 key/value 分离不变式。
+
+**四条不变式**（现行原则见 §2.2）：
+1. **感知-行动环不可断**：当前步（最近一次工具结果）永不 meta 化，超大改可见截断（保留头尾+省略标记+找回提示）。
+2. **key 永不被驱逐**：工具调用输入（toolName + input args）在所有压缩路径保留全文。只有工具结果输出（value）走降级阶梯。
+3. **语义类工具超大截断不 meta**：read_file / read_wiki_page 等模型主动要看的内容，超大时可见截断而非 meta 化。
+4. **读循环熔断**：同文件被读 ≥3 次 → 自动 pin，最新读取豁免压缩 + 遥测上报。
+
+**Layer 2: 工具输出生命周期管理（主力）**（`lifecycle.ts`，每步 API 调用前同步执行）。唯一预算分配器，按优先级花 token 预算，降级阶梯**只作用于 value**：
+```
+完整 value -> 可见截断(_truncated,头尾+省略标记) -> meta(_compacted,元信息+落盘) -> evict(台账记录)
+```
+决策优先级（高到低）：错误结果/小输出/pin 的最新读取 → 保留完整；当前步结果 → 永不 meta；同文件重复读的更早副本 → meta（去重）；超出最近 K step 且未被引用 → meta；边界内超大：语义类截断（不变式 3），瞬态类（bash/grep/web）meta + 落盘。
+
+**Layer 2.5: 确定性文本压缩**（`message-compressor.ts`）：`extractKeyInformation` 用 `extractActionLog`（非丢 key 的 `extractMessageText`）抽取文件路径/URL/命令，生成结构化摘要。保留首尾消息。
+
+**Layer 3: 紧急 LLM 摘要**（`emergency-summary.ts`）：摘要器输入用 `renderActionLog(extractActionLog(...))`——LLM 能看到 `web_fetch(url=...)`、`read_file(filePath=...)`，保得了 provenance。带重试 + fallback models。
+
+**降级兜底: 强制截断**：所有压缩失败时保留 15% 消息（首尾为主）。保证永不 413。
+
+**后台 Checkpoint（长期记忆）**（`checkpoint.ts` + `context-window.ts`）：运行结束后 `finalizeAgentRun` 异步触发，水位 >50% 生成摘要落库。摘要携带机器生成的 provenance 段（`renderKeysOnlyActionLog`），列清所有曾执行的工具调用。加载自愈 `selfHealOrphanedCheckpoint` 检测两种"无效 checkpoint"并强制重建（孤儿 anchor / 缺 provenance 段的旧格式）。超大消息 split 修复：单条 `msgTokens >= keepBudget` 时 `splitIndex = i+1`（该消息进 olderMessages 用摘要替换）。
+
+**数据流**：
+```
+用户消息 -> route.ts: applyCheckpointOnLoad(全量 activeMessages)
+Agent 运行 -> prepareStep -> sessionState.compact -> compactBeforeStep
+  [1] selfHealOrphanedCheckpoint -> [2] applyCompactionView
+  [3] manageToolOutputLifecycle -> [4] 预算检查 + applyEmergencyCompression
+  -> 发给模型
+运行结束 finalize: maybeCheckpointAfterRun -> generateAndPersistCheckpointSummary
+```
+
+**配置参数（V1，部分已被 §4.8 收敛）**：
+```typescript
+Lifecycle: { keepRecentSteps: 3, largeOutputThreshold: 8000,
+             compactableTools: null, protectedTools: new Set(), messageBudget: 100_000 }
+Checkpoint: { CHECKPOINT_TRIGGER_PERCENT: 0.5, CHECKPOINT_KEEP_PERCENT: 0.3,
+              MIN_KEEP_MESSAGES: 2, READ_LOOP_THRESHOLD: 3 }
+```
+
+**模型参与（闭环反馈）**：`context_pin` 工具（豁免压缩 / 释放 / 查询台账）；ContextLedger 台账不注入消息流（保 prompt cache）；遥测 `read_loop_detected` 等事件。
+
+**测试覆盖（沿用）**：`lifecycle.test.ts` / `compaction.test.ts` / `compaction-config-driven.test.ts`（Layer 2 + 不变式）、`value-aware.test.ts`（错误保护/去重/引用感知）、`read-loop-regression.test.ts`（事故复现）、`action-log.test.ts`（key/value 分离）、`checkpoint.test.ts`（自愈 + 超大消息 split）、`lifecycle-storage.test.ts`（落盘可找回）、`guaranteed-compaction.test.ts`（永不 413）。
+
+**历史演进**：
+- **2026-07-21 事故**：525k tokens 泄漏 + `msg.parts is not iterable` 崩溃。八层机制 + 濒死同步 LLM 摘要（66s 失败）。
+- **2026-07-23 重构**：删 Layer 1 / message-budget.ts / 同步 LLM 路径。统一消息格式（message-view.ts）。
+- **2026-07-25 读循环事故**（A5j5lHn）：SKILL.md(489行) 被 read_file 读取后 largeOutputThreshold 触发 tooLarge 把输出 meta 化，read_file 不落盘无法找回 → 模型连读 7 次（另一轮 31 次）→ 目标漂移、幻觉用户指令、谎报完成。根因：压缩切断感知-行动环 + key/value 不分。
+- **2026-07-25~26 根治（8 commits）**：感知-行动环保护 + 读循环熔断（`c42f48d`）；pre-existing 测试/tsc 修复（`a44bbcd`/`ecd6dca`）；孤儿锚点自愈（`1d0f6c6`）；route.ts 传全量修复 guard 误触发（`7b7ffad`）；key/value 不变式 + action-log 端到端（`4d461c0`）；旧格式摘要自愈（`582a050`）；超大消息 split 修复（`7056103`）。
+
+### 12.2 减负重构精华（原 compaction-refactoring-plan.md）
+
+大部分已并入正文（TTL 惰性化→§4.4；checkpoint 步数触发→§4.5；UI 水位→§4.8）。未吸收/已实施记录的要点：
+
+- **CompactionMeta**：`_compactedAt` 步数标记（`compactedAtCounter`）→ TTL 三级老化：age>20 替换为占位符 stub、>40 移除并 `ContextLedger.recordEviction`（供 `context_pin` 找回）。
+- **checkpoint 步数触发**：`CHECKPOINT_STEP_THRESHOLD=20`、`CHECKPOINT_COMPACTION_THRESHOLD=3`，水位判断改 OR（已并入 §4.5）。
+- **压缩可见性**：`CompactionUINotification` 事件（layer/messagesAffected/tokensSaved/strategy），UI 系统消息展示（已并入 §4.8 UI 水位）。
+- **成功度量**：核心文件 18→15；长对话 meta 碎片 O(n)~4000 → O(1)~500 tokens；checkpoint 触发率 <5%→100%（>20 步任务）。
+
+### 12.3 模型驱动压缩草案精华（原 model-driven-compaction-design.md，未实施）
+
+- **思路**：模型主动压缩（60-80% 水位）为 Layer 0，系统自动压缩（85%）兜底——混合模式。
+- **CompactContext 工具**：`strategy: compress_old_outputs | summarize_conversation | archive_files`；`target`（toolNames / filePatterns / messageRange）+ `reason`（审计）。输出含 `tokensFreed`、`newUsagePercent`。
+- **验证 5 规则（`validateCompactionRequest`）**：低水位（<50%）拒绝；不压缩最近 2 步（安全边界）；1 分钟内 ≤1 次压缩（防循环）；`summarize_conversation` 需 messageRange 且 ≥5 条消息；`archive_files` 禁核心源码（`src/**`、`*.ts` 等）。
+- **与 §4.7 的关系**：§4.7 已把 `compact_tool_result`（模型主动释放，V2 提议）列为 roadmap；本节 CompactContext 即该方向的设计细化。实施时以 §10/§4.7 的预算模型为准，勿叠加新机制。
 
 ---
 
 一句话总结：
 
 ```text
-降级策略已经对了，重构做四件事——
+输入侧：降级策略已经对了，重构做四件事——
 换一把对的标尺（估算地基 + 校准）、
 统一一本账（单一预算策略）、
 把动手时机从 100% 提前到水位线（触发语义）、
 让每步代价有界（增量扫描）。
+输出侧（§10）：把"写不完"并进同一预算模型——
+动态输出预留 + 截断检测 + 截断后续写。
 ```

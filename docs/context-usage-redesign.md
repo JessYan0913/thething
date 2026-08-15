@@ -1,9 +1,9 @@
-# 上下文用量展示重构方案
+# 上下文工程与用量展示重构方案
 
-> **状态**：实施指南（对应代码未动）
+> **状态**：实施指南 + 下一阶段设计（§2.4 / §14）。`state-tracker.ts` 与 `budget-schema.ts` 已落地（§3/§5），UI 端消费（SSE 全快照 / 四态机）未完成，见 §2.4 A3。
 > **前置文档**：[token-usage-architecture.md](./token-usage-architecture.md)（问题分析 + 历次修复演进）
-> **配套架构**：[context-compaction-architecture.md](./context-compaction-architecture.md)（压缩机制）
-> **目标**：3 个真相源严格分工、4 态显式状态机、单一 zod schema、可发布可回滚
+> **配套架构**：[compaction-redesign.md](./compaction-redesign.md)（上下文压缩唯一权威文档，含输出侧 §10 设计；本档 §14 为其 P0 实施计划）
+> **目标**：3 个真相源严格分工、4 态显式状态机、单一 zod schema、可发布可回滚 + 显示与引擎同源（§2.4）+ 输出侧 / 外部化 / 模型主动 / 精益化（§14）
 
 ---
 
@@ -67,6 +67,28 @@
 - `messagesTokens` / `instructionsTokens` / `toolsTokens` 详情条
 - `compactionTriggerWatermark` 作为展示字段（与 `triggerPercent` 重复）
 - `lastCompactionFreedTokens` 单步值（用 `totalFreed` 累计代替）
+
+### 2.4 显示准确性补强（引擎-显示同源，四项）
+
+> 状态：建议（与 v1 展示重构并行评估，改动量小、独立可发布）。这四项把 `utilizationPercent` 从"估算值"推向"引擎权威口径"，让圆环和压缩引擎看到同一个数。
+
+**现状数据流（已核实）**：`pipeline.ts` 每步 `estimateFullRequest` → `utilizationPercent = (messages+instructions+tools+outputReserve) / modelLimit × 100`（`token-counter.ts:364`）→ SSE 推 `usagePercentage`（`route.ts:516`）+ DB 写 `context_usage` → `Chat.tsx:1146` 圆环。
+
+**A1. 显示吃引擎权威口径（`totalTokensWithBuffer`），与触发/闸门同源**
+- 问题：压缩引擎决策用 `request-budget.ts` 的 `totalTokensWithBuffer`（含 usage 真值 EMA 校准的 tokenizerBuffer）；UI 圆环用未校准的 `utilizationPercent`。窗口越紧、估算偏差越大，UI 比引擎"看到的"偏低——用户看到的和系统实际判定不同源。
+- 改法：`estimation` 已暴露 `totalTokensWithBuffer`（`request-budget.ts:30`），圆环利用率改用 `totalTokensWithBuffer / modelLimit × 100`。对应 compaction-redesign §4.8"UI 水位从 policy 读"。
+
+**A2. 刻度与引擎行为对齐（画 trigger/hardLimit 标记）**
+- 问题：圆环分母是 `modelLimit`，100% ≠ 压缩触发点。引擎在 `triggerTokens = effectiveBudget − buffer`（128k 窗口约 80% 出头）就主动压缩，用户看到圆环还很空，实际已压缩——"危险区"与行为脱节。
+- 改法：`estimation` 已暴露 `triggerTokens / hardLimitTokens`（`request-budget.ts:34-36`）；圆环在 policy 刻度上画 trigger/hardLimit 标记（触发点、强制点），`triggerPercent` 已在 `CompactionSnapshotSchema`（§3.2）中，不新增展示字段。
+
+**A3. 四态机送到 UI（SSE 推全快照，不重建自旧字段）**
+- 问题：`state-tracker.ts`（idle/compacting/justCompacted）+ `budget-schema.ts`（含 `source: live|db-loaded`）已建，但 SSE 只推 `usagePercentage`，`ChatPage.tsx:13` 仍从旧 `context_usage` 字段重建快照——压缩中显示旧值、压缩后骤降无解释、历史载入分不清 live/过期。
+- 改法：SSE 推完整 `ContextBudgetSnapshot`（§6 已设计单一构造点）；圆环三态表达（compacting 显示"压缩中"、justCompacted 显示"已释放 X tokens"、overBudget 标红）；`source` 区分实时/历史，陈旧值不冒充当前值。
+
+**A4. provider 真值闭环到显示**
+- 问题：provider 每步返回 `usage.inputTokens` 是免费真值，当前只喂压缩决策的校准器（`usage-calibrator`），没喂显示。
+- 改法：有真值时显示真值占比（上一步真实 input 的窗口占比），请求之间无真值时显示校准估算——显示不依赖估算精度的运气。配套：分母 `modelLimit` 优先用 provider/ModelSpec 显式能力，避免 fallback 默认 128k（`capabilities.ts`；与 §13"多模型 contextLimit 切换"联动）。
 
 ---
 
@@ -759,6 +781,53 @@ rules:
 | i18n | 数字格式化、状态徽章文案 | P3 |
 | a11y | 圆环 aria 标签、颜色对比度 | P2 |
 
+> 其中"多模型 contextLimit 切换""真实 tokenizer"与 §2.4 A4 / §14.4 联动，实施时合并处理。
+
+---
+
+## 14. 下一阶段实施设计：输出侧 + 外部化 + 模型主动 + 精益化（P0-P3）
+
+> 状态：设计（📐 未实施）。设计权威：compaction-redesign.md §10（输出侧：问题定义/现状盘点/G7-9/机制设计/待调查/修复候选），本节为实施计划，不重复设计论证。业界对标见 compaction-redesign.md §11（Anthropic context engineering / MemGPT / "Let Me Take This Outside"）。
+> 这四件事是压缩系统"输入侧已闭环"后的下一阶段主线，与 §2-§10 展示重构共用同一预算口径（§2.4 A1/A2）。
+
+### 14.1 P0 — 输出侧落地（实施 compaction-redesign §10）
+
+> 设计权威：compaction-redesign.md §10。前置：§10.6 待调查①（`finishReason` 是否暴露 `length`）决定动作 1/2 可行性，**先验证信号再动工**。
+
+这是静默截断事故（conversation_id=`sKYk66c0Q3N5rc4EL-WIc`）的正解，也是 externalization 在输出侧的应用。四个动作：
+
+1. **显式 `max_tokens` + 截断检测**：模型调用显式设 `maxOutputTokens`；检测 `finishReason='length'` / 文本完整性启发式（断词/未闭合结构）→ 截断的 run **不 committed**（§10.4.2）。
+2. **截断后自动续写**：已产出文本（截至截断点）追加进上下文，显式要求模型"接续不重写"；上下文满则先压缩（§3-§9）再续（§10.4.3）。
+3. **动态 `outputReserve` 并入 `deriveBudget`**：`capabilities.ts:100` 的静态 `min(defaultOutputTokens, 20000)` 改为随窗口余量推导（`clamp(目标, minReserve, contextLimit−输入占用)`），参与 trigger/hardLimit 推导（§10.4.1 / §10.4.4；与 §2.4 A1 同源）。
+4. **输出侧分片写（"Let Me Take This Outside" 用于产出）**：长任务让模型增量落盘、上下文只留"进度指针 + 已写范围"，而不是一次生成完——从源头消灭"写不完"（§10.4.3；与 P1 分片读对称）。
+
+### 14.2 P1 — 外部化读回协议（补全 externalization 闭环）
+
+现状：输入侧"落盘"有了（`unified-output.ts` 超限 → 落盘 + 预览 + filepath），但**写端/读端不对称**——模型拿到 filepath 只能用 `read_file`（有大小限制会截断），没有针对已落盘产物的分片/检索读取。
+
+1. **范围/检索读取原语**：对持久化输出支持 `head/tail`、按行区间、`grep` 定位（渐进披露，对应 Anthropic 的 just-in-time retrieval）。
+2. **指针信息增强**：落盘时在上下文里给出**文件大小、行数、结构提示**，让模型先判断再决定加载多少。
+3. **落盘阈值与动态预算联动**：窗口越紧 → 更早落盘（对齐 P0 的动态 `outputReserve`，与 §2.4 A1 同一口径）。
+
+### 14.3 P2 — 模型主动参与压缩（MemGPT 事件驱动）
+
+把 roadmap 的 `compact_tool_result` / CompactContext（compaction-redesign §4.7、§12.3 已有完整设计）落地：
+
+1. 模型在"探索结束、进入实现"等节点**主动释放旧工具输出**（`compress_old_outputs`），而不是等系统 85% 兜底（§12.3 有 CompactContext 工具签名 + `validateCompactionRequest` 5 规则）。
+2. 结合 §4.7 的 `context_pin` 形成完整的**模型侧预算控制面**（pin 保留 + 主动释放）。
+
+### 14.4 P3 — 质量驱动的精益化（context rot）
+
+动机是**质量不是容量**——上下文越长召回越低（context rot），压缩不能只等触发。
+
+1. **即使未到 trigger**，长时间无压缩时按"年龄/引用深度"清理低信号旧输出（§4.3 触发语义的补充，不改变现有水位）。
+2. **压缩摘要加显式高召回保留类别**（决策 / 未决问题 / 下一步），对齐 Anthropic 的 "preserve decisions, unresolved bugs, next steps"——todos 已兜底"下一步"，摘要 prompt 显式声明这些类别。
+
+### 14.5 与展示重构的关系
+
+- **共用同一预算口径**：P0 动态 `outputReserve`、P1 落盘联动、显示 A1-A4 全部读 `estimation.totalTokensWithBuffer` 与 policy 刻度——显示层与引擎层不再两套数。
+- **实施顺序建议**：P0（先验证截断信号）→ A1/A2（显示先同源，改动小）→ P1 → P2 → P3 → A3/A4（四态机接 UI）。
+
 ---
 
 ## 附录 A：核心代码索引
@@ -781,11 +850,9 @@ rules:
 ## 附录 B：相关文档
 
 - [token-usage-architecture.md](./token-usage-architecture.md) — 历次修复演进 + 审计
-- [context-compaction-architecture.md](./context-compaction-architecture.md) — 压缩机制架构
-- [model-driven-compaction-design.md](./model-driven-compaction-design.md) — 模型驱动压缩
-- [compaction-refactoring-plan.md](./compaction-refactoring-plan.md) — 压缩重构计划
+- [compaction-redesign.md](./compaction-redesign.md) — 上下文压缩唯一权威文档（输入侧 + 输出侧 §10 + 历史档案 §12）
 
 ---
 
-**最后更新**：2026-08-05
-**对应代码状态**：未实施（本文档为实施指南）
+**最后更新**：2026-08-15
+**对应代码状态**：部分实施——`state-tracker.ts`（§3）与 `budget-schema.ts`（§5）已落地；SSE 全快照/四态机 UI 消费（§2.4 A3）与 §14 输出侧/外部化/模型主动/精益化未实施

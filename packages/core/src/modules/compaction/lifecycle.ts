@@ -7,11 +7,11 @@
 // 格式归一化：消息的双轨格式（UIMessage .parts / ModelMessage .content）
 // 已收敛到 message-view.ts 的 extractToolResultView / applyCompactionPatches
 // 两个函数中。本模块所有决策逻辑通过 ToolResultView 操作，完全格式无关。
-// 见 docs/context-compaction-architecture.md。
+// 见 docs/compaction-redesign.md
 //
 // 老化按 step 计数而非 user 轮数：agentic 场景下单个 user 轮内
 // 可能有上百次工具调用,按轮数计算时它们永不老化。
-// 见 docs/context-compaction-architecture.md A。
+// 见 docs/compaction-redesign.md
 //
 // 2026-07-25 读循环事故后收敛为唯一分配器 + 降级阶梯：
 //   完整 → 可见截断(_truncated,保留头尾+找回提示) → meta(_compacted)
@@ -19,7 +19,7 @@
 //   1. 感知-行动环不可断：当前步(最新一次工具结果)永不 meta 化,超大改可见截断
 //   2. 语义类工具(read_file 等"模型主动要看的内容")超大时截断而非 meta
 //   3. 读循环熔断：同文件被读 ≥3 次 → 自动 pin,最新读取保留完整
-// 见 docs/context-compaction-architecture.md。
+// 见 docs/compaction-redesign.md
 
 
 import {
@@ -647,7 +647,7 @@ function isResultCompactable(toolName: string, config: LifecycleConfig): boolean
 // ============================================================
 // Tool Meta Extractors
 // ============================================================
-// 设计要点(见 docs/context-compaction-architecture.md #1/#2):
+// 设计要点(见 docs/compaction-redesign.md §2.2 不变式 1/2):
 // 1. 键名使用工具的实际注册名(snake_case,见 agent/tools.ts),
 //    同时保留首字母大写别名(兼容 mcp_/connector_ 去前缀后的名字)。
 // 2. grep/glob/web_fetch 返回 JSON.stringify 后的字符串,先解析回对象。
@@ -879,7 +879,7 @@ function findLastToolResultIndex(views: ToolResultView[]): number {
 // ============================================================
 // manageCompaction 是压缩的唯一入口：Layer 2(value 降级) -> 估算 -> 按预算
 // 选档(确定性摘要 / LLM 摘要 / 强制截断)。不变式在入口统一强制,不再由
-// compactBeforeStep 编排多层独立 evictor。见 docs/compaction-road-to-excellent.md。
+// compactBeforeStep 编排多层独立 evictor。见 docs/compaction-redesign.md。
 
 export interface CompactionContext {
   model?: LanguageModelV3;

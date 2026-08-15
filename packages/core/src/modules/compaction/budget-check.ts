@@ -1,5 +1,5 @@
 // 简化版闸门：Agent 创建前检查预算，按优先级降级
-// 见 docs/context-compaction-architecture.md S6
+// 见 docs/compaction-redesign.md
 
 import type { Tool } from 'ai';
 

@@ -7,7 +7,7 @@ import { extractActionLog } from '../../action-log';
 
 // ============================================================
 // 性质测试:随机对话 + 不变式断言(防未知 bug,不只抓见过的)
-// 见 docs/compaction-road-to-excellent.md 差距二
+// 见 docs/compaction-redesign.md
 // ============================================================
 // 用 fast-check 生成随机 UIMessage 对话(随机工具/输入/输出大小/错误),
 // 跑 manageToolOutputLifecycle,断言四条不变式在所有随机场景下成立。

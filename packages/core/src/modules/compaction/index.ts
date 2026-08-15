@@ -4,7 +4,7 @@
 // compactBeforeStep：每步 API 调用前的上下文管理。
 // 编排简化为三步：selfHeal -> applyCompactionView -> manageCompaction(一次)。
 // 压缩决策（Layer 2 + 紧急压缩）收敛进 lifecycle.ts 的 manageCompaction
-// 统一分配器，不再由本文件编排多层。见 docs/compaction-road-to-excellent.md 差距一。
+// 统一分配器，不再由本文件编排多层。见 docs/compaction-redesign.md。
 // 上下文水位改为通过会话数据库字段传递，见 pipeline.ts。
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';

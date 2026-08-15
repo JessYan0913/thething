@@ -4,7 +4,7 @@ import { createBashTool } from '../bash';
 
 // ============================================================
 // 步骤 7 验收:bash 超 buffer 从杀进程改为落盘
-// 见 docs/context-compaction-architecture.md 步骤 7
+// 见 docs/compaction-redesign.md
 // ============================================================
 
 // 直接调用工具的 execute(走真实 defaultBashOperations / spawn)

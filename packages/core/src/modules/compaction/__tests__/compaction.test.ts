@@ -223,7 +223,7 @@ describe('manageToolOutputLifecycle', () => {
   });
 
   // ── 步骤 6 验收:单 user 轮内按 step 老化 ──
-  // 见 docs/context-compaction-architecture.md 步骤 6
+  // 见 docs/compaction-redesign.md
   it('ages tool outputs by step count within a single user turn', () => {
     // 单个 user 轮 + 50 次工具调用(每次输出 300 字符,低于 largeOutputThreshold)
     const messages: ModelMessage[] = [createUserMessage('One big agentic task')];
@@ -427,7 +427,7 @@ describe('manageToolOutputLifecycle (UIMessage .parts)', () => {
 // Tool Meta Extractors Tests
 // ============================================================
 // 用例覆盖内置工具的真实输出格式(输入回显、JSON 字符串),
-// 见 docs/context-compaction-architecture.md #1/#2。
+// 见 docs/compaction-redesign.md §2.2 不变式 1/2。
 describe('extractToolMeta', () => {
   // ── 注册名(snake_case)+ 真实输出格式:args 恒为 null 也要能提取 ──
 

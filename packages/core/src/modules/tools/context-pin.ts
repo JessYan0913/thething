@@ -10,7 +10,7 @@ import type { ContextLedger } from '../compaction/context-ledger';
  * - list: 查询上下文台账——哪些内容被压缩/截断了、如何找回、当前 pin 了什么
  *
  * 台账不注入消息流（避免每步破坏 prompt cache），按需查询。
- * 见 docs/context-compaction-architecture.md 读循环事故复盘。
+ * 见 docs/compaction-redesign.md §1.1 / §12.1 读循环事故复盘。
  */
 export function createContextPinTool(options: { ledger: ContextLedger }) {
   return tool({

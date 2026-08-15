@@ -7,7 +7,7 @@ import { createGlobTool } from '../glob';
 
 // ============================================================
 // 8.6 grep/glob 默认文本格式 + glob limit 降 + grep per-file 上限
-// 见 docs/context-compaction-architecture.md 步骤 8.6
+// 见 docs/compaction-redesign.md
 // ============================================================
 
 let dir: string;

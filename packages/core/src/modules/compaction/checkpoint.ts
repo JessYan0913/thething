@@ -8,7 +8,7 @@
 //
 // 安全前提:DB 始终保存全量历史(压缩只在内存中对模型请求生效)。
 // 因此本函数纯属叠加优化——锚点找不到 / 无摘要 / 任何异常,一律回退全量历史,
-// 绝不丢失消息。见 docs/context-compaction-architecture.md E。
+// 绝不丢失消息。见 docs/compaction-redesign.md
 
 import type { UIMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
@@ -233,7 +233,7 @@ export async function maybeCheckpointAfterRun(
 // 50% 水位线判断不出这个问题:Layer 2 meta 化后 in-memory token 变小,水位线以下
 // 不会生成新 checkpoint,孤儿一直存在。自愈在 compactBeforeStep(有 model 访问、
 // 首轮 API 调用前)检测孤儿 -> 强制重建 checkpoint -> 应用,用语义摘要替换污染 meta。
-// 见 docs/context-compaction-architecture.md 读循环事故复盘。
+// 见 docs/compaction-redesign.md §1.1 / §12.1 读循环事故复盘。
 
 /**
  * 检测并修复无效 checkpoint。有效时原样返回;无效时强制重建并应用。

@@ -3,8 +3,7 @@
 ## 核心架构
 
 ### 上下文管理
-- [context-compaction-architecture.md](./context-compaction-architecture.md) - 上下文压缩机制完整架构（四层保证 + 后台 Checkpoint）
-- [model-driven-compaction-design.md](./model-driven-compaction-design.md) - 模型驱动压缩设计（实验性功能）
+- [compaction-redesign.md](./compaction-redesign.md) - 上下文压缩唯一权威文档（输入侧塞得进 + 输出侧写不完 + 历史档案）
 - [token-usage-architecture.md](./token-usage-architecture.md) - Token 使用信息展示：问题分析与历次修复演进
 - [context-usage-redesign.md](./context-usage-redesign.md) - 上下文用量展示重构方案（三方真相源 + 4 态状态机 + 单一 zod schema）
 

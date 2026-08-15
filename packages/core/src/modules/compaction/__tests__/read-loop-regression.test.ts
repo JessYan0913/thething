@@ -11,7 +11,7 @@ import { ContextLedger } from '../context-ledger';
 // largeOutputThreshold(8000)触发 tooLarge 把输出 meta 化为 "Read X -> 489 lines"。
 // read_file 不落盘,模型永远看不到内容 -> 反复重读(实测 7 次/31 次) -> 目标漂移。
 // 修复:当前步结果豁免 meta(超大改可见截断)+ 读循环熔断(同文件读≥3 次自动 pin)。
-// 见 docs/context-compaction-architecture.md。
+// 见 docs/compaction-redesign.md
 
 function userMessage(text: string): ModelMessage {
   return { id: `u-${Math.random()}`, role: 'user', content: [{ type: 'text', text }] } as unknown as ModelMessage;

@@ -5,7 +5,7 @@
 // lifecycle/budget 用 /3.5、JSON 用 /2。且 /2.5 对中文严重低估
 // (中文约 1~1.5 字符/token,会低估近一半)→ 压缩触发过晚。
 // 本模块是唯一的字符级估算来源,所有系数集中在此。
-// 见 docs/context-compaction-architecture.md #5。
+// 见 docs/compaction-redesign.md
 
 /** 拉丁/ASCII 文本:约 4 字符/token */
 const LATIN_CHARS_PER_TOKEN = 4;

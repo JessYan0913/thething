@@ -6,7 +6,7 @@ import { DEFAULT_LIFECYCLE_CONFIG } from '../types';
 import { extractActionLog } from '../action-log';
 
 // ============================================================
-// 多场景不变式验证（见 docs/compaction-road-to-excellent.md 差距三）
+// 多场景不变式验证（见 docs/compaction-redesign.md）
 // ============================================================
 // 覆盖短/中/长 + 重跑孤儿场景,断言四条不变式在不同对话形态下成立。
 // 性质测试抓随机,场景测试抓"已知的 adversarial 形态"(大对话触发 Layer 2.5/3、

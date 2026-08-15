@@ -5,7 +5,7 @@ import { extractMessageText } from '../token-counter';
 
 // ============================================================
 // 步骤 3 验收：中文摘要验证 + 摘要消息格式
-// 见 docs/context-compaction-architecture.md 步骤 3
+// 见 docs/compaction-redesign.md
 // ============================================================
 
 function userMsg(text: string): ModelMessage {

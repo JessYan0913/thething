@@ -8,7 +8,7 @@
 // 本模块把对话显式拆成 (key, value) 对:key = 工具调用输入(工具名 + 参数,
 // 如 filePath/url/command),永不被截断;value = 工具结果输出,按 valueState 降级渲染。
 // 摘要器输入改用 renderActionLog,LLM 第一次能看到 provenance。
-// 见 docs/context-compaction-architecture.md + plans/eventual-roaming-breeze.md。
+// 见 docs/compaction-redesign.md + plans/eventual-roaming-breeze.md。
 
 import type { ModelMessage } from 'ai';
 import { getToolOutputString, unwrapOutput } from './message-utils';
@@ -128,7 +128,7 @@ export function extractActionLog(messages: ModelMessage[]): ActionLogEntry[] {
  * 把行动日志渲染成摘要器可读的文本。
  * **key(工具调用输入)永远全文**;value(输出)按 valueState + maxValueChars 限制。
  * 工具调用标注来源类型 [remote]/[local]/[transient],帮助模型判断"远程文件用 web_fetch 找回,
- * 本地文件用 read_file 找回",不再把远程文件当本地(见 docs/compaction-road-to-excellent.md 差距四)。
+ * 本地文件用 read_file 找回",不再把远程文件当本地(见 docs/compaction-redesign.md)。
  */
 export function renderActionLog(entries: ActionLogEntry[], opts?: { maxValueChars?: number }): string {
   const maxValueChars = opts?.maxValueChars ?? 800;

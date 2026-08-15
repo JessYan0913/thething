@@ -6,7 +6,7 @@
 //
 // 台账不注入消息流（避免每步破坏 prompt cache），模型通过
 // context_pin 工具的 list 动作按需查询。
-// 见 docs/context-compaction-architecture.md 读循环事故复盘。
+// 见 docs/compaction-redesign.md §1.1 / §12.1 读循环事故复盘。
 
 /** 单条压缩记录 */
 export interface CompactionRecord {

@@ -17,7 +17,7 @@ export class TokenBudgetTracker {
   private _lastCompactionTokens = 0;
   /** 触发压缩时的水位百分比 */
   private _compactionTriggerWatermark = 0;
-  // usage 反馈校准(见 docs/context-compaction-architecture.md F):
+  // usage 反馈校准(见 docs/compaction-redesign.md):
   // 实际 input tokens / 估算 tokens 的滑动平均,用于修正后续估算
   private _calibration = 1;
   private _pendingEstimate: number | null = null;

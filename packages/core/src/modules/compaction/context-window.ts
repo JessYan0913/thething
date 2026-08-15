@@ -1,6 +1,6 @@
 // 后台异步摘要生成。运行结束后 idle 时触发，失败无害。
 // 前台同步 LLM 摘要路径已删除——濒死时刻是最差的调 LLM 时机。
-// 见 docs/context-compaction-architecture.md
+// 见 docs/compaction-redesign.md
 
 import { generateText } from 'ai';
 

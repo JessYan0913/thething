@@ -10,7 +10,7 @@ import { getToolResultPath } from '../../budget/tool-result-storage';
 
 // ============================================================
 // 步骤 7 验收:Layer 2 压缩落盘可恢复
-// 见 docs/context-compaction-architecture.md 步骤 7
+// 见 docs/compaction-redesign.md
 // ============================================================
 
 function createUserMessage(text: string): ModelMessage {

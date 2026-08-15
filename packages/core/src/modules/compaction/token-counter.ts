@@ -97,7 +97,7 @@ export async function estimateMessageTokens(message: import('ai').ModelMessage, 
       tokens += await estimateTextTokens(content, modelName);
     } else if (Array.isArray(content)) {
       // ModelMessage 的 content 数组:统计 text / tool-call input / tool-result 三类
-      // 见 docs/context-compaction-architecture.md #2
+      // 见 docs/compaction-redesign.md
       const textChunks: string[] = [];
       for (const item of content) {
         const c = item as Record<string, unknown>;

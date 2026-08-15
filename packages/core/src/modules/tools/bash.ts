@@ -582,7 +582,7 @@ export function createBashTool(options: BashToolOptions) {
     },
 
     // 以纯文本形式发送给模型,避免 stdout/stderr 经 JSON 序列化时的转义开销。
-    // 结构化字段仍保留给 UI 渲染层。见 docs/context-compaction-architecture.md 三.A。
+    // 结构化字段仍保留给 UI 渲染层。见 docs/compaction-redesign.md
     toModelOutput: ({ output }) => {
       if (!output || typeof output !== 'object') {
         return { type: 'text' as const, value: '' };
