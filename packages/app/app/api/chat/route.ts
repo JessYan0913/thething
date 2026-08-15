@@ -181,6 +181,18 @@ export async function POST(request: Request) {
 
     // 检测未完成的 todo，让 Agent 感知到之前中断的任务
     const conversationTodos: Todo[] = store.todoStore.getTodosByConversation(conversationId);
+
+    // 恢复上次被中断的任务为 in_progress：停止时 reset-conversation 把它重置为 pending
+    // 并记 stopReason（todos/route.ts）。续做时恢复"正在执行"的状态信号，面板与模型
+    // 都能看到——只恢复最近被中断的一条，保持"单一 in_progress"纪律。
+    const interruptedTodo = conversationTodos
+      .filter((t: Todo) => t.status === 'pending' && t.metadata?.stopReason)
+      .sort((a: Todo, b: Todo) => b.updatedAt - a.updatedAt)[0];
+    if (interruptedTodo) {
+      store.todoStore.updateTodo({ id: interruptedTodo.id, status: 'in_progress' });
+      interruptedTodo.status = 'in_progress'; // 让下方过滤与 note 反映恢复后的状态
+    }
+
     const unfinishedTodos = conversationTodos.filter(
       (t: Todo) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed'
     );
