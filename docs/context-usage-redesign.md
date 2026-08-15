@@ -817,6 +817,9 @@ rules:
 1. 模型在"探索结束、进入实现"等节点**主动释放旧工具输出**（`compress_old_outputs`），而不是等系统 85% 兜底（§12.3 有 CompactContext 工具签名 + `validateCompactionRequest` 5 规则）。
 2. 结合 §4.7 的 `context_pin` 形成完整的**模型侧预算控制面**（pin 保留 + 主动释放）。
 
+> **MVP 已实施（2026-08-15）**：新增 `compact_context` 工具（`compact-context.ts`）。机制：工具只做**登记 + 校验**（`validateCompactionRequest`：低水位 <50% 拒绝 / 1 分钟限流 / summarize 暂不支持），实际压缩在下一步 `compactBeforeStep` 应用——收紧 `keepRecentSteps` 到 2 + 按 `toolNames` 过滤，**复用 `manageToolOutputLifecycle` 的 value 阶梯**（完整→meta→落盘可找回）。与 `context_pin`（保留）构成模型侧预算控制面。8 单测覆盖校验与登记。
+> 未做：`summarize_conversation`（摘要只在后台，P7）；`archive_files`。工具名取 `compact_context`（roadmap 里的 `compact_tool_result` 同义）。
+
 ### 14.4 P3 — 质量驱动的精益化（context rot）
 
 动机是**质量不是容量**——上下文越长召回越低（context rot），压缩不能只等触发。

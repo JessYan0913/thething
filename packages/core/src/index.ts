@@ -237,6 +237,10 @@ export {
   MAX_CONTINUATION_TOTAL_TOKENS,
   CONTINUATION_PROMPT,
   isOutputTruncated,
+  compactContextInputSchema,
+  validateCompactionRequest,
+  createCompactContextTool,
+  COMPACT_RATE_LIMIT_MS,
 } from './modules/compaction';
 
 // Todos

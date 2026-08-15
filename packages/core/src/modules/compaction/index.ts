@@ -11,7 +11,9 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
-import { manageCompaction } from './lifecycle';
+import { manageCompaction, manageToolOutputLifecycle } from './lifecycle';
+import type { LifecycleConfig } from '../../services/config/compaction-types';
+import type { CompactContextRequest } from './compact-context';
 import type { Tool } from 'ai';
 import { logger } from '../../primitives/logger';
 import { applyCompactionView } from './compaction-view';
@@ -49,9 +51,39 @@ export async function compactBeforeStep(
     ledger?: ContextLedger;
     /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
     compactionStep?: { current: number };
+    /** 模型主动压缩登记槽（compact_context 工具写入，本函数应用后清空） */
+    compactionRequestRef?: { current: CompactContextRequest | null };
   },
 ): Promise<import('ai').ModelMessage[]> {
   let current = messages;
+
+  // 模型主动压缩（P2）：模型通过 compact_context 登记后，下一步在此应用——
+  // 收紧最近保留（安全边界 2 步）+ 按工具过滤，复用 value 阶梯（完整→meta→落盘可找回）。
+  const requestRef = context.compactionRequestRef;
+  const pending = requestRef?.current;
+  if (requestRef && pending) {
+    requestRef.current = null;
+    const requestConfig: LifecycleConfig = {
+      ...config.lifecycle,
+      keepRecentSteps: Math.min(config.lifecycle.keepRecentSteps, 2),
+      compactableTools:
+        pending.toolNames && pending.toolNames.length > 0
+          ? new Set(pending.toolNames)
+          : config.lifecycle.compactableTools,
+    };
+    const modelDriven = manageToolOutputLifecycle(current, requestConfig, context.storage, {
+      ledger: context.ledger,
+      compactionStep: context.compactionStep,
+    });
+    if (modelDriven.tokensFreed > 0) {
+      logger.info(
+        'Compaction',
+        `[Model-driven] compact_context 释放 ${modelDriven.tokensFreed} tokens` +
+        `（${pending.toolNames && pending.toolNames.length > 0 ? pending.toolNames.join(',') : '全部可压缩'}；${pending.reason}）`,
+      );
+      current = modelDriven.messages;
+    }
+  }
 
   // 1. 孤儿锚点自愈（首轮 API 调用前，有 model 访问）
   if (context.dataStore && context.model) {
@@ -110,5 +142,12 @@ export { forceTruncateMessages } from './force-truncate';
 export { emergencySummarize } from './emergency-summary';
 export { fingerprintMessage } from './compaction-view';
 export { MAX_CONTINUATION_TOTAL_TOKENS, CONTINUATION_PROMPT, isOutputTruncated } from './output-continuation';
+export {
+  compactContextInputSchema,
+  validateCompactionRequest,
+  createCompactContextTool,
+  COMPACT_RATE_LIMIT_MS,
+  type CompactContextRequest,
+} from './compact-context';
 export { ContextLedger } from './context-ledger';
 export { extractActionLog, renderActionLog, renderKeysOnlyActionLog } from './action-log';

@@ -26,6 +26,7 @@ import { repairAskUserQuestionRawInput } from '../../modules/tools'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
+import { createCompactContextTool } from '../../modules/compaction/compact-context'
 import { DEFAULT_COMPACTION_CONFIG } from '../../modules/compaction/types'
 import type { AgentDefinition } from '../../modules/agent/types'
 import { resolveModelAlias, isInheritAlias } from '../../services/model/alias'
@@ -357,6 +358,13 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const finalTools = budgetCheck.adjustedTools ?? filteredTools
   const finalMessages = (budgetCheck.adjustedMessages ?? messagesWithAttachments) as UIMessage[]
 
+  // ── 模型主动压缩（P2）：compact_context 工具 → 登记槽 → prepareStep 应用 ──
+  const compactionRequestRef: { current: import('../../modules/compaction/compact-context').CompactContextRequest | null } = { current: null }
+  finalTools.compact_context = createCompactContextTool({
+    requestRef: compactionRequestRef,
+    getUtilizationPercent: () => sessionState.lastEstimation?.utilizationPercent ?? null,
+  })
+
   // ── 闸门：最终不变量验证 ──
   const { assertContextInvariant } = await import('../../modules/compaction/gate')
   const gateResult = await assertContextInvariant(
@@ -398,6 +406,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         // 上下文水位改为通过 updateContextBudget → 会话数据库传递，不再走 stream
         tools: filteredTools,
         instructions,
+        // 模型主动压缩登记槽（P2）
+        compactionRequestRef,
       })
       const tokensFreed = await estimateTokensDiff(msgs, afterResult)
       return {
