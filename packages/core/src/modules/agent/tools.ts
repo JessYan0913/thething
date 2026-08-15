@@ -170,6 +170,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     compactionConfig: config.compactionConfig,
     // 子 Agent 总 token 预算上限（经 stopWhen 用每步真实 usage 累计判断）
     maxTotalTokens: 200_000,
+    // 子 Agent 输出预算上限（父 Agent 穿下来的 outputTokens，缺省回落默认）
+    maxOutputTokens: config.maxOutputTokens,
   }
 
   // 3. 创建统一的 agent 工具

@@ -332,6 +332,7 @@ async function executeSingleTask(
       agentRegistry,
       compactionConfig: config.compactionConfig,
       maxTotalTokens: config.maxTotalTokens,
+      maxOutputTokens: config.maxOutputTokens,
     };
 
     // 路由决策

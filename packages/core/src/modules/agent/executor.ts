@@ -7,6 +7,7 @@ import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
 import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
+import { getDefaultOutputTokens } from '../../services/model/capabilities';
 
 // ============================================================
 // Helper Functions
@@ -114,6 +115,8 @@ export async function executeRoutedAgent(
       tools: context.parentTools,
       activeTools,
       stopWhen,
+      // 输出预算上限：父级穿下来的 outputTokens，缺省回落默认（防 thinking 挤爆输出静默截断）
+      maxOutputTokens: context.maxOutputTokens ?? getDefaultOutputTokens(),
       // Layer 2 压缩：每步 API 调用前将旧工具输出替换为结构化元信息
       ...(context.compactionConfig
         ? { prepareStep: createSubAgentPrepareStep(context.compactionConfig) }

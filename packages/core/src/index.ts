@@ -234,6 +234,9 @@ export {
   applyCheckpointOnLoad,
   CHECKPOINT_SUMMARY_ID_PREFIX,
   fingerprintMessage,
+  MAX_CONTINUATION_TOTAL_TOKENS,
+  CONTINUATION_PROMPT,
+  isOutputTruncated,
 } from './modules/compaction';
 
 // Todos

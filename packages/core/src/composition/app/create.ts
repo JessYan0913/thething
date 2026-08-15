@@ -14,6 +14,7 @@ import type { CreateAgentOptions, CreateAgentResult } from './types'
 import { resolveAgentConfig } from './resolve-agent-config'
 import { createSessionState } from '../../modules/session'
 import { createLanguageModel, createModelProvider } from '../../services/model'
+import { getModelOutputTokens } from '../../services/model/capabilities'
 import { createAgentPipeline, createDefaultStopConditions } from '../../modules/agent-control'
 import { catchAllApproval } from '../../modules/agent-control/tool-approval'
 import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-approval'
@@ -292,6 +293,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     parentMessages: messagesWithAttachments,
     // 子 Agent Layer 2 压缩配置（尊重 modules.compaction 开关）
     compactionConfig: modules.compaction ? compactionCfg : undefined,
+    // 子 Agent 输出预算上限（模型条目 outputTokens，缺省回落默认）
+    maxOutputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     cronStore: context.runtime.cronStore ?? undefined,
     tasksDir: context.runtime.tasksDir,
     userId,
@@ -489,6 +492,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     model: wrappedModel,
     instructions,
     tools: finalTools,
+    // 输出预算上限：模型条目声明了 outputTokens 时跟随，否则回落默认。
+    // 缺省时不设则 provider 用默认上限，thinking 模型推理 token 可能挤爆输出 → 静默截断。
+    maxOutputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     runtimeContext: approvalRuntimeContext,
     toolApproval: catchAllApproval as unknown as import('ai').ToolApprovalConfiguration<ChatToolsType, ApprovalRuntimeContext>,
     prepareStep: prepareStep as import('ai').PrepareStepFunction<ChatToolsType, ApprovalRuntimeContext>,

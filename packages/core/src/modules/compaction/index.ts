@@ -109,5 +109,6 @@ export { compressMessagesDeterministic } from './deterministic-compressor';
 export { forceTruncateMessages } from './force-truncate';
 export { emergencySummarize } from './emergency-summary';
 export { fingerprintMessage } from './compaction-view';
+export { MAX_CONTINUATION_TOTAL_TOKENS, CONTINUATION_PROMPT, isOutputTruncated } from './output-continuation';
 export { ContextLedger } from './context-ledger';
 export { extractActionLog, renderActionLog, renderKeysOnlyActionLog } from './action-log';

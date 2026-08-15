@@ -62,6 +62,7 @@ export async function executeAgentTask({
       agentRegistry,
       compactionConfig: config.compactionConfig,
       maxTotalTokens: config.maxTotalTokens,
+      maxOutputTokens: config.maxOutputTokens,
     };
 
     const routeDecision = resolveAgentRoute({ agentType, task }, context);

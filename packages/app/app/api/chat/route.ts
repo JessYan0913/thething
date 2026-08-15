@@ -11,6 +11,9 @@ import {
   applyCheckpointOnLoad,
   fingerprintMessage,
   sanitizeToolErrorInputs,
+  MAX_CONTINUATION_TOTAL_TOKENS,
+  CONTINUATION_PROMPT,
+  isOutputTruncated,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -350,12 +353,38 @@ export async function POST(request: Request) {
     // 本轮结果只是挂出一条孤儿分支，天然无害——无需依赖时序守卫。
     // 工厂形式：每次 createAgentUIStream 的输入消息数可能不同（context-length 重试会压缩消息），
     // 切片基准必须与实际传入的消息数一致，否则新增 assistant 消息会被切掉导致不保存。
-    const createOnEnd = (inputMessageCount: number, inputContinuation?: UIMessage) => async ({ messages: completedMessages }: { messages: UIMessage[] }) => {
-      try {
-        unregisterAbortController(conversationId, runId);
-        store.agentRunStore.completeRun(conversationId);
+    // ── 段执行结果（续写循环判定用）──
+    type SegmentOutcome = {
+      aborted: boolean;
+      truncated: boolean;
+      completedMessages: UIMessage[];
+      lastAssistant: UIMessage | undefined;
+      headMoved: boolean;
+      /** 本段累计输出 tokens（各 step 的 usage.outputTokens 之和），续写预算判定用 */
+      outputTokens: number;
+    };
 
-        let resultAnchorId = headMessageId;
+    // onEnd 回调：流结束时把新 assistant 消息挂到本轮消息（默认锚点）之后。
+    // 段感知（配合续写主循环）：
+    // - 中间截断段（finishReason='length' 且非最后段）→ 消息已落库，run 保持 running，等续写；
+    // - 末段截断（达续写上限）→ run 标记 failed(output_truncated) + 推 data-truncated（不按"完成"收尾）；
+    // - 正常完成 → committed/superseded + finalize；
+    // - 停止（isAborted）→ aborted（修复"停止后仍 committed"旧 bug）。
+    const createOnEnd = (
+      inputMessageCount: number,
+      inputContinuation: UIMessage | undefined,
+      outcome: SegmentOutcome,
+      resolveDone: () => void,
+      controller: ReadableStreamDefaultController<string>,
+      defaultAnchorId: string,
+      isFinalSegment: boolean,
+    ) => async ({ messages: completedMessages, isAborted, finishReason }: {
+      messages: UIMessage[];
+      isAborted?: boolean;
+      finishReason?: string;
+    }) => {
+      try {
+        let resultAnchorId = defaultAnchorId;
         let continuationUpdated = false;
         if (inputContinuation) {
           const completedContinuation = completedMessages[inputMessageCount - 1];
@@ -376,13 +405,23 @@ export async function POST(request: Request) {
           .slice(inputMessageCount)
           .filter((m) => m.role === 'assistant' && m.parts && m.parts.length > 0);
 
+        // SDK 未传 messageId 时返回的 assistant 消息 id 为空串：appendMessages 会
+        // 用 nanoid 兜底落库，但 outcome.lastAssistant.id 仍是 ""，续写段用它做锚点
+        // 会因 `"" ?? getHead()` 不回落而把消息插成孤儿 → head CAS 失败 → superseded。
+        // 先补上真实 id，保证落库 id 与 lastAssistant.id 一致。
+        for (const m of newAssistantMessages) {
+          if (!m.id) (m as { id: string }).id = nanoid();
+        }
+
         if (newAssistantMessages.length === 0 && !continuationUpdated) {
+          unregisterAbortController(conversationId, runId);
+          store.agentRunStore.completeRun(conversationId);
           store.conversationRunStore.finishRun(runId, { status: 'failed', error: 'No assistant messages produced' });
           console.warn(
             `[Chat API] Stream produced no valid assistant messages, skipping save.\n` +
             `  Conversation: ${conversationId}\n` +
-            `  Messages sent to LLM: ${finalMessages.length}\n` +
-            `  Message roles: ${finalMessages.map((m) => m.role).join(' → ')}`,
+            `  Messages sent to LLM: ${inputMessageCount}\n` +
+            `  Message roles: ${completedMessages.map((m) => m.role).join(' → ')}`,
           );
           return;
         }
@@ -419,6 +458,53 @@ export async function POST(request: Request) {
         const resultTipId = headMoved
           ? store.branchStore.getProjection(conversationId).activeTipId
           : newAssistantMessages.at(-1)?.id ?? null;
+
+        // 记录本段结果，供续写循环判定
+        outcome.completedMessages = completedMessages;
+        outcome.lastAssistant = newAssistantMessages.at(-1);
+        outcome.headMoved = headMoved;
+        const aborted = isAborted || abortController.signal.aborted;
+        const truncated = !aborted && isOutputTruncated(finishReason);
+        outcome.aborted = aborted;
+        outcome.truncated = truncated;
+
+        // 中间截断段：消息已落库，run 保持 running，续写循环再起一段。
+        // 不 unregister（停止要跨段生效）、不 finishRun、不 finalize。
+        if (truncated && !isFinalSegment) {
+          return;
+        }
+
+        // ── 终态收尾 ──
+        unregisterAbortController(conversationId, runId);
+        store.agentRunStore.completeRun(conversationId);
+
+        if (aborted) {
+          store.conversationRunStore.finishRun(runId, {
+            status: 'aborted',
+            error: 'Output stream aborted by user',
+          });
+          return;
+        }
+
+        if (truncated) {
+          // 达续写段数上限仍截断 → 不按"完成"收尾（复用 failed+error，零 schema 迁移），
+          // 半截答案不再进库当最终答案（静默截断事故的病根）。
+          store.conversationRunStore.finishRun(runId, {
+            status: 'failed',
+            error: 'output_truncated',
+          });
+          try {
+            controller.enqueue(JSON.stringify({
+              type: 'data-truncated',
+              id: `trunc-${runId}`,
+              data: { message: '输出被截断，自动续写未完成' },
+            }));
+          } catch {
+            // 不影响主流程
+          }
+          return;
+        }
+
         store.conversationRunStore.finishRun(runId, {
           status: headMoved ? 'committed' : 'superseded',
           resultTipId,
@@ -455,6 +541,8 @@ export async function POST(request: Request) {
           error: err instanceof Error ? err.message : String(err),
         });
         console.error('[Chat API] onFinish error:', err);
+      } finally {
+        resolveDone();
       }
     };
 
@@ -467,196 +555,220 @@ export async function POST(request: Request) {
         const stream = new ReadableStream<string>({
           start: async (controller) => {
             try {
-              let agentStream;
-              try {
-                // 设置压缩状态回调，将压缩开始/结束推送到前端
-                compactionCallbackRef.current = (compactionEvent) => {
+              // ── 段执行：创建 agent 流（含 context-length 压缩重试）→ 泵到 controller → 等 onEnd 落库 ──
+              const runStreamSegment = async (
+                segmentMessages: UIMessage[],
+                inputContinuation: UIMessage | undefined,
+                defaultAnchorId: string,
+                isFinalSegment: boolean,
+              ): Promise<SegmentOutcome & { controllerClosed: boolean }> => {
+                let resolveDone!: () => void;
+                const done = new Promise<void>((resolve) => { resolveDone = resolve; });
+                const outcome: SegmentOutcome = {
+                  aborted: false,
+                  truncated: false,
+                  completedMessages: [],
+                  lastAssistant: undefined,
+                  headMoved: false,
+                  outputTokens: 0,
+                };
+
+                const pushContextUsage = (stepEvent: { usage?: import('ai').LanguageModelUsage }) => {
+                  if (!stepEvent.usage) return;
+                  outcome.outputTokens += stepEvent.usage.outputTokens ?? 0;
+                  sessionState.tokenBudget.accumulate(stepEvent.usage);
+                  const payload = safeBuildContextBudgetPayload({
+                    lastEstimation: sessionState.lastEstimation,
+                    compactionTracker: sessionState.compactionTracker,
+                    costTracker: sessionState.costTracker,
+                    source: 'live',
+                  });
+                  if (!payload) return;
                   try {
                     controller.enqueue(JSON.stringify({
-                      type: 'data-compaction-status',
-                      id: `compaction-${compactionEvent.status}-${Date.now()}`,
-                      data: compactionEvent,
+                      type: 'data-context-usage',
+                      id: 'ctx-on-step-end',
+                      data: {
+                        // === 新 schema（阶段 0/1 推送，UI 阶段 2 切）===
+                        ...payload,
+                        // === 旧字段（保留兼容，阶段 3 删除）===
+                        usagePercentage: payload.utilizationPercent,
+                        totalTokens: payload.totalTokens,
+                        modelLimit: payload.modelLimit,
+                        messagesTokens: payload.totalTokens,  // 旧字段无对应，用 total 占位
+                        instructionsTokens: undefined,
+                        toolsTokens: undefined,
+                        outputReserve: undefined,
+                        sessionInputTokens: payload.sessionCost.inputTokens,
+                        sessionOutputTokens: payload.sessionCost.outputTokens,
+                        sessionCachedReadTokens: payload.sessionCost.cachedReadTokens,
+                        lastCompactionFreedTokens: payload.compaction.totalFreed,
+                        compactionActive: payload.compaction.compactionsCount > 0,
+                        compactionTriggerWatermark: payload.compaction.triggerPercent * 100,
+                      },
                     }));
                   } catch {
                     // 不影响主流程
                   }
+                  try {
+                    sessionState.updateContextBudget?.({
+                      utilizationPercent: payload.utilizationPercent,
+                      totalTokens: payload.totalTokens,
+                      modelLimit: payload.modelLimit,
+                      messagesTokens: undefined,
+                      instructionsTokens: undefined,
+                      toolsTokens: undefined,
+                      outputReserve: undefined,
+                      cachedReadTokens: payload.sessionCost.cachedReadTokens,
+                      stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
+                      lastCompactionFreedTokens: payload.compaction.totalFreed,
+                      compactionActive: payload.compaction.compactionsCount > 0,
+                      sessionInputTokens: payload.sessionCost.inputTokens,
+                      sessionOutputTokens: payload.sessionCost.outputTokens,
+                      sessionCostUsd: payload.sessionCost.totalCostUsd,
+                    });
+                  } catch {
+                    // 不影响主流程
+                  }
                 };
-                agentStream = await createAgentUIStream({
-                  agent,
-                  uiMessages: finalMessages,
-                  abortSignal: abortController.signal,
-                  sendReasoning: true,
-                  onError: agentStreamOnError,
-                  onEnd: createOnEnd(
-                    finalMessages.length,
-                    isAssistantContinuation ? finalMessages.at(-1) : undefined,
-                  ),
-                  // onStepEnd 在 finish-step chunk 之前触发，直接入流
-                  onStepEnd: (stepEvent) => {
-                    if (stepEvent.usage) {
-                      sessionState.tokenBudget.accumulate(stepEvent.usage);
-                      const summary = sessionState.tokenBudget.getSummary();
-                      // 单一构造点：buildContextBudgetPayload 永远不发脏数据
-                      const payload = safeBuildContextBudgetPayload({
-                        lastEstimation: sessionState.lastEstimation,
-                        compactionTracker: sessionState.compactionTracker,
-                        costTracker: sessionState.costTracker,
-                        source: 'live',
+
+                let agentStream;
+                try {
+                  agentStream = await createAgentUIStream({
+                    agent,
+                    uiMessages: segmentMessages,
+                    abortSignal: abortController.signal,
+                    sendReasoning: true,
+                    onError: agentStreamOnError,
+                    onEnd: createOnEnd(
+                      segmentMessages.length,
+                      inputContinuation,
+                      outcome,
+                      resolveDone,
+                      controller,
+                      defaultAnchorId,
+                      isFinalSegment,
+                    ),
+                    // onStepEnd 在 finish-step chunk 之前触发，直接入流
+                    onStepEnd: pushContextUsage,
+                  });
+                } catch (streamErr) {
+                  // context_length_error：压缩消息后重试
+                  if (isContextLengthError(streamErr)) {
+                    console.warn(`[Chat API] Context length error, attempting reactive retry for ${conversationId}`);
+                    try {
+                      const retryResult = await handleReactiveRetry(
+                        streamErr,
+                        segmentMessages as unknown as ModelMessage[],
+                        undefined, // 使用默认 compaction config
+                        {
+                          model: model!,
+                          modelName: chatModelConfig.modelName || '',
+                          conversationId,
+                          dataStore: store,
+                          contextLimit: chatModelConfig.contextLimit,
+                        },
+                      );
+                      console.log(`[Chat API] Reactive retry: compressed ${segmentMessages.length} → ${retryResult.messages.length} messages`);
+                      agentStream = await createAgentUIStream({
+                        agent,
+                        uiMessages: retryResult.messages,
+                        abortSignal: abortController.signal,
+                        sendReasoning: true,
+                        onError: agentStreamOnError,
+                        onEnd: createOnEnd(
+                          retryResult.messages.length,
+                          inputContinuation,
+                          outcome,
+                          resolveDone,
+                          controller,
+                          defaultAnchorId,
+                          isFinalSegment,
+                        ),
+                        onStepEnd: pushContextUsage,
                       });
-                      if (payload) {
-                        // 推 SSE：合并新 schema 字段 + 旧字段（UI 渐进切换）
-                        try {
-                          controller.enqueue(JSON.stringify({
-                            type: 'data-context-usage',
-                            id: 'ctx-on-step-end',
-                            data: {
-                              // === 新 schema（阶段 0/1 推送，UI 阶段 2 切）===
-                              ...payload,
-                              // === 旧字段（保留兼容，阶段 3 删除）===
-                              usagePercentage: payload.utilizationPercent,
-                              totalTokens: payload.totalTokens,
-                              modelLimit: payload.modelLimit,
-                              messagesTokens: payload.totalTokens,  // 旧字段无对应，用 total 占位
-                              instructionsTokens: undefined,
-                              toolsTokens: undefined,
-                              outputReserve: undefined,
-                              sessionInputTokens: payload.sessionCost.inputTokens,
-                              sessionOutputTokens: payload.sessionCost.outputTokens,
-                              sessionCachedReadTokens: payload.sessionCost.cachedReadTokens,
-                              lastCompactionFreedTokens: payload.compaction.totalFreed,
-                              compactionActive: payload.compaction.compactionsCount > 0,
-                              compactionTriggerWatermark: payload.compaction.triggerPercent * 100,
-                            },
-                          }));
-                        } catch {
-                          // 不影响主流程
-                        }
-                        // 写 DB（实际值）。仍走旧 updateContextBudget 路径，阶段 3 切新。
-                        try {
-                          sessionState.updateContextBudget?.({
-                            utilizationPercent: payload.utilizationPercent,
-                            totalTokens: payload.totalTokens,
-                            modelLimit: payload.modelLimit,
-                            messagesTokens: undefined,
-                            instructionsTokens: undefined,
-                            toolsTokens: undefined,
-                            outputReserve: undefined,
-                            cachedReadTokens: payload.sessionCost.cachedReadTokens,
-                            stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
-                            lastCompactionFreedTokens: payload.compaction.totalFreed,
-                            compactionActive: payload.compaction.compactionsCount > 0,
-                            sessionInputTokens: payload.sessionCost.inputTokens,
-                            sessionOutputTokens: payload.sessionCost.outputTokens,
-                            sessionCostUsd: payload.sessionCost.totalCostUsd,
-                          });
-                        } catch {
-                          // 不影响主流程
-                        }
+                    } catch (retryErr) {
+                      console.error('[Chat API] Reactive retry failed:', retryErr);
+                      resolveDone();
+                      throw streamErr; // 重试也失败，抛出原始错误
+                    }
+                  } else {
+                    resolveDone();
+                    throw streamErr; // 非 context_length_error，直接抛出
+                  }
+                }
+
+                // 读取代理流并序列化为 JSON 字符串后发送到控制器
+                const reader = agentStream.getReader();
+                let agentChunkCount = 0;
+                // 用户 /stop 会先关闭 controller;后续 enqueue 抛 ERR_INVALID_STATE
+                // 属预期竞态,标记后静默收尾,不能再走 controller.error(二次抛错)
+                let controllerClosed = false;
+                try {
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const serialized = JSON.stringify(value);
+                    try {
+                      controller.enqueue(serialized);
+                    } catch (enqueueErr) {
+                      if ((enqueueErr as { code?: string })?.code === 'ERR_INVALID_STATE') {
+                        controllerClosed = true;
+                        console.log(`[Chat API] Controller closed by stop after ${agentChunkCount} chunks, draining agent stream`);
+                        break;
+                      }
+                      throw enqueueErr;
+                    }
+                    agentChunkCount++;
+
+                    // 每步完成后推送任务清单
+                    if (value.type === 'finish-step' && conversationId) {
+                      try {
+                        const todos = store.todoStore.getTodosByConversation(conversationId);
+                        controller.enqueue(JSON.stringify({
+                          type: 'data-todo-update',
+                          id: `todo-step-${agentChunkCount}`,
+                          data: { todos },
+                        }));
+                      } catch {
+                        // 不影响主流程
                       }
                     }
-                  },
-                });
-              } catch (streamErr) {
-                // context_length_error：压缩消息后重试
-                if (isContextLengthError(streamErr)) {
-                  console.warn(`[Chat API] Context length error, attempting reactive retry for ${conversationId}`);
-                  try {
-                    const retryResult = await handleReactiveRetry(
-                      streamErr,
-                      finalMessages as unknown as ModelMessage[],
-                      undefined, // 使用默认 compaction config
-                      {
-                        model: model!,
-                        modelName: chatModelConfig.modelName || '',
-                        conversationId,
-                        dataStore: store,
-                        contextLimit: chatModelConfig.contextLimit,
-                      },
-                    );
-                    console.log(`[Chat API] Reactive retry: compressed ${finalMessages.length} → ${retryResult.messages.length} messages`);
-                    agentStream = await createAgentUIStream({
-                      agent,
-                      uiMessages: retryResult.messages,
-                      abortSignal: abortController.signal,
-                      sendReasoning: true,
-                      onError: agentStreamOnError,
-                      onEnd: createOnEnd(
-                        retryResult.messages.length,
-                        isAssistantContinuation ? finalMessages.at(-1) : undefined,
-                      ),
-                      onStepEnd: (stepEvent) => {
-                        if (stepEvent.usage) {
-                          sessionState.tokenBudget.accumulate(stepEvent.usage);
-                          const payload = safeBuildContextBudgetPayload({
-                            lastEstimation: sessionState.lastEstimation,
-                            compactionTracker: sessionState.compactionTracker,
-                            costTracker: sessionState.costTracker,
-                            source: 'live',
-                          });
-                          if (payload) {
-                            try {
-                              controller.enqueue(JSON.stringify({
-                                type: 'data-context-usage',
-                                id: 'ctx-on-step-end',
-                                data: {
-                                  ...payload,
-                                  usagePercentage: payload.utilizationPercent,
-                                  totalTokens: payload.totalTokens,
-                                  modelLimit: payload.modelLimit,
-                                  messagesTokens: payload.totalTokens,
-                                  instructionsTokens: undefined,
-                                  toolsTokens: undefined,
-                                  outputReserve: undefined,
-                                  sessionInputTokens: payload.sessionCost.inputTokens,
-                                  sessionOutputTokens: payload.sessionCost.outputTokens,
-                                  sessionCachedReadTokens: payload.sessionCost.cachedReadTokens,
-                                  lastCompactionFreedTokens: payload.compaction.totalFreed,
-                                  compactionActive: payload.compaction.compactionsCount > 0,
-                                  compactionTriggerWatermark: payload.compaction.triggerPercent * 100,
-                                },
-                              }));
-                            } catch {}
-                            try {
-                              sessionState.updateContextBudget?.({
-                                utilizationPercent: payload.utilizationPercent,
-                                totalTokens: payload.totalTokens,
-                                modelLimit: payload.modelLimit,
-                                messagesTokens: undefined,
-                                instructionsTokens: undefined,
-                                toolsTokens: undefined,
-                                outputReserve: undefined,
-                                cachedReadTokens: payload.sessionCost.cachedReadTokens,
-                                stepInputTokens: sessionState.tokenBudget.lastStepInputTokens,
-                                lastCompactionFreedTokens: payload.compaction.totalFreed,
-                                compactionActive: payload.compaction.compactionsCount > 0,
-                                sessionInputTokens: payload.sessionCost.inputTokens,
-                                sessionOutputTokens: payload.sessionCost.outputTokens,
-                                sessionCostUsd: payload.sessionCost.totalCostUsd,
-                              });
-                            } catch {}
-                        }
-                      }
-                    },
-                  });
-                  } catch (retryErr) {
-                    console.error('[Chat API] Reactive retry failed:', retryErr);
-                    throw streamErr; // 重试也失败，抛出原始错误
                   }
-                } else {
-                  throw streamErr; // 非 context_length_error，直接抛出
+                } catch (agentErr) {
+                  console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
                 }
-              }
 
-              // 读取代理流并序列化为 JSON 字符串后发送到控制器
-              const reader = agentStream.getReader();
-              let agentChunkCount = 0;
-              // 用户 /stop 会先关闭 controller;后续 enqueue 抛 ERR_INVALID_STATE
-              // 属预期竞态,标记后静默收尾,不能再走 controller.error(二次抛错)
-              let controllerClosed = false;
+                // 等 onEnd 完成落库（finishReason 只在 onEnd 里可靠拿到）
+                await done;
+                return { ...outcome, controllerClosed };
+              };
+
+              // 设置压缩状态回调，将压缩开始/结束推送到前端（跨续写段全程生效）
+              compactionCallbackRef.current = (compactionEvent) => {
+                try {
+                  controller.enqueue(JSON.stringify({
+                    type: 'data-compaction-status',
+                    id: `compaction-${compactionEvent.status}-${Date.now()}`,
+                    data: compactionEvent,
+                  }));
+                } catch {
+                  // 不影响主流程
+                }
+              };
+
+              // ── 续写主循环：正常一段收尾；截断则带"接续不重写"user 消息再起一段 ──
+              // 直到写完 / 累计输出预算用尽 / 用户停止。run 全程保持 running，真正完成才 committed。
+              // 不设段数上限（不限制长输出能写多少）；预算只是成本护栏，防病态死循环烧钱。
+              let segmentMessages = finalMessages;
+              let inputContinuation: UIMessage | undefined = isAssistantContinuation ? finalMessages.at(-1) : undefined;
+              let defaultAnchorId = headMessageId;
+              let truncatedAny = false;
+              let anyControllerClosed = false;
+              let totalContinuationTokens = 0;
 
               // 每 5s 推一次 keep-alive ping，防止代理/负载均衡因空闲超时切断 SSE 连接
               const keepAliveTimer = setInterval(() => {
-                if (controllerClosed) return;
                 try {
                   controller.enqueue(JSON.stringify({ type: 'data-ping', id: `ping-${Date.now()}`, data: {} }));
                 } catch {
@@ -664,45 +776,33 @@ export async function POST(request: Request) {
                 }
               }, 5_000);
 
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  const serialized = JSON.stringify(value);
-                  try {
-                    controller.enqueue(serialized);
-                  } catch (enqueueErr) {
-                    if ((enqueueErr as { code?: string })?.code === 'ERR_INVALID_STATE') {
-                      controllerClosed = true;
-                      console.log(`[Chat API] Controller closed by stop after ${agentChunkCount} chunks, draining agent stream`);
-                      break;
-                    }
-                    throw enqueueErr;
-                  }
-                  agentChunkCount++;
-
-                  // 每步完成后推送任务清单
-                  if (value.type === 'finish-step' && conversationId) {
-                    try {
-                      const todos = store.todoStore.getTodosByConversation(conversationId);
-                      controller.enqueue(JSON.stringify({
-                        type: 'data-todo-update',
-                        id: `todo-step-${agentChunkCount}`,
-                        data: { todos },
-                      }));
-                    } catch {
-                      // 不影响主流程
-                    }
-                  }
-                }
-              } catch (agentErr) {
-                console.error('[Chat API] Agent stream read error after', agentChunkCount, 'chunks:', agentErr);
+              for (let seg = 0; ; seg++) {
+                // 预算用尽后这一段是最后一次机会：仍截断则标记 output_truncated
+                const isFinalSegment = totalContinuationTokens >= MAX_CONTINUATION_TOTAL_TOKENS;
+                const outcome = await runStreamSegment(segmentMessages, inputContinuation, defaultAnchorId, isFinalSegment);
+                totalContinuationTokens += outcome.outputTokens;
+                if (outcome.controllerClosed) { anyControllerClosed = true; break; }   // 停止 → 已打断
+                if (outcome.aborted) break;                                            // onEnd 已 finishRun aborted
+                if (!outcome.truncated) break;                                         // 正常完成（onEnd 已 committed + finalize）
+                truncatedAny = true;
+                if (isFinalSegment) break;                                             // 预算用尽仍截断（onEnd 已 finishRun failed output_truncated + 推 data-truncated）
+                // 准备续写：已产出消息已落库，追加"接续不重写"user 消息，下一段从该位置继续
+                const lastAssistant = outcome.lastAssistant;
+                if (!lastAssistant) break;                                             // 无产出可续，按当前状态收尾
+                segmentMessages = [
+                  ...outcome.completedMessages,
+                  { role: 'user', id: `cont-${runId}-${seg}`, parts: [{ type: 'text', text: CONTINUATION_PROMPT }] } as UIMessage,
+                ];
+                inputContinuation = undefined;
+                defaultAnchorId = lastAssistant.id;
+                console.log(`[Chat API] Output truncated, auto-continuing (segment ${seg + 1}, total out ${totalContinuationTokens} tokens)`);
               }
+
               clearInterval(keepAliveTimer);
-              console.log('[Chat API] Agent stream complete, total chunks:', agentChunkCount);
+              console.log(`[Chat API] Agent stream complete (truncated=${truncatedAny})`);
               // 清理压缩状态回调
               compactionCallbackRef.current = null;
-              if (!controllerClosed) {
+              if (!anyControllerClosed) {
                 try {
                   controller.close();
                 } catch {

@@ -37,6 +37,7 @@ export async function PUT(request: NextRequest) {
                 .map((m) => ({
                   id: String(m.id).trim(),
                   ...(m.contextLimit ? { contextLimit: Number(m.contextLimit) } : {}),
+                  ...(m.outputTokens ? { outputTokens: Number(m.outputTokens) } : {}),
                 }))
             : [],
         }))

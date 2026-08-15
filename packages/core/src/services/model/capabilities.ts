@@ -76,6 +76,18 @@ export function getDefaultOutputTokens(outputOverride?: number): number {
 }
 
 /**
+ * 按模型条目解析输出预算上限（传给 provider 的 max_tokens）。
+ * 模型条目声明了 outputTokens 时跟随；否则回落默认输出上限。
+ */
+export function getModelOutputTokens(
+  modelName?: string,
+  models?: Array<{ id: string; outputTokens?: number }>,
+): number {
+  const entry = models?.find((m) => m.id === modelName);
+  return entry?.outputTokens ?? getDefaultOutputTokens();
+}
+
+/**
  * 获取模型能力配置
  */
 export function getModelCapabilities(
