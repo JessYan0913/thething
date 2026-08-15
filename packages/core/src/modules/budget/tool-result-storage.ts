@@ -106,6 +106,7 @@ export async function persistToolResult(
   return {
     filepath,
     originalSize: content.length,
+    lineCount: content.split('\n').length,
     preview,
     hasMore,
   }
@@ -157,12 +158,14 @@ export function generatePreview(
  */
 export function buildPersistedOutputMessage(result: PersistedToolResult, isTemporary: boolean = false, sessionConfig?: ToolOutputConfig): string {
   let message = `${PERSISTED_OUTPUT_TAG}\n`
-  message += `Output size: ${formatSize(result.originalSize)}.\n`
+  message += `Output size: ${formatSize(result.originalSize)} · ${result.lineCount} lines.\n`
   message += `Full output saved to: ${result.filepath}\n`
   if (isTemporary) {
     message += `\nNote: This is a temporary file. Copy it if you need to keep it.\n`
   } else {
-    message += `\nYou can read the complete output using the read_file tool.\n`
+    message += `\nUse read_file with offset/limit to read specific line ranges in chunks ` +
+      `(progressive disclosure), or use grep on the file to locate relevant content first. ` +
+      `Read the full file only if you need it all.\n`
   }
   message += `\nPreview (first ${formatSize(getPreviewSizeLimit(sessionConfig))}):\n`
   message += result.preview

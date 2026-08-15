@@ -112,6 +112,7 @@ describe('tool-result-storage', () => {
     const message = buildPersistedOutputMessage({
       filepath: '/tmp/result.txt',
       originalSize: 10_000,
+      lineCount: 200,
       preview: 'preview',
       hasMore: true,
     }, false, { maxResultSizeChars: 1_000, previewSizeChars: 500 });

@@ -331,7 +331,7 @@ function buildTruncationPatch(
     const isJson =
       tr.outputRaw.trim().startsWith('{') || tr.outputRaw.trim().startsWith('[');
     const filepath = getToolResultPath(tr.toolCallId, storage.sessionId, storage.dataDir, isJson);
-    recoveryHint = `[Full output saved to: ${filepath} — use read_file to recover]`;
+    recoveryHint = `[Full output saved to: ${filepath} (${tr.outputRaw.split('\n').length} lines) — use read_file with offset/limit to recover]`;
     recovery = filepath;
     persistTasks.push(
       persistToolResult(tr.outputRaw, tr.toolCallId, storage.sessionId, storage.dataDir)

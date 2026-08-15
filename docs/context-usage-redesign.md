@@ -806,9 +806,9 @@ rules:
 
 现状：输入侧"落盘"有了（`unified-output.ts` 超限 → 落盘 + 预览 + filepath），但**写端/读端不对称**——模型拿到 filepath 只能用 `read_file`（有大小限制会截断），没有针对已落盘产物的分片/检索读取。
 
-1. **范围/检索读取原语**：对持久化输出支持 `head/tail`、按行区间、`grep` 定位（渐进披露，对应 Anthropic 的 just-in-time retrieval）。
-2. **指针信息增强**：落盘时在上下文里给出**文件大小、行数、结构提示**，让模型先判断再决定加载多少。
-3. **落盘阈值与动态预算联动**：窗口越紧 → 更早落盘（对齐 P0 的动态 `outputReserve`，与 §2.4 A1 同一口径）。
+1. **范围/检索读取原语**：对持久化输出支持 `head/tail`、按行区间、`grep` 定位（渐进披露，对应 Anthropic 的 just-in-time retrieval）。✅ **已有**：`read_file` 支持 offset/limit + nextOffset/hasMore（按行区间），grep 可定位——原语不缺。
+2. **指针信息增强**：落盘时在上下文里给出**文件大小、行数、结构提示**，让模型先判断再决定加载多少。✅ **已实施（2026-08-15）**：`buildPersistedOutputMessage` 加行数 + "read_file offset/limit 分片读 / grep 定位 / 只有需要时才读全"指引；lifecycle 压缩落盘 recoveryHint 同步加行数。
+3. **落盘阈值与动态预算联动**：窗口越紧 → 更早落盘（对齐 P0 的动态 `outputReserve`，与 §2.4 A1 同一口径）。⏸ **后续项**：需把 session 预算水位穿进低层工具输出 hook（`unifiedToolOutputHook` 的调用方 = connector/mcp 工具适配器），级联大、价值相对小，暂缓。
 
 ### 14.3 P2 — 模型主动参与压缩（MemGPT 事件驱动）
 

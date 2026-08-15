@@ -33,6 +33,8 @@ export interface ToolOutputConfig {
 export interface PersistedToolResult {
   filepath: string
   originalSize: number
+  /** 总行数——指针里给模型，决定分片读取的步长（渐进披露） */
+  lineCount: number
   preview: string
   hasMore: boolean
 }
