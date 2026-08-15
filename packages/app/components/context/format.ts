@@ -62,9 +62,13 @@ export interface DetailRow {
 }
 
 export function buildDetailRows(snapshot: ContextBudgetSnapshot): DetailRow[] {
+  // A1 显示同源：详情面板与圆环用同一口径（含校准 buffer）
+  const limit = snapshot.modelLimit || 1;
+  const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
+  const pct = (total / limit) * 100;
   return [
-    { label: '当前使用', value: displayPercent(snapshot.utilizationPercent), highlight: true },
-    { label: '窗口', value: `${formatTokens(snapshot.totalTokens)} / ${formatTokens(snapshot.modelLimit)}` },
+    { label: '当前使用', value: displayPercent(pct), highlight: true },
+    { label: '窗口', value: `${formatTokens(total)} / ${formatTokens(snapshot.modelLimit)}` },
     { label: '压缩阈值', value: `${(snapshot.compaction.triggerPercent * 100).toFixed(0)}%` },
     {
       label: '已压缩',

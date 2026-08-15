@@ -70,7 +70,7 @@
 
 ### 2.4 显示准确性补强（引擎-显示同源，四项）
 
-> 状态：建议（与 v1 展示重构并行评估，改动量小、独立可发布）。这四项把 `utilizationPercent` 从"估算值"推向"引擎权威口径"，让圆环和压缩引擎看到同一个数。
+> 状态：**A1/A2 已实施（2026-08-15）**；A3/A4 未做。A1/A2 把 `utilizationPercent` 从"估算值"推向"引擎权威口径"，让圆环和压缩引擎看到同一个数。
 
 **现状数据流（已核实）**：`pipeline.ts` 每步 `estimateFullRequest` → `utilizationPercent = (messages+instructions+tools+outputReserve) / modelLimit × 100`（`token-counter.ts:364`）→ SSE 推 `usagePercentage`（`route.ts:516`）+ DB 写 `context_usage` → `Chat.tsx:1146` 圆环。
 
@@ -799,6 +799,7 @@ rules:
 1. **显式 `max_tokens` + 截断检测**：模型调用显式设 `maxOutputTokens`；检测 `finishReason='length'` / 文本完整性启发式（断词/未闭合结构）→ 截断的 run **不 committed**（§10.4.2）。
 2. **截断后自动续写**：已产出文本（截至截断点）追加进上下文，显式要求模型"接续不重写"；上下文满则先压缩（§3-§9）再续（§10.4.3）。
 3. **动态 `outputReserve` 并入 `deriveBudget`**：`capabilities.ts:100` 的静态 `min(defaultOutputTokens, 20000)` 改为随窗口余量推导（`clamp(目标, minReserve, contextLimit−输入占用)`），参与 trigger/hardLimit 推导（§10.4.1 / §10.4.4；与 §2.4 A1 同源）。
+   > **实施注记（2026-08-15）**：曾试"窗口比例 15%"版——按窗口比例收紧预留，但**低估模型真实输出能力**（22.8k 窗口只预留 3420，而模型 maxOutputTokens=8000），把触发点后移、截断风险回来，且改坏小窗口调校，**已回滚**。正确做法 = `reserve = min(per-model outputTokens, availableWindow)`：需把 models 配置穿进估算层（`estimateRequestBudget`/`estimateFullRequest` 加 `outputTokens` 参数，source 为 ModelEntry.outputTokens），使预算与每模型 maxOutputTokens 一致。此为后续项。（设置页 outputTokens 字段已于 2026-08-15 移除——默认 8000 已够用；per-model 值仍可手工写 models.json，核心机制保留。）
 4. **输出侧分片写（"Let Me Take This Outside" 用于产出）**：长任务让模型增量落盘、上下文只留"进度指针 + 已写范围"，而不是一次生成完——从源头消灭"写不完"（§10.4.3；与 P1 分片读对称）。
 
 ### 14.2 P1 — 外部化读回协议（补全 externalization 闭环）

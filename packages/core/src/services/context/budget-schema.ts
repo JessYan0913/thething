@@ -33,6 +33,12 @@ export const ContextBudgetSnapshotSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   modelLimit: z.number().int().positive(),
 
+  // === 引擎同源扩展（A1/A2：显示吃校准后口径 + 画触发/硬限刻度） ===
+  // 可选：旧数据/部分路径无此字段时 UI 回落 totalTokens / 不画刻度。
+  totalTokensWithBuffer: z.number().int().nonnegative().optional(),
+  triggerTokens: z.number().int().nonnegative().optional(),
+  hardLimitTokens: z.number().int().nonnegative().optional(),
+
   // === compaction 维度（事件累计） ===
   compaction: CompactionSnapshotSchema,
 

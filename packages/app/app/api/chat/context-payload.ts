@@ -15,7 +15,17 @@ import {
 } from '@the-thing/core';
 
 interface BuildPayloadInput {
-  lastEstimation: { utilizationPercent: number; totalTokens: number; modelLimit: number } | null | undefined;
+  lastEstimation: {
+    utilizationPercent: number;
+    totalTokens: number;
+    modelLimit: number;
+    /** 引擎权威口径（含校准 buffer）——A1 显示同源用 */
+    totalTokensWithBuffer?: number;
+    /** 主动压缩触发线（tokens）——A2 圆环刻度用 */
+    triggerTokens?: number;
+    /** 强制降级硬限（tokens）——A2 圆环刻度用 */
+    hardLimitTokens?: number;
+  } | null | undefined;
   compactionTracker: { getSnapshot(): unknown };
   costTracker: {
     inputTokens: number;
@@ -45,6 +55,9 @@ export function buildContextBudgetPayload(input: BuildPayloadInput): ContextBudg
     utilizationPercent: input.lastEstimation.utilizationPercent,
     totalTokens: input.lastEstimation.totalTokens,
     modelLimit: input.lastEstimation.modelLimit,
+    totalTokensWithBuffer: input.lastEstimation.totalTokensWithBuffer,
+    triggerTokens: input.lastEstimation.triggerTokens,
+    hardLimitTokens: input.lastEstimation.hardLimitTokens,
     compaction: input.compactionTracker.getSnapshot() as ContextBudgetSnapshot['compaction'],
     sessionCost,
     capturedAt: new Date().toISOString(),

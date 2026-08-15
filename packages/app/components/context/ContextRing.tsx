@@ -10,8 +10,19 @@ import type { ContextBudgetSnapshot } from '@the-thing/core/context-budget';
 import { displayPercent, ringDashOffset, utilizationColor } from './format';
 
 export function ContextRing({ snapshot }: { snapshot: ContextBudgetSnapshot }) {
-  const pct = snapshot.utilizationPercent;
+  const limit = snapshot.modelLimit || 1;
+  // A1 显示同源：优先引擎权威口径（含校准 buffer），无则回落 base 总量
+  const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
+  const pct = (total / limit) * 100;
   const color = utilizationColor(pct);
+
+  // A2 刻度：trigger（黄）/ hardLimit（红）在圆环上的位置
+  const triggerPct = snapshot.triggerTokens != null ? (snapshot.triggerTokens / limit) * 100 : null;
+  const hardPct = snapshot.hardLimitTokens != null ? (snapshot.hardLimitTokens / limit) * 100 : null;
+  const tick = (p: number) => {
+    const a = (Math.min(100, Math.max(0, p)) / 100) * 2 * Math.PI;
+    return { x: 10 + 8 * Math.sin(a), y: 10 - 8 * Math.cos(a) };
+  };
 
   return (
     <div className="flex items-center gap-1">
@@ -22,6 +33,14 @@ export function ContextRing({ snapshot }: { snapshot: ContextBudgetSnapshot }) {
                 strokeLinecap="round"
                 strokeDasharray={ringDashOffset(pct)}
                 className={cn('transition-all duration-700', color.ring)} />
+        {triggerPct != null && (
+          <circle cx={tick(triggerPct).x} cy={tick(triggerPct).y} r="0.9" fill="currentColor"
+                  className="text-yellow-500" />
+        )}
+        {hardPct != null && (
+          <circle cx={tick(hardPct).x} cy={tick(hardPct).y} r="0.9" fill="currentColor"
+                  className="text-red-500" />
+        )}
       </svg>
       <span className={cn('text-xs tabular-nums', color.text)}>
         {displayPercent(pct)}
