@@ -75,6 +75,9 @@ connector-idempotency.db
 .thething/
 **/.siact/**
 
+# generated outputs (baseline reports, analysis artifacts)
+outputs/
+
 # IDE
 .vscode/
 .idea/
