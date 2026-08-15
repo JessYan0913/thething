@@ -2000,6 +2000,24 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     </div>
   )
 
+  // ── 连续 assistant 消息合并为一条渲染组 ──
+  // 截断→自动续写会产生多条连续 assistant 消息（各段一个 DB 消息），
+  // 但它们是一次 Agent 回复的多个片段：渲染时合并为一个气泡——
+  // 单边框、推理合并到顶部、文本连续，避免 UI 上出现"好几段回复"。
+  // 用户消息始终单独成组。
+  const renderGroups = useMemo<Array<{ id: string; role: UIMessage['role']; messages: UIMessage[] }>>(() => {
+    const groups: Array<{ id: string; role: UIMessage['role']; messages: UIMessage[] }> = [];
+    for (const m of messages) {
+      const last = groups[groups.length - 1];
+      if (m.role === 'assistant' && last && last.role === 'assistant') {
+        last.messages.push(m);
+      } else {
+        groups.push({ id: m.id, role: m.role, messages: [m] });
+      }
+    }
+    return groups;
+  }, [messages]);
+
   return (
     <div className="relative flex flex-1 min-h-0 overflow-hidden">
       {/* 左侧：聊天内容 */}
@@ -2033,7 +2051,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
             <Conversation>
               <ConversationContent>
                 <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-                {messages.map((message, messageIndex) => {
+                {renderGroups.map((group, messageIndex) => {
+                // 组内合并为一条虚拟消息：连续 assistant 片段（截断→续写段）扁平化为单条，
+                // 复用下方单消息渲染路径（推理顶部合并、工具折叠、流式判定均按整组生效）。
+                const message: UIMessage = {
+                  ...group.messages[group.messages.length - 1],
+                  id: group.id,
+                  role: group.role,
+                  parts: group.messages.flatMap((m) => m.parts),
+                };
                 const isEditing = editingMessageId === message.id;
                 const userMessageText = message.role === 'user'
                   ? message.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
@@ -2046,7 +2072,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 // 一段文本后的连续工具调用为一个折叠组；出现文本回复后重新开始一个新组。
                 // reasoning / data-* 等不可见 part 不打断折叠组（其已集中到消息顶部或由工具 part 消费）。
                 const isStreamingMessage =
-                  messageIndex === messages.length - 1 && (status === 'streaming' || status === 'submitted');
+                  messageIndex === renderGroups.length - 1 && (status === 'streaming' || status === 'submitted');
                 interface ToolClusterInfo {
                   key: string;
                   firstIndex: number;
@@ -2128,7 +2154,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 const hasReasoning = reasoningParts.length > 0;
                 const lastPart = message.parts[message.parts.length - 1];
                 const isReasoningStreaming =
-                  messageIndex === messages.length - 1 &&
+                  messageIndex === renderGroups.length - 1 &&
                   status === 'streaming' &&
                   lastPart?.type === 'reasoning';
 
@@ -2961,7 +2987,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                       {/* 压缩状态行（工具调用风格）：从输入框水位环迁出，仅在最后一条 assistant 消息内显示。
                           start=压缩中(转圈+shimmer), end=短暂显示"已压缩 N tokens"后自动消失。 */}
                       {message.role === 'assistant' &&
-                        messageIndex === messages.length - 1 &&
+                        messageIndex === renderGroups.length - 1 &&
                         compactionUi && (
                         <div className="flex w-full items-center gap-2 text-sm text-muted-foreground">
                           {compactionUi.status === 'compacting' ? (
@@ -2986,7 +3012,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                       )}
                       {/* 输出被截断兜底提示：自动续写未完成时显示，提供手动"继续"入口 */}
                       {message.role === 'assistant' &&
-                        messageIndex === messages.length - 1 &&
+                        messageIndex === renderGroups.length - 1 &&
                         truncatedNotice && (
                         <div className="flex w-full items-center gap-2 text-sm text-amber-600">
                           <TriangleAlertIcon className="size-4 shrink-0" />
@@ -3002,7 +3028,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                       )}
                       {/* 产出文件汇总卡:一轮结束后聚合本消息内 write/edit 的成功产出 */}
                       {message.role === 'assistant' &&
-                        !(messageIndex === messages.length - 1 && (status === 'streaming' || status === 'submitted')) && (
+                        !(messageIndex === renderGroups.length - 1 && (status === 'streaming' || status === 'submitted')) && (
                           <FileOutputsSummary
                             entries={collectFileOutputs(message.parts as Array<{ type: string; state?: string; output?: unknown }>)}
                             onOpen={async (entry: { path: string; language?: string }) => {
@@ -3034,7 +3060,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             switching={branchSwitching}
                             onSwitch={handleFormalBranchSwitch}
                           />
-                          {messages.slice(messageIndex + 1).every((m) => m.role !== 'user') && (
+                          {renderGroups.slice(messageIndex + 1).every((g) => g.role !== 'user') && (
                             <MessageAction
                               label="Edit"
                               onClick={() => {
@@ -3058,7 +3084,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                         </MessageActions>
                       </MessageToolbar>
                     )}
-                    {message.role === 'assistant' && messageIndex === messages.length - 1 && thinkingState ? (
+                    {message.role === 'assistant' && messageIndex === renderGroups.length - 1 && thinkingState ? (
                       <div className="flex items-center gap-2.5 px-1 py-2 text-sm text-muted-foreground">
                         <div className="relative">
                           <thinkingState.icon className="size-4 shrink-0 animate-building" />
@@ -3082,7 +3108,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           >
                             <RefreshCcwIcon className="size-4" />
                           </MessageAction>
-                          {messageIndex < messages.length - 1 && (
+                          {messageIndex < renderGroups.length - 1 && (
                             <MessageAction
                               label="Branch"
                               onClick={() => void handleFork(message.id)}
