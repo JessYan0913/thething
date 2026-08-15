@@ -18,12 +18,14 @@ describe('注入消息', () => {
     const prompt = buildPlanPrompt();
     expect(prompt).toContain('结清');
     expect(prompt).toContain('completed');
+    expect(prompt).toContain('【进度汇报】'); // 明确不机械汇报
   });
 
-  it('每步同步提醒：督促建后持续更新，防止只开工不跟进', () => {
+  it('每步同步提醒：督促建后持续更新，且不诱导滚动窗口、不机械汇报', () => {
     const sync = buildTodoSyncReminder();
     expect(sync).toContain('todo_write');
-    expect(sync).toContain('completed');
-    expect(sync).toContain('结清');
+    expect(sync).toContain('result');
+    expect(sync).toContain('未列出的待办会被保留'); // 传子集不丢项
+    expect(sync).toContain('不要插入【进度汇报】'); // 不机械汇报
   });
 });

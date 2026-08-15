@@ -6,7 +6,7 @@ import type { TodoStore } from '../types';
 
 const CONV = 'conv-1';
 
-describe('todo_write (full-list replace)', () => {
+describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
   let store: TodoStore;
   let execute: (input: unknown) => Promise<any>;
 
@@ -33,7 +33,7 @@ describe('todo_write (full-list replace)', () => {
     expect(all.find(t => t.subject === 'Task B')?.status).toBe('pending');
   });
 
-  it('updates existing todos by id and removes omitted ones', async () => {
+  it('updates existing todos by id and keeps omitted ones (no silent delete)', async () => {
     const first = await execute({
       todos: [
         { subject: 'Task A', status: 'in_progress' },
@@ -45,20 +45,20 @@ describe('todo_write (full-list replace)', () => {
     const second = await execute({
       todos: [
         { id: a.id, subject: 'Task A', status: 'completed' },
-        // Task B omitted → removed
+        // Task B omitted → kept（不再被静默删除）
         { subject: 'Task C', status: 'in_progress' },
       ],
     });
 
     expect(second.success).toBe(true);
     const all = store.getTodosByConversation(CONV);
-    expect(all).toHaveLength(2);
+    expect(all).toHaveLength(3);
     expect(store.getTodo(a.id)?.status).toBe('completed');
-    expect(store.getTodo(b.id)).toBeUndefined();
+    expect(store.getTodo(b.id)?.status).toBe('pending'); // 保留
     expect(all.find(t => t.subject === 'Task C')?.status).toBe('in_progress');
   });
 
-  it('keeps completed todos when omitted (reconcile exemption)', async () => {
+  it('keeps omitted todos (completed and active) — explicit cancelled is the only way to drop', async () => {
     const first = await execute({
       todos: [
         { subject: 'Task A', status: 'in_progress' },
@@ -68,12 +68,12 @@ describe('todo_write (full-list replace)', () => {
     const [a, b] = first.todos;
     await execute({ todos: [{ id: a.id, subject: 'Task A', status: 'completed' }] });
 
-    // 省略 A(completed)和 B(pending):completed 保留,active 删除
+    // 省略 A(completed) 和 B(pending)：两者都保留
     await execute({ todos: [{ subject: 'Task C', status: 'in_progress' }] });
 
     const all = store.getTodosByConversation(CONV);
     expect(store.getTodo(a.id)?.status).toBe('completed');
-    expect(store.getTodo(b.id)).toBeUndefined();
+    expect(store.getTodo(b.id)?.status).toBe('pending'); // 保留
     expect(all.some(t => t.subject === 'Task C' && t.status === 'in_progress')).toBe(true);
   });
 
@@ -96,7 +96,7 @@ describe('todo_write (full-list replace)', () => {
     await execute({ todos: [] });
 
     expect(store.getTodosByConversation('other-conv')).toHaveLength(1);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(0);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(1); // 空列表不再清空（不静默删）
   });
 
   it('treats unknown ids as new todos', async () => {

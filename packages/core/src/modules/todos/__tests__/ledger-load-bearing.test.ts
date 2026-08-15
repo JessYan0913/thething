@@ -86,11 +86,21 @@ describe('账本承重：父 todo_write 不破坏账本', () => {
     expect(remaining.some(t => t.id === active.id)).toBe(true); // 活跃项更新保留
   });
 
-  it('活跃 todo 未出现在整表替换中被删除（预期的替换语义）', async () => {
+  it('未列出的活跃 todo 被保留（鲁棒语义：不静默删除），显式 cancelled 才取消', async () => {
     const active = createTodo(store, { conversationId: CONV, subject: '旧待办' });
-    await execute({ todos: [{ subject: '新任务', status: 'pending' }] });
+    const toCancel = createTodo(store, { conversationId: CONV, subject: '要取消的' });
+
+    // 模型只传"当前项"（滚动窗口），不列 active/toCancel
+    await execute({
+      todos: [
+        { id: toCancel.id, subject: '要取消的', status: 'cancelled' },
+        { subject: '新任务', status: 'pending' },
+      ],
+    });
+
     const remaining = store.getTodosByConversation(CONV);
-    expect(remaining.some(t => t.id === active.id)).toBe(false);
+    expect(remaining.some(t => t.id === active.id)).toBe(true); // 未列出的保留，不再被删
+    expect(remaining.find(t => t.id === toCancel.id)?.status).toBe('cancelled'); // 显式取消
     expect(remaining.some(t => t.subject === '新任务')).toBe(true);
   });
 });

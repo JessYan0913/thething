@@ -3,14 +3,14 @@ import { z } from 'zod';
 import type { TodoStore, TodoStatus } from '../types';
 
 /**
- * TodoWriteTool - 整表替换式任务清单管理（主入口，Claude Code TodoWrite 风格）
+ * TodoWriteTool - 任务清单管理（主入口，Claude Code TodoWrite 风格）
  *
- * 一次调用传入完整任务列表，工具负责与现有清单对账：
- * - 带 id 且存在 → 更新（subject/status/activeForm）
+ * 一次调用可创建/更新多个任务：
+ * - 带 id 且存在 → 更新（subject/status/activeForm/metadata）
  * - 不带 id（或 id 不存在）→ 新建
- * - 现有清单中未出现的活跃任务 → 删除
- * - 已完成的 todo 自动保留（作为"已做过什么"的参考，供 overview 展示），
- *   不会被整表替换清掉；如不想保留某条已完成任务，用 todo_delete 取消它。
+ * - 未列出的活跃任务 → 保留（鲁棒语义：不静默删除，避免模型"只传当前项"
+ *   的滚动窗口导致未列出的待办丢失）；取消某项请显式传 status: 'cancelled'
+ * - 已完成的 todo 自动保留（作为"已做过什么"的参考，供 overview 展示）
  *
  * 相比细粒度工具，规划和推进的调用成本接近于零，适合主 Agent 单线程推进。
  * 依赖图（blockedBy）走 todo_create_batch。
@@ -104,10 +104,10 @@ export function createTodoWriteToolForConversation(store: TodoStore, conversatio
 When the user's request is complex — a problem that benefits from being split into a few sub-tasks you think through and execute one by one (multiple facets, trade-offs, uncertainty, exploration, iteration), e.g. plan a trip with itinerary + budget + packing list; research a topic + write a report + list key companies; weigh two options and decide — your FIRST action should be calling this tool to lay out the plan — do not start working before the list exists. Judge by the mental complexity of the problem, not by how many mechanical steps it will take. Only high-stakes or user-requested-confirmation work should use submit_plan instead; everything else plans with this tool.
 
 Usage:
-- Pass the FULL list each call; it replaces the previous list (active todos not included are removed; completed ones are kept as a record of what's been done).
+- Pass the FULL list each call to keep it accurate. Omitted items are KEPT — the tool never silently deletes; to cancel a task, pass it with status "cancelled".
 - Include the \`id\` for todos you are updating; omit it for new todos.
 - Keep exactly one item in_progress at a time; update the list right after each step finishes.
-- Close the loop: when a task is done, mark it completed with a result (what was done + how it was verified); when it fails, record why. The list is a running ledger you settle as you go — do not create it and then stop updating it until the final answer.
+- Close the loop: when a task is done, mark it completed with a result (what was done + how it was verified) written into the result field; when it fails, record why. The list is a running ledger you settle as you go — do not create it and then stop updating it until the final answer.
 - Skip it only for trivial single-step tasks, pure Q&A, or casual chat.
 
 For dependency graphs (blockedBy), use todo_create_batch instead. When delegating to a sub-agent, pass the todo id as the agent tool's todoId parameter.`,
@@ -153,12 +153,9 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
           }
         }
 
-        // 整表替换：删除未出现在本次列表中的活跃任务（已完成任务自动保留）
-        for (const todo of existing) {
-          if (!seenIds.has(todo.id) && todo.status !== 'completed') {
-            store.deleteTodo(todo.id);
-          }
-        }
+        // 鲁棒语义（2026-08-15）：不静默删除未列出的活跃项——模型常只传"当前项"的
+        // 滚动窗口，删除会让未列出的待办丢失（面板 5→2→3 崩塌）。取消某项请显式传
+        // status: 'cancelled'（走上面的 update 路径，软取消并保留记录）。
 
         return {
           success: true as const,

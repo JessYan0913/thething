@@ -108,9 +108,15 @@ todos 当前是**看板**（模型自觉维护的展示），要成为**账本**
   全程要结清的账本，不是开工时宣布一下就完事的计划——每完成一个子任务就标 completed 并
   写 result，失败写原因，收尾时把所有项结清"。
 - `buildTodoSyncReminder()`：**每步同步提醒（rung-2 跟进）**——"若你已完成或正在进行某个
-  子任务，请立即用 todo_write 更新清单状态……让清单始终反映真实进度；收尾时把所有项结清"。
+  子任务，用 todo_write 更新它的状态并把结果写进 result；未列出的待办会被保留，放心只更新
+  当前项；不要插入【进度汇报】式机械汇报，清单面板就是进度展示"。
 - `buildEmptyTodoReminder()`：5 步兜底——"如果这个任务较复杂、值得拆解推进，先建清单；
   确认简单直接就忽略"。**不预判复杂度，由模型再判断一次**。
+
+`todo_write` 语义（2026-08-15 改鲁棒）：**不再静默删除未列出的活跃项**——模型常只传
+"当前项"的滚动窗口，删除会让未列出的待办丢失（面板 5→2→3 崩塌，真机复现）。取消某项
+请显式传 `status: 'cancelled'`；`todos: []` 也不再清空清单。同步提醒措辞配合改为
+"未列出的待办会被保留"，并明确不插入【进度汇报】机械汇报（面板即进度展示）。
 
 `pipeline.ts` 注入（均无任何预判门槛）：
 
@@ -168,8 +174,8 @@ todos 当前是**看板**（模型自觉维护的展示），要成为**账本**
 
 `ledger-load-bearing.test.ts`（8 条不变量，`modules/todos/__tests__/`）钉死：
 - 委托回写：completeTodo/failTodo 把 result/error 写进账本、启动置 in_progress
-- 父 todo_write 整表替换不抹子 Agent result（metadata merge）
-- 已完成 todo 豁免整表替换（父漏传不删）；活跃项按语义删除
+- 父 todo_write 不抹子 Agent result（metadata merge）
+- 未列出的活跃 todo 保留（不静默删除）；显式 cancelled 才取消
 - 快照作为压缩/续做依据：含 result/verify/error
 
 ### 4.3 压缩快照富化（B2 续做依据）
