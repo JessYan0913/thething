@@ -49,7 +49,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, TrashIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon, ListChecksIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, TrashIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon, ListChecksIcon, TriangleAlertIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -1102,6 +1102,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   type CompactionUiState = { status: 'compacting' } | { status: 'done'; tokensFreed?: number } | null;
   const [compactionUi, setCompactionUi] = useState<CompactionUiState>(null);
 
+  // "输出被截断、自动续写未完成"兜底提示（服务端 data-truncated 事件触发）
+  const [truncatedNotice, setTruncatedNotice] = useState<string | null>(null);
+
   // 持久化最新的上下文水位数据，流式数据消失后仍保留
   const persistedContextBudget = useRef(streamContextBudget);
   if (streamContextBudget != null) {
@@ -1211,6 +1214,29 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       const timer = setTimeout(() => setCompactionUi(null), 1500);
       return () => clearTimeout(timer);
     }
+  }, [messages]);
+
+  // 从流式消息的 data-truncated 部分提取"输出被截断、自动续写未完成"提示。
+  // 只处理新增 part（ref 记录上次 id），避免 messages 变化时重复触发。
+  const lastTruncatedPartIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const parts: Array<{ id: string; message: string }> = [];
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === 'data-truncated' && 'data' in part) {
+          const d = (part as { data: { message?: string } }).data;
+          if (!d) continue;
+          parts.push({ id: (part as { id?: string }).id ?? '', message: d.message ?? '输出被截断，自动续写未完成' });
+        }
+      }
+    }
+    const lastSeen = lastTruncatedPartIdRef.current;
+    const lastSeenIdx = lastSeen ? parts.findIndex((p) => p.id === lastSeen) : -1;
+    const newParts = lastSeenIdx >= 0 ? parts.slice(lastSeenIdx + 1) : parts;
+    if (newParts.length === 0) return;
+    const latest = newParts[newParts.length - 1];
+    lastTruncatedPartIdRef.current = latest.id;
+    setTruncatedNotice(latest.message);
   }, [messages]);
 
   // MCP App 发来的消息转发给 agent，触发 agent 回复
@@ -2235,7 +2261,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                             );
                           }
 
-                          if (part.type.startsWith('data-sub-') || part.type === 'data-todo-update' || part.type === 'data-context-usage' || part.type === 'data-compaction-status') {
+                          if (part.type.startsWith('data-sub-') || part.type === 'data-todo-update' || part.type === 'data-context-usage' || part.type === 'data-compaction-status' || part.type === 'data-truncated') {
                             return null;
                           }
 
@@ -2956,6 +2982,22 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                               </span>
                             </>
                           )}
+                        </div>
+                      )}
+                      {/* 输出被截断兜底提示：自动续写未完成时显示，提供手动"继续"入口 */}
+                      {message.role === 'assistant' &&
+                        messageIndex === messages.length - 1 &&
+                        truncatedNotice && (
+                        <div className="flex w-full items-center gap-2 text-sm text-amber-600">
+                          <TriangleAlertIcon className="size-4 shrink-0" />
+                          <span className="truncate">{truncatedNotice}</span>
+                          <button
+                            type="button"
+                            className="ml-auto shrink-0 rounded border border-amber-500/50 px-2 py-0.5 text-xs hover:bg-amber-500/10"
+                            onClick={() => sendMessage({ text: '请继续完成刚才的回复（不要重复前面内容）。' })}
+                          >
+                            继续
+                          </button>
                         </div>
                       )}
                       {/* 产出文件汇总卡:一轮结束后聚合本消息内 write/edit 的成功产出 */}

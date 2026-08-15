@@ -55,6 +55,10 @@ export const EMERGENCY_TARGET_PERCENT = 0.6;
 /** 压缩目标中"消息"部分的下限（防止小窗口下消息预算为 0 → 全历史摘要化/过度压缩） */
 export const MIN_MESSAGE_BUDGET_TOKENS = 2000;
 
+// 注：动态 outputReserve（§10.4.1）的正确实现 = reserve = min(per-model outputTokens, availableWindow)。
+// 需把 models 配置穿进估算层（estimateRequestBudget/estimateFullRequest 加 outputTokens 参数）。
+// 曾试过"窗口比例 15%"：低估模型输出能力、把触发点后移，反而让截断风险回来——已回滚。
+
 /**
  * 触发线 / 硬限推导（纯函数）。
  *
