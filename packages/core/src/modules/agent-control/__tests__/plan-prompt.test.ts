@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPlanPrompt, buildEmptyTodoReminder } from '../plan-prompt';
+import { buildPlanPrompt, buildTodoSyncReminder, buildEmptyTodoReminder } from '../plan-prompt';
 
 describe('注入消息', () => {
   it('开工提示与兜底提醒都以"心智复杂度"而非"步骤数"为判断依据', () => {
@@ -12,5 +12,18 @@ describe('注入消息', () => {
     const reminder = buildEmptyTodoReminder();
     expect(reminder).toContain('todo_write');
     expect(reminder).toContain('确认简单直接');
+  });
+
+  it('开工提示包含"收尾结清"契约（建了就要跟进，不是开工宣言）', () => {
+    const prompt = buildPlanPrompt();
+    expect(prompt).toContain('结清');
+    expect(prompt).toContain('completed');
+  });
+
+  it('每步同步提醒：督促建后持续更新，防止只开工不跟进', () => {
+    const sync = buildTodoSyncReminder();
+    expect(sync).toContain('todo_write');
+    expect(sync).toContain('completed');
+    expect(sync).toContain('结清');
   });
 });

@@ -107,6 +107,7 @@ Usage:
 - Pass the FULL list each call; it replaces the previous list (active todos not included are removed; completed ones are kept as a record of what's been done).
 - Include the \`id\` for todos you are updating; omit it for new todos.
 - Keep exactly one item in_progress at a time; update the list right after each step finishes.
+- Close the loop: when a task is done, mark it completed with a result (what was done + how it was verified); when it fails, record why. The list is a running ledger you settle as you go — do not create it and then stop updating it until the final answer.
 - Skip it only for trivial single-step tasks, pure Q&A, or casual chat.
 
 For dependency graphs (blockedBy), use todo_create_batch instead. When delegating to a sub-agent, pass the todo id as the agent tool's todoId parameter.`,

@@ -6,7 +6,7 @@ import { recordUsageSample } from '../compaction/tokenizer';
 import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
-import { buildPlanPrompt, buildEmptyTodoReminder } from './plan-prompt';
+import { buildPlanPrompt, buildTodoSyncReminder, buildEmptyTodoReminder } from './plan-prompt';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -101,6 +101,18 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           content: buildPlanPrompt(),
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Plan prompt injected at step 0`);
+      }
+    } else {
+      // rung-2 跟进：有活跃 todo（pending/in_progress）时，每次决策前轻提一行，
+      // 防止模型"只开工不跟进"（建完清单后一路做完、从不结清）
+      const activeTodos = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? [])
+        .filter(t => t.status === 'pending' || t.status === 'in_progress');
+      if (activeTodos.length > 0) {
+        messages = [...messages, {
+          role: 'user',
+          content: buildTodoSyncReminder(),
+        } as ModelMessageType];
+        debugLog(debugEnabled, `[Agent] Todo sync reminder injected at step ${stepNumber} (${activeTodos.length} active)`);
       }
     }
 
