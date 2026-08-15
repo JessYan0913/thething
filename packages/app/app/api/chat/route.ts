@@ -11,8 +11,6 @@ import {
   applyCheckpointOnLoad,
   fingerprintMessage,
   sanitizeToolErrorInputs,
-  MAX_CONTINUATION_TOTAL_TOKENS,
-  CONTINUATION_PROMPT,
   isOutputTruncated,
   type SubAgentStreamWriter,
   type Todo,
@@ -365,9 +363,9 @@ export async function POST(request: Request) {
     };
 
     // onEnd 回调：流结束时把新 assistant 消息挂到本轮消息（默认锚点）之后。
-    // 段感知（配合续写主循环）：
-    // - 中间截断段（finishReason='length' 且非最后段）→ 消息已落库，run 保持 running，等续写；
-    // - 末段截断（达续写上限）→ run 标记 failed(output_truncated) + 推 data-truncated（不按"完成"收尾）；
+    // 手动续写语义（无自动续写循环，一段即止）：
+    // - 截断（finishReason='length'）→ run 标记 failed(output_truncated) + 推 data-truncated，
+    //   前端显示"继续"按钮，用户点继续 = 发一条"继续"消息 → 新的一轮回复（独立 assistant 消息）；
     // - 正常完成 → committed/superseded + finalize；
     // - 停止（isAborted）→ aborted（修复"停止后仍 committed"旧 bug）。
     const createOnEnd = (
@@ -377,7 +375,6 @@ export async function POST(request: Request) {
       resolveDone: () => void,
       controller: ReadableStreamDefaultController<string>,
       defaultAnchorId: string,
-      isFinalSegment: boolean,
     ) => async ({ messages: completedMessages, isAborted, finishReason }: {
       messages: UIMessage[];
       isAborted?: boolean;
@@ -459,7 +456,7 @@ export async function POST(request: Request) {
           ? store.branchStore.getProjection(conversationId).activeTipId
           : newAssistantMessages.at(-1)?.id ?? null;
 
-        // 记录本段结果，供续写循环判定
+        // 记录本段结果（手动续写：单段执行，无续写循环判定）
         outcome.completedMessages = completedMessages;
         outcome.lastAssistant = newAssistantMessages.at(-1);
         outcome.headMoved = headMoved;
@@ -467,12 +464,6 @@ export async function POST(request: Request) {
         const truncated = !aborted && isOutputTruncated(finishReason);
         outcome.aborted = aborted;
         outcome.truncated = truncated;
-
-        // 中间截断段：消息已落库，run 保持 running，续写循环再起一段。
-        // 不 unregister（停止要跨段生效）、不 finishRun、不 finalize。
-        if (truncated && !isFinalSegment) {
-          return;
-        }
 
         // ── 终态收尾 ──
         unregisterAbortController(conversationId, runId);
@@ -487,8 +478,9 @@ export async function POST(request: Request) {
         }
 
         if (truncated) {
-          // 达续写段数上限仍截断 → 不按"完成"收尾（复用 failed+error，零 schema 迁移），
-          // 半截答案不再进库当最终答案（静默截断事故的病根）。
+          // 输出被截断 → 不按"完成"收尾（复用 failed+error，零 schema 迁移）：
+          // 半截答案不再进库当最终答案（静默截断事故的病根）。前端收到 data-truncated
+          // 显示"继续"按钮，用户点继续 = 发一条"继续"消息，agent 作为新的一轮回复。
           store.conversationRunStore.finishRun(runId, {
             status: 'failed',
             error: 'output_truncated',
@@ -497,7 +489,7 @@ export async function POST(request: Request) {
             controller.enqueue(JSON.stringify({
               type: 'data-truncated',
               id: `trunc-${runId}`,
-              data: { message: '输出被截断，自动续写未完成' },
+              data: { message: '输出被截断，已停在这里。点击"继续"从断点续写。' },
             }));
           } catch {
             // 不影响主流程
@@ -560,7 +552,6 @@ export async function POST(request: Request) {
                 segmentMessages: UIMessage[],
                 inputContinuation: UIMessage | undefined,
                 defaultAnchorId: string,
-                isFinalSegment: boolean,
               ): Promise<SegmentOutcome & { controllerClosed: boolean }> => {
                 let resolveDone!: () => void;
                 const done = new Promise<void>((resolve) => { resolveDone = resolve; });
@@ -647,7 +638,6 @@ export async function POST(request: Request) {
                       resolveDone,
                       controller,
                       defaultAnchorId,
-                      isFinalSegment,
                     ),
                     // onStepEnd 在 finish-step chunk 之前触发，直接入流
                     onStepEnd: pushContextUsage,
@@ -683,7 +673,6 @@ export async function POST(request: Request) {
                           resolveDone,
                           controller,
                           defaultAnchorId,
-                          isFinalSegment,
                         ),
                         onStepEnd: pushContextUsage,
                       });
@@ -757,15 +746,13 @@ export async function POST(request: Request) {
                 }
               };
 
-              // ── 续写主循环：正常一段收尾；截断则带"接续不重写"user 消息再起一段 ──
-              // 直到写完 / 累计输出预算用尽 / 用户停止。run 全程保持 running，真正完成才 committed。
-              // 不设段数上限（不限制长输出能写多少）；预算只是成本护栏，防病态死循环烧钱。
+              // ── 手动续写：一段即止 ──
+              // 不再自动续写。截断时 onEnd 标记 output_truncated + 推 data-truncated，
+              // 前端显示"继续"按钮；用户点继续 = 发一条"继续"消息 → 新的一轮回复。
               let segmentMessages = finalMessages;
               let inputContinuation: UIMessage | undefined = isAssistantContinuation ? finalMessages.at(-1) : undefined;
               let defaultAnchorId = headMessageId;
-              let truncatedAny = false;
               let anyControllerClosed = false;
-              let totalContinuationTokens = 0;
 
               // 每 5s 推一次 keep-alive ping，防止代理/负载均衡因空闲超时切断 SSE 连接
               const keepAliveTimer = setInterval(() => {
@@ -776,30 +763,11 @@ export async function POST(request: Request) {
                 }
               }, 5_000);
 
-              for (let seg = 0; ; seg++) {
-                // 预算用尽后这一段是最后一次机会：仍截断则标记 output_truncated
-                const isFinalSegment = totalContinuationTokens >= MAX_CONTINUATION_TOTAL_TOKENS;
-                const outcome = await runStreamSegment(segmentMessages, inputContinuation, defaultAnchorId, isFinalSegment);
-                totalContinuationTokens += outcome.outputTokens;
-                if (outcome.controllerClosed) { anyControllerClosed = true; break; }   // 停止 → 已打断
-                if (outcome.aborted) break;                                            // onEnd 已 finishRun aborted
-                if (!outcome.truncated) break;                                         // 正常完成（onEnd 已 committed + finalize）
-                truncatedAny = true;
-                if (isFinalSegment) break;                                             // 预算用尽仍截断（onEnd 已 finishRun failed output_truncated + 推 data-truncated）
-                // 准备续写：已产出消息已落库，追加"接续不重写"user 消息，下一段从该位置继续
-                const lastAssistant = outcome.lastAssistant;
-                if (!lastAssistant) break;                                             // 无产出可续，按当前状态收尾
-                segmentMessages = [
-                  ...outcome.completedMessages,
-                  { role: 'user', id: `cont-${runId}-${seg}`, parts: [{ type: 'text', text: CONTINUATION_PROMPT }] } as UIMessage,
-                ];
-                inputContinuation = undefined;
-                defaultAnchorId = lastAssistant.id;
-                console.log(`[Chat API] Output truncated, auto-continuing (segment ${seg + 1}, total out ${totalContinuationTokens} tokens)`);
-              }
+              const outcome = await runStreamSegment(segmentMessages, inputContinuation, defaultAnchorId);
+              anyControllerClosed = outcome.controllerClosed;
 
               clearInterval(keepAliveTimer);
-              console.log(`[Chat API] Agent stream complete (truncated=${truncatedAny})`);
+              console.log(`[Chat API] Agent stream complete (truncated=${outcome.truncated})`);
               // 清理压缩状态回调
               compactionCallbackRef.current = null;
               if (!anyControllerClosed) {

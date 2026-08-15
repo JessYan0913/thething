@@ -1102,7 +1102,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   type CompactionUiState = { status: 'compacting' } | { status: 'done'; tokensFreed?: number } | null;
   const [compactionUi, setCompactionUi] = useState<CompactionUiState>(null);
 
-  // "输出被截断、自动续写未完成"兜底提示（服务端 data-truncated 事件触发）
+  // "输出被截断"提示（手动续写）：服务端 data-truncated 事件触发，提供"继续"按钮
   const [truncatedNotice, setTruncatedNotice] = useState<string | null>(null);
 
   // 持久化最新的上下文水位数据，流式数据消失后仍保留
@@ -1221,7 +1221,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     }
   }, [messages]);
 
-  // 从流式消息的 data-truncated 部分提取"输出被截断、自动续写未完成"提示。
+  // 从流式消息的 data-truncated 部分提取"输出被截断"提示（手动续写）。
   // 只处理新增 part（ref 记录上次 id），避免 messages 变化时重复触发。
   const lastTruncatedPartIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1243,6 +1243,13 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     lastTruncatedPartIdRef.current = latest.id;
     setTruncatedNotice(latest.message);
   }, [messages]);
+
+  // 用户已发送新消息（点"继续"或手动输入）→ 截断提示应消失，避免按钮残留到新的一轮
+  useEffect(() => {
+    if (truncatedNotice && messages.length > 0 && messages.at(-1)?.role === 'user') {
+      setTruncatedNotice(null);
+    }
+  }, [messages, truncatedNotice]);
 
   // MCP App 发来的消息转发给 agent，触发 agent 回复
   const handleMcpAppMessage = useCallback((text: string) => {
@@ -3015,7 +3022,8 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           )}
                         </div>
                       )}
-                      {/* 输出被截断兜底提示：自动续写未完成时显示，提供手动"继续"入口 */}
+                      {/* 输出被截断提示（手动续写）：截断时服务端推 data-truncated，显示提示 + "继续"按钮，
+                          点按钮 = 发一条"继续"消息，agent 作为新的一轮回复 */}
                       {message.role === 'assistant' &&
                         messageIndex === renderGroups.length - 1 &&
                         truncatedNotice && (
@@ -3025,7 +3033,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           <button
                             type="button"
                             className="ml-auto shrink-0 rounded border border-amber-500/50 px-2 py-0.5 text-xs hover:bg-amber-500/10"
-                            onClick={() => sendMessage({ text: '请继续完成刚才的回复（不要重复前面内容）。' })}
+                            onClick={() => {
+                              setTruncatedNotice(null);  // 点击后立即隐藏提示，等待新的一轮
+                              sendMessage({ text: '请继续完成刚才的回复（不要重复前面内容）。' });
+                            }}
                           >
                             继续
                           </button>

@@ -34,6 +34,7 @@ const TRANSIENT_PART_TYPES = new Set([
   'data-bash-output',
   'data-context-usage',
   'data-compaction-status',
+  'data-truncated',
 ]);
 
 // ── 参数 ─────────────────────────────────────────────────────
