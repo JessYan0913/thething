@@ -56,8 +56,10 @@ export async function estimateRequestBudget(
   tools: Record<string, Tool>,
   modelName: string,
   contextLimitOverride?: number,
+  /** per-model outputTokens（ModelEntry.outputTokens）——动态 outputReserve，使预算与模型实际输出能力一致 */
+  outputTokensOverride?: number,
 ): Promise<RequestBudgetEstimation> {
-  const base = await estimateFullRequest(messages, instructions, tools, modelName, contextLimitOverride);
+  const base = await estimateFullRequest(messages, instructions, tools, modelName, contextLimitOverride, outputTokensOverride);
   const { calibrator } = getEstimatorInfra();
   const bufferRatio = calibrator.getTokenizerBufferRatio(modelName);
   const baseTokens = base.messagesTokens + base.instructionsTokens + base.toolsTokens;

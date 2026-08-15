@@ -346,8 +346,10 @@ export async function estimateFullRequest(
   tools: Record<string, Tool>,
   modelName: string,
   contextLimitOverride?: number,
+  /** per-model outputTokens（ModelEntry.outputTokens，缺省用默认输出上限）——动态 outputReserve */
+  outputTokensOverride?: number,
 ): Promise<FullRequestEstimation> {
-  const caps = getModelCapabilities(modelName, { contextLimitOverride });
+  const caps = getModelCapabilities(modelName, { contextLimitOverride, outputOverride: outputTokensOverride });
 
   // 并行计算各部分（使用正确的 tokenizer）
   const [messagesTokens, instructionsTokens, toolsTokens] = await Promise.all([

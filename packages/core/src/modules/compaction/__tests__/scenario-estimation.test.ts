@@ -60,6 +60,31 @@ describe('22.8k 小窗口 + 大工具 schema（主动触发，非等 100%）', (
     expect(est.exceedsLimit).toBe(false); // 未超窗口，但达触发线 → 主动升档
   });
 
+  it('动态 outputReserve: per-model outputTokens 使预算与模型输出能力一致', async () => {
+    const base = await estimateRequestBudget(
+      [{ role: 'user', content: 'hi' } as never],
+      'sys',
+      {},
+      'unknown-model',
+      128_000,
+    );
+    // 缺省 → 默认输出上限 8000
+    expect(base.outputReserve).toBe(8_000);
+
+    const big = await estimateRequestBudget(
+      [{ role: 'user', content: 'hi' } as never],
+      'sys',
+      {},
+      'unknown-model',
+      128_000,
+      16_000, // per-model outputTokens（如 thinking 模型配大输出）
+    );
+    // 预算跟随每模型配置：预留 16000
+    expect(big.outputReserve).toBe(16_000);
+    // 预留增大 → effectiveBudget 变小 → 触发线更低（更早为输出留空间）
+    expect(big.triggerTokens).toBeLessThan(base.triggerTokens);
+  });
+
   it('budget-check: 大 schema 触发工具过滤（不再因 128k 魔法阈值放行）', async () => {
     const tools = {
       mcp_alpha: bigTool('alpha'),

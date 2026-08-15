@@ -43,6 +43,8 @@ export interface AgentPipelineConfig {
   instructions?: string;
   tools?: Record<string, Tool>;
   contextLimit?: number;
+  /** per-model outputTokens（ModelEntry.outputTokens）——动态 outputReserve，预算与模型实际输出能力一致 */
+  outputTokens?: number;
   triggerPercent?: number;
   /** 将模型名解析为已经套好遥测/成本中间件的实际模型。 */
   resolveModel?: (modelName: string) => LanguageModel;
@@ -271,6 +273,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         config.tools,
         sessionState.model,
         config.contextLimit,
+        config.outputTokens,
       );
       logger.info('Context', formatContextBar(estimation, estimation.modelLimit));
       // 记录输入侧估算(排除输出预留),下一步收到真实 usage 时配对校准(见主文档 F)

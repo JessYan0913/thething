@@ -338,6 +338,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       conversationId,
       model: modelInstance,
       contextLimit: sessionOptions.maxContextTokens,
+      outputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     },
   )
 
@@ -452,6 +453,8 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     instructions,
     tools: finalTools,
     contextLimit: sessionOptions.maxContextTokens,
+    // 动态 outputReserve：预算与每模型 maxOutputTokens 一致（ModelEntry.outputTokens，缺省 8000）
+    outputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     triggerPercent: compactionCfg.contextWindow.triggerPercent,
     resolveModel: resolveStepModel,
     compactionCallbackRef: options.compactionCallbackRef,

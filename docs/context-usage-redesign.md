@@ -799,7 +799,7 @@ rules:
 1. **显式 `max_tokens` + 截断检测**：模型调用显式设 `maxOutputTokens`；检测 `finishReason='length'` / 文本完整性启发式（断词/未闭合结构）→ 截断的 run **不 committed**（§10.4.2）。
 2. **截断后自动续写**：已产出文本（截至截断点）追加进上下文，显式要求模型"接续不重写"；上下文满则先压缩（§3-§9）再续（§10.4.3）。
 3. **动态 `outputReserve` 并入 `deriveBudget`**：`capabilities.ts:100` 的静态 `min(defaultOutputTokens, 20000)` 改为随窗口余量推导（`clamp(目标, minReserve, contextLimit−输入占用)`），参与 trigger/hardLimit 推导（§10.4.1 / §10.4.4；与 §2.4 A1 同源）。
-   > **实施注记（2026-08-15）**：曾试"窗口比例 15%"版——按窗口比例收紧预留，但**低估模型真实输出能力**（22.8k 窗口只预留 3420，而模型 maxOutputTokens=8000），把触发点后移、截断风险回来，且改坏小窗口调校，**已回滚**。正确做法 = `reserve = min(per-model outputTokens, availableWindow)`：需把 models 配置穿进估算层（`estimateRequestBudget`/`estimateFullRequest` 加 `outputTokens` 参数，source 为 ModelEntry.outputTokens），使预算与每模型 maxOutputTokens 一致。此为后续项。（设置页 outputTokens 字段已于 2026-08-15 移除——默认 8000 已够用；per-model 值仍可手工写 models.json，核心机制保留。）
+   > **实施注记（2026-08-15）**：曾试"窗口比例 15%"版——按窗口比例收紧预留，但**低估模型真实输出能力**（22.8k 窗口只预留 3420，而模型 maxOutputTokens=8000），把触发点后移、截断风险回来，且改坏小窗口调校，**已回滚**。**正确版已实施**：`outputTokensOverride`（ModelEntry.outputTokens）穿进 `estimateFullRequest`/`estimateRequestBudget`/`budget-check`/`pipeline`，`outputReserve = 每模型 outputTokens`（缺省 8000），预算与每模型 maxOutputTokens 一致。设置页 outputTokens 字段已移除，per-model 值手工写 models.json 生效。
 4. **输出侧分片写（"Let Me Take This Outside" 用于产出）**：长任务让模型增量落盘、上下文只留"进度指针 + 已写范围"，而不是一次生成完——从源头消灭"写不完"（§10.4.3；与 P1 分片读对称）。
 
 ### 14.2 P1 — 外部化读回协议（补全 externalization 闭环）
