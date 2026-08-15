@@ -75,6 +75,10 @@
       "title": "上下文长度(可选)",
       "placeholder": "例如 128000"
     },
+    "outputTokens": {
+      "title": "输出上限 tokens(可选)",
+      "placeholder": "例如 8000"
+    },
     "providerEdit": {
       "addTitle": "添加供应商",
       "editTitle": "编辑供应商",

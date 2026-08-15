@@ -1149,6 +1149,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
               : (typeof d.usagePercentage === 'number' ? d.usagePercentage : 0),
             totalTokens: typeof d.totalTokens === 'number' ? d.totalTokens : 0,
             modelLimit: typeof d.modelLimit === 'number' ? d.modelLimit : 128_000,
+            // A1/A2 引擎同源字段：SSE 数据（...payload 透传）里已有，必须原样带过去，
+            // 否则 ContextRing 的 totalTokensWithBuffer 回落、trigger/hardLimit 刻度不渲染。
+            totalTokensWithBuffer: typeof d.totalTokensWithBuffer === 'number' ? d.totalTokensWithBuffer : undefined,
+            triggerTokens: typeof d.triggerTokens === 'number' ? d.triggerTokens : undefined,
+            hardLimitTokens: typeof d.hardLimitTokens === 'number' ? d.hardLimitTokens : undefined,
             compaction: d.compaction && typeof d.compaction === 'object'
               ? d.compaction as ContextBudgetSnapshot['compaction']
               : {

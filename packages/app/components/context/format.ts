@@ -32,11 +32,12 @@ export function formatCacheHitRate(sessionCost: Pick<SessionCostSnapshot, 'input
 export function utilizationColor(pct: number): {
   text: string;
   ring: string;
+  bar: string;
   threshold: 'critical' | 'high' | 'normal';
 } {
-  if (pct > 80) return { text: 'text-destructive', ring: 'text-destructive', threshold: 'critical' };
-  if (pct > 60) return { text: 'text-yellow-500', ring: 'text-yellow-500', threshold: 'high' };
-  return { text: 'text-primary/60', ring: 'text-primary/60', threshold: 'normal' };
+  if (pct > 80) return { text: 'text-destructive', ring: 'text-destructive', bar: 'bg-destructive', threshold: 'critical' };
+  if (pct > 60) return { text: 'text-yellow-500', ring: 'text-yellow-500', bar: 'bg-yellow-500', threshold: 'high' };
+  return { text: 'text-primary/60', ring: 'text-primary/60', bar: 'bg-primary/60', threshold: 'normal' };
 }
 
 /** 整圆周长（用于 SVG dasharray） */
@@ -54,6 +55,11 @@ export function displayPercent(pct: number): string {
   return `${Math.min(100, Math.max(0, pct)).toFixed(0)}%`;
 }
 
+/** 把 0-100 百分比 clamp 到 [0,100]，供进度条宽度/刻度定位用（唯一允许 Math.min 的位置） */
+export function clampPercent(pct: number): number {
+  return Math.min(100, Math.max(0, pct));
+}
+
 /** 把 snapshot 渲染为详情面板用 row 数据 */
 export interface DetailRow {
   label: string;
@@ -66,17 +72,26 @@ export function buildDetailRows(snapshot: ContextBudgetSnapshot): DetailRow[] {
   const limit = snapshot.modelLimit || 1;
   const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
   const pct = (total / limit) * 100;
-  return [
+  const rows: DetailRow[] = [
     { label: '当前使用', value: displayPercent(pct), highlight: true },
     { label: '窗口', value: `${formatTokens(total)} / ${formatTokens(snapshot.modelLimit)}` },
-    { label: '压缩阈值', value: `${(snapshot.compaction.triggerPercent * 100).toFixed(0)}%` },
-    {
-      label: '已压缩',
-      value: `${snapshot.compaction.compactionsCount} 次 · 释放 ${formatTokens(snapshot.compaction.totalFreed)}`,
-    },
+  ];
+  // A2 刻度与引擎行为对齐：优先引擎推导的 trigger/hardLimit（百分比 + tokens），
+  // 旧数据/DB-loaded 无此字段时回落 compaction.triggerPercent。
+  if (snapshot.triggerTokens != null && snapshot.hardLimitTokens != null) {
+    rows.push(
+      { label: '触发阈值', value: `${displayPercent((snapshot.triggerTokens / limit) * 100)}（${formatTokens(snapshot.triggerTokens)}）` },
+      { label: '强制硬限', value: `${displayPercent((snapshot.hardLimitTokens / limit) * 100)}（${formatTokens(snapshot.hardLimitTokens)}）` },
+    );
+  } else {
+    rows.push({ label: '压缩阈值', value: `${(snapshot.compaction.triggerPercent * 100).toFixed(0)}%` });
+  }
+  rows.push(
+    { label: '已压缩', value: `${snapshot.compaction.compactionsCount} 次 · 释放 ${formatTokens(snapshot.compaction.totalFreed)}` },
     {
       label: '缓存命中率',
       value: `${formatCacheHitRate(snapshot.sessionCost)} · ${formatTokens(snapshot.sessionCost.cachedReadTokens)} tokens`,
     },
-  ];
+  );
+  return rows;
 }
