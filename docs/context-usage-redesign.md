@@ -79,7 +79,7 @@
 - 改法：`estimation` 已暴露 `totalTokensWithBuffer`（`request-budget.ts:30`），圆环利用率改用 `totalTokensWithBuffer / modelLimit × 100`。对应 compaction-redesign §4.8"UI 水位从 policy 读"。
 
 **A2. 刻度与引擎行为对齐（画 trigger/hardLimit 标记）**
-- 问题：圆环分母是 `modelLimit`，100% ≠ 压缩触发点。引擎在 `triggerTokens = effectiveBudget − buffer`（128k 窗口约 80% 出头）就主动压缩，用户看到圆环还很空，实际已压缩——"危险区"与行为脱节。
+- 问题：圆环分母是 `modelLimit`，100% ≠ 压缩触发点。引擎在 `triggerTokens = contextLimit − buffer`（窗口坐标，含 outputReserve）就主动压缩，用户看到圆环还很空，实际已压缩——"危险区"与行为脱节。
 - 改法：`estimation` 已暴露 `triggerTokens / hardLimitTokens`（`request-budget.ts:34-36`）；圆环在 policy 刻度上画 trigger/hardLimit 标记（触发点、强制点），`triggerPercent` 已在 `CompactionSnapshotSchema`（§3.2）中，不新增展示字段。
 
 **A3. 四态机送到 UI（SSE 推全快照，不重建自旧字段）**

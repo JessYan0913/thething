@@ -207,13 +207,17 @@ totalWithBuffer = messagesTokens + instructionsTokens + toolsTokens + outputRese
 // prompt-budget-policy.ts —— 纯函数，无副作用
 deriveBudget(contextLimit, outputReserve, modelName?) → BudgetPolicy {
   effectiveBudget = contextLimit − outputReserve
-  bufferTokens = clamp(effectiveBudget × ratio[encodingLevel], min[level], 50_000)
-  //   exact 4%·min2000 / approximate 8%·min3000 / char 15%·min5000
-  triggerTokens   = effectiveBudget − bufferTokens      // 达到 → 主动升档压缩
-  hardLimitTokens = effectiveBudget − 3000              // 达到 → 强制降级
+  bufferTokens = max(误差距离, 反应空间, EMERGENCY_BUFFER=3000)，受 MAX_BUFFER=50_000 封顶
+    误差距离 = clamp(effectiveBudget × ratio[encodingLevel], min[level], 50_000)
+    //   exact 4%·min2000 / approximate 8%·min3000 / char 15%·min5000
+    反应空间 = min(effectiveBudget × 10%, 30_000)   // 触发→压缩执行间的增长，防 128k–256k 触发点过晚
+  triggerTokens   = contextLimit − bufferTokens      // 达到 → 主动升档压缩
+  hardLimitTokens = contextLimit − 3000              // 达到 → 强制降级
 }
 targetTokens(contextLimit, targetPercent)               // 压缩后目标（默认 0.6~0.7）
 ```
+
+**坐标系说明**：`triggerTokens / hardLimitTokens` 是**窗口坐标系**（含 outputReserve），与 `totalWithBuffer`（= 纯输入 + outputReserve + 校准 buffer）同口径比较，避免 outputReserve 双计（从阈值扣除又加到比较量上）。触发时纯输入 = `contextLimit − buffer − outputReserve` = `effectiveBudget − buffer`，即输入触发线。`buffer` 下限 = `EMERGENCY_BUFFER`，保证 `trigger ≤ hard`（防小窗口红黄倒置）；`反应空间` 下限解决 exact 4% 误差 buffer 把触发点推到窗口 90%+、黄→红只剩 1.8k–5k tokens 的问题。
 
 **删除所有散落百分比**。`0.2 / 0.1 / 0.3 / 0.8 / 0.6 / 0.5 / 0.15` 一律改为从 policy 推导：
 - 每步升档：`totalWithBuffer ≥ triggerTokens` → 压到 `targetTokens`

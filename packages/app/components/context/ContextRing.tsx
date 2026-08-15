@@ -14,11 +14,12 @@ export function ContextRing({ snapshot }: { snapshot: ContextBudgetSnapshot }) {
   // A1 显示同源：优先引擎权威口径（含校准 buffer），无则回落 base 总量
   const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
   const pct = (total / limit) * 100;
-  const color = utilizationColor(pct);
 
   // A2 刻度：trigger（黄）/ hardLimit（红）在圆环上的位置
   const triggerPct = snapshot.triggerTokens != null ? (snapshot.triggerTokens / limit) * 100 : null;
   const hardPct = snapshot.hardLimitTokens != null ? (snapshot.hardLimitTokens / limit) * 100 : null;
+  // 颜色与引擎触发点同源：达触发线变黄、达硬限变红（无刻度时回落通用阈值）
+  const color = utilizationColor(pct, triggerPct, hardPct);
   const tick = (p: number) => {
     const a = (Math.min(100, Math.max(0, p)) / 100) * 2 * Math.PI;
     return { x: 10 + 8 * Math.sin(a), y: 10 - 8 * Math.cos(a) };

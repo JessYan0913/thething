@@ -44,8 +44,13 @@ describe('估算地基场景（估算准确不低估）', () => {
 });
 
 describe('22.8k 小窗口 + 大工具 schema（主动触发，非等 100%）', () => {
-  it('总量(含工具+输出预留)达触发线即 shouldTrigger，未超窗口', async () => {
-    const tools = { big: bigTool('big') } as never;
+  it('输入占用(含工具)达触发线即 shouldTrigger，未超窗口', async () => {
+    const tools = {
+      big_a: bigTool('a'),
+      big_b: bigTool('b'),
+      big_c: bigTool('c'),
+      big_d: bigTool('d'),
+    } as never;
     const est = await estimateRequestBudget(
       [{ role: 'user', content: 'hi' } as never],
       'sys',
@@ -53,8 +58,10 @@ describe('22.8k 小窗口 + 大工具 schema（主动触发，非等 100%）', (
       'unknown-model',
       22_800,
     );
-    // 22.8k, char 级 buffer: effectiveBudget=14800, buffer=5000 → trigger=9800
-    expect(est.triggerTokens).toBe(9_800);
+    // 22.8k, char 级 buffer: effectiveBudget=14800, buffer=5000 → 输入触发线 9800
+    // （窗口坐标 trigger = 22800 − 5000 = 17800，含 outputReserve）。
+    // 4×~3k 工具 ≈ 12k 纯输入 ≥ 9800 → 触发
+    expect(est.triggerTokens).toBe(17_800);
     expect(est.toolsTokens).toBeGreaterThan(2_000);
     expect(est.shouldTrigger).toBe(true);
     expect(est.exceedsLimit).toBe(false); // 未超窗口，但达触发线 → 主动升档
@@ -81,8 +88,11 @@ describe('22.8k 小窗口 + 大工具 schema（主动触发，非等 100%）', (
     );
     // 预算跟随每模型配置：预留 16000
     expect(big.outputReserve).toBe(16_000);
-    // 预留增大 → effectiveBudget 变小 → 触发线更低（更早为输出留空间）
-    expect(big.triggerTokens).toBeLessThan(base.triggerTokens);
+    // 窗口坐标系下 trigger 含 outputReserve；输入触发线 = trigger − outputReserve。
+    // 预留增大 → effectiveBudget 变小 → 输入触发线更低（更早为输出留空间）
+    expect(big.triggerTokens - big.outputReserve).toBeLessThan(
+      base.triggerTokens - base.outputReserve,
+    );
   });
 
   it('budget-check: 大 schema 触发工具过滤（不再因 128k 魔法阈值放行）', async () => {

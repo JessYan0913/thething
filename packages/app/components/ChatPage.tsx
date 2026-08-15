@@ -48,6 +48,7 @@ function buildSnapshotFromConversation(conversation: {
     utilizationPercent: Math.min(100, Math.max(0, conversation.contextUsage)),
     totalTokens: conversation.contextTotal ?? 0,
     modelLimit: conversation.contextLimit ?? 128_000,
+    outputReserve: conversation.contextOutputReserve ?? undefined,
     compaction: {
       // 旧 schema 没有 compactionsCount；仅能推断"是否曾压缩过"
       state: 'idle',

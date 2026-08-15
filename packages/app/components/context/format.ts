@@ -28,15 +28,23 @@ export function formatCacheHitRate(sessionCost: Pick<SessionCostSnapshot, 'input
 /**
  * 把 utilizationPercent 映射到颜色档位。
  * 唯一允许的颜色规则定义点。
+ * 有引擎刻度（trigger/hard）时颜色对齐触发点：<触发 正常 / 触发~硬限 高 / ≥硬限 危险；
+ * 无刻度（DB-loaded 旧会话）时回落通用使用量阈值（>60 黄 / >80 红）。
  */
-export function utilizationColor(pct: number): {
+export function utilizationColor(
+  pct: number,
+  triggerPct?: number | null,
+  hardPct?: number | null,
+): {
   text: string;
   ring: string;
   bar: string;
   threshold: 'critical' | 'high' | 'normal';
 } {
-  if (pct > 80) return { text: 'text-destructive', ring: 'text-destructive', bar: 'bg-destructive', threshold: 'critical' };
-  if (pct > 60) return { text: 'text-yellow-500', ring: 'text-yellow-500', bar: 'bg-yellow-500', threshold: 'high' };
+  const trigger = triggerPct ?? 60;
+  const hard = hardPct ?? 80;
+  if (pct >= hard) return { text: 'text-destructive', ring: 'text-destructive', bar: 'bg-destructive', threshold: 'critical' };
+  if (pct >= trigger) return { text: 'text-yellow-500', ring: 'text-yellow-500', bar: 'bg-yellow-500', threshold: 'high' };
   return { text: 'text-primary/60', ring: 'text-primary/60', bar: 'bg-primary/60', threshold: 'normal' };
 }
 
@@ -67,31 +75,79 @@ export interface DetailRow {
   highlight?: boolean;
 }
 
-export function buildDetailRows(snapshot: ContextBudgetSnapshot): DetailRow[] {
-  // A1 显示同源：详情面板与圆环用同一口径（含校准 buffer）
+/** 进度条分段（构成明细） */
+export interface Segment {
+  key: 'input' | 'tools' | 'output' | 'calib';
+  label: string;
+  tokens: number;
+  /** 相对 modelLimit 的百分比（进度条宽度，clamp 0-100） */
+  pct: number;
+  /** 分段颜色 class */
+  className: string;
+}
+
+/**
+ * 构成分段：纯输入 / 工具 / 输出预留 / 校准 buffer，各占窗口比例。
+ * 四段之和 = totalTokensWithBuffer，进度条总长 = 主百分比（同一坐标系），
+ * 黄线(trigger)/红线(hard)刻度可直接贯穿。
+ * 无构成字段（DB-loaded 旧会话）时退化为单段（总占用，颜色走 utilizationColor）。
+ */
+export function buildSegments(snapshot: ContextBudgetSnapshot): Segment[] {
   const limit = snapshot.modelLimit || 1;
-  const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
-  const pct = (total / limit) * 100;
-  const rows: DetailRow[] = [
-    { label: '当前使用', value: displayPercent(pct), highlight: true },
-    { label: '窗口', value: `${formatTokens(total)} / ${formatTokens(snapshot.modelLimit)}` },
-  ];
-  // A2 刻度与引擎行为对齐：优先引擎推导的 trigger/hardLimit（百分比 + tokens），
-  // 旧数据/DB-loaded 无此字段时回落 compaction.triggerPercent。
-  if (snapshot.triggerTokens != null && snapshot.hardLimitTokens != null) {
-    rows.push(
-      { label: '触发阈值', value: `${displayPercent((snapshot.triggerTokens / limit) * 100)}（${formatTokens(snapshot.triggerTokens)}）` },
-      { label: '强制硬限', value: `${displayPercent((snapshot.hardLimitTokens / limit) * 100)}（${formatTokens(snapshot.hardLimitTokens)}）` },
-    );
-  } else {
-    rows.push({ label: '压缩阈值', value: `${(snapshot.compaction.triggerPercent * 100).toFixed(0)}%` });
+  const hasDetail =
+    snapshot.messagesTokens != null ||
+    snapshot.instructionsTokens != null ||
+    snapshot.toolsTokens != null ||
+    snapshot.tokenizerBuffer != null ||
+    snapshot.outputReserve != null;
+
+  if (!hasDetail) {
+    const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
+    return [{
+      key: 'input',
+      label: '使用',
+      tokens: total,
+      pct: clampPercent((total / limit) * 100),
+      className: 'bg-primary/60',
+    }];
   }
-  rows.push(
+
+  const push = (key: Segment['key'], label: string, tokens: number, className: string) => {
+    if (tokens > 0) segs.push({ key, label, tokens, pct: clampPercent((tokens / limit) * 100), className });
+  };
+  const segs: Segment[] = [];
+  push('input', '纯输入', (snapshot.messagesTokens ?? 0) + (snapshot.instructionsTokens ?? 0), 'bg-primary/70');
+  push('tools', '工具', snapshot.toolsTokens ?? 0, 'bg-primary/40');
+  push('output', '输出预留', snapshot.outputReserve ?? 0, 'bg-muted-foreground/50');
+  push('calib', '校准', snapshot.tokenizerBuffer ?? 0, 'bg-muted-foreground/25');
+  // 空会话全 0：保底一个空段，避免进度条无内容/图例无项
+  if (segs.length === 0) {
+    segs.push({ key: 'input', label: '纯输入', tokens: 0, pct: 0, className: 'bg-primary/70' });
+  }
+  return segs;
+}
+
+/** 距触发线的距离（tokens + 窗口百分比）。无 trigger（DB-loaded）时 null。 */
+export function distanceToTrigger(snapshot: ContextBudgetSnapshot): {
+  tokens: number;
+  pct: number;
+  triggered: boolean;
+} | null {
+  if (snapshot.triggerTokens == null) return null;
+  const total = snapshot.totalTokensWithBuffer ?? snapshot.totalTokens;
+  const tokens = snapshot.triggerTokens - total;
+  const limit = snapshot.modelLimit || 1;
+  return { tokens, pct: (tokens / limit) * 100, triggered: tokens <= 0 };
+}
+
+/** 详情行：压缩历史 + 缓存/成本。窗口/触发/硬限数字行已被进度条分段+刻度取代。 */
+export function buildDetailRows(snapshot: ContextBudgetSnapshot): DetailRow[] {
+  return [
     { label: '已压缩', value: `${snapshot.compaction.compactionsCount} 次 · 释放 ${formatTokens(snapshot.compaction.totalFreed)}` },
     {
       label: '缓存命中率',
       value: `${formatCacheHitRate(snapshot.sessionCost)} · ${formatTokens(snapshot.sessionCost.cachedReadTokens)} tokens`,
     },
-  );
-  return rows;
+    { label: '本会话成本', value: `$${snapshot.sessionCost.totalCostUsd.toFixed(2)}` },
+  ];
 }

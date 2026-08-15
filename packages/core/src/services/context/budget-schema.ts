@@ -38,6 +38,14 @@ export const ContextBudgetSnapshotSchema = z.object({
   totalTokensWithBuffer: z.number().int().nonnegative().optional(),
   triggerTokens: z.number().int().nonnegative().optional(),
   hardLimitTokens: z.number().int().nonnegative().optional(),
+  /** 输出预留 tokens（含在 totalTokensWithBuffer 里，单独标出解释底噪） */
+  outputReserve: z.number().int().nonnegative().optional(),
+
+  // === 构成明细（A3 分段进度条用；旧数据/部分路径无此字段时回落单段填充） ===
+  messagesTokens: z.number().int().nonnegative().optional(),
+  instructionsTokens: z.number().int().nonnegative().optional(),
+  toolsTokens: z.number().int().nonnegative().optional(),
+  tokenizerBuffer: z.number().int().nonnegative().optional(),
 
   // === compaction 维度（事件累计） ===
   compaction: CompactionSnapshotSchema,

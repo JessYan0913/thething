@@ -25,6 +25,13 @@ interface BuildPayloadInput {
     triggerTokens?: number;
     /** 强制降级硬限（tokens）——A2 圆环刻度用 */
     hardLimitTokens?: number;
+    /** 输出预留（含在 totalTokensWithBuffer 里）——详情面板标出底噪 */
+    outputReserve?: number;
+    /** 构成明细（A3 分段进度条）：messages/instructions/tools + 校准 buffer */
+    messagesTokens?: number;
+    instructionsTokens?: number;
+    toolsTokens?: number;
+    tokenizerBuffer?: number;
   } | null | undefined;
   compactionTracker: { getSnapshot(): unknown };
   costTracker: {
@@ -58,6 +65,11 @@ export function buildContextBudgetPayload(input: BuildPayloadInput): ContextBudg
     totalTokensWithBuffer: input.lastEstimation.totalTokensWithBuffer,
     triggerTokens: input.lastEstimation.triggerTokens,
     hardLimitTokens: input.lastEstimation.hardLimitTokens,
+    outputReserve: input.lastEstimation.outputReserve,
+    messagesTokens: input.lastEstimation.messagesTokens,
+    instructionsTokens: input.lastEstimation.instructionsTokens,
+    toolsTokens: input.lastEstimation.toolsTokens,
+    tokenizerBuffer: input.lastEstimation.tokenizerBuffer,
     compaction: input.compactionTracker.getSnapshot() as ContextBudgetSnapshot['compaction'],
     sessionCost,
     capturedAt: new Date().toISOString(),

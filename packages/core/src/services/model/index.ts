@@ -14,7 +14,6 @@ export {
   getDefaultOutputTokens,
   getModelCapabilities,
   getEffectiveContextBudget,
-  getAutoCompactThreshold,
 } from './capabilities';
 export type { ModelCapabilities } from './capabilities-types';
 

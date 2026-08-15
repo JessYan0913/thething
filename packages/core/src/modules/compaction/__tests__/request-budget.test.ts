@@ -31,26 +31,26 @@ describe('estimateRequestBudget', () => {
 
   it('exposes trigger/hardLimit from the single policy', async () => {
     const est = await estimateRequestBudget(smallMsgs, 'instructions', {}, 'unknown-model');
-    expect(est.triggerTokens).toBe(102_000); // 128k - 8k output, char 15% buffer
-    expect(est.hardLimitTokens).toBe(117_000);
+    expect(est.triggerTokens).toBe(110_000); // 128k − 18k char buffer（窗口坐标系，含 outputReserve）
+    expect(est.hardLimitTokens).toBe(125_000); // 128k − 3k
     expect(est.shouldTrigger).toBe(false);
   });
 
   it('a large request near the window triggers', async () => {
     resetCalibration('unknown-model');
-    // 构造一个占满窗口的消息（约 400k 字符 ≈ 100k tokens，char 估算 4 chars/token）
-    const big = { role: 'user' as const, content: 'word '.repeat(80_000) };
+    // 构造一个接近触发线的消息（约 410k 字符 ≈ 102.5k tokens，char 估算 4 chars/token）
+    const big = { role: 'user' as const, content: 'word '.repeat(82_000) };
     const est = await estimateRequestBudget([big], 'instructions', {}, 'unknown-model');
     expect(est.messagesTokens).toBeGreaterThan(90_000);
-    // total ≈ 100k + outputReserve 8k ≥ trigger 102k → 触发
+    // total ≈ 102.5k 输入 + 8k outputReserve = 110.5k ≥ trigger 110k → 触发
     expect(est.shouldTrigger).toBe(true);
   });
 
   it('proactive trigger: shouldTrigger true before the request actually exceeds the window', async () => {
     resetCalibration('unknown-model');
-    // ~97.5k messages tokens + 8k outputReserve = ~105.5k total
-    // ≥ trigger 102k（应主动升档）但 < 窗口 128k（未超限）
-    const big = { role: 'user' as const, content: 'word '.repeat(78_000) };
+    // ~103.75k messages tokens + 8k outputReserve = ~111.75k total
+    // ≥ trigger 110k（应主动升档）但 < 窗口 128k（未超限）
+    const big = { role: 'user' as const, content: 'word '.repeat(83_000) };
     const est = await estimateRequestBudget([big], 'instructions', {}, 'unknown-model');
     expect(est.shouldTrigger).toBe(true);
     expect(est.exceedsLimit).toBe(false);

@@ -9,7 +9,6 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   DEFAULT_OUTPUT_TOKENS,
 } from './constants';
-import { AUTOCOMPACT_BUFFER_TOKENS } from '../../primitives/constants';
 
 import type { ModelCapabilities } from './capabilities-types';
 import type { ModelSpec } from '../config/behavior';
@@ -111,15 +110,4 @@ export function getEffectiveContextBudget(
   const contextLimit = getModelContextLimit(modelName, options?.contextLimitOverride, options?.modelSpec);
   const outputReserve = Math.min(getDefaultOutputTokens(options?.outputOverride), 20_000);
   return contextLimit - outputReserve;
-}
-
-/**
- * 自动压缩触发阈值
- * triggerPoint = effectiveBudget - buffer
- */
-export function getAutoCompactThreshold(
-  modelName: string,
-  options?: { contextLimitOverride?: number; outputOverride?: number; modelSpec?: ModelSpec }
-): number {
-  return getEffectiveContextBudget(modelName, options) - AUTOCOMPACT_BUFFER_TOKENS;
 }

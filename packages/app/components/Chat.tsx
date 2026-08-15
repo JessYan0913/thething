@@ -1128,6 +1128,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
 
   // 流式上下文水位优先，持久化兜底，再回退到 prop
   const effectiveContextBudget = streamContextBudget ?? persistedContextBudget.current ?? contextBudget ?? null;
+  // hover title 与圆环同源：用含校准 buffer 的总量（与 ContextRing 的 pct 同口径，
+  // 不用 utilizationPercent——后者不含 tokenizerBuffer，校准生效时会差几个点）
+  const contextRingTotal = effectiveContextBudget?.totalTokensWithBuffer ?? effectiveContextBudget?.totalTokens ?? 0;
+  const contextRingPercent = (contextRingTotal / (effectiveContextBudget?.modelLimit || 1)) * 100;
 
   // 从流式消息的 data-context-usage 部分提取上下文水位数据
   // 优先用新 schema 字段；stream data 同时含旧字段做兜底
@@ -1154,6 +1158,11 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
             totalTokensWithBuffer: typeof d.totalTokensWithBuffer === 'number' ? d.totalTokensWithBuffer : undefined,
             triggerTokens: typeof d.triggerTokens === 'number' ? d.triggerTokens : undefined,
             hardLimitTokens: typeof d.hardLimitTokens === 'number' ? d.hardLimitTokens : undefined,
+            outputReserve: typeof d.outputReserve === 'number' ? d.outputReserve : undefined,
+            messagesTokens: typeof d.messagesTokens === 'number' ? d.messagesTokens : undefined,
+            instructionsTokens: typeof d.instructionsTokens === 'number' ? d.instructionsTokens : undefined,
+            toolsTokens: typeof d.toolsTokens === 'number' ? d.toolsTokens : undefined,
+            tokenizerBuffer: typeof d.tokenizerBuffer === 'number' ? d.tokenizerBuffer : undefined,
             compaction: d.compaction && typeof d.compaction === 'object'
               ? d.compaction as ContextBudgetSnapshot['compaction']
               : {
@@ -1943,7 +1952,7 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                   <button
                     type="button"
                     className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity"
-                    title={`上下文窗口: ${effectiveContextBudget.utilizationPercent.toFixed(0)}% (${effectiveContextBudget.totalTokens >= 1000 ? `${(effectiveContextBudget.totalTokens / 1000).toFixed(0)}K` : effectiveContextBudget.totalTokens}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
+                    title={`上下文窗口: ${contextRingPercent.toFixed(0)}% (${contextRingTotal >= 1000 ? `${(contextRingTotal / 1000).toFixed(0)}K` : contextRingTotal}/${effectiveContextBudget.modelLimit >= 1000 ? `${(effectiveContextBudget.modelLimit / 1000).toFixed(0)}K` : effectiveContextBudget.modelLimit})`}
                     onClick={() => setShowContextDetail(true)}
                   >
                     <ContextRing snapshot={effectiveContextBudget} />
