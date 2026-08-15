@@ -56,9 +56,14 @@
 | `ai` 的 `ToolLoopAgent`（node_modules/ai） | 把"最后一步纯文本"当最终答案；无截断检测 |
 | `packages/app/app/api/chat/route.ts:180-203` | 续做注入"未完成任务"note；未恢复 in_progress（§5） |
 
-## 5. 顺带记录（续做测试暴露的另一个问题）
+## 5. 顺带记录（续做测试暴露的另一个问题）——**已修复 2026-08-15**
 
-**续做不恢复 in_progress**：`packages/app/app/api/todos/route.ts:100-107` 的 `reset-conversation` 在停止时把 in_progress 重置为 pending。续做时面板/模型看不到"上次正在执行"的状态信号。候选修法：`chat/route.ts` 注入未完成任务前，把带 `stopReason`、最近更新的那条恢复为 in_progress。**独立小问题，可随时修，不依赖本篇主问题。**
+**续做不恢复 in_progress**：`packages/app/app/api/todos/route.ts:100-107` 的 `reset-conversation` 在停止时把 in_progress 重置为 pending。修复（已实施，`chat/route.ts` 续做注入处）：
+1. 找到带 `stopReason`、最近更新的 pending 任务，**确定性恢复为 in_progress**（面板与模型重新看到"正在执行"；只恢复最近中断的一条，保持单一 in_progress 纪律）。
+2. **note 对被中断任务加警示**："⚠️ 该任务上次执行中被中断，可能未完成：请先检查其产出是否完整，补全后再标 completed，不要直接视为完成跳过"——防止 agent 凭上下文盲判完成跳过。
+3. 已知残留：中断发生在"产出刚写完、todo 未及标 completed"的窗口时，agent 可能据上下文判完成（数据上产出确实完整）；note 的警示让它在盲跳前显式验证。另：`outputs` 目录已整体移出 git（2026-08-15，`chore(gitignore)`）。
+
+**本问题独立于本篇主问题（输出截断），已闭环。**
 
 ## 6. 待调查问题（后续会话的作业清单）
 

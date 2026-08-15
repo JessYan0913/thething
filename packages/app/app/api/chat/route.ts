@@ -203,7 +203,11 @@ export async function POST(request: Request) {
         const parts = ['ID: ' + t.id, '\u72b6\u6001: ' + t.status];
         if (t.activeForm) parts.push('\u8fdb\u5ea6: ' + t.activeForm);
         if (t.status === 'failed') parts.push('\u4e0a\u6b21\u5931\u8d25');
-        return '- **' + t.subject + '** (' + parts.join(', ') + ')';
+        // 被中断任务可能未完成：警示 agent 先检查/补全再标完成，不要盲判完成跳过
+        const interrupted = interruptedTodo && t.id === interruptedTodo.id
+          ? ' \u26a0\ufe0f \u8be5\u4efb\u52a1\u4e0a\u6b21\u6267\u884c\u4e2d\u88ab\u4e2d\u65ad\uff0c\u53ef\u80fd\u672a\u5b8c\u6210\uff1a\u8bf7\u5148\u68c0\u67e5\u5176\u4ea7\u51fa\u662f\u5426\u5b8c\u6574\uff0c\u8865\u5168\u540e\u518d\u6807 completed\uff0c\u4e0d\u8981\u76f4\u63a5\u89c6\u4e3a\u5b8c\u6210\u8df3\u8fc7'
+          : '';
+        return '- **' + t.subject + '** (' + parts.join(', ') + ')' + interrupted;
       });
       const todoNote = '\n\n## \u672a\u5b8c\u6210\u4efb\u52a1\n\u4ee5\u4e0b\u662f\u4f60\u4e4b\u524d\u4e2d\u65ad\u540e\u7559\u4e0b\u7684\u672a\u5b8c\u6210\u4efb\u52a1\uff0c\u9700\u8981\u7ee7\u7eed\u5904\u7406\uff1a\n'
         + todoLines.join('\n')
