@@ -99,9 +99,9 @@ function itemMetadata(item: TodoWriteToolInput['todos'][number]): Record<string,
  */
 export function createTodoWriteToolForConversation(store: TodoStore, conversationId: string) {
   return tool({
-    description: `Create and update the task list for the current session. The PREFERRED tool for task planning — the default for all multi-step work.
+    description: `Create and update the task list for the current session. The PREFERRED tool for task planning — use it to decompose complex work.
 
-When the user's request needs multiple steps, produces multiple deliverables, or requires several operations (e.g. plan a trip with itinerary + budget + packing list; research a topic + write a report + list key companies; draft + revise + publish a post), your FIRST action should be calling this tool to lay out the plan — do not start working before the list exists. Only high-stakes or user-requested-confirmation work should use submit_plan instead; everything else plans with this tool.
+When the user's request is complex — a problem that benefits from being split into a few sub-tasks you think through and execute one by one (multiple facets, trade-offs, uncertainty, exploration, iteration), e.g. plan a trip with itinerary + budget + packing list; research a topic + write a report + list key companies; weigh two options and decide — your FIRST action should be calling this tool to lay out the plan — do not start working before the list exists. Judge by the mental complexity of the problem, not by how many mechanical steps it will take. Only high-stakes or user-requested-confirmation work should use submit_plan instead; everything else plans with this tool.
 
 Usage:
 - Pass the FULL list each call; it replaces the previous list (active todos not included are removed; completed ones are kept as a record of what's been done).

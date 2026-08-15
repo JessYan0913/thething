@@ -2,13 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { buildPlanPrompt, buildEmptyTodoReminder } from '../plan-prompt';
 
 describe('注入消息', () => {
-  it('开工提示与兜底提醒都包含"先建清单"意图，且把判断交给模型', () => {
+  it('开工提示与兜底提醒都以"心智复杂度"而非"步骤数"为判断依据', () => {
     const prompt = buildPlanPrompt();
     expect(prompt).toContain('todo_write');
     expect(prompt).toContain('直接回答');
+    expect(prompt).toContain('拆成几个子问题'); // 复杂度 = 拆解
+    expect(prompt).toContain('即使实际步骤不多'); // 明确不按步骤数判断
 
     const reminder = buildEmptyTodoReminder();
     expect(reminder).toContain('todo_write');
-    expect(reminder).toContain('确认是单步任务');
+    expect(reminder).toContain('确认简单直接');
   });
 });

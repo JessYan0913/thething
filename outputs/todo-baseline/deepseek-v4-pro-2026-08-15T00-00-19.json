@@ -1,0 +1,71 @@
+{
+  "model": "deepseek-v4-pro",
+  "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+  "timestamp": "2026-08-15T00:00:19.747Z",
+  "cases": [
+    {
+      "id": "g05",
+      "category": "multi-general",
+      "label": "认知复杂决策：选后端方案",
+      "expectTodo": true,
+      "request": "帮我决定后端用 Node 还是 Go：比较两者的优劣，结合我们团队的情况给个建议",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "read_wiki_page"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "ask_user_question"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [],
+      "toolSequence": [
+        "read_wiki_page",
+        "ask_user_question"
+      ],
+      "stepCount": 2,
+      "inputTokens": 22988,
+      "outputTokens": 541,
+      "finishReason": "tool-calls",
+      "finalText": "在给出建议之前，我需要了解你们团队的情况。请回答以下几个关键问题：\n\n"
+    }
+  ],
+  "metrics": {
+    "total": 1,
+    "multi": 1,
+    "multiCreated": 0,
+    "multiCreationRate": 0,
+    "multiCodeCreated": 0,
+    "multiCodeRate": 0,
+    "multiGeneralCreated": 0,
+    "multiGeneralRate": 0,
+    "single": 0,
+    "singleFalsePositive": 0,
+    "ambiguous": 0,
+    "ambiguousCreated": 0,
+    "ambiguousRate": 0,
+    "plannedButEmpty": 0,
+    "progressRate": 0,
+    "avgFirstPlanStep": null,
+    "resultCoverage": null
+  }
+}
