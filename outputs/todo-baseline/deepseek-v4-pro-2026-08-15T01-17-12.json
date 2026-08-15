@@ -1,0 +1,173 @@
+{
+  "model": "deepseek-v4-pro",
+  "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+  "timestamp": "2026-08-15T01:17:12.488Z",
+  "cases": [
+    {
+      "id": "x01",
+      "category": "complex",
+      "label": "发布会 5 阶段交付",
+      "expectTodo": true,
+      "request": "我要办一个产品发布会，帮我按顺序准备五件事：1) 调研目标用户群体的需求 2) 提炼产品的 3 个核心卖点 3) 写一份 5 分钟的演讲稿 4) 设计演示文稿的大纲结构 5) 准备可能的 Q&A 预案。每个阶段完成后简要汇报一下进展，最后给一份总览。",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "todoMutations": 0,
+      "followedUp": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "ask_user_question"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [],
+      "toolSequence": [
+        "ask_user_question"
+      ],
+      "stepCount": 1,
+      "inputTokens": 11472,
+      "outputTokens": 504,
+      "finishReason": "tool-calls",
+      "finalText": "在开始之前，我需要了解一些关键信息，这样才能为你准备有针对性的内容。请问"
+    },
+    {
+      "id": "x02",
+      "category": "complex",
+      "label": "2000 字深度长文分四步",
+      "expectTodo": true,
+      "request": "帮我写一篇 2000 字以上、关于「远程办公如何重塑团队协作」的深度长文。分四步推进：先写大纲；再依次写第一、二、三部分（每部分 500 字以上）；最后通读润色、检查逻辑连贯和错别字。每一步完成后停一下汇报进度，全部完成后给总览。",
+      "created": 5,
+      "firstPlanStep": 0,
+      "plannedButEmpty": false,
+      "statuses": {
+        "pending": 4,
+        "in_progress": 1
+      },
+      "progressed": false,
+      "todoMutations": 1,
+      "followedUp": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 5,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [],
+          "todoCount": 5,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_write",
+          "inputSummary": "list=5 [\"撰写文章大纲\",\"撰写第一部分（500字以上）\",\"撰写第二部分（500字以上）\",\"撰写第三部分（500字以上）\",\"通读润色，检查逻辑连贯和错别字\"]",
+          "output": "{\"success\":true,\"todos\":[{\"id\":\"todo-9ySLT-4T\",\"subject\":\"撰写文章大纲\",\"status\":\"in_progress\"},{\"id\":\"todo-SEdvi9OX\",\"subject\":\"撰写第一部分（500字以上）\",\"status\":\"pending\"},{\"id\":\"todo-S7gbNWUZ\",\"subject\":\"撰写第二部分（500字以上）\",\"status\":\"pending\"},{\"id\":\"todo-4Lw4TRcO\",\"subject\":\"撰写第三部分（500字以上）\",\"status\":\"pending\"},{\"i"
+        }
+      ],
+      "toolSequence": [
+        "todo_write"
+      ],
+      "stepCount": 2,
+      "inputTokens": 23676,
+      "outputTokens": 1161,
+      "finishReason": "stop",
+      "finalText": "## 第一步：文章大纲\n\n先呈上大纲——\n\n---\n\n**标题：远程办公如何重塑团队协作**\n\n**引言**\n- 从 2020 年全球「被迫远程」实验切入，引出远程办公已从应急方案变为长期趋势\n- 核心论点：远程办公不只是地点的迁移，而是从底层重构了「协作」的定义——沟通方式、信任机制、组织形态三个维度同时发生深刻变革\n\n**第一部分：沟通模式的变革——从同步到异步**\n- 1.1 同步沟通的退场：会议室、茶水间、即时拍肩膀等传统同步沟通场景的消失，带来的冲击与阵痛\n- 1.2 异步沟通的崛起：书面化、可追溯、跨时区的沟通方式成为主流，Loom 视频、Notion 文档、Slack 线程等工具重塑信息流\n- 1.3 「默认公开」文化：信息从私密对话走向公共频道，透明化加速决策效率，但也带来信息过载的新挑战\n\n**第二部分：信任与管理的范式转换**\n- 2.1 从「盯人」到「盯结果」：过程管控在远程场景下失灵，OKR 等结果导向的绩效体系成为必选项\n- 2.2 信任的重建：管理者被迫放弃「在场即工作」的假设，学习用授权和赋能代替微管理\n- 2.3 新管理工具与新焦虑：数字监控与员工隐私的边界之争，以及「永远在线」文化的隐性代价\n\n**第三部分：团队文化与组织形态的进化**\n- 3.1 虚拟团队文化的培育：从线上团建到数字茶水间，仪式感的重新发明与文化凝聚力的挑战\n- 3.2 全球化人"
+    },
+    {
+      "id": "x03",
+      "category": "complex",
+      "label": "调研→决策→迁移计划",
+      "expectTodo": true,
+      "request": "帮我评估要不要把团队从自建服务器迁移到云，按顺序推进：1) 调研两家云厂商的价格和功能 2) 列出迁移的成本与风险 3) 给出迁移决策建议 4) 如果建议迁移，起草第一阶段的迁移计划。每完成一步更新一下进度，最后给总览。",
+      "created": 4,
+      "firstPlanStep": 0,
+      "plannedButEmpty": false,
+      "statuses": {
+        "pending": 3,
+        "completed": 1
+      },
+      "progressed": true,
+      "todoMutations": 1,
+      "followedUp": false,
+      "resultCoverage": 1,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "todo_write"
+          ],
+          "todoCount": 4,
+          "inProgress": 1,
+          "completed": 0,
+          "failed": 0
+        },
+        {
+          "stepIndex": 1,
+          "tools": [
+            "parallel_agent"
+          ],
+          "todoCount": 4,
+          "inProgress": 0,
+          "completed": 1,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [
+        {
+          "step": 0,
+          "name": "todo_write",
+          "inputSummary": "list=4 [\"调研两家云厂商（AWS vs 阿里云）的价格与功能对比\",\"列出从自建服务器迁移到云的成本与风险清单\",\"综合前两步，给出迁移决策建议\",\"如果建议迁移，起草第一阶段的迁移计划\"]",
+          "output": ""
+        }
+      ],
+      "toolSequence": [],
+      "stepCount": 2,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "finishReason": "",
+      "finalText": "",
+      "error": "timeout"
+    }
+  ],
+  "metrics": {
+    "total": 3,
+    "multi": 0,
+    "multiCreated": 0,
+    "multiCreationRate": 0,
+    "multiCodeCreated": 0,
+    "multiCodeRate": 0,
+    "multiGeneralCreated": 0,
+    "multiGeneralRate": 0,
+    "single": 0,
+    "singleFalsePositive": 0,
+    "ambiguous": 0,
+    "ambiguousCreated": 0,
+    "ambiguousRate": 0,
+    "plannedButEmpty": 0,
+    "progressRate": 0.5,
+    "followThroughRate": 0,
+    "avgTodoMutations": 1,
+    "avgFirstPlanStep": 0,
+    "resultCoverage": 1
+  }
+}

@@ -2,15 +2,16 @@
 // Todo Baseline 固定请求集 (Phase 0)
 // ============================================================
 // 目标：在真实 agent 上复现"建 todo 不稳定"症状，量化基线。
-// 四类请求：
+// 五类请求：
 //   multi-code    —— 编码域多步（当前触发词汇的"甜区"，应触发）
 //   multi-general —— 非编码域多步（个人助手日常，触发词汇错配区）
+//   complex       —— 真复杂：多阶段、顺序依赖、需长期跟进（专门测"建了不跟进"）
 //   single        —— 单步/纯问答（不应触发）
 //   ambiguous     —— 边界模糊（最可能不稳定）
 //
 // 注意：multi-code 用例引用的路径都应在沙箱 cwd 内（run.ts 会播种）。
 
-export type CaseCategory = 'multi-code' | 'multi-general' | 'single' | 'ambiguous';
+export type CaseCategory = 'multi-code' | 'multi-general' | 'complex' | 'single' | 'ambiguous';
 
 export interface BaselineCase {
   id: string;
@@ -90,6 +91,37 @@ export const CASES: BaselineCase[] = [
     request:
       '帮我决定后端用 Node 还是 Go：比较两者的优劣，结合我们团队的情况给个建议',
     // 步骤不多但心智复杂度高（多方面权衡）——验证按"复杂度"而非"步骤数"触发规划
+  },
+  // ── 真复杂：多阶段、顺序依赖、需长期跟进（专门测"建了不跟进"）────────
+  {
+    id: 'x01',
+    category: 'complex',
+    label: '发布会 5 阶段交付',
+    expectTodo: true,
+    request:
+      '我要办一个产品发布会，帮我按顺序准备五件事：1) 调研目标用户群体的需求 2) 提炼产品的 3 个核心卖点 ' +
+      '3) 写一份 5 分钟的演讲稿 4) 设计演示文稿的大纲结构 5) 准备可能的 Q&A 预案。' +
+      '每个阶段完成后简要汇报一下进展，最后给一份总览。',
+  },
+  {
+    id: 'x02',
+    category: 'complex',
+    label: '2000 字深度长文分四步',
+    expectTodo: true,
+    request:
+      '帮我写一篇 2000 字以上、关于「远程办公如何重塑团队协作」的深度长文。分四步推进：' +
+      '先写大纲；再依次写第一、二、三部分（每部分 500 字以上）；最后通读润色、检查逻辑连贯和错别字。' +
+      '每一步完成后停一下汇报进度，全部完成后给总览。',
+  },
+  {
+    id: 'x03',
+    category: 'complex',
+    label: '调研→决策→迁移计划',
+    expectTodo: true,
+    request:
+      '帮我评估要不要把团队从自建服务器迁移到云，按顺序推进：1) 调研两家云厂商的价格和功能 ' +
+      '2) 列出迁移的成本与风险 3) 给出迁移决策建议 4) 如果建议迁移，起草第一阶段的迁移计划。' +
+      '每完成一步更新一下进度，最后给总览。',
   },
   // ── 单步 / 纯问答（不应建 todo）────────────────────────────────
   {

@@ -58,6 +58,10 @@ interface CaseResult {
   statuses: Record<string, number>;
   /** 建单后状态是否发生过流转（有任何 completed/failed/cancelled） */
   progressed: boolean;
+  /** 跟进度：清单被 todo 工具触碰的总次数（创建算 1 次；>1 = 建后还有更新） */
+  todoMutations: number;
+  /** 建单后是否至少更新过一次清单（区别于"只创建不跟进"） */
+  followedUp: boolean;
   /** 已完成且带 result 的占比 */
   resultCoverage: number | null;
   /** 每步 todo 状态演变 */
@@ -100,6 +104,8 @@ interface Report {
     ambiguousRate: number;
     plannedButEmpty: number; // 规划过但清单被清空
     progressRate: number; // 已建单用例中"推进过状态"的占比
+    followThroughRate: number; // 已建单用例中"建后至少再更新过一次清单"的占比（专测"只开工不跟进"）
+    avgTodoMutations: number | null; // 已建单用例的平均清单触碰次数
     avgFirstPlanStep: number | null;
     resultCoverage: number | null;
   };
@@ -344,6 +350,8 @@ async function runCase(
     plannedButEmpty: firstPlanStep != null && created === 0,
     statuses,
     progressed: (statuses.completed ?? 0) + (statuses.failed ?? 0) + (statuses.cancelled ?? 0) > 0,
+    todoMutations: todoToolCalls.length,
+    followedUp: todoToolCalls.length > 1,
     resultCoverage,
     steps: stepRecords,
     todoToolCalls,
@@ -398,6 +406,10 @@ function buildReport(cases: CaseResult[], model: string, baseURL: string): Repor
       progressRate: createdCases.length
         ? createdCases.filter((c) => c.progressed).length / createdCases.length
         : 0,
+      followThroughRate: createdCases.length
+        ? createdCases.filter((c) => c.followedUp).length / createdCases.length
+        : 0,
+      avgTodoMutations: avg(createdCases.map((c) => c.todoMutations)),
       avgFirstPlanStep: avg(createdCases.map((c) => c.firstPlanStep ?? NaN).filter((n) => !Number.isNaN(n))),
       resultCoverage: createdCases.length
         ? avg(createdCases.map((c) => c.resultCoverage ?? NaN).filter((n) => !Number.isNaN(n)))
@@ -429,17 +441,19 @@ function renderMd(report: Report): string {
   lines.push(`| 边界模糊建单率 | ${pct(m.ambiguousRate)} (${m.ambiguousCreated}/${m.ambiguous}) |`);
   lines.push(`| 规划过但清单被清空 | ${m.plannedButEmpty} 条 |`);
   lines.push(`| 建单后推进率 | ${pct(m.progressRate)} |`);
+  lines.push(`| 建单后跟进率（建后再更新≥1次） | ${pct(m.followThroughRate)} |`);
+  lines.push(`| 平均清单触碰次数 | ${m.avgTodoMutations == null ? '—' : m.avgTodoMutations.toFixed(1)} |`);
   lines.push(`| 平均首建步 | ${m.avgFirstPlanStep == null ? '—' : m.avgFirstPlanStep.toFixed(1)} |`);
   lines.push(`| result 完备率 | ${pct(m.resultCoverage)} |`);
   lines.push('');
   lines.push('## 逐条明细');
   lines.push('');
-  lines.push('| id | 类别 | 标签 | 建单 | 首建步 | 清空 | 推进 | 步数 | 结束 | 工具序列 |');
-  lines.push('|----|------|------|:---:|:---:|:---:|:---:|:---:|:---:|------|');
+  lines.push('| id | 类别 | 标签 | 建单 | 首建步 | 清空 | 推进 | 跟进 | 触碰 | 步数 | 结束 | 工具序列 |');
+  lines.push('|----|------|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|------|');
   for (const c of report.cases) {
     lines.push(
       `| ${c.id} | ${c.category} | ${c.label} | ${c.created > 0 ? '✅' : '—'} | ${c.firstPlanStep ?? '—'} | ` +
-        `${c.plannedButEmpty ? '⚠️' : '—'} | ${c.progressed ? '✅' : '—'} | ${c.stepCount} | ${c.finishReason} | ` +
+        `${c.plannedButEmpty ? '⚠️' : '—'} | ${c.progressed ? '✅' : '—'} | ${c.followedUp ? '✅' : '—'} | ${c.todoMutations} | ${c.stepCount} | ${c.finishReason} | ` +
         `${c.toolSequence.slice(0, 16).join('→')}${c.toolSequence.length > 16 ? '…' : ''} |`,
     );
   }

@@ -1,0 +1,64 @@
+{
+  "model": "deepseek-v4-pro",
+  "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+  "timestamp": "2026-08-15T01:00:08.365Z",
+  "cases": [
+    {
+      "id": "x01",
+      "category": "complex",
+      "label": "发布会 5 阶段交付",
+      "expectTodo": true,
+      "request": "我要办一个产品发布会，帮我按顺序准备五件事：1) 调研目标用户群体的需求 2) 提炼产品的 3 个核心卖点 3) 写一份 5 分钟的演讲稿 4) 设计演示文稿的大纲结构 5) 准备可能的 Q&A 预案。每个阶段完成后简要汇报一下进展，最后给一份总览。",
+      "created": 0,
+      "firstPlanStep": null,
+      "plannedButEmpty": false,
+      "statuses": {},
+      "progressed": false,
+      "todoMutations": 0,
+      "followedUp": false,
+      "resultCoverage": null,
+      "steps": [
+        {
+          "stepIndex": 0,
+          "tools": [
+            "ask_user_question"
+          ],
+          "todoCount": 0,
+          "inProgress": 0,
+          "completed": 0,
+          "failed": 0
+        }
+      ],
+      "todoToolCalls": [],
+      "toolSequence": [
+        "ask_user_question"
+      ],
+      "stepCount": 1,
+      "inputTokens": 11472,
+      "outputTokens": 357,
+      "finishReason": "tool-calls",
+      "finalText": "在开始之前，我需要先了解一些关键信息。让我问你几个问题：\n\n"
+    }
+  ],
+  "metrics": {
+    "total": 1,
+    "multi": 0,
+    "multiCreated": 0,
+    "multiCreationRate": 0,
+    "multiCodeCreated": 0,
+    "multiCodeRate": 0,
+    "multiGeneralCreated": 0,
+    "multiGeneralRate": 0,
+    "single": 0,
+    "singleFalsePositive": 0,
+    "ambiguous": 0,
+    "ambiguousCreated": 0,
+    "ambiguousRate": 0,
+    "plannedButEmpty": 0,
+    "progressRate": 0,
+    "followThroughRate": 0,
+    "avgTodoMutations": null,
+    "avgFirstPlanStep": null,
+    "resultCoverage": null
+  }
+}
