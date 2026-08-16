@@ -29,8 +29,10 @@ import { getToolOutputString } from './message-utils';
 const MESSAGE_OVERHEAD_TOKENS = 10;
 
 /** 图片/文件消息的保守估算（provider 按分辨率/tile 计费，本地无法精确；
- *  此前完全不计导致多图会话严重低估、L3 延迟触发超限） */
-const IMAGE_TOKENS = 1500;
+ *  此前完全不计导致多图会话严重低估、L3 延迟触发超限；1500 对高分辨率
+ *  图（Claude/GPT 类按 tile 计费单图可达 3-10K）仍偏低，图片密集对话
+ *  低估会把校准 drift 推高。取 3000 作保守中位；残余偏差由校准 buffer 修正） */
+const IMAGE_TOKENS = 3000;
 
 /** 工具 Schema 相关常量 */
 const TOOL_NAME_TOKENS = 4;
