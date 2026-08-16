@@ -1268,7 +1268,46 @@ export async function slimAssistantMessage(
  * 否则 agent 看不到"已执行过什么"，会重复执行同一操作（死循环根因）。 */
 const MIN_KEEP_RECENT_STEPS = 8;
 
-/** 按 step-start 边界从头部丢弃步骤，直到消息 ≤ maxTokens（至少保留最近 MIN_KEEP_RECENT_STEPS 步） */
+/**
+ * 被舍弃步骤的执行摘要：列出工具调用类型与次数，让模型知道"这些操作已执行过"，
+ * 避免误以为没执行而重复（合理老化：压内容，留执行事实）。
+ */
+function buildSkippedSummary(skippedParts: Array<{ type?: string }>, stepCount: number): string {
+  const counts = new Map<string, number>();
+  for (const p of skippedParts) {
+    const t = p.type;
+    if (typeof t === 'string' && t.startsWith('tool-')) {
+      const name = t.slice('tool-'.length);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    } else if (t === 'dynamic-tool') {
+      counts.set('dynamic', (counts.get('dynamic') ?? 0) + 1);
+    }
+  }
+  const list = [...counts.entries()]
+    .slice(0, 12)
+    .map(([name, n]) => (n > 1 ? `${name}×${n}` : name))
+    .join(', ');
+  return `[已省略 ${stepCount} 步工具操作：${list || '（无工具调用）'}——这些操作已执行过，请勿重复]`;
+}
+
+/** 组装"执行摘要 + 保留步骤"的单条消息（摘要作为首 text part） */
+function buildWithSkippedSummary(
+  message: import('ai').ModelMessage,
+  allParts: Array<{ type?: string }>,
+  keptStart: number,
+  skippedSteps: number,
+): import('ai').ModelMessage {
+  const skippedParts = allParts.slice(0, keptStart);
+  const summaryText = buildSkippedSummary(skippedParts, skippedSteps);
+  const keptParts = allParts.slice(keptStart);
+  const spreadable = message as unknown as Record<string, unknown>;
+  return {
+    ...spreadable,
+    parts: [{ type: 'text' as const, text: summaryText }, ...keptParts],
+  } as unknown as import('ai').ModelMessage;
+}
+
+/** 按 step-start 边界从头部舍弃步骤，保留执行摘要 + 最近 MIN_KEEP_RECENT_STEPS 步 */
 async function trimStepsToFit(
   message: import('ai').ModelMessage,
   maxTokens: number,
@@ -1284,18 +1323,24 @@ async function trimStepsToFit(
   // 没有 step 边界：无法按步舍弃，返回原样（已尽力）
   if (stepIndices.length <= 1) return message;
 
-  // 从旧到新逐步丢弃头部，但最多丢弃到剩最近 MIN_KEEP_RECENT_STEPS 步——
-  // 工具调用链（agent 已执行过什么）是不可压缩的最低上下文，否则 agent
-  // 不知道自己做过哪些操作 → 重复执行 → 死循环。
+  // 从 0（不舍弃）逐步尝试：每个候选 = 执行摘要（有舍弃时）+ 保留步骤。
+  // 最多舍弃到剩最近 MIN_KEEP_RECENT_STEPS 步——工具调用链是不可压缩的最低
+  // 上下文，否则 agent 不知道自己做过哪些操作 → 重复执行 → 死循环。
   const spreadable = message as unknown as Record<string, unknown>;
-  const maxDrop = Math.max(1, stepIndices.length - MIN_KEEP_RECENT_STEPS);
-  for (let s = 1; s <= maxDrop; s++) {
-    const trimmed = { ...spreadable, parts: parts.slice(stepIndices[s]) } as unknown as import('ai').ModelMessage;
-    if (await estimateMessageTokens(trimmed, modelName) <= maxTokens) {
-      return trimmed;
+  // 步骤数 ≤ MIN_KEEP_RECENT_STEPS 时不舍弃（保留全部）；否则最多舍弃到剩 8 步
+  const maxDrop = Math.max(0, stepIndices.length - MIN_KEEP_RECENT_STEPS);
+  for (let s = 0; s <= maxDrop; s++) {
+    const keptStart = s < stepIndices.length ? stepIndices[s] : 0;
+    const candidate =
+      s === 0
+        ? ({ ...spreadable, parts: parts.slice(keptStart) } as unknown as import('ai').ModelMessage)
+        : buildWithSkippedSummary(message, parts, keptStart, s);
+    if (await estimateMessageTokens(candidate, modelName) <= maxTokens) {
+      return candidate;
     }
   }
-  // 兜底：保留最近 MIN_KEEP_RECENT_STEPS 步（不因 fit 丢弃工具调用链）
-  const keepStart = stepIndices[stepIndices.length - MIN_KEEP_RECENT_STEPS] ?? 0;
-  return { ...spreadable, parts: parts.slice(keepStart) } as unknown as import('ai').ModelMessage;
+  // 兜底：保留最近 MIN_KEEP_RECENT_STEPS 步 + 执行摘要（不因 fit 丢弃工具调用链）
+  const keepStart = stepIndices[Math.max(0, stepIndices.length - MIN_KEEP_RECENT_STEPS)] ?? 0;
+  const skippedSteps = Math.max(0, stepIndices.length - MIN_KEEP_RECENT_STEPS);
+  return buildWithSkippedSummary(message, parts, keepStart, skippedSteps);
 }

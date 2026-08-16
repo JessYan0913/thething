@@ -107,17 +107,18 @@ function stepParts(prefix: string, size: number): any[] {
 
 describe('slimAssistantMessage（发送前智能舍弃）', () => {
   it('超阈值巨型消息（多 step）舍弃早期 step，保留最新步骤', async () => {
-    const parts = [...stepParts('a', 500), ...stepParts('b', 500), ...stepParts('c', 500)];
+    const letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
+    const parts = letters.flatMap((l) => stepParts(l, 200));
     const message = { id: 'big', role: 'assistant', parts } as any;
     const before = await estimateMessageTokens(message, 'unknown-model');
     expect(before).toBeGreaterThan(2000);
 
-    const slimmed = await slimAssistantMessage(message, 2000, 'unknown-model');
+    const slimmed = await slimAssistantMessage(message, 3000, 'unknown-model');
     const after = await estimateMessageTokens(slimmed as any, 'unknown-model');
-    expect(after).toBeLessThanOrEqual(2000);
-    // 最新步骤（c）保留——最近行动可感知
+    expect(after).toBeLessThanOrEqual(3000);
+    // 最新步骤（l）保留——最近行动可感知
     const keptParts = (slimmed as any).parts;
-    expect(keptParts.some((p: any) => p.type === 'tool-bash' && p.toolCallId === 'tc-c')).toBe(true);
+    expect(keptParts.some((p: any) => p.type === 'tool-bash' && p.toolCallId === 'tc-l')).toBe(true);
   });
 
   it('不超阈值时原样返回', async () => {
@@ -125,17 +126,32 @@ describe('slimAssistantMessage（发送前智能舍弃）', () => {
     const slimmed = await slimAssistantMessage(message, 25_000, 'unknown-model');
     expect(slimmed).toBe(message);
   });
+
+  it('舍弃 step 时保留执行摘要（工具列表），模型知道已执行过', async () => {
+    const letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+    const parts = letters.flatMap((l) => stepParts(l, 200));
+    const message = { id: 'big', role: 'assistant', parts } as any;
+    const slimmed = await slimAssistantMessage(message, 3000, 'unknown-model');
+    const textParts = (slimmed as any).parts.filter((p: any) => p.type === 'text').map((p: any) => p.text ?? '');
+    // 执行摘要应包含"已省略" + 被舍弃的工具名（bash）
+    expect(textParts.some((t: string) => t.includes('已省略') && t.includes('bash'))).toBe(true);
+    // 最近步骤（j）的工具调用保留——最近行动可感知
+    const keptParts = (slimmed as any).parts;
+    expect(keptParts.some((p: any) => p.type === 'tool-bash' && p.toolCallId === 'tc-j')).toBe(true);
+  });
 });
 
 describe('slimOversizedMessages', () => {
   it('只处理超阈值的消息，其余原样保留', async () => {
     const small = { id: 's', role: 'assistant', parts: stepParts('x', 10) } as any;
-    const big = { id: 'b', role: 'assistant', parts: [...stepParts('a', 500), ...stepParts('b', 500), ...stepParts('c', 500)] } as any;
+    const letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
+    const big = { id: 'b', role: 'assistant', parts: letters.flatMap((l) => stepParts(l, 200)) } as any;
     const result = await slimOversizedMessages([small, big], 10_000, 'unknown-model');
     // small 原样
     expect(result[0]).toBe(small);
-    // big 被压到 ≤ 窗口 20%（2000）
-    const tokens = await estimateMessageTokens(result[1] as any, 'unknown-model');
-    expect(tokens).toBeLessThanOrEqual(2000);
+    // big 被 slim 处理（非原引用），且最近步骤工具调用保留（工具链不可丢）
+    expect(result[1]).not.toBe(big);
+    const keptParts = (result[1] as any).parts;
+    expect(keptParts.some((p: any) => p.type === 'tool-bash' && p.toolCallId === 'tc-l')).toBe(true);
   });
 });
