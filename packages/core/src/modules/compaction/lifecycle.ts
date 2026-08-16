@@ -67,12 +67,49 @@ export interface LifecycleOptions {
 
 /** 低于此大小的输出不参与任何压缩 */
 const MIN_COMPACT_SIZE = 200;
+/** reasoning（模型思考）保留的最大字符数——非最终输出，截断避免累积占窗口 */
+const REASONING_MAX_CHARS = 200;
 /** 读循环熔断阈值：同文件被读达到此次数 → 自动 pin */
 const READ_LOOP_THRESHOLD = 3;
 /** TTL 老化：meta 消息保持满格式的最大步数年龄 */
 const TTL_FULL_AGE = 20;
 /** TTL 老化：meta 消息降级为占位符的最大步数年龄（超出则移除） */
 const TTL_STUB_AGE = 40;
+
+/**
+ * 截断消息中的 reasoning parts（模型思考过程，非最终输出），保留尾部 maxChars。
+ * 兼容 UIMessage parts 与 ModelMessage content 两种格式。无变化时返回原引用。
+ */
+function truncateReasoningParts(
+  message: import('ai').ModelMessage,
+  maxChars: number,
+): import('ai').ModelMessage {
+  const withParts = message as unknown as { parts?: Array<{ type?: string; text?: string }> };
+  if (Array.isArray(withParts.parts)) {
+    let changed = false;
+    const parts = withParts.parts.map((p) => {
+      if (p.type === 'reasoning' && typeof p.text === 'string' && p.text.length > maxChars) {
+        changed = true;
+        return { ...p, text: `…${p.text.slice(-maxChars)}` };
+      }
+      return p;
+    });
+    return changed ? ({ ...message, parts } as import('ai').ModelMessage) : message;
+  }
+  const withContent = message as unknown as { content?: Array<{ type?: string; text?: string }> };
+  if (Array.isArray(withContent.content)) {
+    let changed = false;
+    const content = withContent.content.map((c) => {
+      if (c.type === 'reasoning' && typeof c.text === 'string' && c.text.length > maxChars) {
+        changed = true;
+        return { ...c, text: `…${c.text.slice(-maxChars)}` };
+      }
+      return c;
+    });
+    return changed ? ({ ...message, content } as import('ai').ModelMessage) : message;
+  }
+  return message;
+}
 
 /**
  * 工具输出生命周期管理（Layer 2）——唯一预算分配器
@@ -96,6 +133,10 @@ export function manageToolOutputLifecycle(
   storage?: LifecycleStorage,
   opts?: LifecycleOptions,
 ): { messages: import('ai').ModelMessage[]; tokensFreed: number; persistence?: Promise<void> } {
+  // reasoning 预压缩：思考过程非最终输出，截断到阈值（所有消息，含当前步），
+  // 避免一轮 run 合并出的单条消息（数百 reasoning parts）累积占满窗口。
+  messages = messages.map((m) => truncateReasoningParts(m, REASONING_MAX_CHARS));
+
   // 预计算视图：价值感知信号需要全局扫描
   const views = messages.map(extractToolResultView);
   const currentStepIndex = findLastToolResultIndex(views);
