@@ -43,7 +43,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { compressMessagesDeterministic } from './deterministic-compressor';
 import { forceTruncateMessages } from './force-truncate';
 import { emergencySummarize } from './emergency-summary';
-import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
+import { estimateFullRequest, estimateMessageTokens, type FullRequestEstimation } from './token-counter';
 import { estimateRequestBudget, type RequestBudgetEstimation } from './request-budget';
 import { targetTokensFor, messageTargetTokensFor, MIN_MESSAGE_BUDGET_TOKENS, DEFAULT_TARGET_PERCENT, EMERGENCY_TARGET_PERCENT } from './prompt-budget-policy';
 import { updateViewAfterL3, type CompactionView } from './compaction-view';
@@ -1005,6 +1005,16 @@ export async function manageCompaction(
       current, context.instructions, context.tools, context.modelName, context.contextLimit,
     );
 
+    // 发送前 step 级智能舍弃（治本，不动落库）：一轮 run 合并出的单条巨型消息
+    // （数百工具调用）被"最近消息"整轮保护。发送前对超阈值消息舍弃早期 step，
+    // 保留最近行动 + 最终输出。落库记录不动（用户历史完整）。
+    if (estimation.shouldTrigger) {
+      current = await slimOversizedMessages(current, estimation.modelLimit, context.modelName);
+      estimation = await estimateRequestBudget(
+        current, context.instructions, context.tools, context.modelName, context.contextLimit,
+      );
+    }
+
     // 触发语义(见 compaction-redesign.md L1):总量+校准buffer 达到触发线即主动
     // 升档(不再等 100% 超限);达到硬限用更激进的目标水位。
     if (estimation.shouldTrigger && context.model) {
@@ -1153,4 +1163,104 @@ export async function applyEmergencyCompression(
     durationMs: Date.now() - startTime,
   });
   return truncated;
+}
+
+// ============================================================
+// 发送前 step 级智能舍弃（治本：不动落库记录）
+// ============================================================
+// 根因（见 compaction-overflow）：一轮 run 的所有 step 输出被 SDK 合并成
+// 一条 assistant 消息（数百工具调用，如小红书 681 parts / 500+ 工具调用），
+// 压缩按"消息"粒度保留最近（keepRecentSteps），整轮 run 被当最近消息保护
+// → 200+ 步工具调用全保留，上下文巨量化。
+//
+// 治本：发送前（仅模型看到的上下文）对超阈值单条消息做 step 级舍弃——
+// reasoning 截断 → 工具输出压缩 → 按 step 保留最近 + 含最终输出的 step，
+// 舍弃早期 step。落库记录不动（用户历史完整，见产品原则）。
+
+/** 单条消息发送前的 token 上限（窗口比例，超阈值才触发舍弃） */
+const OVERSIZED_MESSAGE_RATIO = 0.2;
+
+/**
+ * 发送前：对超阈值单条消息应用 step 级舍弃。返回每条 ≤ maxTokens 的消息。
+ * 全确定性（无 LLM），落库不动。
+ */
+export async function slimOversizedMessages(
+  messages: import('ai').ModelMessage[],
+  modelLimit: number,
+  modelName?: string,
+): Promise<import('ai').ModelMessage[]> {
+  const maxTokens = Math.max(1, Math.floor(modelLimit * OVERSIZED_MESSAGE_RATIO));
+  const result: import('ai').ModelMessage[] = [];
+  for (const m of messages) {
+    if (await estimateMessageTokens(m, modelName) > maxTokens) {
+      result.push(await slimAssistantMessage(m, maxTokens, modelName));
+    } else {
+      result.push(m);
+    }
+  }
+  return result;
+}
+
+/** 单条消息 token 上限（导出供调用方覆盖） */
+export const MAX_ASSISTANT_MESSAGE_TOKENS = 25_000;
+
+/**
+ * 单条消息 step 级智能舍弃。逐步降级（全确定性，无 LLM）：
+ *   1. reasoning 截断（思考过程非最终输出）
+ *   2. 工具输出压缩（Layer 2 预算，保留当前步最新工具结果）
+ *   3. 按 step 边界保留最新步骤（丢弃早期步骤，保留最近行动与最终输出）
+ * @returns 瘦身后的消息（≤ maxTokens 或尽量小）
+ */
+export async function slimAssistantMessage(
+  message: import('ai').ModelMessage,
+  maxTokens: number = MAX_ASSISTANT_MESSAGE_TOKENS,
+  modelName?: string,
+): Promise<import('ai').ModelMessage> {
+  // 1. reasoning 截断（思考过程非最终输出）
+  let current = truncateReasoningParts(message, REASONING_MAX_CHARS);
+  if (await estimateMessageTokens(current, modelName) <= maxTokens) {
+    return current;
+  }
+
+  // 2. 工具输出压缩（Layer 2 预算，保留当前步最新工具结果）
+  const slimmed = manageToolOutputLifecycle([current], {
+    ...DEFAULT_LIFECYCLE_CONFIG,
+    keepRecentSteps: 1,
+  });
+  current = slimmed.messages[0] ?? current;
+  if (await estimateMessageTokens(current, modelName) <= maxTokens) {
+    return current;
+  }
+
+  // 3. 按 step-start 边界保留最新步骤（丢弃早期步骤，保留最近行动与最终输出）
+  return trimStepsToFit(current, maxTokens, modelName);
+}
+
+/** 按 step-start 边界从头部丢弃步骤，直到消息 ≤ maxTokens（至少保留最后一步） */
+async function trimStepsToFit(
+  message: import('ai').ModelMessage,
+  maxTokens: number,
+  modelName?: string,
+): Promise<import('ai').ModelMessage> {
+  const parts = (message as unknown as { parts?: Array<{ type?: string }> }).parts;
+  if (!Array.isArray(parts) || parts.length === 0) return message;
+
+  const stepIndices = parts
+    .map((p, i) => (p.type === 'step-start' ? i : -1))
+    .filter((i) => i >= 0);
+
+  // 没有 step 边界：无法按步舍弃，返回原样（已尽力）
+  if (stepIndices.length <= 1) return message;
+
+  // 优先保留含最终 text 输出的 step（模型产出），从旧到新逐步丢弃
+  const spreadable = message as unknown as Record<string, unknown>;
+  for (let s = 1; s < stepIndices.length; s++) {
+    const trimmed = { ...spreadable, parts: parts.slice(stepIndices[s]) } as unknown as import('ai').ModelMessage;
+    if (await estimateMessageTokens(trimmed, modelName) <= maxTokens) {
+      return trimmed;
+    }
+  }
+  // 兜底：只保留最后一步
+  const last = stepIndices[stepIndices.length - 1];
+  return { ...spreadable, parts: parts.slice(last) } as unknown as import('ai').ModelMessage;
 }

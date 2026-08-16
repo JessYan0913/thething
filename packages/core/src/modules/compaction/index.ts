@@ -132,7 +132,7 @@ export async function compactBeforeStep(
 // 内部消费者直接 import 子模块（如 ../compaction/types）。
 // 此 barrel 仅导出外部 API 需要的符号。
 
-export { manageToolOutputLifecycle, manageCompaction, applyEmergencyCompression } from './lifecycle';
+export { manageToolOutputLifecycle, manageCompaction, applyEmergencyCompression, slimAssistantMessage, slimOversizedMessages, MAX_ASSISTANT_MESSAGE_TOKENS } from './lifecycle';
 export { estimateMessagesTokens } from './token-counter';
 export { generateConversationTitle } from './title-generator';
 export { handleReactiveRetry, isContextLengthError } from './retry';
