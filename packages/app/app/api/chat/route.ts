@@ -583,13 +583,12 @@ export async function POST(request: Request) {
                         // === 新 schema（阶段 0/1 推送，UI 阶段 2 切）===
                         ...payload,
                         // === 旧字段（保留兼容，阶段 3 删除）===
+                        // 注意：不在此处覆盖 messagesTokens/instructionsTokens/toolsTokens/
+                        // outputReserve——payload 已带新 schema 正确值，同名定义会覆盖成
+                        // undefined/占位，导致前端分段进度条缺段。
                         usagePercentage: payload.utilizationPercent,
                         totalTokens: payload.totalTokens,
                         modelLimit: payload.modelLimit,
-                        messagesTokens: payload.totalTokens,  // 旧字段无对应，用 total 占位
-                        instructionsTokens: undefined,
-                        toolsTokens: undefined,
-                        outputReserve: undefined,
                         sessionInputTokens: payload.sessionCost.inputTokens,
                         sessionOutputTokens: payload.sessionCost.outputTokens,
                         sessionCachedReadTokens: payload.sessionCost.cachedReadTokens,
