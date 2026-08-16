@@ -37,6 +37,8 @@ export interface PersistedToolResult {
   lineCount: number
   preview: string
   hasMore: boolean
+  /** 结论行（成败 + 关键信息）：模型先看结论做决策，需要细节再 read_file（对齐 Claude Code） */
+  conclusion?: string
 }
 
 /**

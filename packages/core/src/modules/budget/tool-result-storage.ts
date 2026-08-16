@@ -73,6 +73,8 @@ export async function persistToolResult(
   sessionId: string,
   dataDir: string,
   sessionConfig?: ToolOutputConfig,
+  previewMode: 'head' | 'head-tail' = 'head',
+  conclusion?: string,
 ): Promise<PersistedToolResult> {
   // 确保目录存在
   const dir = getToolResultsDir(sessionId, dataDir)
@@ -101,7 +103,7 @@ export async function persistToolResult(
 
   // 生成预览
   const previewSizeChars = getPreviewSizeLimit(sessionConfig)
-  const { preview, hasMore } = generatePreview(content, previewSizeChars)
+  const { preview, hasMore } = generatePreview(content, previewSizeChars, previewMode)
 
   return {
     filepath,
@@ -109,6 +111,7 @@ export async function persistToolResult(
     lineCount: content.split('\n').length,
     preview,
     hasMore,
+    conclusion,
   }
 }
 
@@ -128,15 +131,30 @@ async function ensureDir(dir: string): Promise<void> {
 // ============================================================
 
 /**
- * 生成内容预览
- * 在换行边界截断，避免切断行
+ * 生成内容预览。
+ * mode='head'（默认）：从头截断；mode='head-tail'：头尾各保留一半——
+ * 失败输出（bash 错误/异常）关键信息常在尾部，保留尾部避免模型看不到错误。
+ * 对齐 Claude Code：成功输出→头部预览，失败输出→头尾摘录。
  */
 export function generatePreview(
   content: string,
-  maxChars: number
+  maxChars: number,
+  mode: 'head' | 'head-tail' = 'head',
 ): { preview: string; hasMore: boolean } {
   if (content.length <= maxChars) {
     return { preview: content, hasMore: false }
+  }
+
+  if (mode === 'head-tail') {
+    const half = Math.floor(maxChars / 2)
+    const head = content.slice(0, half)
+    // 直接切末尾：不要"从行首开始"的 replace——JSON 格式下 tail 可能是单行
+    //（转义换行），replace 会把整行删掉只剩闭合符，丢掉末尾的关键错误信息。
+    const tail = content.slice(-half)
+    return {
+      preview: `${head}\n... (省略中间 ${content.length - maxChars} 字符) ...\n${tail}`,
+      hasMore: true,
+    }
   }
 
   // 在换行边界截断
@@ -158,6 +176,10 @@ export function generatePreview(
  */
 export function buildPersistedOutputMessage(result: PersistedToolResult, isTemporary: boolean = false, sessionConfig?: ToolOutputConfig): string {
   let message = `${PERSISTED_OUTPUT_TAG}\n`
+  // 结论行：模型先看结论做决策（成败/错误/关键信息），需要细节再 read_file（对齐 Claude Code）
+  if (result.conclusion) {
+    message += `结论: ${result.conclusion}\n`
+  }
   message += `Output size: ${formatSize(result.originalSize)} · ${result.lineCount} lines.\n`
   message += `Full output saved to: ${result.filepath}\n`
   if (isTemporary) {

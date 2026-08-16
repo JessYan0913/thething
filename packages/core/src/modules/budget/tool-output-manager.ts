@@ -92,12 +92,14 @@ export interface ContentReplacementRecord {
  */
 export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
   // 内置工具
+  // 阈值对齐 Claude Code（BASH_MAX_OUTPUT_LENGTH 默认 ~30K 字符）：中等输出走"落盘 + 预览"
+  // （含结论 + 头尾），模型看预览/结论即够，避免大输出直接进上下文累积。
   'bash': {
-    maxResultSizeChars: 100_000,
+    maxResultSizeChars: 30_000,
     // shouldPersistToDisk 默认 true
   },
   'read_file': {
-    maxResultSizeChars: 50_000,
+    maxResultSizeChars: 30_000,
   },
   'write_file': {
     maxResultSizeChars: 10_000,
@@ -126,13 +128,13 @@ export const TOOL_OUTPUT_CONFIGS: Record<string, ToolOutputConfig> = {
 
   // 外部工具默认配置
   'mcp_default': {
-    maxResultSizeChars: 100_000,
+    maxResultSizeChars: 50_000,
   },
   'connector_default': {
     maxResultSizeChars: 50_000,
   },
 
-  // 默认配置
+  // 默认配置（未匹配工具的兜底；内置/外部工具显式配置优先）
   'default': {
     maxResultSizeChars: DEFAULT_MAX_RESULT_SIZE_CHARS,
   },

@@ -32,7 +32,7 @@ import { unifiedToolOutputHook } from '../../compaction/unified-output';
 
 describe('tool-output-manager', () => {
   it('keeps exact/default/prefix tool configs', () => {
-    expect(TOOL_OUTPUT_CONFIGS.bash.maxResultSizeChars).toBe(100_000);
+    expect(TOOL_OUTPUT_CONFIGS.bash.maxResultSizeChars).toBe(30_000);
     expect(matchesToolPrefix('mcp_custom_tool')).toBe('mcp');
     expect(matchesToolPrefix('connector_sql')).toBe('connector');
     expect(getToolOutputConfig('unknown_tool').maxResultSizeChars).toBe(DEFAULT_MAX_RESULT_SIZE_CHARS);
@@ -85,6 +85,34 @@ describe('tool-output-manager', () => {
     expect(large.persisted).toBe(true);
     expect(large.content).toContain(PERSISTED_OUTPUT_TAG);
     expect(large.content).toContain(PERSISTED_OUTPUT_CLOSING_TAG);
+  });
+
+  it('persists failed output with conclusion + head-tail preview (error in tail)', async () => {
+    const output = {
+      exitCode: 1,
+      stderr: 'Error: boom',
+      stdout: `line 1\n${'x'.repeat(40_000)}\nlast-error-line`,
+    };
+    const result = await unifiedToolOutputHook(output, 'bash', 'tool-fail', {
+      sessionId: 'session-1',
+      dataDir: '/tmp/thething-data',
+    });
+    expect(result.persisted).toBe(true);
+    // 结论行：模型先看到成败
+    expect(result.content).toContain('结论: exit=1');
+    // head-tail 预览：错误在尾部也能看到
+    expect(result.content).toContain('last-error-line');
+    expect(result.content).toContain('省略中间');
+  });
+
+  it('persists success output with exit=0 conclusion and head preview', async () => {
+    const output = { exitCode: 0, stdout: 'ok'.repeat(20_000) };
+    const result = await unifiedToolOutputHook(output, 'bash', 'tool-ok', {
+      sessionId: 'session-1',
+      dataDir: '/tmp/thething-data',
+    });
+    expect(result.persisted).toBe(true);
+    expect(result.content).toContain('结论: exit=0');
   });
 
   it('exports stable persisted-output markers', () => {
