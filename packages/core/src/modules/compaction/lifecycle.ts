@@ -43,7 +43,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { compressMessagesDeterministic } from './deterministic-compressor';
 import { forceTruncateMessages } from './force-truncate';
 import { emergencySummarize } from './emergency-summary';
-import { estimateFullRequest, estimateMessageTokens, type FullRequestEstimation } from './token-counter';
+import { estimateFullRequest, type FullRequestEstimation } from './token-counter';
 import { estimateRequestBudget, type RequestBudgetEstimation } from './request-budget';
 import { targetTokensFor, messageTargetTokensFor, MIN_MESSAGE_BUDGET_TOKENS, DEFAULT_TARGET_PERCENT, EMERGENCY_TARGET_PERCENT } from './prompt-budget-policy';
 import { updateViewAfterL3, type CompactionView } from './compaction-view';
@@ -94,7 +94,7 @@ function truncateReasoningParts(
       }
       return p;
     });
-    return changed ? ({ ...message, parts } as unknown as import('ai').ModelMessage) : message;
+    return changed ? ({ ...message, parts } as import('ai').ModelMessage) : message;
   }
   const withContent = message as unknown as { content?: Array<{ type?: string; text?: string }> };
   if (Array.isArray(withContent.content)) {
@@ -106,7 +106,7 @@ function truncateReasoningParts(
       }
       return c;
     });
-    return changed ? ({ ...message, content } as unknown as import('ai').ModelMessage) : message;
+    return changed ? ({ ...message, content } as import('ai').ModelMessage) : message;
   }
   return message;
 }
@@ -1153,82 +1153,4 @@ export async function applyEmergencyCompression(
     durationMs: Date.now() - startTime,
   });
   return truncated;
-}
-
-// ============================================================
-// 落库前单条消息瘦身（治本：限制单条 assistant 消息规模）
-// ============================================================
-// 根因（见 compaction-overflow）：一轮 run 的所有 step 输出被 SDK 合并成
-// 一条 assistant UIMessage（数百 parts，如小红书 681 parts），落库保存完整
-// 原始输出 → 下次加载历史巨量化 → CONTEXT_BUDGET_EXCEEDED。运行中压缩只
-// 作用于"模型看到的上下文"，不作用于落库历史。
-//
-// 治本：落库前对超阈值消息瘦身——逐步降级（全确定性，无 LLM）：
-//   1. reasoning 截断（思考过程非最终输出）
-//   2. 工具输出压缩（Layer 2 预算）
-//   3. 按 step-start 边界保留最新步骤（丢弃早期步骤，保留最近行动）
-// 比 Extreme mode 整条丢弃好：保留最新步骤，模型对"刚做了什么"仍可感知。
-
-/** 单条 assistant 消息落库前的 token 上限（约窗口的 20%+） */
-export const MAX_ASSISTANT_MESSAGE_TOKENS = 25_000;
-
-/**
- * 落库前单条消息瘦身。超阈值时逐步降级，返回 ≤ maxTokens 的消息。
- * @returns 瘦身后的消息（不满足时返回尽量小的版本）
- */
-export async function slimAssistantMessage(
-  message: import('ai').UIMessage,
-  maxTokens: number = MAX_ASSISTANT_MESSAGE_TOKENS,
-  modelName?: string,
-): Promise<import('ai').UIMessage> {
-  let current = message as unknown as import('ai').ModelMessage;
-
-  // 1. reasoning 截断（思考过程非最终输出）
-  current = truncateReasoningParts(current, REASONING_MAX_CHARS);
-  if (await estimateMessageTokens(current, modelName) <= maxTokens) {
-    return current as unknown as import('ai').UIMessage;
-  }
-
-  // 2. 工具输出压缩（Layer 2 预算，保留当前步最新工具结果）
-  const slimmed = manageToolOutputLifecycle([current], {
-    ...DEFAULT_LIFECYCLE_CONFIG,
-    keepRecentSteps: 1,
-  });
-  current = slimmed.messages[0] ?? current;
-  if (await estimateMessageTokens(current, modelName) <= maxTokens) {
-    return current as unknown as import('ai').UIMessage;
-  }
-
-  // 3. 按 step-start 边界保留最新步骤（丢弃早期步骤，保留最近行动）
-  current = await trimStepsToFit(current, maxTokens, modelName);
-  return current as unknown as import('ai').UIMessage;
-}
-
-/** 按 step-start 边界从头部丢弃步骤，直到消息 ≤ maxTokens（至少保留最后一步） */
-async function trimStepsToFit(
-  message: import('ai').ModelMessage,
-  maxTokens: number,
-  modelName?: string,
-): Promise<import('ai').ModelMessage> {
-  const parts = (message as unknown as { parts?: Array<{ type?: string }> }).parts;
-  if (!Array.isArray(parts) || parts.length === 0) return message;
-
-  const stepIndices = parts
-    .map((p, i) => (p.type === 'step-start' ? i : -1))
-    .filter((i) => i >= 0);
-
-  // 没有 step 边界：无法按步截断，返回原样（已尽力）
-  if (stepIndices.length <= 1) return message;
-
-  // 从第二个 step 开始逐步丢弃头部（保留最新步骤）
-  const spreadable = message as unknown as Record<string, unknown>;
-  for (let s = 1; s < stepIndices.length; s++) {
-    const trimmed = { ...spreadable, parts: parts.slice(stepIndices[s]) } as unknown as import('ai').ModelMessage;
-    if (await estimateMessageTokens(trimmed, modelName) <= maxTokens) {
-      return trimmed;
-    }
-  }
-  // 兜底：只保留最后一步
-  const last = stepIndices[stepIndices.length - 1];
-  return { ...spreadable, parts: parts.slice(last) } as unknown as import('ai').ModelMessage;
 }
