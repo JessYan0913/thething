@@ -67,7 +67,7 @@ describe.skipIf(SKIP)('DB 抽样回放:真实对话不变式验证', () => {
       expect(afterKeys.length).toBeGreaterThanOrEqual(beforeKeys.length);
     });
 
-    it(`conv=${convId.slice(0, 12)}: 当前步不 meta`, async () => {
+    it(`conv=${convId.slice(0, 12)}: 当前步最新工具结果不 meta`, async () => {
       const result = await manageCompaction(messages, DEFAULT_LIFECYCLE_CONFIG, {
         modelName: 'test',
       });
@@ -80,8 +80,13 @@ describe.skipIf(SKIP)('DB 抽样回放:真实对话不变式验证', () => {
           break;
         }
       }
-      for (const p of lastToolParts) {
-        expect(p._compacted).not.toBe(true);
+      // 不变式放宽（见 compaction-overflow 根因）：一轮 run 合并出的单条消息可能含
+      // 数百个工具结果（小红书 681 parts），旧逻辑整条豁免 → 累积到窗口大小压不动。
+      // 修复后当前步保留最新 1 个工具结果（最近行动可感知），早期工具结果在超预算
+      // 时可降级。这里只断言最新一个不 meta。
+      if (lastToolParts.length > 0) {
+        const latest = lastToolParts[lastToolParts.length - 1];
+        expect(latest._compacted).not.toBe(true);
       }
     });
   }

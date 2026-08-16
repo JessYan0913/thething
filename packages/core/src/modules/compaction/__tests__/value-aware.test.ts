@@ -108,3 +108,39 @@ describe('reference awareness', () => {
     expect(item(result.messages[3])._compacted).toBeUndefined();
   });
 });
+
+// ============================================================
+// 单条巨型消息回归（小红书 681-parts 根因）
+// 一轮 run 的所有步骤合并成一条 assistant 消息（数百个工具结果）。
+// 旧逻辑 currentStep 整条豁免跨消息预算 → 最近消息累积到窗口大小压不动。
+// 修复后：当前步保留最新 1 个工具结果，其余参与预算降级。
+// ============================================================
+describe('currentStep 单条巨型消息预算', () => {
+  it('当前步消息的早期工具输出参与跨消息降级，最新保留', () => {
+    const last = {
+      id: 'last',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-bash', toolCallId: 'tc-1', input: { command: 'a' }, output: { type: 'text', value: 'A'.repeat(5000) }, state: 'output-available' },
+        { type: 'tool-bash', toolCallId: 'tc-2', input: { command: 'b' }, output: { type: 'text', value: 'B'.repeat(5000) }, state: 'output-available' },
+        { type: 'tool-bash', toolCallId: 'tc-3', input: { command: 'c' }, output: { type: 'text', value: 'C'.repeat(5000) }, state: 'output-available' },
+      ],
+    } as unknown as ModelMessage;
+    const messages = [assistantMessage('go'), last];
+    const result = manageToolOutputLifecycle(messages, {
+      ...DEFAULT_LIFECYCLE_CONFIG,
+      keepRecentSteps: 0,
+      largeOutputThreshold: 200,
+      messageBudget: 1000,
+    });
+    // 不再整条豁免：跨消息预算对该消息生效，释放 > 0
+    expect(result.tokensFreed).toBeGreaterThan(0);
+    // 最新 1 个工具结果保留（最近行动可感知），其余被降级
+    const parts = (result.messages[1] as any).parts as Array<{ type: string; output: { value: string } }>;
+    const toolParts = parts.filter((p) => p.type === 'tool-bash');
+    const latest = JSON.stringify(toolParts[toolParts.length - 1].output.value);
+    expect(latest).toContain('C'.repeat(100)); // 最新保留完整输出
+    const earliest = JSON.stringify(toolParts[0].output.value);
+    expect(earliest).not.toContain('A'.repeat(5000)); // 早期输出已被降级（不再是完整 5000）
+  });
+});

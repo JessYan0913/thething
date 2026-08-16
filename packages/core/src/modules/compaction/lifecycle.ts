@@ -375,7 +375,10 @@ interface BudgetCandidate {
 
 /**
  * 跨消息超大输出预算检查：收集所有未 meta 的工具结果，按大小排序，
- * 降级最大的直到总额低于 budget。当前步与 pin 的最新读取豁免。
+ * 降级最大的直到总额低于 budget。pin 的最新读取豁免；当前步保留最新
+ * 一个工具结果（最近行动可感知），其余参与降级——否则一轮 run 合并出的
+ * 单条消息（数百个工具结果，如小红书 681 parts）被整条豁免，累积到
+ * 窗口大小压不动（见 compaction-overflow 根因）。
  */
 function applyCrossMessageBudget(
   messages: import('ai').ModelMessage[],
@@ -392,9 +395,15 @@ function applyCrossMessageBudget(
   // 收集所有未 meta 的非错误工具结果（含 truncated——可进一步降级）
   const candidates: BudgetCandidate[] = [];
   for (let i = 0; i < messages.length; i++) {
-    if (i === exempt.currentStepIndex) continue; // 当前步豁免
+    const isCurrentStep = i === exempt.currentStepIndex;
     const view = extractToolResultView(messages[i]);
-    for (const tr of view.toolResults) {
+    const results = view.toolResults;
+    // 当前步消息至少保留最后一个工具结果（最近行动必须可感知）；
+    // 其余全部参与预算——否则整条豁免导致单条巨型消息压不动。
+    const keepLatest = isCurrentStep ? 1 : 0;
+    for (let r = 0; r < results.length; r++) {
+      if (isCurrentStep && r >= results.length - keepLatest) continue;
+      const tr = results[r];
       if (tr.isCompacted || tr.isError) continue;
       if (!tr.toolCallId) continue;
       const readPath = resolveReadPath(tr);
