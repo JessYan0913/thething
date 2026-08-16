@@ -7,7 +7,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
 import { estimateToolsTokens, estimateToolTokens, type FullRequestEstimation } from './token-counter';
-import { estimateRequestBudget } from './request-budget';
+import { estimateRequestBudget, type RequestBudgetEstimation } from './request-budget';
 import { manageToolOutputLifecycle, applyEmergencyCompression } from './lifecycle';
 import { deriveBudget, targetTokensFor, messageTargetTokensFor, DEFAULT_TARGET_PERCENT } from './prompt-budget-policy';
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
@@ -18,7 +18,9 @@ const TOOL_BUDGET_RATIO = 0.10;
 
 export interface InitialBudgetCheckResult {
   passed: boolean;
-  estimation: FullRequestEstimation;
+  /** RequestBudgetEstimation：含 totalTokensWithBuffer / tokenizerBuffer 等完整字段，
+   *  供调用方在拒绝消息里展示真实超限口径与构成诊断（而非误导性的 totalTokens） */
+  estimation: RequestBudgetEstimation;
   actions: string[];
   adjustedTools?: Record<string, Tool>;
   adjustedMessages?: import('ai').ModelMessage[];

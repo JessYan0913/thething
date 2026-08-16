@@ -350,7 +350,15 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   }
 
   if (!budgetCheck.passed) {
-    const msg = `上下文超限(${budgetCheck.estimation.totalTokens} tokens > ${budgetCheck.estimation.modelLimit} 窗口上限),已尝试 ${budgetCheck.actions.length > 0 ? budgetCheck.actions.join('; ') : '所有策略均失败'}。请减少本轮消息量或开始新会话。`
+    const e = budgetCheck.estimation
+    const parts = [
+      `指令 ${e.instructionsTokens}`,
+      `消息 ${e.messagesTokens}`,
+      `工具 ${e.toolsTokens}`,
+      `输出预留 ${e.outputReserve}`,
+    ]
+    const buf = e.tokenizerBuffer > 0 ? ` + 校准buffer ${e.tokenizerBuffer}` : ''
+    const msg = `上下文超限(${e.totalTokensWithBuffer} tokens > ${e.modelLimit} 窗口上限,含${parts.join(' + ')}${buf}),已尝试 ${budgetCheck.actions.length > 0 ? budgetCheck.actions.join('; ') : '所有策略均失败'}。请减少本轮消息量或开始新会话。`
     logger.warn('AgentCreate', msg)
     throw new Error(`CONTEXT_BUDGET_EXCEEDED: ${msg}`)
   }
