@@ -127,6 +127,19 @@ export function cacheFingerprint(
       const input = (p as { input?: unknown }).input;
       const inputStr = typeof input === 'string' ? input : JSON.stringify(input ?? '');
       toolBits.push(`d:${dynamicIndex++}:${outStr.length}:${head(outStr, 64)}:${inputStr.length}:${head(inputStr, 48)}`);
+    } else if (type.startsWith('tool-')) {
+      // 自定义 UIMessage 工具 part（agent-handler 构造：type: `tool-${toolName}`，
+      // 字段 input/output/state/errorText）。估算器把 output+input 计入 token（见
+      // token-counter estimateMessageTokens），指纹必须覆盖——否则压缩改写 output
+      // 后指纹不变 → 命中旧缓存 → 重估不降（超限误报）；且所有 tool-only 消息会
+      // 共享同一 key 互相污染（大消息的 token 数传染给小消息）。
+      const out = (p as { output?: unknown }).output;
+      const outStr = typeof out === 'string' ? out : JSON.stringify(out ?? '');
+      const input = (p as { input?: unknown }).input;
+      const inputStr = typeof input === 'string' ? input : JSON.stringify(input ?? '');
+      const err = (p as { errorText?: unknown }).errorText;
+      const errStr = typeof err === 'string' ? err : '';
+      toolBits.push(`u:${String(p.toolCallId ?? '')}:${outStr.length}:${head(outStr, 64)}:${inputStr.length}:${head(inputStr, 48)}${errStr ? `:e${errStr.length}:${head(errStr, 48)}` : ''}`);
     } else if (type === 'text' || type === 'reasoning') {
       if (typeof p.text === 'string') {
         const t = p.text;

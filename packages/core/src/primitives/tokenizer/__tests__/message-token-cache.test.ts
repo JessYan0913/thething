@@ -75,4 +75,35 @@ describe('cacheFingerprint', () => {
     const withImg = modelMsg('user', [{ type: 'image', image: 'data:...' }]);
     expect(cacheFingerprint(withImg, undefined)).not.toBe(cacheFingerprint(plain, undefined));
   });
+
+  // ── 自定义 UIMessage 工具 part（agent-handler 构造：type: `tool-${toolName}`）──
+  // 回归：cacheFingerprint 曾不覆盖 tool-* 类型，导致压缩改写 output 后指纹不变
+  // → 命中旧缓存 → 重估不降（超限误报）；且同 role 工具消息共享 key 互相污染。
+  function uiToolMsg(role: string, type: string, toolCallId: string, value: string) {
+    return uiMsg(role, [
+      { type, toolCallId, input: { command: 'echo x' }, output: { type: 'text', value }, state: 'output-available' },
+    ]);
+  }
+
+  it('custom tool-* part: 压缩改写 output 后指纹必变（压缩后重估 miss）', () => {
+    const before = uiToolMsg('assistant', 'tool-bash', 'tc-1', 'A'.repeat(200_000));
+    const after = uiToolMsg('assistant', 'tool-bash', 'tc-1', '[已省略 190000 字符]');
+    expect(cacheFingerprint(after, undefined)).not.toBe(cacheFingerprint(before, undefined));
+  });
+
+  it('custom tool-* part: 不同大小的同 role 工具消息不共享 key（不互相污染）', () => {
+    const big = uiToolMsg('assistant', 'tool-bash', 'tc-big', 'B'.repeat(100_000));
+    const small = uiToolMsg('assistant', 'tool-web_fetch', 'tc-small', 'x');
+    expect(cacheFingerprint(small, undefined)).not.toBe(cacheFingerprint(big, undefined));
+  });
+
+  it('custom tool-* part: error 与 output-available 指纹不同', () => {
+    const ok = uiMsg('assistant', [
+      { type: 'tool-bash', toolCallId: 'tc-1', input: { command: 'x' }, output: { type: 'text', value: 'done' }, state: 'output-available' },
+    ]);
+    const err = uiMsg('assistant', [
+      { type: 'tool-bash', toolCallId: 'tc-1', input: { command: 'x' }, output: null, state: 'output-error', errorText: 'exit=1' },
+    ]);
+    expect(cacheFingerprint(err, undefined)).not.toBe(cacheFingerprint(ok, undefined));
+  });
 });
