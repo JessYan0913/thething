@@ -94,7 +94,7 @@ function truncateReasoningParts(
       }
       return p;
     });
-    return changed ? ({ ...message, parts } as import('ai').ModelMessage) : message;
+    return changed ? ({ ...message, parts } as unknown as import('ai').ModelMessage) : message;
   }
   const withContent = message as unknown as { content?: Array<{ type?: string; text?: string }> };
   if (Array.isArray(withContent.content)) {
@@ -106,7 +106,7 @@ function truncateReasoningParts(
       }
       return c;
     });
-    return changed ? ({ ...message, content } as import('ai').ModelMessage) : message;
+    return changed ? ({ ...message, content } as unknown as import('ai').ModelMessage) : message;
   }
   return message;
 }
