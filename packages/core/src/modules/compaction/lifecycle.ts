@@ -867,20 +867,48 @@ const EXTRACTORS: Record<string, MetaExtractor> = {
   ReadWikiPage: extractReadWikiPage,
 };
 
-/** 通用提取器：保留结果的结构轮廓 */
-function defaultExtractor(_args: unknown, result: unknown): string {
+/** 从通用工具结果提取执行状态（success/error/exitCode/status/state + content 错误标记）。
+ * 模型必须能看到"工具已执行 + 结果"，否则会重复执行同一操作（死循环根因）。 */
+function extractResultStatus(result: unknown): string {
+  if (typeof result !== 'object' || result === null) return '';
+  const r = result as Record<string, unknown>;
+  if (r.success === false || r.error !== undefined || r.errorMessage !== undefined) {
+    const err = firstString(r.error, r.errorMessage, r.message);
+    return `error: ${(err || 'failed').slice(0, 120)}`;
+  }
+  if (r.success === true || r.ok === true) return 'success';
+  if (typeof r.exitCode === 'number') return r.exitCode === 0 ? 'exit=0' : `exit=${r.exitCode}`;
+  if (typeof r.status === 'string') return `status=${r.status}`;
+  if (typeof r.state === 'string') return `state=${r.state}`;
+  // AI SDK content 数组：检查文本错误标记（playwright/mcp 等结果常以此表达失败）
+  if (Array.isArray(r.content)) {
+    const head = r.content
+      .map((c) =>
+        typeof c === 'object' && c !== null && typeof (c as Record<string, unknown>).text === 'string'
+          ? ((c as Record<string, unknown>).text as string)
+          : '',
+      )
+      .join(' ')
+      .slice(0, 300);
+    if (/error|failed|exception|invalid/i.test(head)) return 'Error detected';
+  }
+  return '';
+}
+
+/** 通用提取器：结果状态 + 内容结构轮廓（保留"已执行 + 结果"可见性） */
+function defaultExtractor(args: unknown, result: unknown): string {
+  const status = extractResultStatus(result);
+  let content: string;
   if (typeof result === 'string') {
-    if (result.length <= 200) return result;
-    return `${result.slice(0, 80)} ... ${result.slice(-80)} [${result.length} chars total]`;
+    content = result.length <= 200 ? result : `${result.slice(0, 80)} ... ${result.slice(-80)} [${result.length} chars total]`;
+  } else if (Array.isArray(result)) {
+    content = `Array[${result.length}]${result.length > 0 ? `: first=${JSON.stringify(result[0]).slice(0, 80)}` : ''}`;
+  } else if (typeof result === 'object' && result !== null) {
+    content = `{${Object.keys(result).slice(0, 8).join(', ')}} [${JSON.stringify(result).length} chars]`;
+  } else {
+    content = `[${typeof result}, ${String(result).length} chars]`;
   }
-  if (Array.isArray(result)) {
-    return `Array[${result.length}]${result.length > 0 ? `: first=${JSON.stringify(result[0]).slice(0, 80)}` : ''}`;
-  }
-  if (typeof result === 'object' && result !== null) {
-    const keys = Object.keys(result).slice(0, 8);
-    return `{${keys.join(', ')}} [${JSON.stringify(result).length} chars]`;
-  }
-  return `[${typeof result}, ${String(result).length} chars]`;
+  return status ? `${status} | ${content}` : content;
 }
 
 export function extractToolMeta(toolName: string, args: unknown, result: unknown): string {
@@ -1236,7 +1264,11 @@ export async function slimAssistantMessage(
   return trimStepsToFit(current, maxTokens, modelName);
 }
 
-/** 按 step-start 边界从头部丢弃步骤，直到消息 ≤ maxTokens（至少保留最后一步） */
+/** 按 step 舍弃时最少保留的最近步数——防止把"最近工具调用链"完整舍弃，
+ * 否则 agent 看不到"已执行过什么"，会重复执行同一操作（死循环根因）。 */
+const MIN_KEEP_RECENT_STEPS = 8;
+
+/** 按 step-start 边界从头部丢弃步骤，直到消息 ≤ maxTokens（至少保留最近 MIN_KEEP_RECENT_STEPS 步） */
 async function trimStepsToFit(
   message: import('ai').ModelMessage,
   maxTokens: number,
@@ -1252,15 +1284,18 @@ async function trimStepsToFit(
   // 没有 step 边界：无法按步舍弃，返回原样（已尽力）
   if (stepIndices.length <= 1) return message;
 
-  // 优先保留含最终 text 输出的 step（模型产出），从旧到新逐步丢弃
+  // 从旧到新逐步丢弃头部，但最多丢弃到剩最近 MIN_KEEP_RECENT_STEPS 步——
+  // 工具调用链（agent 已执行过什么）是不可压缩的最低上下文，否则 agent
+  // 不知道自己做过哪些操作 → 重复执行 → 死循环。
   const spreadable = message as unknown as Record<string, unknown>;
-  for (let s = 1; s < stepIndices.length; s++) {
+  const maxDrop = Math.max(1, stepIndices.length - MIN_KEEP_RECENT_STEPS);
+  for (let s = 1; s <= maxDrop; s++) {
     const trimmed = { ...spreadable, parts: parts.slice(stepIndices[s]) } as unknown as import('ai').ModelMessage;
     if (await estimateMessageTokens(trimmed, modelName) <= maxTokens) {
       return trimmed;
     }
   }
-  // 兜底：只保留最后一步
-  const last = stepIndices[stepIndices.length - 1];
-  return { ...spreadable, parts: parts.slice(last) } as unknown as import('ai').ModelMessage;
+  // 兜底：保留最近 MIN_KEEP_RECENT_STEPS 步（不因 fit 丢弃工具调用链）
+  const keepStart = stepIndices[stepIndices.length - MIN_KEEP_RECENT_STEPS] ?? 0;
+  return { ...spreadable, parts: parts.slice(keepStart) } as unknown as import('ai').ModelMessage;
 }

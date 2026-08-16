@@ -637,4 +637,23 @@ describe('extractToolMeta', () => {
     // extractToolMeta wraps with toolName prefix
     expect(meta).toBe('CustomTool: short result');
   });
+
+  it('default extractor: reports explicit error from mcp/dynamic results', () => {
+    const meta = extractToolMeta('mcp_playwright', {}, { success: false, error: 'browser_snapshot failed' });
+    expect(meta).toContain('error');
+    expect(meta).toContain('browser_snapshot failed');
+  });
+
+  it('default extractor: detects Error in AI SDK content text (playwright modal case)', () => {
+    // 死循环根因：playwright 结果以 content 文本表达错误，模型看不到 → 重复执行
+    const meta = extractToolMeta('dynamic-tool', {}, {
+      content: [{ type: 'text', text: '### Error\nTool "browser_snapshot" does not handle the modal state.' }],
+    });
+    expect(meta).toContain('Error detected');
+  });
+
+  it('default extractor: reports non-zero exit code', () => {
+    const meta = extractToolMeta('mcp_foo', {}, { exitCode: 1, stdout: 'boom' });
+    expect(meta).toContain('exit=1');
+  });
 });
