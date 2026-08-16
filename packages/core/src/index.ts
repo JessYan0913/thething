@@ -228,6 +228,8 @@ export type {
 export {
   compactBeforeStep,
   manageToolOutputLifecycle,
+  slimAssistantMessage,
+  MAX_ASSISTANT_MESSAGE_TOKENS,
   estimateMessagesTokens,
   handleReactiveRetry,
   isContextLengthError,

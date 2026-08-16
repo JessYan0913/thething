@@ -12,6 +12,8 @@ import {
   fingerprintMessage,
   sanitizeToolErrorInputs,
   isOutputTruncated,
+  slimAssistantMessage,
+  MAX_ASSISTANT_MESSAGE_TOKENS,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -444,6 +446,18 @@ export async function POST(request: Request) {
           }
           if (merged > 0) {
             console.log(`[Chat API] Merged ${merged}/${subEventBuffer.size} sub-agent data parts into messages`);
+          }
+        }
+
+        // 落库前瘦身（治本）：SDK 把一轮 run 的所有 step 输出合并成一条 assistant
+        // UIMessage（数百 parts，如小红书 681 parts），落库保存完整原始输出会让下次
+        // 加载历史巨量化 → CONTEXT_BUDGET_EXCEEDED。对超阈值消息落库前降级：
+        // reasoning 截断 → 工具输出压缩 → 按 step 保留最新步骤。见 slimAssistantMessage。
+        for (const m of newAssistantMessages) {
+          if (m.role !== 'assistant' || !m.parts?.length) continue;
+          const slimmed = await slimAssistantMessage(m, MAX_ASSISTANT_MESSAGE_TOKENS, sessionState.model);
+          if (slimmed !== m) {
+            Object.assign(m, slimmed);
           }
         }
 

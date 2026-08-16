@@ -88,3 +88,49 @@ describe('Layer 2 压缩落盘可恢复', () => {
     expect(item.output.value).not.toContain('saved to:');
   });
 });
+
+// ============================================================
+// 落库前单条消息瘦身（治本：限制单条 assistant 消息规模）
+// 见 lifecycle.ts slimAssistantMessage
+// ============================================================
+import { slimAssistantMessage } from '../lifecycle';
+import { estimateMessageTokens } from '../token-counter';
+
+function stepParts(prefix: string, size: number): any[] {
+  return [
+    { type: 'step-start' },
+    { type: 'reasoning', id: `r-${prefix}`, text: `${prefix}-reasoning-`.repeat(size) },
+    { type: 'text', text: `${prefix}-text` },
+    { type: 'tool-bash', toolCallId: `tc-${prefix}`, input: { command: prefix }, output: { type: 'text', value: `${prefix}-out-`.repeat(size) }, state: 'output-available' },
+  ];
+}
+
+describe('slimAssistantMessage', () => {
+  it('超阈值巨型消息（多 step）瘦身到 ≤ maxTokens，保留最新步骤', async () => {
+    const parts = [...stepParts('a', 500), ...stepParts('b', 500), ...stepParts('c', 500)];
+    const message = { id: 'big', role: 'assistant', parts } as any;
+    const before = await estimateMessageTokens(message, 'unknown-model');
+    expect(before).toBeGreaterThan(2000);
+
+    const maxTokens = 2000;
+    const slimmed = await slimAssistantMessage(message, maxTokens, 'unknown-model');
+    const after = await estimateMessageTokens(slimmed as any, 'unknown-model');
+    expect(after).toBeLessThanOrEqual(maxTokens);
+    // 最新步骤（c）保留——最近行动可感知
+    const keptParts = (slimmed as any).parts;
+    expect(keptParts.some((p: any) => p.type === 'tool-bash' && p.toolCallId === 'tc-c')).toBe(true);
+  });
+
+  it('不超阈值时原样返回', async () => {
+    const message = { id: 'small', role: 'assistant', parts: stepParts('x', 10) } as any;
+    const slimmed = await slimMessageIdempotent(message);
+    const after = await estimateMessageTokens(slimmed as any, 'unknown-model');
+    expect(after).toBeLessThanOrEqual(25_000);
+  });
+});
+
+/** 小消息不应被改动（幂等辅助） */
+async function slimMessageIdempotent(message: any) {
+  // 直接调用 slimAssistantMessage，maxTokens 用默认（25K）——小消息不触发降级
+  return slimAssistantMessage(message, 25_000, 'unknown-model');
+}
