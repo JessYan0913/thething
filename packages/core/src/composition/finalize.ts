@@ -64,6 +64,31 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
   const { dataStore, messages, conversationId, costTracker, mcpRegistry } = opts
   const commitConversationState = opts.commitConversationState ?? true
 
+  // 保底：run 结束后同步生成 checkpoint（消除异步竞态）。
+  // 之前 setImmediate 后台 fire-and-forget——LLM 摘要慢，快速连续 run 时下一轮
+  // load-time 的 applyCheckpointOnLoad 拿不到刚生成的 checkpoint，回退全量历史
+  // → CONTEXT_BUDGET_EXCEEDED（长时任务暴涨场景）。同步后每轮 run 结束、用户能发
+  // 下一条之前摘要已落库，load-time 必然命中。触发条件（水位线 0.5 / 步数 / 压缩
+  // 次数）内短 run 无 LLM 调用；大 run 结束等待摘要，换取下一轮不再拒绝。
+  if (commitConversationState && opts.checkpoint && opts.model) {
+    try {
+      const activeMessages = dataStore.messageStore.getMessagesByConversation(conversationId)
+      await maybeCheckpointAfterRun(activeMessages, {
+        conversationId,
+        dataStore,
+        model: opts.model,
+        fallbackModels: opts.checkpoint.fallbackModels,
+        modelName: opts.checkpoint.modelName,
+        contextLimit: opts.checkpoint.contextLimit,
+        stepCount: opts.checkpoint.stepCount,
+        compactionCount: opts.checkpoint.compactionCount,
+      })
+    } catch (e) {
+      // checkpoint 失败不阻断收尾（下次 run 结束再试）
+      logger.warn('FinalizeAgentRun', `Sync checkpoint failed: ${e}`)
+    }
+  }
+
   // 后台任务
   setImmediate(async () => {
     try {
@@ -74,22 +99,6 @@ export async function finalizeAgentRun(opts: FinalizeAgentRunOptions): Promise<v
             dataStore.conversationStore.updateConversationTitle(conversationId, title)
           })
           .catch(e => logger.warn('FinalizeAgentRun', `Title generation failed: ${e}`))
-      }
-
-      // 后台 checkpoint:活跃路径超水位线时生成摘要 + 锚点落库,
-      // 下次加载走 applyCheckpointOnLoad,避免濒死时刻同步摘要(见 checkpoint.ts)
-      if (commitConversationState && opts.checkpoint && opts.model) {
-        const activeMessages = dataStore.messageStore.getMessagesByConversation(conversationId)
-        maybeCheckpointAfterRun(activeMessages, {
-          conversationId,
-          dataStore,
-          model: opts.model,
-          fallbackModels: opts.checkpoint.fallbackModels,
-          modelName: opts.checkpoint.modelName,
-          contextLimit: opts.checkpoint.contextLimit,
-          stepCount: opts.checkpoint.stepCount,
-          compactionCount: opts.checkpoint.compactionCount,
-        }).catch(e => logger.warn('FinalizeAgentRun', `Background checkpoint failed: ${e}`))
       }
 
       // 成本持久化（只调一次）
