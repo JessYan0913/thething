@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore, Todo } from '../types';
+import { logger } from '../../../primitives/logger';
 
 /**
  * TodoListTool - List todos with a compact snapshot, or get a single todo's full details
@@ -168,6 +169,8 @@ export function createTodoListTool(store: TodoStore) {
               error: `Todo ${input.id} not found`,
             };
           }
+          // 读回可观测：索引池短钩子→完整详情读回计数（Phase 5 统计 todo_list({id}) 查询率用）
+          logger.info('TodoList', `[read_back] ${input.id}`);
           return {
             success: true as const,
             todo: toFull(todo),
@@ -222,6 +225,8 @@ export function createTodoListToolForConversation(store: TodoStore, conversation
               error: `Todo ${input.id} not found`,
             };
           }
+          // 读回可观测：索引池短钩子→完整详情读回计数（Phase 5 统计 todo_list({id}) 查询率用）
+          logger.info('TodoList', `[read_back] ${input.id}`);
           return {
             success: true as const,
             todo: toFull(todo),
