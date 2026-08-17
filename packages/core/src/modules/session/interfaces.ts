@@ -178,4 +178,15 @@ export interface PipelineContext {
 
   /** 任务存储，用于 ContextInjector 读取任务快照 */
   todoStore: TodoStore;
+
+  /** 摘要/归档模型（归档器子任务提炼用） */
+  compactModel?: import('@ai-sdk/provider').LanguageModelV3;
+  /** 备用模型列表（归档器提炼失败时回退） */
+  fallbackModels?: import('@ai-sdk/provider').LanguageModelV3[];
+
+  /** 已完成子任务待归档标记（todo-write 标记 completed/failed 时设置，prepareStep 消费触发边界重建） */
+  pendingArchiveTodoId: string | null;
+
+  /** 当前子任务在 messages 中的起始锚点（归档器按此切片提取子任务消息链） */
+  subtaskStartMessageIndex: number;
 }

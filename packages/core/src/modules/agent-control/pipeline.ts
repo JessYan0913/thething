@@ -7,6 +7,9 @@ import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
 import { buildPlanPrompt, buildTodoSyncReminder, buildEmptyTodoReminder } from './plan-prompt';
+import { buildSubtaskContext, getCurrentTodo } from './context-builder';
+import { archiveSubtask } from './archiver';
+import { splitTodo } from './splitter';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
@@ -94,6 +97,62 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     // Phase A 规划提示：判断一律交给模型——代码只做确定性的机械活（每条请求开工前
     // 轻问一句，不做任何关键词/字数预判）。
     const todoStore = sessionState.todoStore;
+
+    // ── 子任务独立上下文范式（Task Paradigm Redesign §4）：子任务边界重建 ──
+    // todo-write 标记 completed/failed 时设置 sessionState.pendingArchiveTodoId；
+    // 此处检测到即重建干净上下文（索引池 + 当前子任务 + 读回指针），不继承上一子任务原始日志。
+    const pendingArchiveTodoId = sessionState.pendingArchiveTodoId;
+    if (pendingArchiveTodoId) {
+      // 1. 归档：用旧 messages 切片（subtaskStartMessageIndex 起）提炼 facts 写入该 todo。
+      //    必须在重建前完成——重建后上一子任务消息即被替换。
+      if (todoStore && sessionState.compactModel) {
+        await archiveSubtask(
+          todoStore,
+          pendingArchiveTodoId,
+          messages.slice(sessionState.subtaskStartMessageIndex) as import('ai').ModelMessage[],
+          {
+            model: sessionState.compactModel,
+            fallbackModels: sessionState.fallbackModels,
+            modelName: sessionState.model,
+          },
+        );
+      }
+
+      // 2. 重建干净上下文（索引池 + 当前子任务 + 读回指针），不继承上一子任务原始日志。
+      const todos = todoStore?.getTodosByConversation(sessionState.conversationId) ?? [];
+      messages = buildSubtaskContext(todos);
+      sessionState.pendingArchiveTodoId = null;
+      sessionState.subtaskStartMessageIndex = messages.length;
+
+      // 预算预检：新鲜子任务上下文若已超触发线 → 子任务本身过大，就地拆分（取消 + 建新）并重建指向第一个新子任务。
+      // 在 prepareStep 内处理：chat 与 inbound 共用本步，避免在两个执行路径做危险的流重入。
+      if (config.instructions != null && config.tools) {
+        const precheck = await estimateRequestBudget(
+          messages as import('ai').ModelMessage[],
+          config.instructions,
+          config.tools,
+          sessionState.model,
+          config.contextLimit,
+          config.outputTokens,
+        );
+        if (precheck.shouldTrigger) {
+          const current = getCurrentTodo(todos);
+          if (current) {
+            const created = await splitTodo(todoStore, current, {
+              model: sessionState.compactModel,
+            });
+            if (created.length > 0) {
+              const newTodos = todoStore?.getTodosByConversation(sessionState.conversationId) ?? [];
+              messages = buildSubtaskContext(newTodos);
+              sessionState.subtaskStartMessageIndex = messages.length;
+              debugLog(debugEnabled, `[Agent] Subtask too complex, split "${current.subject}" into ${created.length} subtasks`);
+            }
+            // created.length===0 → 已原子无法拆分，保持原样（交由现有 budget gate 处理）
+          }
+        }
+      }
+      debugLog(debugEnabled, `[Agent] Subtask boundary: rebuilt context for completed todo ${pendingArchiveTodoId}`);
+    }
 
     if (stepNumber === 0) {
       const todosEmpty = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? []).length === 0;

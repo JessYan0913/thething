@@ -61,9 +61,13 @@ export function createTodoTools(store: TodoStore): TodoTools {
  * @param conversationId - The conversation ID to associate todos with
  * @returns Object containing all todo tools
  */
-export function createTodoToolsForConversation(store: TodoStore, conversationId: string): TodoTools {
+export function createTodoToolsForConversation(
+  store: TodoStore,
+  conversationId: string,
+  opts?: { onTodoCompleted?: (todoId: string) => void },
+): TodoTools {
   return {
-    todo_write: createTodoWriteToolForConversation(store, conversationId),
+    todo_write: createTodoWriteToolForConversation(store, conversationId, opts),
     todo_delete: createTodoDeleteTool(store),
     todo_list: createTodoListToolForConversation(store, conversationId),
     todo_create_batch: createTodoBatchCreateToolForConversation(store, conversationId),

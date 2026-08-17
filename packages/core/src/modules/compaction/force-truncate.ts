@@ -22,6 +22,9 @@ import { logger } from '../../primitives/logger';
  * @param maxTokens 最大 token 数（如果提供，会确保结果不超过此值）
  * @returns 截断后的消息
  */
+/** 强制截断收敛：每次将保留尾部消息数减少 30%（保留 70%），逼近预算线 */
+const FORCE_TRUNCATE_RETAIN_RATIO = 0.7;
+
 export async function forceTruncateMessages(
   messages: import('ai').ModelMessage[],
   keepRatio: number = 0.15,
@@ -56,7 +59,7 @@ export async function forceTruncateMessages(
 
     // 逐步减少尾部消息直到满足限制
     while (currentTokens > maxTokens && keepTail > 1) {
-      keepTail = Math.max(1, Math.floor(keepTail * 0.7)); // 每次减少 30%
+      keepTail = Math.max(1, Math.floor(keepTail * FORCE_TRUNCATE_RETAIN_RATIO));
       recentMessages = messages.slice(-keepTail);
       result = [firstUserMsg, warningMessage, ...recentMessages];
       currentTokens = await estimateMessagesTokens(result, modelName);

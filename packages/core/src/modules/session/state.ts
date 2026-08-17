@@ -119,6 +119,8 @@ export async function createSessionState(
     lastEstimation: undefined,
     lastTodoRevision: 0,
     stepsSinceTodoMutation: 0,
+    pendingArchiveTodoId: null,
+    subtaskStartMessageIndex: 0,
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {

@@ -55,6 +55,17 @@ export type TodoWriteToolOutput = {
   error: string;
 };
 
+/** 子任务独立上下文范式：completed/failed 视为子任务完结，触发 prepareStep 边界重建 */
+function notifyTodoCompleted(
+  opts: { onTodoCompleted?: (id: string) => void } | undefined,
+  id: string,
+  status: TodoStatus,
+): void {
+  if ((status === 'completed' || status === 'failed') && opts?.onTodoCompleted) {
+    opts.onTodoCompleted(id);
+  }
+}
+
 /**
  * 确定性的规划质量检查（lint 式返回值反馈，不阻断执行）。
  * 放在返回值里比写进系统提示词有效：模型必读工具结果，且对弱模型同样生效。
@@ -95,9 +106,14 @@ function itemMetadata(item: TodoWriteToolInput['todos'][number]): Record<string,
  *
  * @param store - The todo store
  * @param conversationId - The conversation ID to associate todos with
+ * @param opts - 可选回调；onTodoCompleted 在子任务标记 completed/failed 时触发（子任务独立上下文范式：prepareStep 据此重建上下文）
  * @returns The tool definition
  */
-export function createTodoWriteToolForConversation(store: TodoStore, conversationId: string) {
+export function createTodoWriteToolForConversation(
+  store: TodoStore,
+  conversationId: string,
+  opts?: { onTodoCompleted?: (todoId: string) => void },
+) {
   return tool({
     description: `Create and update the task list for the current session. The PREFERRED tool for task planning — use it to decompose complex work.
 
@@ -135,6 +151,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
             seenIds.add(item.id);
             if (updated) {
               result.push({ id: updated.id, subject: updated.subject, status: updated.status });
+              notifyTodoCompleted(opts, updated.id, updated.status);
             }
           } else {
             // 新建任务（store 创建后默认 pending，需要时再置状态）
@@ -150,6 +167,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
             seenIds.add(created.id);
             const final = store.getTodo(created.id) ?? created;
             result.push({ id: final.id, subject: final.subject, status: final.status });
+            notifyTodoCompleted(opts, final.id, final.status);
           }
         }
 

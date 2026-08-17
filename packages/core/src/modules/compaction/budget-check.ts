@@ -126,6 +126,9 @@ export async function checkInitialBudget(
   }
 
   // Strategy 3: 最激进模式 - 只保留核心工具 + 最小消息集
+  // 最激进模式的预算分配比例
+  const EXTREME_MESSAGE_BUDGET_RATIO = 0.3; // 消息可用输入预算占比
+  const EXTREME_KEEP_MESSAGE_RATIO = 0.05; // 仅保留的消息占比
   if (currentEstimation.shouldTrigger) {
     logger.warn('Budget', '常规策略均失败，启动最激进模式：只保留核心工具 + 最小消息');
 
@@ -140,10 +143,10 @@ export async function checkInitialBudget(
     // 强制截断消息到极限:只给 messages 可用输入预算的 30%(从统一策略推导)
     const { forceTruncateMessages } = await import('./force-truncate');
     const policy = deriveBudget(currentEstimation.modelLimit, currentEstimation.outputReserve, modelName);
-    const targetMessagesTokens = Math.floor(policy.effectiveBudget * 0.3);
+    const targetMessagesTokens = Math.floor(policy.effectiveBudget * EXTREME_MESSAGE_BUDGET_RATIO);
     currentMessages = await forceTruncateMessages(
       currentMessages,
-      0.05, // 只保留 5%
+      EXTREME_KEEP_MESSAGE_RATIO, // 只保留 5%
       modelName,
       targetMessagesTokens,
     );

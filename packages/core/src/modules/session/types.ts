@@ -113,6 +113,12 @@ export interface SessionState {
   /** 自上次 todo 变更以来的步数，用于 ContextInjector 无活动提醒 */
   stepsSinceTodoMutation: number;
 
+  /** 已完成子任务待归档标记（todo-write 标记 completed/failed 时设置，prepareStep 消费触发边界重建；子任务独立上下文范式） */
+  pendingArchiveTodoId: string | null;
+
+  /** 当前子任务在 messages 中的起始锚点（上下文构建器在边界重建时设置，归档器按此切片提取子任务消息链） */
+  subtaskStartMessageIndex: number;
+
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
 

@@ -89,7 +89,9 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     }),
   })
 
-  Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId))
+  Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId, {
+    onTodoCompleted: (todoId) => { config.sessionState.pendingArchiveTodoId = todoId; },
+  }))
 
   // 计划确认：复杂请求先呈现计划供用户批准（审批走 tool-approval 通道）
   tools.submit_plan = createSubmitPlanTool(config.sessionState.todoStore, config.conversationId)

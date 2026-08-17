@@ -347,6 +347,11 @@ function buildMetaPatch(
  * 不会陷入"读不到→再读"的循环。标记 _truncated（非 _compacted），
  * 老化超出边界后仍可降级为 meta。
  */
+/** 截断布局：保留输出头部比例 */
+const TRUNCATE_HEAD_RATIO = 0.6;
+/** 截断布局：保留输出尾部比例 */
+const TRUNCATE_TAIL_RATIO = 0.25;
+
 function buildTruncationPatch(
   tr: ToolResultItemView,
   config: LifecycleConfig,
@@ -356,8 +361,8 @@ function buildTruncationPatch(
   compactedAt?: number,
 ): CompactionPatch {
   const keep = Math.max(1000, config.largeOutputThreshold);
-  const headLen = Math.floor(keep * 0.6);
-  const tailLen = Math.floor(keep * 0.25);
+  const headLen = Math.floor(keep * TRUNCATE_HEAD_RATIO);
+  const tailLen = Math.floor(keep * TRUNCATE_TAIL_RATIO);
   const head = tr.outputRaw.slice(0, headLen);
   const tail = tr.outputRaw.slice(-tailLen);
   const omitted = tr.outputSize - headLen - tailLen;
