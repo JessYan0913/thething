@@ -8,7 +8,7 @@ import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } 
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
 import { buildPlanPrompt, buildTodoSyncReminder, buildEmptyTodoReminder } from './plan-prompt';
 import { buildSubtaskContext, getCurrentTodo, getIndexPoolSize } from './context-builder';
-import { archiveSubtask } from './archiver';
+import { archiveSubtask, renderSubtaskText, retryPendingArchives } from './archiver';
 import { splitTodo } from './splitter';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
@@ -108,6 +108,21 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     // 轻问一句，不做任何关键词/字数预判）。
     const todoStore = sessionState.todoStore;
 
+    // 归档失败重试：上一轮归档失败的子任务（已缓存渲染文本）本轮重试一次。
+    // 不阻塞主流程——重试成功写 facts，失败上抛 archiving_failed 事件并跳过（保留 result）。
+    if (sessionState.enableSubtaskArchiving !== false && sessionState.pendingArchiveRetries.size > 0 && todoStore && sessionState.compactModel) {
+      const retried = await retryPendingArchives(sessionState.pendingArchiveRetries, {
+        store: todoStore,
+        model: sessionState.compactModel,
+        fallbackModels: sessionState.fallbackModels,
+        modelName: sessionState.model,
+        onRetryFailed: (todoId) => config.compactionCallbackRef?.current?.({ status: 'archiving_failed', todoId }),
+      });
+      if (retried.length > 0) {
+        debugLog(debugEnabled, `[Agent] Archived retry for ${retried.length} subtask(s)`);
+      }
+    }
+
     // ── 子任务独立上下文范式（Task Paradigm Redesign §4）：子任务边界重建 ──
     // todo-write 标记 completed/failed 时设置 sessionState.pendingArchiveTodoId；
     // 此处检测到即重建干净上下文（索引池 + 当前子任务 + 读回指针），不继承上一子任务原始日志。
@@ -117,18 +132,22 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       //    必须在重建前完成——重建后上一子任务消息即被替换。
       //    enableSubtaskArchiving=false 时跳过事实归档，保留 result 字符串（模型写入）。
       if (sessionState.enableSubtaskArchiving !== false && todoStore && sessionState.compactModel) {
-        const facts = await archiveSubtask(
-          todoStore,
-          pendingArchiveTodoId,
-          messages.slice(sessionState.subtaskStartMessageIndex) as import('ai').ModelMessage[],
-          {
-            model: sessionState.compactModel,
-            fallbackModels: sessionState.fallbackModels,
-            modelName: sessionState.model,
-          },
-        );
-        if (!facts) {
-          config.compactionCallbackRef?.current?.({ status: 'archiving_failed', todoId: pendingArchiveTodoId });
+        const slice = messages.slice(sessionState.subtaskStartMessageIndex) as import('ai').ModelMessage[];
+        const facts = await archiveSubtask(todoStore, pendingArchiveTodoId, slice, {
+          model: sessionState.compactModel,
+          fallbackModels: sessionState.fallbackModels,
+          modelName: sessionState.model,
+        });
+        if (facts) {
+          sessionState.pendingArchiveRetries.delete(pendingArchiveTodoId);
+        } else {
+          // 首败：缓存渲染文本入队，下一轮 prepareStep 重试一次（不立即报事件；
+          // archiving_failed 仅在重试也失败时上抛，见 retryPendingArchives）
+          const text = renderSubtaskText(slice);
+          if (text.trim()) {
+            sessionState.pendingArchiveRetries.set(pendingArchiveTodoId, text);
+          }
+          logger.warn('Archiver', `[archiving_failed] 子任务 ${pendingArchiveTodoId} 事实归档失败，已入队待重试（保留 result）`);
         }
       }
 

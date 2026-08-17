@@ -8,7 +8,7 @@
 
 import { generateText } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
-import type { TodoStore } from '../todos/types';
+import type { TodoStore, Todo } from '../todos/types';
 import { logger } from '../../primitives/logger';
 
 /** 归档提炼出的结构化事实（写入 todo.metadata.facts） */
@@ -75,13 +75,10 @@ export interface ArchiveOptions {
 }
 
 /**
- * 提炼子任务事实（LLM 调用；失败返回 null，由调用方决定兜底）。
+ * 从已渲染文本提炼事实（LLM 调用；失败返回 null）。
+ * 首败重试复用同一文本输入，保证重试与首次提炼使用完全相同的输入内容。
  */
-export async function extractSubtaskFacts(
-  messages: import('ai').ModelMessage[],
-  opts: ArchiveOptions,
-): Promise<SubtaskFacts | null> {
-  const text = renderSubtaskText(messages);
+export async function summarizeFactsFromText(text: string, opts: ArchiveOptions): Promise<SubtaskFacts | null> {
   if (!text.trim()) return null;
 
   const candidates = [opts.model, ...(opts.fallbackModels ?? [])];
@@ -100,6 +97,73 @@ export async function extractSubtaskFacts(
     }
   }
   return null;
+}
+
+/**
+ * 提炼子任务事实（LLM 调用；失败返回 null，由调用方决定兜底）。
+ */
+export async function extractSubtaskFacts(
+  messages: import('ai').ModelMessage[],
+  opts: ArchiveOptions,
+): Promise<SubtaskFacts | null> {
+  return summarizeFactsFromText(renderSubtaskText(messages), opts);
+}
+
+/** 判断 todo 是否已写入结构化 facts（供归档重试去重） */
+export function hasSubtaskFacts(todo: Todo): boolean {
+  const facts = (todo.metadata as Record<string, unknown>).facts;
+  return (
+    !!facts &&
+    typeof facts === 'object' &&
+    typeof (facts as { conclusion?: unknown }).conclusion === 'string' &&
+    ((facts as { conclusion: string }).conclusion.trim() !== '')
+  );
+}
+
+export interface RetryArchiveDeps {
+  store: TodoStore;
+  model: LanguageModelV3;
+  fallbackModels?: LanguageModelV3[];
+  modelName?: string;
+  /** 重试仍失败时回调（用于上抛 archiving_failed 事件） */
+  onRetryFailed?: (todoId: string) => void;
+}
+
+/**
+ * 重试归档失败的子任务（每个 todo 最多重试一次）。
+ * 输入 pending 为 todoId → 已渲染子任务文本 的映射（首败时缓存）。
+ * 对已完成但缺 facts 的 todo 用同一文本重新提炼：
+ * - 成功 → 写 facts，清出队列
+ * - 失败 → 回调 onRetryFailed，清出队列（不再重试）
+ * - todo 已不存在 / 非 completed / 已有 facts → 清出队列（无需重试）
+ * 返回实际重试过的 todoId 列表。
+ */
+export async function retryPendingArchives(
+  pending: Map<string, string>,
+  deps: RetryArchiveDeps,
+): Promise<string[]> {
+  const retried: string[] = [];
+  for (const [todoId, text] of pending) {
+    const todo = deps.store.getTodo(todoId);
+    if (!todo || todo.status !== 'completed' || hasSubtaskFacts(todo)) {
+      pending.delete(todoId);
+      continue;
+    }
+    const facts = await summarizeFactsFromText(text, {
+      model: deps.model,
+      fallbackModels: deps.fallbackModels,
+      modelName: deps.modelName,
+    });
+    if (facts) {
+      deps.store.updateTodo({ id: todoId, metadata: { facts } });
+    } else {
+      deps.onRetryFailed?.(todoId);
+      logger.warn('Archiver', `[archiving_failed] 子任务 ${todoId} 归档重试仍失败，跳过（保留 result）`);
+    }
+    pending.delete(todoId); // 最多重试一次
+    retried.push(todoId);
+  }
+  return retried;
 }
 
 /**

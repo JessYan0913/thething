@@ -283,10 +283,14 @@ sessionState.pendingArchiveTodoId = null;
 - 关闭时（`enableSubtaskArchiving: false`）跳过事实归档——`todo-write-tool` 仍写 `metadata.result`（模型写入的人类可读字符串），但不生成结构化 `facts`。
 - 用于需要精确控制（成本/隐私/稳定性）的场景，或归档 LLM 不可用的运行时。
 
-**LLM 失败 → 跳过写 `facts`**（定稿修正）：
+**LLM 失败 → 重试一次，仍失败才跳过写 `facts`**（定稿修正）：
 
 - 提炼失败（全模型候选均无法产出合法 JSON）时，**不写不完整的 `facts`**，避免污染索引池（索引构建依赖 `facts.conclusion` / `result` 的 `COALESCE`，残缺 `facts` 会破坏其语义）。
-- 只保留 `metadata.result` 字符串，记录 `archiving_failed` 告警。
+- **重试机制**：首败时缓存该子任务的**已渲染文本**入 `pendingArchiveRetries` 队列（todoId → text），下一轮 `prepareStep` 用同一文本自动重试一次（`retryPendingArchives`，最多一次）。
+  - 重试成功 → 写 `facts`，清出队列。
+  - 重试仍失败 → 跳过写 `facts`，上抛 `archiving_failed` 事件到可观测性通道，清出队列。
+  - 不阻塞主流程：`todo` 的 `completed` 状态已写入即推进，即使归档失败任务也继续。
+- 只保留 `metadata.result` 字符串。
 - 索引池读回依赖 `result` 字符串作为兜底，仍能索引该子任务。
 
 **输入**（从 `messages` 切片提取，无需访问 `todo-write-tool`）：

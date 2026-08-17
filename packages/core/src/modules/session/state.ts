@@ -114,6 +114,7 @@ export async function createSessionState(
     telemetry,
     contextLedger,
     compactionStepCounter,
+    pendingArchiveRetries: new Map<string, string>(),
     compactionView: createCompactionView(telemetry),
     compactionTracker,
     lastEstimation: undefined,

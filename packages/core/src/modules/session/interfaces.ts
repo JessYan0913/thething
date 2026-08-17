@@ -193,6 +193,9 @@ export interface PipelineContext {
   /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
   enableSubtaskArchiving: boolean;
 
+  /** 归档失败待重试队列：todoId → 已渲染子任务文本（首败缓存，下一轮 prepareStep 重试一次，最多一次） */
+  pendingArchiveRetries: Map<string, string>;
+
   /** 遥测收集器（任务拆分 / 视图命中率等） */
   telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 }
