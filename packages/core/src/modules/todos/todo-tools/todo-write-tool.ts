@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore, TodoStatus, Todo } from '../types';
+import { logger } from '../../../primitives/logger';
 
 /**
  * TodoWriteTool - 任务清单管理（主入口，Claude Code TodoWrite 风格）
@@ -90,6 +91,17 @@ function collectPlanWarnings(todos: TodoWriteToolInput['todos']): string[] {
   return warnings;
 }
 
+/** 是否为本调用中真实发生的 completed/failed 跃迁（排除全表重传时已完成的项） */
+function isCompletionTransition(
+  item: TodoWriteToolInput['todos'][number],
+  existingById: Map<string, Todo>,
+): boolean {
+  if (item.status !== 'completed' && item.status !== 'failed') return false;
+  if (!item.id || !existingById.has(item.id)) return true; // 新建即完成/失败
+  const prev = existingById.get(item.id)!;
+  return prev.status !== 'completed' && prev.status !== 'failed'; // 状态跃迁到完成/失败
+}
+
 /**
  * 单完成约束（设计裁决）：一次调用只能将一个新 todo 标记为 completed/failed。
  * 违反时返回错误（而非静默覆盖），防止多个 todo 同时完成导致
@@ -99,12 +111,7 @@ function validateSingleCompletion(
   items: TodoWriteToolInput['todos'],
   existingById: Map<string, Todo>,
 ): string | null {
-  const transitions = items.filter((item) => {
-    if (item.status !== 'completed' && item.status !== 'failed') return false;
-    if (!item.id || !existingById.has(item.id)) return true; // 新建即完成/失败
-    const prev = existingById.get(item.id)!;
-    return prev.status !== 'completed' && prev.status !== 'failed'; // 状态跃迁到完成/失败
-  });
+  const transitions = items.filter((item) => isCompletionTransition(item, existingById));
   if (transitions.length > 1) {
     return `一次只能将一个 todo 标记为 completed/failed，本次标记了 ${transitions.length} 个（${transitions.map((t) => t.subject).join('、')}）。请分多次调用 todo_write。`;
   }
@@ -178,6 +185,10 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
             seenIds.add(item.id);
             if (updated) {
               result.push({ id: updated.id, subject: updated.subject, status: updated.status });
+              // 可观测：路径 A 完成（todo_write 跃迁，非全表重传的已完成项）
+              if (updated.status === 'completed' && isCompletionTransition(item, existingById)) {
+                logger.info('TodoWrite', `[path-a-complete] todoId=${updated.id}`);
+              }
               notifyTodoCompleted(opts, updated.id, updated.status);
             }
           } else {
@@ -194,6 +205,10 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
             seenIds.add(created.id);
             const final = store.getTodo(created.id) ?? created;
             result.push({ id: final.id, subject: final.subject, status: final.status });
+            // 可观测：路径 A 完成（新建即 completed）
+            if (final.status === 'completed' && isCompletionTransition(item, existingById)) {
+              logger.info('TodoWrite', `[path-a-complete] todoId=${final.id}`);
+            }
             notifyTodoCompleted(opts, final.id, final.status);
           }
         }

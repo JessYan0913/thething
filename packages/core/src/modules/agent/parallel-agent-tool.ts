@@ -152,9 +152,10 @@ Results are collected and returned together with labels for easy identification.
       // 嵌套防护说明：一层子 Agent 由结构保证——resolveToolsForAgent
       // 无条件剔除 agent/parallel_agent，子 Agent 无法再派生。
 
+      // 可观测：并行 agent 调用计数 + 带 todoId 的任务占比（路径 B 影响评估）
       logger.info(
         'ParallelAgent',
-        `Starting ${tasks.length} parallel agents`
+        `[invoke] tasks=${tasks.length} withTodoId=${tasks.filter((t) => t.todoId).length}`
       );
 
       // 广播并行开始事件

@@ -23,6 +23,9 @@ export async function executeAgentTask({
   const writer = config.writerRef?.current ?? null;
   const agentRegistry = config.agentRegistry ?? new AgentRegistry();
 
+  // 可观测：agent 工具调用计数 + todoId 占比（路径 B 废弃影响评估的数据源）
+  logger.info('AgentTool', `[invoke] agentType=${agentType ?? 'auto'} todoId=${todoId ?? 'none'}`);
+
   for (const agent of config.agents ?? []) {
     if (!agentRegistry.has(agent.agentType)) {
       agentRegistry.register(agent);

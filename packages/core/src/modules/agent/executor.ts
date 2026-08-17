@@ -8,6 +8,7 @@ import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
 import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
 import { getDefaultOutputTokens } from '../../services/model/capabilities';
+import { logger } from '../../primitives/logger';
 
 // ============================================================
 // Helper Functions
@@ -256,6 +257,8 @@ export async function executeRoutedAgent(
 
     // 12. 完成任务（如果有）
     if (todoStore && todoId) {
+      // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool，故不触发边界归档）
+      logger.info('SubAgent', `[path-b-complete] todoId=${todoId}`);
       fireAndForget(() => {
         completeTodo(todoStore, todoId, result.summary);
       });
