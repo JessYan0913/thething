@@ -9,6 +9,7 @@
 import { generateText } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { TodoStore } from '../todos/types';
+import { logger } from '../../primitives/logger';
 
 /** 归档提炼出的结构化事实（写入 todo.metadata.facts） */
 export interface SubtaskFacts {
@@ -67,12 +68,6 @@ export function parseFactsJson(text: string): SubtaskFacts | null {
   }
 }
 
-/** LLM 失败兜底：conclusion = 输入文本首段（≤300 字符），其余空 */
-export function fallbackFacts(text: string): SubtaskFacts {
-  const conclusion = text.trim().slice(0, 300);
-  return { tool_chain: '', conclusion, key_facts: [] };
-}
-
 export interface ArchiveOptions {
   model: LanguageModelV3;
   fallbackModels?: LanguageModelV3[];
@@ -109,8 +104,9 @@ export async function extractSubtaskFacts(
 
 /**
  * 归档子任务：提炼 facts 并写入 todo.metadata.facts（保留 result 字符串）。
- * LLM 失败时用 fallbackFacts 兜底，保证 facts.conclusion 至少可读。
- * 返回写入的 facts。
+ * LLM 失败/无法提炼 → 跳过写 facts（避免不完整 facts 污染索引池），
+ * 记录 archiving_failed 告警，只保留 result 字符串。
+ * 返回写入的 facts；失败返回 null。
  */
 export async function archiveSubtask(
   store: TodoStore,
@@ -119,7 +115,12 @@ export async function archiveSubtask(
   opts: ArchiveOptions,
 ): Promise<SubtaskFacts | null> {
   const text = renderSubtaskText(messages);
-  const facts = (await extractSubtaskFacts(messages, opts)) ?? fallbackFacts(text);
+  if (!text.trim()) return null;
+  const facts = await extractSubtaskFacts(messages, opts);
+  if (!facts) {
+    logger.warn('Archiver', `[archiving_failed] 子任务 ${todoId} 事实归档失败，跳过写 facts（保留 result）`);
+    return null;
+  }
   store.updateTodo({ id: todoId, metadata: { facts } });
   return facts;
 }

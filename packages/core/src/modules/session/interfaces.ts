@@ -189,4 +189,10 @@ export interface PipelineContext {
 
   /** 当前子任务在 messages 中的起始锚点（归档器按此切片提取子任务消息链） */
   subtaskStartMessageIndex: number;
+
+  /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
+  enableSubtaskArchiving: boolean;
+
+  /** 遥测收集器（任务拆分 / 视图命中率等） */
+  telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 }

@@ -15,7 +15,8 @@ export type TelemetryEvent =
   | Layer2ExecutedEvent
   | CheckpointLoadedEvent
   | ReadLoopDetectedEvent
-  | OvercompactionDetectedEvent;
+  | OvercompactionDetectedEvent
+  | TaskSplitEvent;
 
 /**
  * 视图应用事件
@@ -104,6 +105,24 @@ export interface OvercompactionDetectedEvent {
   path: string;
   /** 是否已自动 pin(防止再次被压) */
   autoPinned: boolean;
+}
+
+/**
+ * 任务拆分事件（子任务独立上下文范式）
+ */
+export interface TaskSplitEvent {
+  type: 'task_split';
+  timestamp: number;
+  /** 被拆分的 todo ID */
+  todoId: string;
+  /** 拆分原因 */
+  reason: 'budget_exceeded' | 'safety_valve';
+  /** 拆分后新子任务数量 */
+  newSubtaskCount: number;
+  /** 拆分前估算 tokens */
+  estimatedTokensBefore: number;
+  /** 触发阈值 tokens */
+  triggerTokens: number;
 }
 
 /**
@@ -311,6 +330,26 @@ export class CompactionTelemetry {
     logger.warn(
       'CompactionTelemetry',
       `Overcompaction: ${data.path} re-read after being meta-ized${data.autoPinned ? ' (auto-pinned)' : ''}`,
+    );
+  }
+
+  /**
+   * 记录任务拆分（子任务独立上下文范式）
+   */
+  recordTaskSplit(data: Omit<TaskSplitEvent, 'type' | 'timestamp'>): void {
+    const event: TaskSplitEvent = {
+      type: 'task_split',
+      timestamp: Date.now(),
+      ...data,
+    };
+
+    this.events.push(event);
+    this.trimEvents();
+
+    logger.info(
+      'CompactionTelemetry',
+      `Task split: todoId=${data.todoId}, reason=${data.reason}, ` +
+        `${data.estimatedTokensBefore} tokens → ${data.newSubtaskCount} subtasks (trigger=${data.triggerTokens})`,
     );
   }
 

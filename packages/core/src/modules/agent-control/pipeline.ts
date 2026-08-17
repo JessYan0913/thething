@@ -105,7 +105,8 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     if (pendingArchiveTodoId) {
       // 1. 归档：用旧 messages 切片（subtaskStartMessageIndex 起）提炼 facts 写入该 todo。
       //    必须在重建前完成——重建后上一子任务消息即被替换。
-      if (todoStore && sessionState.compactModel) {
+      //    enableSubtaskArchiving=false 时跳过事实归档，保留 result 字符串（模型写入）。
+      if (sessionState.enableSubtaskArchiving !== false && todoStore && sessionState.compactModel) {
         await archiveSubtask(
           todoStore,
           pendingArchiveTodoId,
@@ -142,6 +143,13 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
               model: sessionState.compactModel,
             });
             if (created.length > 0) {
+              sessionState.telemetry.recordTaskSplit({
+                todoId: current.id,
+                reason: 'budget_exceeded',
+                newSubtaskCount: created.length,
+                estimatedTokensBefore: precheck.totalTokensWithBuffer,
+                triggerTokens: precheck.triggerTokens,
+              });
               const newTodos = todoStore?.getTodosByConversation(sessionState.conversationId) ?? [];
               messages = buildSubtaskContext(newTodos);
               sessionState.subtaskStartMessageIndex = messages.length;

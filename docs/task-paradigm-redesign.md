@@ -103,6 +103,9 @@ flowchart TD
 | **人类参与** | **全自动跑完再汇报** | 用户不介入单子任务；`todos` 面板作进度展示 |
 | **初始分解** | **复用现有 `todo` 创建** | 编排器只消费/推进，不新建分解机制 |
 | **压缩定位** | **退居安全阀** | V3 L2/L3/L4 降级为子任务内部安全阀，不再作为跨子任务策略 |
+| **归档开关** | **`enableSubtaskArchiving`（默认 `true`）** | 关闭时跳过事实归档，只留 `result` 字符串，不生成结构化 `facts` |
+| **归档兜底** | **LLM 失败 → 跳过写 `facts`** | 提炼失败不写不完整 `facts`（避免污染索引池），记录 `archiving_failed` 告警，保留 `result` 字符串 |
+| **拆分执行** | **`prepareStep` 内就地拆分** | 不 throw+catch（`createAgentUIStream` 无法中途重入流）；检测超限即就地拆 + 重建上下文 |
 
 
 ## 3. 数据模型（基于现有 Todos 机制）
@@ -218,6 +221,8 @@ if (nextTodo && !hasInProgressTodo(conversationId)) {
 
 > **与现有 snapshot 并存**：索引池（新增，最近 50 条 `completed`，长任务跨子任务认知连续性）与 `buildCompactTaskSnapshot`（现有，`in_progress`/`pending`/最近 3 条 `completed`/`failed`，进度面板）职责分工不同、**并存不取代**；snapshot 保留其 `completed` 段（与索引池重叠 3 条，约 300 tokens，可忽略）。索引池在上下文位置更靠前（优先级更高）。
 
+> **分级索引（Phase 5 评估，未实施）**：当前索引池为**单级**——所有结论统一截断为 50 字符短钩子，完整内容一律经 `todo_list({id})` 读回。若 Phase 5 端到端观测发现模型**频繁** `todo_list` 读回近期已完成子任务（`todo_list` 查询率 > 阈值，如 80%），说明近期结论的心智价值高于远期——届时再引入**分级索引**：最近 N 条（如 5 条）保留较长结论，其余仍为短钩子，降低读回频次。此设计**暂不实施**，仅依赖 Phase 5 统计驱动决策。
+
 ### 4.4 预算预检（调用 V3 L0+L1）
 
 重建后，调用 V3 的估算层 + 预算策略进行预检：
@@ -270,6 +275,17 @@ sessionState.pendingArchiveTodoId = null;
 **方式**：调用 LLM（非流式 `generateText`），复用 V3 的 `emergency-summary.ts` 摘要通道。
 
 **成本说明**：每个子任务完成时额外一次非流式 LLM 调用（约 1-2 秒 RTT）。这是新范式的真实成本，已在设计中如实记录。
+
+**功能开关 `enableSubtaskArchiving`（默认 `true`）**：
+
+- 关闭时（`enableSubtaskArchiving: false`）跳过事实归档——`todo-write-tool` 仍写 `metadata.result`（模型写入的人类可读字符串），但不生成结构化 `facts`。
+- 用于需要精确控制（成本/隐私/稳定性）的场景，或归档 LLM 不可用的运行时。
+
+**LLM 失败 → 跳过写 `facts`**（定稿修正）：
+
+- 提炼失败（全模型候选均无法产出合法 JSON）时，**不写不完整的 `facts`**，避免污染索引池（索引构建依赖 `facts.conclusion` / `result` 的 `COALESCE`，残缺 `facts` 会破坏其语义）。
+- 只保留 `metadata.result` 字符串，记录 `archiving_failed` 告警。
+- 索引池读回依赖 `result` 字符串作为兜底，仍能索引该子任务。
 
 **输入**（从 `messages` 切片提取，无需访问 `todo-write-tool`）：
 - `messages[subtaskStartMessageIndex..当前]` —— 该子任务完整消息链
@@ -328,17 +344,19 @@ await updateTodoMetadata(todoId, {
 - **触发点 A**：上下文构建器预算预检失败（`estimatedTokens > triggerTokens`）
 - **触发点 B**：`prepareStep` 内部 L1/L2 安全阀失效（极少）
 
-### 6.2 执行流程（在编排层 run-loop 边界处理）
+### 6.2 执行流程（就地拆分，定稿确认）
+
+**定稿修正（就地拆分而非 throw+catch）**：原设计通过 `throw TaskTooComplexError` 交由 run-loop 捕获。但因 chat 路径使用 `createAgentUIStream`（SDK 管理 SSE，无法中途重入流），**拆分须在 `prepareStep` 内就地完成**——检测到超限即取消当前 todo、创建新子任务、重建上下文并切到第一个新子任务，不抛错中断流。
 
 ```
-1. 捕获 TaskTooComplexError（在 run-loop 边界）
-2. 构建最小上下文：仅 system + 当前子任务描述（强制 < 2k token）
-3. 内部非流式 generateText（复用 agent/executor）
-4. 解析返回 JSON（拆分结果）
-   ├── 有效 → 写回 todos：把超限子任务 cancelled，用 todo_create_batch 创建新子任务
-   └── 无效 → 兜底：按句号/段落语义切分
-5. 重置循环：从第一个新子任务开始
+1. prepareStep 检测到预算超限（L0+L1 预检，zone A）
+2. 就地执行强制拆分（生成最小上下文 · generateText 或语义兜底）
+3. 拆分结果写回 todos：把超限子任务 cancelled，创建新子任务（2-5 个）
+4. 就地重建上下文，指向第一个新子任务
+5. 记录 TaskSplitEvent 遥测（reason / 新子任务数 / 超限前后估算 tokens）
 ```
+
+> 若子任务已原子（无法拆出 ≥2 个），`splitTodo` 返回空数组，调用方不重试，交由现有 budget gate 处理（不发超限请求被 provider 拒）。
 
 ### 6.3 最小上下文保证（安全措施）
 
@@ -500,7 +518,7 @@ await todoCreateBatch(newSubtasks, { dependsOnSteps: [...] });
 1. ✅ V3 L0+L1 验证完成，所有魔法阈值删除
 2. ✅ 上下文构建器在子任务边界重建消息，不继承上一子任务原始日志
 3. ✅ 索引池从 `todos` 读取已完成摘要（上限 50 条），O(1) 上下文恒定
-4. ✅ 归档器在 prepareStep 边界（`pendingArchiveTodoId` 驱动）同步提炼摘要写入 `todo.metadata.facts`；`metadata.result` 保持模型写的字符串
+4. ✅ 归档器在 prepareStep 边界（`pendingArchiveTodoId` 驱动）同步提炼摘要写入 `todo.metadata.facts`；`metadata.result` 保持模型写的字符串；受 `enableSubtaskArchiving` 开关控制；LLM 失败时跳过写 `facts`（不污染索引池）
 5. ✅ 强制拆分器在预算超限时触发，拆分后用 `todo_create_batch` 更新 `todos`
 6. ✅ 端到端验证：100+ 子任务长任务，上下文不随子任务数增长，不抛 `CONTEXT_BUDGET_EXCEEDED`
 7. ✅ Phase 1 已写的 `subtask_summaries` 代码已归档/删除，无残留技术债务

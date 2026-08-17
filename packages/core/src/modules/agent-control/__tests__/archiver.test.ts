@@ -14,7 +14,6 @@ import { generateText } from 'ai';
 import {
   renderSubtaskText,
   parseFactsJson,
-  fallbackFacts,
   archiveSubtask,
 } from '../archiver';
 import { createSQLiteDataStore } from '../../../services/datastore/sqlite/sqlite-data-store';
@@ -45,15 +44,6 @@ describe('parseFactsJson', () => {
   it('缺 conclusion/tool_chain 或非法 JSON → null', () => {
     expect(parseFactsJson('not json')).toBeNull();
     expect(parseFactsJson('{"conclusion":"x"}')).toBeNull();
-  });
-});
-
-describe('fallbackFacts', () => {
-  it('conclusion = 文本首 300 字符，其余空', () => {
-    const f = fallbackFacts('结'.repeat(400));
-    expect(f.conclusion.length).toBe(300);
-    expect(f.tool_chain).toBe('');
-    expect(f.key_facts).toEqual([]);
   });
 });
 
@@ -92,17 +82,24 @@ describe('archiveSubtask', () => {
     expect(updated.metadata.result).toBe('result-string'); // result 保留
   });
 
-  it('LLM 失败 → 写兜底 facts（conclusion = 输入文本）', async () => {
+  it('LLM 失败 → 跳过写 facts，返回 null，保留 result', async () => {
     store.conversationStore.createConversation('c1');
-    const todo = store.todoStore.createTodo({ conversationId: 'c1', subject: 't' });
+    const todo = store.todoStore.createTodo({
+      conversationId: 'c1', subject: 't', metadata: { result: 'kept-result' },
+    });
 
     vi.mocked(generateText).mockRejectedValue(new Error('boom'));
 
-    await archiveSubtask(store.todoStore, todo.id, [{ role: 'user', content: 'hello world' }] as never, {
-      model: {} as never,
-    });
+    const facts = await archiveSubtask(
+      store.todoStore,
+      todo.id,
+      [{ role: 'user', content: 'hello world' }] as never,
+      { model: {} as never },
+    );
 
+    expect(facts).toBeNull();
     const updated = store.todoStore.getTodo(todo.id)!;
-    expect((updated.metadata as { facts: { conclusion: string } }).facts.conclusion).toBe('hello world');
+    expect(updated.metadata.facts).toBeUndefined(); // 未写不完整 facts
+    expect(updated.metadata.result).toBe('kept-result'); // result 保留
   });
 });

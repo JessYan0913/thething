@@ -48,6 +48,8 @@ export interface SessionStateOptions {
   compactionEnabled?: boolean;
   /** 注入的压缩函数（从 composition 层传入，打破 session→compaction 耦合） */
   compact?: (messages: import('ai').ModelMessage[]) => Promise<CompactionResult>;
+  /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
+  enableSubtaskArchiving?: boolean;
   /** AppContext 快照中的权限规则 */
   permissionRules?: readonly PermissionRule[];
   /** 来自 BehaviorConfig.extraSensitivePaths */
@@ -118,6 +120,9 @@ export interface SessionState {
 
   /** 当前子任务在 messages 中的起始锚点（上下文构建器在边界重建时设置，归档器按此切片提取子任务消息链） */
   subtaskStartMessageIndex: number;
+
+  /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
+  enableSubtaskArchiving: boolean;
 
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
