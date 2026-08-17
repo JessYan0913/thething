@@ -75,6 +75,17 @@ describe('buildCompletedTodoIndex', () => {
     expect(index).toContain('r59');
   });
 
+  it('O(1)：索引池长度不随已完成子任务数增长（100 vs 1000）', () => {
+    const make = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        todo({ id: `t${i}`, status: 'completed', completedAt: i, metadata: { result: `结论${i}` } }),
+      );
+    const idx100 = buildCompletedTodoIndex(make(100))!;
+    const idx1000 = buildCompletedTodoIndex(make(1000))!;
+    // 子任务数 ×10，但索引池长度基本恒定（只保留 50 条）
+    expect(idx1000.length).toBeLessThan(idx100.length * 1.5);
+  });
+
   it('无已完成子任务时返回 null', () => {
     expect(buildCompletedTodoIndex([todo({ status: 'pending' })])).toBeNull();
     expect(buildCompletedTodoIndex([])).toBeNull();
