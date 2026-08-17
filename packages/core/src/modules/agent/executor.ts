@@ -14,10 +14,6 @@ import { logger } from '../../primitives/logger';
 // Helper Functions
 // ============================================================
 
-function fireAndForget<T>(fn: () => T): void {
-  setTimeout(fn, 0);
-}
-
 /** 子 Agent 默认最大步数 */
 const SUB_AGENT_MAX_STEPS = 20;
 
@@ -255,13 +251,13 @@ export async function executeRoutedAgent(
       status: 'completed',
     };
 
-    // 12. 完成任务（如果有）
+    // 12. 完成任务（如果有）。同步完成（设计指令：消除 fire-and-forget 竞态）——
+    //    确保 todo 状态在父 Agent 下一步 prepareStep 读取前已落库。
+    //    路径 B：completeTodo 直接写库，不经 todo-write-tool，不触发边界归档（此缺口按 A/B 占比数据另议）。
     if (todoStore && todoId) {
       // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool，故不触发边界归档）
       logger.info('SubAgent', `[path-b-complete] todoId=${todoId}`);
-      fireAndForget(() => {
-        completeTodo(todoStore, todoId, result.summary);
-      });
+      completeTodo(todoStore, todoId, result.summary);
     }
 
     // 13. 标记 run 完成
@@ -286,9 +282,7 @@ export async function executeRoutedAgent(
     };
 
     if (todoStore && todoId) {
-      fireAndForget(() => {
-        failTodo(todoStore, todoId, errorMsg);
-      });
+      failTodo(todoStore, todoId, errorMsg);
     }
 
     // 标记 run 失败
