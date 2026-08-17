@@ -7,7 +7,7 @@ import { logger } from '../../primitives/logger';
 import { buildContinuationPrompt, shouldContinue, checkMaxTurns, updateTokens } from '../../modules/goal';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
 import { buildPlanPrompt, buildTodoSyncReminder, buildEmptyTodoReminder } from './plan-prompt';
-import { buildSubtaskContext, getCurrentTodo } from './context-builder';
+import { buildSubtaskContext, getCurrentTodo, getIndexPoolSize } from './context-builder';
 import { archiveSubtask } from './archiver';
 import { splitTodo } from './splitter';
 
@@ -31,11 +31,21 @@ function isReasoningOnlyStep(step: StepResult<any, any>): boolean {
 }
 
 export interface CompactionStatusEvent {
-  status: 'start' | 'end';
-  /** 触发压缩时的水位百分比 */
+  status: 'start' | 'end' | 'task_split' | 'archiving_failed' | 'index_pool_updated';
+  /** 触发压缩时的水位百分比（start/end） */
   triggerWatermark?: number;
-  /** 释放的 token 数 */
+  /** 释放的 token 数（end） */
   tokensFreed?: number;
+  /** 被拆分的 todo id（task_split/archiving_failed） */
+  todoId?: string;
+  /** 拆分后新子任务数量（task_split） */
+  newSubtaskCount?: number;
+  /** 拆分前估算 tokens（task_split） */
+  estimatedTokensBefore?: number;
+  /** 触发阈值 tokens（task_split） */
+  triggerTokens?: number;
+  /** 索引池条数 0-50（index_pool_updated） */
+  indexPoolSize?: number;
 }
 
 export interface AgentPipelineConfig {
@@ -107,7 +117,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       //    必须在重建前完成——重建后上一子任务消息即被替换。
       //    enableSubtaskArchiving=false 时跳过事实归档，保留 result 字符串（模型写入）。
       if (sessionState.enableSubtaskArchiving !== false && todoStore && sessionState.compactModel) {
-        await archiveSubtask(
+        const facts = await archiveSubtask(
           todoStore,
           pendingArchiveTodoId,
           messages.slice(sessionState.subtaskStartMessageIndex) as import('ai').ModelMessage[],
@@ -117,6 +127,9 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
             modelName: sessionState.model,
           },
         );
+        if (!facts) {
+          config.compactionCallbackRef?.current?.({ status: 'archiving_failed', todoId: pendingArchiveTodoId });
+        }
       }
 
       // 2. 重建干净上下文（索引池 + 当前子任务 + 读回指针），不继承上一子任务原始日志。
@@ -124,6 +137,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       messages = buildSubtaskContext(todos);
       sessionState.pendingArchiveTodoId = null;
       sessionState.subtaskStartMessageIndex = messages.length;
+      config.compactionCallbackRef?.current?.({ status: 'index_pool_updated', indexPoolSize: getIndexPoolSize(todos) });
 
       // 预算预检：新鲜子任务上下文若已超触发线 → 子任务本身过大，就地拆分（取消 + 建新）并重建指向第一个新子任务。
       // 在 prepareStep 内处理：chat 与 inbound 共用本步，避免在两个执行路径做危险的流重入。
@@ -150,9 +164,17 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
                 estimatedTokensBefore: precheck.totalTokensWithBuffer,
                 triggerTokens: precheck.triggerTokens,
               });
+              config.compactionCallbackRef?.current?.({
+                status: 'task_split',
+                todoId: current.id,
+                newSubtaskCount: created.length,
+                estimatedTokensBefore: precheck.totalTokensWithBuffer,
+                triggerTokens: precheck.triggerTokens,
+              });
               const newTodos = todoStore?.getTodosByConversation(sessionState.conversationId) ?? [];
               messages = buildSubtaskContext(newTodos);
               sessionState.subtaskStartMessageIndex = messages.length;
+              config.compactionCallbackRef?.current?.({ status: 'index_pool_updated', indexPoolSize: getIndexPoolSize(newTodos) });
               debugLog(debugEnabled, `[Agent] Subtask too complex, split "${current.subject}" into ${created.length} subtasks`);
             }
             // created.length===0 → 已原子无法拆分，保持原样（交由现有 budget gate 处理）

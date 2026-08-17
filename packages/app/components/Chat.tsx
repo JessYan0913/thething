@@ -49,7 +49,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, TrashIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon, ListChecksIcon, TriangleAlertIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, TrashIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon, ListChecksIcon, TriangleAlertIcon, InfoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -1105,6 +1105,9 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
   // "输出被截断"提示（手动续写）：服务端 data-truncated 事件触发，提供"继续"按钮
   const [truncatedNotice, setTruncatedNotice] = useState<string | null>(null);
 
+  // 子任务范式事件提示（自动拆分 / 归档失败）：服务端 data-compaction-status 事件触发
+  const [agentNotice, setAgentNotice] = useState<string | null>(null);
+
   // 持久化最新的上下文水位数据，流式数据消失后仍保留
   const persistedContextBudget = useRef(streamContextBudget);
   if (streamContextBudget != null) {
@@ -1207,8 +1210,10 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === 'data-compaction-status' && 'data' in part) {
-          const d = (part as { data: { status: 'start' | 'end'; tokensFreed?: number } }).data;
+          const d = (part as { data: { status: string; tokensFreed?: number } }).data;
           if (!d) continue;
+          // 只处理压缩 start/end；task_split/archiving_failed/index_pool_updated 由下方 effect 处理
+          if (d.status !== 'start' && d.status !== 'end') continue;
           allParts.push({ id: (part as { id?: string }).id ?? '', status: d.status, tokensFreed: d.tokensFreed });
         }
       }
@@ -1259,6 +1264,41 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
       setTruncatedNotice(null);
     }
   }, [messages, truncatedNotice]);
+
+  // 从 data-compaction-status 提取子任务范式事件（task_split / archiving_failed），
+  // 作为短暂提示展示。只处理新增 part（ref 记录上次 id），避免重复触发。
+  const lastAgentNoticePartIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const events: Array<{ id: string; text: string }> = [];
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === 'data-compaction-status' && 'data' in part) {
+          const d = (part as { data: { status?: string; newSubtaskCount?: number } }).data;
+          if (!d) continue;
+          if (d.status === 'task_split') {
+            const n = d.newSubtaskCount ?? 0;
+            events.push({ id: (part as { id?: string }).id ?? '', text: `任务过复杂，已自动拆分为 ${n} 个子任务` });
+          } else if (d.status === 'archiving_failed') {
+            events.push({ id: (part as { id?: string }).id ?? '', text: '子任务归档失败（已保留结果字符串）' });
+          }
+        }
+      }
+    }
+    const lastSeen = lastAgentNoticePartIdRef.current;
+    const lastSeenIdx = lastSeen ? events.findIndex((p) => p.id === lastSeen) : -1;
+    const newParts = lastSeenIdx >= 0 ? events.slice(lastSeenIdx + 1) : events;
+    if (newParts.length === 0) return;
+    const latest = newParts[newParts.length - 1];
+    lastAgentNoticePartIdRef.current = latest.id;
+    setAgentNotice(latest.text);
+  }, [messages]);
+
+  // 用户已发送新消息 → 子任务事件提示消失
+  useEffect(() => {
+    if (agentNotice && messages.length > 0 && messages.at(-1)?.role === 'user') {
+      setAgentNotice(null);
+    }
+  }, [messages, agentNotice]);
 
   // MCP App 发来的消息转发给 agent，触发 agent 回复
   const handleMcpAppMessage = useCallback((text: string) => {
@@ -3049,6 +3089,15 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                           >
                             继续
                           </button>
+                        </div>
+                      )}
+                      {/* 子任务范式事件提示（自动拆分 / 归档失败） */}
+                      {message.role === 'assistant' &&
+                        messageIndex === renderGroups.length - 1 &&
+                        agentNotice && (
+                        <div className="flex w-full items-center gap-2 text-sm text-blue-600">
+                          <InfoIcon className="size-4 shrink-0" />
+                          <span className="truncate">{agentNotice}</span>
                         </div>
                       )}
                       {/* 产出文件汇总卡:一轮结束后聚合本消息内 write/edit 的成功产出 */}

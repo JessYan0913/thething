@@ -105,7 +105,11 @@ flowchart TD
 | **压缩定位** | **退居安全阀** | V3 L2/L3/L4 降级为子任务内部安全阀，不再作为跨子任务策略 |
 | **归档开关** | **`enableSubtaskArchiving`（默认 `true`）** | 关闭时跳过事实归档，只留 `result` 字符串，不生成结构化 `facts` |
 | **归档兜底** | **LLM 失败 → 跳过写 `facts`** | 提炼失败不写不完整 `facts`（避免污染索引池），记录 `archiving_failed` 告警，保留 `result` 字符串 |
+| **归档触发条件** | **仅 `completed` 触发** | `failed` 不触发归档（failed 子任务的 facts 永不进索引池，避免白花 LLM 提炼） |
+| **单完成约束** | **一次 `todo_write` 只完成/失败一个** | 违反时返回错误（非静默覆盖），防止多 todo 同时完成导致 `pendingArchiveTodoId` 单字段覆盖、其余子任务丢归档 |
 | **拆分执行** | **`prepareStep` 内就地拆分** | 不 throw+catch（`createAgentUIStream` 无法中途重入流）；检测超限即就地拆 + 重建上下文 |
+| **拆分产物依赖** | **平行无 `blockedBy`** | 拆分产物彼此独立、按创建顺序执行；顺序依赖应由初始规划用 `todo_create_batch.dependsOnSteps` 声明 |
+| **可观测性** | **经 `compactionCallbackRef` 上抛** | `task_split`/`archiving_failed`/`index_pool_updated` 三事件经压缩状态通道推前端，支撑 Phase 5 统计与用户可见提示 |
 
 
 ## 3. 数据模型（基于现有 Todos 机制）
@@ -148,19 +152,11 @@ flowchart TD
 
 ### 3.3 索引池构建查询
 
-```sql
-SELECT
-  id, subject, metadata, completed_at
-FROM todos
-WHERE conversation_id = ?
-  AND status = 'completed'
-  AND (json_extract(metadata, '$.facts.conclusion') IS NOT NULL
-       OR json_extract(metadata, '$.result') IS NOT NULL)
-ORDER BY completed_at DESC
-LIMIT 50;
-```
+**实现方式（定稿修正）**：索引池在**应用层 JS** 构建，不走 SQL 下推。`buildCompletedTodoIndex` 调用 `getTodosByConversation` 全量读该会话所有 `todos`，再在 JS 里 `filter(status==='completed')` → 提取结论 → `sort(completedAt DESC)` → `slice(0, 50)`。
 
-conclusion 取值：`COALESCE(json_extract(metadata,'$.facts.conclusion'), json_extract(metadata,'$.result'))`
+> 注意：这是**全量读该会话所有 `todos`**，不是 SQL `LIMIT 50`。单会话子任务数通常有限（几十到几百），全量读开销可忽略；若未来单会话子任务数达到数千级，再考虑将 `LIMIT` 下推到 SQL。
+
+conclusion 取值：优先 `facts.conclusion`，回退 `result` 字符串；再截断为 50 字符短钩子。
 
 ### 3.4 与 Phase 1 已写代码的关系
 
@@ -223,20 +219,26 @@ if (nextTodo && !hasInProgressTodo(conversationId)) {
 
 > **分级索引（Phase 5 评估，未实施）**：当前索引池为**单级**——所有结论统一截断为 50 字符短钩子，完整内容一律经 `todo_list({id})` 读回。若 Phase 5 端到端观测发现模型**频繁** `todo_list` 读回近期已完成子任务（`todo_list` 查询率 > 阈值，如 80%），说明近期结论的心智价值高于远期——届时再引入**分级索引**：最近 N 条（如 5 条）保留较长结论，其余仍为短钩子，降低读回频次。此设计**暂不实施**，仅依赖 Phase 5 统计驱动决策。
 
-### 4.4 预算预检（调用 V3 L0+L1）
+### 4.4 预算预检 + 就地拆分（调用 V3 L0+L1）
 
 重建后，调用 V3 的估算层 + 预算策略进行预检：
 
 ```typescript
-const estimatedTokens = estimateFullRequest(messages, modelName);
-const policy = deriveBudget(contextLimit, outputReserve, modelName);
+const precheck = estimateRequestBudget(messages, instructions, tools, model, contextLimit, outputTokens);
 
-if (estimatedTokens + policy.bufferTokens > policy.triggerTokens) {
-  // 超限 → 抛出错误，由编排层捕获触发拆分
-  // 注意：此时 prepareStep 已在 ToolLoopAgent 循环内、streamText 已发生
-  throw new TaskTooComplexError({ todoId, estimatedTokens, policy });
+if (precheck.shouldTrigger) {
+  // 超限 → 就地拆分（不 throw）：取消当前 todo + 创建 2-5 个新子任务，
+  // 重建上下文并切到第一个新子任务。在 prepareStep 内完成，避免 throw+catch 的重入问题。
+  const created = splitTodo(todoStore, current, { model });
+  if (created.length > 0) {
+    recordTaskSplit(...);   // 遥测
+    messages = buildSubtaskContext(newTodos);
+  }
+  // created.length===0 → 已原子无法拆分，交由现有 budget gate 处理（不发超限请求）
 }
 ```
+
+> **定稿修正**：不再 `throw TaskTooComplexError`（该类已删除）。拆分在 `prepareStep` 内**就地**完成——chat 路径用 `createAgentUIStream`（SDK 管理 SSE，无法中途重入流），抛错交由 run-loop 捕获不可行。
 
 ### 4.5 验收标准
 
@@ -244,7 +246,7 @@ if (estimatedTokens + policy.bufferTokens > policy.triggerTokens) {
 - [ ] 边界由 `pendingArchiveTodoId` 事件驱动，不依赖 `in_progress` 状态
 - [ ] 上下文**包含**索引池（从 `todos` 读取已完成摘要，上限 50 条，**结论截断为短钩子**）
 - [ ] 预算预检使用 V3 L0+L1，不依赖字符估算
-- [ ] 预检失败时 `throw TaskTooComplexError`，由编排层捕获处理
+- [ ] 预检超限时就地拆分（不 throw），拆分事件经遥测上抛
 
 
 ## 5. 模块二：归档器（子任务完成 → 提炼摘要入池）
@@ -267,7 +269,7 @@ sessionState.pendingArchiveTodoId = null;
 // 再重建上下文（见 §4.2）
 ```
 
-- **`completedAt` 统一 ISO8601 字符串**：`new Date().toISOString()`（与现有 `schema` 的 TEXT 列一致，字典序 = 时间序）
+- **`completedAt` 类型（定稿修正）**：存储层（SQLite `completed_at` TEXT 列）为 ISO8601 字符串 `new Date().toISOString()`；应用层 `Todo.completedAt` 为 `number` epoch 毫秒（`parseRow` 用 `new Date(...).getTime()` 转换）。索引池按 `completedAt` **数值排序**（`(b - a)`），结果正确。
 - 归档器写入 `metadata.facts`，不改 `metadata.result` 字符串
 
 ### 5.3 摘要提炼方式
@@ -379,11 +381,15 @@ if (tokens > 2000) {
 
 ```typescript
 // 1. 将当前 todo 标记为 cancelled（保留其 ID，不删除）
-await updateTodo(todoId, { status: 'cancelled' });
+store.updateTodo({ id: todo.id, status: 'cancelled' });
 
-// 2. 用 todo_create_batch 写入新子任务
-await todoCreateBatch(newSubtasks, { dependsOnSteps: [...] });
+// 2. 创建新子任务（无前向依赖）
+for (const item of items.slice(0, 5)) {
+  store.createTodo({ conversationId, subject: item.subject, ...(item.verify ? { metadata: { verify: item.verify } } : {}) });
+}
 ```
+
+> **定稿修正（拆分产物平行无依赖）**：拆分出的子任务**彼此无 `blockedBy` 依赖**，按创建顺序平行执行。拆分的本质是"分而治之"，产物应逻辑独立；若确有顺序依赖，应由模型在**初始规划**时用 `todo_create_batch` 的 `dependsOnSteps` 声明，而非在拆分时强行附带。
 
 ### 6.5 收敛性证明
 

@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import type { TodoStore, TodoStatus } from '../types';
+import type { TodoStore, TodoStatus, Todo } from '../types';
 
 /**
  * TodoWriteTool - 任务清单管理（主入口，Claude Code TodoWrite 风格）
@@ -55,13 +55,13 @@ export type TodoWriteToolOutput = {
   error: string;
 };
 
-/** 子任务独立上下文范式：completed/failed 视为子任务完结，触发 prepareStep 边界重建 */
+/** 子任务独立上下文范式：仅 completed 视为子任务完结，触发 prepareStep 边界重建（failed 不触发归档） */
 function notifyTodoCompleted(
   opts: { onTodoCompleted?: (id: string) => void } | undefined,
   id: string,
   status: TodoStatus,
 ): void {
-  if ((status === 'completed' || status === 'failed') && opts?.onTodoCompleted) {
+  if (status === 'completed' && opts?.onTodoCompleted) {
     opts.onTodoCompleted(id);
   }
 }
@@ -88,6 +88,27 @@ function collectPlanWarnings(todos: TodoWriteToolInput['todos']): string[] {
   }
 
   return warnings;
+}
+
+/**
+ * 单完成约束（设计裁决）：一次调用只能将一个新 todo 标记为 completed/failed。
+ * 违反时返回错误（而非静默覆盖），防止多个 todo 同时完成导致
+ * pendingArchiveTodoId 单字段覆盖、其余子任务丢失归档。
+ */
+function validateSingleCompletion(
+  items: TodoWriteToolInput['todos'],
+  existingById: Map<string, Todo>,
+): string | null {
+  const transitions = items.filter((item) => {
+    if (item.status !== 'completed' && item.status !== 'failed') return false;
+    if (!item.id || !existingById.has(item.id)) return true; // 新建即完成/失败
+    const prev = existingById.get(item.id)!;
+    return prev.status !== 'completed' && prev.status !== 'failed'; // 状态跃迁到完成/失败
+  });
+  if (transitions.length > 1) {
+    return `一次只能将一个 todo 标记为 completed/failed，本次标记了 ${transitions.length} 个（${transitions.map((t) => t.subject).join('、')}）。请分多次调用 todo_write。`;
+  }
+  return null;
 }
 
 /**
@@ -123,6 +144,7 @@ Usage:
 - Pass the FULL list each call to keep it accurate. Omitted items are KEPT — the tool never silently deletes; to cancel a task, pass it with status "cancelled".
 - Include the \`id\` for todos you are updating; omit it for new todos.
 - Keep exactly one item in_progress at a time; update the list right after each step finishes.
+- Mark at most ONE todo completed (or failed) per call. To close several, call this tool once per todo.
 - Close the loop: when a task is done, mark it completed with a result (what was done + how it was verified) written into the result field; when it fails, record why. The list is a running ledger you settle as you go — do not create it and then stop updating it until the final answer.
 - Skip it only for trivial single-step tasks, pure Q&A, or casual chat.
 
@@ -134,6 +156,11 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
         const existingById = new Map(existing.map((t) => [t.id, t]));
         const seenIds = new Set<string>();
         const result: Array<{ id: string; subject: string; status: TodoStatus }> = [];
+
+        const completionError = validateSingleCompletion(input.todos, existingById);
+        if (completionError) {
+          return { success: false as const, error: completionError };
+        }
 
         const warnings = collectPlanWarnings(input.todos);
 

@@ -7,19 +7,6 @@
 
 import type { Todo } from '../todos/types';
 
-/** 子任务过大致无法在独立上下文执行；由编排层（run-loop 边界）捕获后触发强制拆分（Phase 4） */
-export class TaskTooComplexError extends Error {
-  constructor(
-    public readonly detail: { todoId: string; estimatedTokens: number; triggerTokens: number },
-  ) {
-    super(
-      `TaskTooComplexError: subtask ${detail.todoId} too complex for isolated context ` +
-        `(${detail.estimatedTokens} > trigger ${detail.triggerTokens})`,
-    );
-    this.name = 'TaskTooComplexError';
-  }
-}
-
 /** 索引池上限（O(1) 保证：50 条 × ~40 tokens ≈ 2,000 tokens） */
 export const INDEX_POOL_LIMIT = 50;
 /** 索引行结论截断长度（字符） */
@@ -58,23 +45,32 @@ export function getCurrentTodo(todos: Todo[]): Todo | null {
   return pending[0] ?? null;
 }
 
+/** 已完成且有结论的子任务，按 completedAt DESC（供索引池构建 + 条数统计复用） */
+function completedWithConclusion(todos: Todo[]): Array<{ t: Todo; conclusion: string }> {
+  return todos
+    .filter((t) => t.status === 'completed')
+    .map((t) => ({ t, conclusion: extractConclusion(t) }))
+    .filter((x): x is { t: Todo; conclusion: string } => x.conclusion !== null)
+    .sort((a, b) => (b.t.completedAt ?? 0) - (a.t.completedAt ?? 0));
+}
+
 /**
  * 构建索引池文本（已完成摘要，按 completedAt DESC，上限 50 条）。
  * 返回 null 表示无已完成的子任务。
  */
 export function buildCompletedTodoIndex(todos: Todo[], limit = INDEX_POOL_LIMIT): string | null {
-  const completed = todos
-    .filter((t) => t.status === 'completed')
-    .map((t) => ({ t, conclusion: extractConclusion(t) }))
-    .filter((x): x is { t: Todo; conclusion: string } => x.conclusion !== null)
-    .sort((a, b) => (b.t.completedAt ?? 0) - (a.t.completedAt ?? 0))
-    .slice(0, limit);
+  const completed = completedWithConclusion(todos).slice(0, limit);
 
   if (completed.length === 0) return null;
 
   return completed
     .map(({ t, conclusion }, i) => `[已完成] ${i + 1}. ${t.subject}：${snippet(conclusion)}`)
     .join('\n');
+}
+
+/** 索引池条数（0-50），供 index_pool_updated 遥测上抛 */
+export function getIndexPoolSize(todos: Todo[], limit = INDEX_POOL_LIMIT): number {
+  return completedWithConclusion(todos).slice(0, limit).length;
 }
 
 /**

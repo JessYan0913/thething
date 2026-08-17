@@ -7,7 +7,6 @@ import {
   buildCompletedTodoIndex,
   buildSubtaskContext,
   getCurrentTodo,
-  TaskTooComplexError,
 } from '../context-builder';
 
 function todo(overrides: Partial<Todo>): Todo {
@@ -134,11 +133,3 @@ describe('buildSubtaskContext', () => {
   });
 });
 
-describe('TaskTooComplexError', () => {
-  it('携带 todoId / estimated / trigger 明细', () => {
-    const err = new TaskTooComplexError({ todoId: 't-9', estimatedTokens: 1000, triggerTokens: 500 });
-    expect(err.name).toBe('TaskTooComplexError');
-    expect(err.detail.todoId).toBe('t-9');
-    expect(err.message).toContain('t-9');
-  });
-});

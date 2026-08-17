@@ -119,11 +119,12 @@ describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
     const [a, b] = first.todos;
     expect(store.getTodo(a.id)?.metadata.verify).toBe('npx vitest run passes');
 
+    // 单完成约束：一次只标记一个 completed/failed，分两次调用
     await execute({
-      todos: [
-        { id: a.id, subject: 'Task A', status: 'completed', result: 'All 12 tests green' },
-        { id: b.id, subject: 'Task B', status: 'failed', error: 'Missing fixture file' },
-      ],
+      todos: [{ id: a.id, subject: 'Task A', status: 'completed', result: 'All 12 tests green' }],
+    });
+    await execute({
+      todos: [{ id: b.id, subject: 'Task B', status: 'failed', error: 'Missing fixture file' }],
     });
 
     const aFinal = store.getTodo(a.id)!;
@@ -133,28 +134,59 @@ describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
     expect(store.getTodo(b.id)?.metadata.error).toBe('Missing fixture file');
   });
 
-  it('warns when completed without result or failed without error', async () => {
+  it('warns when completed without result', async () => {
     const result = await execute({
-      todos: [
-        { subject: 'Task A', status: 'completed' },
-        { subject: 'Task B', status: 'failed' },
-      ],
+      todos: [{ subject: 'Task A', status: 'completed' }],
     });
 
     expect(result.success).toBe(true);
     expect(result.message).toContain('completed without a result');
+  });
+
+  it('warns when failed without error', async () => {
+    const result = await execute({
+      todos: [{ subject: 'Task B', status: 'failed' }],
+    });
+
+    expect(result.success).toBe(true);
     expect(result.message).toContain('failed without an error');
   });
 
-  it('does not warn when completed/failed carry result/error', async () => {
+  it('does not warn when completed carries result', async () => {
     const result = await execute({
-      todos: [
-        { subject: 'Task A', status: 'completed', result: 'done and verified' },
-        { subject: 'Task B', status: 'failed', error: 'timeout' },
-      ],
+      todos: [{ subject: 'Task A', status: 'completed', result: 'done and verified' }],
     });
 
     expect(result.success).toBe(true);
     expect(result.message).toBeUndefined();
+  });
+
+  it('does not warn when failed carries error', async () => {
+    const result = await execute({
+      todos: [{ subject: 'Task B', status: 'failed', error: 'timeout' }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toBeUndefined();
+  });
+
+  it('rejects marking multiple todos completed/failed in one call', async () => {
+    const first = await execute({
+      todos: [
+        { subject: 'Task A', status: 'in_progress' },
+        { subject: 'Task B', status: 'in_progress' },
+      ],
+    });
+    const [a, b] = first.todos;
+
+    const result = await execute({
+      todos: [
+        { id: a.id, subject: 'Task A', status: 'completed', result: 'done' },
+        { id: b.id, subject: 'Task B', status: 'completed', result: 'done too' },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('一次只能将一个');
   });
 });
