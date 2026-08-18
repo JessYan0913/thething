@@ -239,7 +239,9 @@ Leave agentType blank only if you intend general-purpose execution (全工具).`
         const result = output as AgentExecutionResult;
         return { type: 'text' as const, value: result.summary };
       }
-      return { type: 'text' as const, value: 'Task completed.' };
+      // 设计决策（A2，2026-08-18）：子 Agent 未返回可读 summary 时，不注入
+      // "Task completed." 假话——如实透传空态，让父 Agent 能区分正常完成与无返回结论。
+      return { type: 'text' as const, value: '(子Agent 未返回结论文本)' };
     },
   });
 }

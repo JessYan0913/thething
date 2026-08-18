@@ -16,7 +16,9 @@ export interface DenialTrackerConfig {
 const DEFAULT_CONFIG: Required<DenialTrackerConfig> = {
   maxDenialsPerTool: DEFAULT_MAX_DENIALS_PER_TOOL,
   cooldownPeriodMs: 5 * 60 * 1000,
-  warningMessage: '⚠️ 你尝试使用的操作 "{{tool}}" 已被拒绝多次。请换用其他方法或工具，不要继续尝试同一操作。',
+  // 设计决策（B2，2026-08-18）：只客观报告"该操作近期被拒 N 次"，不再注入
+  // "请换用其他方法或工具"的改道指令——下一步怎么走由 LLM 自主判断。
+  warningMessage: '⚠️ 操作 "{{tool}}" 已在近期被拒绝 {{count}} 次（冷却期内）。',
 };
 
 export class DenialTracker {

@@ -13,6 +13,8 @@ export interface InboundEventResult {
   response?: string
   conversationId?: string
   error?: string
+  /** 是否因达到会话步数/审批评次上限而被截断（区分"正常完成"与"预算耗尽"） */
+  truncatedByLimit?: boolean
 }
 
 export interface InboundEventHandler {

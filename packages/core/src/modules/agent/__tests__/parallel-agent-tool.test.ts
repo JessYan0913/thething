@@ -390,7 +390,8 @@ describe('parallel-agent-tool', () => {
       const tool = createParallelAgentTool(createMockToolConfig({ agentRegistry: registry }));
       const output = (tool as any).toModelOutput({ output: null });
 
-      expect(output.value).toBe('Parallel tasks completed.');
+      // 设计决策（A2）：缺失输出时不补"完成任务"假话，如实透传空态
+      expect(output.value).toBe('(并行子Agent 未返回结论文本)');
     });
   });
 });

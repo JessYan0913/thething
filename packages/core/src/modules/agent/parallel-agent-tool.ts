@@ -300,7 +300,9 @@ Results are collected and returned together with labels for easy identification.
       if (output && typeof output === 'object' && 'summary' in output) {
         return { type: 'text' as const, value: output.summary as string };
       }
-      return { type: 'text' as const, value: 'Parallel tasks completed.' };
+      // 设计决策（A2，2026-08-18）：并行执行未返回可读 summary 时，不注入
+      // "Parallel tasks completed." 假话——如实透传空态，让调用方能区分完成与无结论。
+      return { type: 'text' as const, value: '(并行子Agent 未返回结论文本)' };
     },
   });
 }

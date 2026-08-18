@@ -675,10 +675,13 @@ export class AgentInboundHandler implements InboundEventHandler {
     const sessionApprovedTools = new Set<string>(approvedTools)
     let finishReason = ''
     let lastStreamText = ''
-    const MAX_ROUNDS = 10
+    // 设计决策（B1，2026-08-18）：外层审批评次上限不硬编码 10，取自可配置
+    // behavior.maxStepsPerSession（回落默认 10），并把"达上限"与"正常完成"区分开。
+    const maxRounds = this.config.context.behavior?.maxStepsPerSession ?? 10
     let round = 0
+    let reachedRoundLimit = false
 
-    while (round < MAX_ROUNDS) {
+    while (round < maxRounds) {
       round++
 
       // ── 流式执行（带 ECONNRESET / NoOutputGeneratedError 重试）──
@@ -957,21 +960,26 @@ export class AgentInboundHandler implements InboundEventHandler {
       logger.debug('AgentInboundHandler', `Resuming with auto-approval responses: ${autoApprovalContent.length}`)
     }
 
-    if (round >= MAX_ROUNDS) {
-      logger.warn('AgentInboundHandler', 'Max rounds reached, stopping loop')
+    if (round >= maxRounds) {
+      // 设计决策（B1）：达步数/审批评次上限并非"正常完成"，也不伪装成功——
+      // 记录信号，下方构建回复时如实向调用方表达已达上限，供其区分"完成"与"被预算截断"。
+      reachedRoundLimit = true
+      logger.warn('AgentInboundHandler', `Reached step/round limit (${maxRounds}), stopping loop`)
     }
 
     // ── 构建最终回复 ──
     if (!responseText) responseText = lastStreamText
 
-    if (writtenFiles.length > 0) {
-      const fileSection = writtenFiles.map(f => `📄 **${f.path}**\n\n${f.content}`).join('\n\n---\n\n')
-      responseText = responseText.trim() ? `${responseText}\n\n${fileSection}` : fileSection
-    }
+    // 设计决策（A3，2026-08-18）：不把系统捕获的 write_file 全文拼入 LLM 回复。
+    // 文件内容是否提及、如何呈现，由 LLM 自主决定；系统只透传 LLM 实际生成的文本。
+    // writtenFiles 仍累积用于暂停/恢复（accumulated）与审批上下文，但不再注入回复。
 
     let finalResponse = this.filterSystemContent(responseText)
     if (!finalResponse || finalResponse.trim().length === 0) {
-      finalResponse = lastStreamText || '任务已完成'
+      // 设计决策（A1，2026-08-18）：不替 LLM 补"任务已完成"假话。
+      // LLM 无输出时如实透传真实状态——优先取真实流文本，连它也没有则
+      // 如实标记"未生成文本回复"，而非断言成功。调用方据此区分"完成"与"无输出"。
+      finalResponse = lastStreamText || '(未生成文本回复)'
     }
 
     // ── 保存对话历史 ──
@@ -1018,12 +1026,14 @@ export class AgentInboundHandler implements InboundEventHandler {
       commitConversationState: headMoved,
     })
 
-    logger.debug('AgentInboundHandler', `COMPLETE: responseLen=${finalResponse.length} conversation=${conversationId} durationMs=${Date.now() - startTime}`)
+    logger.debug('AgentInboundHandler', `COMPLETE: responseLen=${finalResponse.length} conversation=${conversationId} durationMs=${Date.now() - startTime} limitReached=${reachedRoundLimit}`)
 
     return {
       success: true,
       response: finalResponse,
       conversationId,
+      // 设计决策（B1）：把"达上限被截断"作为显式信号返回，调用方可区分正常完成与预算耗尽
+      truncatedByLimit: reachedRoundLimit || undefined,
     }
   }
 
