@@ -523,26 +523,20 @@ export class McpRegistry {
     await Promise.allSettled(names.map((name) => this.disconnect(name)));
   }
 
+  // 技术债修复（appVisible 接线缺口）：visibility 仅作模型可见性控制字段。
+  // 删除冗余的双路分类——app-only 工具是"只给 App 用、不给模型"，而 App 侧
+  // （proxy/tools-list）根本不消费 app-only 语义，自己用 isToolVisibilityModelOnly
+  // 过滤。这里只保留"排除 app-only 工具出模型"这一核心语义，与 getServerTools
+  // 口径统一（后者原样返回，由调用方视场景过滤）。
   getAllTools(): ToolSet {
-    const { modelVisible } = this.getAllToolsWithAppVisibility();
-    return modelVisible;
-  }
-
-  getAllToolsWithAppVisibility(): { modelVisible: ToolSet; appVisible: ToolSet } {
-    let modelVisible: ToolSet = {};
-    let appVisible: ToolSet = {};
-
+    const tools: ToolSet = {};
     for (const [, conn] of this._connections) {
       for (const [name, tool] of Object.entries(conn.tools as ToolSet)) {
-        if (isToolVisibilityAppOnly(tool as Record<string, unknown>)) {
-          appVisible[name] = tool;
-        } else {
-          modelVisible[name] = tool;
-        }
+        if (isToolVisibilityAppOnly(tool as Record<string, unknown>)) continue;
+        tools[name] = tool;
       }
     }
-
-    return { modelVisible, appVisible };
+    return tools;
   }
 
   getServerTools(name: string): ToolSet {
