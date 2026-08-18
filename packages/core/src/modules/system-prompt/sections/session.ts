@@ -79,15 +79,12 @@ export function createSystemContextSection(cwd?: string): SystemPromptSection {
 /**
  * Creates a session guidance for first message in a conversation.
  * 保留此函数以备需要单独使用时调用。
+ * B10：不预设开场行为（问候/介绍/询问四步），只提示这是一个新对话，开场方式由 LLM 自主判断。
  */
 export function createFirstMessageGuidance(): SystemPromptSection {
   const content = `【新对话指导】
 
-这是一个新的对话的开始。请：
-1. 友好地问候用户
-2. 简要介绍你的能力范围
-3. 询问用户需要什么帮助
-4. 保持简洁，不要一次说太多`;
+这是一个新的对话的开始。开场措辞、是否介绍能力范围、是否主动询问需求，由你结合用户的实际输入自主决定——无需遵循固定的话术顺序，保持自然、简洁即可。`;
 
   return {
     name: 'first-message-guidance',

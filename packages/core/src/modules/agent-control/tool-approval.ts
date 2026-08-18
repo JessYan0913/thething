@@ -15,7 +15,7 @@
 import path from 'path';
 import type { ToolApprovalStatus } from 'ai';
 import { checkPermissionRules } from '../../modules/permissions';
-import { isCommandDangerous, isCommandSafe } from '../../modules/tools/bash';
+import { isCommandDangerous } from '../../modules/tools/bash';
 import type { PermissionRule } from '../../modules/permissions/types';
 import { hasReviewerDenial } from './reviewer-feedback';
 
@@ -99,7 +99,6 @@ async function bashApproval(
   if (ctx.denialTracker.getDenialCount('bash') >= 2) return 'user-approval';
   if (ctx.costTracker.isOverBudget) return 'user-approval';
   if (ctx.turnCount > 20) return 'user-approval';
-  if (isCommandSafe(command)) return 'approved';
   return 'user-approval';
 }
 

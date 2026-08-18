@@ -21,11 +21,11 @@ describe('注入消息', () => {
     expect(prompt).toContain('【进度汇报】'); // 明确不机械汇报
   });
 
-  it('开工提示包含并行执行决策引导（blockedBy 依赖判断）', () => {
+  it('开工提示包含并行执行决策引导（B12：分支判断交 LLM，不预设 if-then）', () => {
     const prompt = buildPlanPrompt();
     expect(prompt).toContain('parallel_agent');
-    expect(prompt).toContain('blockedBy');
-    expect(prompt).toContain('agent 工具按顺序执行');
+    expect(prompt).toContain('agent 工具');
+    expect(prompt).toContain('自主判断'); // 并行/串行由 LLM 自行判断，不预设定死分支
   });
 
   it('每步同步提醒：督促建后持续更新，且不诱导滚动窗口、不机械汇报', () => {

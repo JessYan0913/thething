@@ -5,7 +5,6 @@
 import type { GoalState, GoalStatus } from './types'
 import {
   MAX_GOAL_TURNS,
-  BLOCKED_CONSECUTIVE_THRESHOLD,
   MAX_DISPLAY_CHARS,
 } from './types'
 
@@ -109,25 +108,18 @@ export function updateTokens(goal: GoalState, used: number): GoalState {
 
 /**
  * 记录阻塞尝试
- * 同一原因连续 3 次才标记为 blocked
+ * B7：只记录客观事实（连续相同阻塞的计数与最近原因），不自动把目标翻成 blocked——
+ * "是否真的卡死"由 LLM 自主判定，需要时用 GoalTool 的 blocked 动作显式标记。
+ * 计数与原因作为客观线索供 LLM 参考，而非系统预设的自动定性。
  */
 export function recordBlocked(goal: GoalState, reason: string): GoalState {
   const sameReason = goal.lastBlockReason === reason
-  const blockedCount = sameReason ? goal.blockedCount + 1 : 1
-
-  const newGoal: GoalState = {
+  return {
     ...goal,
-    blockedCount,
+    blockedCount: sameReason ? goal.blockedCount + 1 : 1,
     lastBlockReason: reason,
     updatedAt: Date.now(),
   }
-
-  if (blockedCount >= BLOCKED_CONSECUTIVE_THRESHOLD) {
-    newGoal.status = 'blocked'
-    newGoal.blockedReason = reason
-  }
-
-  return newGoal
 }
 
 /**

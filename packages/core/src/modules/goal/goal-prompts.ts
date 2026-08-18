@@ -45,7 +45,7 @@ ${goal.objective}
 
 Continue working towards the goal. Do NOT narrow the scope of the goal — even if you cannot complete everything in one turn, maintain the full objective and make as much progress as possible.
 
-**Important: Do NOT use ask_user_question when a goal is active.** You have a clear objective — make autonomous decisions based on the goal context. If you encounter ambiguity, choose the most reasonable path forward rather than stopping to ask.
+**When a goal is active:** You have a clear objective. You may consider making autonomous decisions based on the goal context rather than stopping — when you encounter ambiguity, decide on the most reasonable path forward. Whether to ask the user or proceed autonomously is your judgment call; there is no blanket prohibition on asking when the goal context genuinely requires user input. (B6)
 
 When you believe the goal is fully achieved, use the GoalTool to mark it complete. Before doing so, perform a strict Completion Audit:
 
@@ -58,11 +58,9 @@ When you believe the goal is fully achieved, use the GoalTool to mark it complet
 6. The audit must PROVE completion, not merely fail to find remaining work.
 
 ### Blocked Audit
-If you encounter an obstacle you genuinely cannot overcome:
-- Do NOT mark blocked on the first encounter.
-- The same blocking condition must persist for at least 3 consecutive continuation turns before you may mark blocked.
+Blocking is your judgment call, not a count-based rule — the system only records how many times each blocker was reported as objective context. You can consider marking blocked only after the same condition genuinely persists across attempts, but when something is truly stuck is for you to decide:
 - "Difficult", "slow", or "partially incomplete" is NOT blocked.
-- If blocked, use the GoalTool with status "blocked" and a clear reason.
+- If you judge the goal stuck, use the GoalTool with status "blocked" and a clear reason.
 
 Resume working now.
 </goal-steering>`

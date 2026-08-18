@@ -119,10 +119,10 @@ function formatSkillOutput(skill: Skill, dirTree: string | undefined, args?: str
     lines.push('💡 You can read any file in the directory using the read_file tool.');
   }
 
-  // 如果有 paths 配置，添加输出目录提示（重要：告诉 Agent 输出位置）
+  // 如果有 paths 配置，展示输出目录（可选落点，由 LLM 判断是否采用）
   if (skill.paths && skill.paths.length > 0) {
-    lines.push(`📁 Output directories: ${skill.paths.join(', ')}`);
-    lines.push(`   → Save generated files to one of these directories, NOT in root or random locations.`);
+    lines.push(`📁 Output directories available for this skill: ${skill.paths.join(', ')}`);
+    lines.push(`   → These are suggested output locations. You may consider saving generated files to one of them; whether to do so, and where to place output, is your judgment call.`);
   }
 
   // 如果有 allowedTools，添加提示
