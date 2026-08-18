@@ -152,26 +152,38 @@ function TokenBar({ input, output, total }: { input: number; output: number; tot
 }
 
 function StepList({ steps }: { steps: AgentStep[] }) {
+  const [isOpen, setIsOpen] = useState(false);
   if (steps.length === 0) return null;
   return (
-    <div className="space-y-1.5">
-      {steps.map((step) => (
-        <div key={step.seq} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-          {step.result !== undefined ? (
-            <CheckIcon className="mt-0.5 size-3 shrink-0 text-green-600" />
-          ) : (
-            <Loader2Icon className="mt-0.5 size-3 shrink-0 animate-spin text-blue-500" />
-          )}
-          <WrenchIcon className="mt-0.5 size-3 shrink-0" />
-          <span className="min-w-0">
-            <span className="font-medium">{step.name}</span>
-            {step.result !== undefined && step.result !== '' && (
-              <span className="text-muted-foreground/60"> — {step.result.slice(0, 80)}</span>
-            )}
-          </span>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+        <WrenchIcon className="size-3 shrink-0" />
+        <span className="font-medium">{steps.length} 次工具调用</span>
+        <ChevronDownIcon
+          className={cn('ml-auto size-3 shrink-0 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-1.5 max-h-48 space-y-1.5 overflow-y-auto pr-1">
+          {steps.map((step) => (
+            <div key={step.seq} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              {step.result !== undefined ? (
+                <CheckIcon className="mt-0.5 size-3 shrink-0 text-green-600" />
+              ) : (
+                <Loader2Icon className="mt-0.5 size-3 shrink-0 animate-spin text-blue-500" />
+              )}
+              <WrenchIcon className="mt-0.5 size-3 shrink-0" />
+              <span className="min-w-0">
+                <span className="font-medium">{step.name}</span>
+                {step.result !== undefined && step.result !== '' && (
+                  <span className="text-muted-foreground/60"> — {step.result.slice(0, 80)}</span>
+                )}
+              </span>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -320,7 +332,7 @@ export function SubAgentCard({ parts, toolCallId, className }: SubAgentCardProps
 
   return (
     <Collapsible
-      className={cn('not-prose group mb-4', className)}
+      className={cn('not-prose group my-2', className)}
       open={isOpen}
       onOpenChange={setIsOpen}
     >

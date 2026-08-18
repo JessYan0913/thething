@@ -29,6 +29,21 @@ describe('estimateRequestBudget', () => {
     expect(est.totalTokensWithBuffer).toBe(est.totalTokens + est.tokenizerBuffer);
   });
 
+  it('driftRatio < 1（估算偏保守）时 tokenizerBuffer 兜底为 0，不为负', async () => {
+    // 校准比率 0.85 → bufferRatio −0.15；若不兜底 tokenizerBuffer 为负，
+    // ContextBudgetSnapshotSchema(tokenizerBuffer: nonnegative) 校验会失败。
+    getEstimatorInfra().calibrator.clear();
+    getEstimatorInfra().tokenCache.clear();
+    const msgs = [{ role: 'user' as const, content: 'word '.repeat(1000) }];
+    const base0 = await estimateRequestBudget(msgs, 'sys', {}, 'unknown-model');
+    const baseTokens = base0.messagesTokens + base0.instructionsTokens + base0.toolsTokens;
+    recordUsageSample('unknown-model', baseTokens, Math.round(baseTokens * 0.85));
+    getEstimatorInfra().tokenCache.clear();
+    const est = await estimateRequestBudget(msgs, 'sys', {}, 'unknown-model');
+    expect(est.tokenizerBuffer).toBe(0);
+    expect(est.totalTokensWithBuffer).toBe(est.totalTokens);
+  });
+
   it('exposes trigger/hardLimit from the single policy', async () => {
     const est = await estimateRequestBudget(smallMsgs, 'instructions', {}, 'unknown-model');
     expect(est.triggerTokens).toBe(110_000); // 128k − 18k char buffer（窗口坐标系，含 outputReserve）

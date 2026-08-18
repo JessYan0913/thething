@@ -83,6 +83,10 @@ const TODO_TOOL_TYPES = new Set([
 // 工具调用折叠阈值：一条消息的工具数达到该值才折叠为一行摘要（流式与完成后均折叠）
 const TOOL_FOLD_THRESHOLD = 3;
 
+// 工具 part 终结态：命中即代表该次工具调用已结束（含失败/拒绝）。
+// 折叠摘要据此按「单个折叠组」判定流式中/已完成，而非绑定整个会话的 streaming 状态。
+const TOOL_TERMINAL_STATES = new Set(['output-available', 'output-error', 'output-denied']);
+
 // 报告/列表类工具：输出本质是摘要而非文件，点击内联展开报告卡（替代右侧文件预览面板）
 // 文件类（write/read/edit_file/read_wiki_page）与 web_fetch 仍走右侧面板
 // MCP 动态工具（mcp__*）同为报告性质，在 isInlineReportTool 里按前缀统一内联展开
@@ -2132,8 +2136,6 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                 // ── 工具调用折叠派生值（流式与完成后均生效；按文本隔离为多个折叠组）──
                 // 一段文本后的连续工具调用为一个折叠组；出现文本回复后重新开始一个新组。
                 // reasoning / data-* 等不可见 part 不打断折叠组（其已集中到消息顶部或由工具 part 消费）。
-                const isStreamingMessage =
-                  messageIndex === renderGroups.length - 1 && (status === 'streaming' || status === 'submitted');
                 interface ToolClusterInfo {
                   key: string;
                   firstIndex: number;
@@ -2188,11 +2190,13 @@ export default function Chat({ conversationId: propConversationId, onTitleUpdate
                     }),
                   );
                 }
-                // 折叠摘要行：折叠与展开两态都渲染（展开态箭头翻转），保证可反复展开/收起
+                // 折叠摘要行：折叠与展开两态都渲染（展开态箭头翻转），保证可反复展开/收起。
+                // isStreaming 按本折叠组判定：组内还有工具未到终结态才显示"执行中"，
+                // 组内工具全部结束后即使会话仍在流式（后续还有别的组/文本）也显示"执行了"。
                 const foldClusterSummary = (cluster: ToolClusterInfo, expanded: boolean) => (
                   <ToolCallsSummaryRow
                     summary={clusterSummaries.get(cluster.key)!}
-                    isStreaming={isStreamingMessage}
+                    isStreaming={cluster.parts.some((p) => p.state === undefined || !TOOL_TERMINAL_STATES.has(p.state))}
                     expanded={expanded}
                     onToggle={() =>
                       setExpandedClusterKeys((prev) => {

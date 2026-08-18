@@ -13,6 +13,7 @@ export const GENERAL_AGENT: AgentDefinition = {
   model: 'inherit',
   tools: ['read_file', 'write_file', 'edit_file', 'grep', 'glob', 'bash', 'web_fetch'],
   source: 'builtin',
+  metadata: { isSubAgentAvailable: true },
   instructions: `You are a General-purpose agent. Given a task, use the available tools to complete it.
 
 ## Guidelines

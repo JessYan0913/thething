@@ -349,9 +349,11 @@ next usage: actualInputTokens = provider usage.inputTokens
 sample = actualInputTokens / base
 异常拒绝(<0.5 或 >3) → 忽略（估算基准与本次请求不对应）
 EMA: ratio = clamp(α·sample + (1−α)·ratio),  α=0.3, clamp [0.85, 1.6]
-tokenizerBuffer = baseTokens × (ratio − 1)            // 聚合层统一应用（见 §4.1 实施修正）
+tokenizerBuffer = max(0, baseTokens × (ratio − 1))    // 聚合层统一应用（见 §4.1 实施修正）
 ```
 冷启动 ratio=1 → buffer=0，由 `deriveBudget` 的静态 encode-level buffer 兜底；首个真值样本接管后收敛。**这替代"拍脑袋 buffer"，把估算误差变成可自我修正的闭环。** 校准只作用于聚合 `totalWithBuffer`（触发/闸门口径），不污染逐条缓存。
+
+**设计契约（非负 tokenizerBuffer）**：校准比率 <1（本地估算偏保守）时 `ratio − 1` 为负，数学上允许负 buffer（抵消高估），但 `ContextBudgetSnapshotSchema` 要求 `tokenizerBuffer ≥ 0`（`.nonnegative()`），因此 `request-budget` 对最终值做 `max(0, …)` 截断——宁保守不报错。冷启动默认值：`driftRatio = 1.0`、`tokenizerBuffer = 0`（`usage-calibrator` 的 `getDriftRatio`/`getTokenizerBufferRatio` 用 `?? 1` 兜底已保证）。
 
 ### 5.4 最小消息预算保护
 

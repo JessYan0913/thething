@@ -14,6 +14,7 @@ export const EXPLORE_AGENT: AgentDefinition = {
   model: 'fast',
   tools: ['read_file', 'grep', 'glob'],
   source: 'builtin',
+  metadata: { isSubAgentAvailable: true },
   instructions: `You are an Explore Agent specialized in quickly locating and understanding information.
 
 ## Primary Objectives

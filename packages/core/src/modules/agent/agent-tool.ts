@@ -5,6 +5,7 @@ import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from './loader';
+import { isSubstantiveDeliverable } from './deliverable';
 import { logger } from '../../primitives/logger';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput, AgentTaskExecutionOptions } from './types';
 
@@ -59,6 +60,7 @@ export async function executeAgentTask({
       toolCallId,
       todoStore: config.todoStore,
       todoId: todoId ?? config.todoId,
+      pendingArchiveRetries: config.pendingArchiveRetries,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,
@@ -79,6 +81,26 @@ export async function executeAgentTask({
     );
 
     const result = await executeRoutedAgent(definition, context, task);
+
+    // P0 交付物校验（§1.3 待设计对齐）：子Agent 成功但无实质交付物（空/兜底文案）→ 降级，
+    // 不把"跑完了但没交出结果"当作成功返回给主Agent。
+    if (result.success && !isSubstantiveDeliverable(result.summary)) {
+      logger.warn('AgentTool', `[no-deliverable] Agent ${definition.agentType} 未返回实质交付物，降级走主Agent执行`);
+      writer?.write({
+        type: 'data-sub-done',
+        id: toolCallId,
+        data: { success: false, durationMs: Date.now() - startTime, error: '交付物缺失', status: 'failed' },
+      });
+      return {
+        success: false,
+        summary: `Agent ${definition.agentType} 未返回实质交付物（只有过程日志或空结果），已降级：请用主Agent工具直接执行该任务，或重新委派并明确要求输出最终结论。`,
+        durationMs: Date.now() - startTime,
+        stepsExecuted: result.stepsExecuted,
+        toolsUsed: result.toolsUsed,
+        error: 'no deliverable',
+        status: 'failed',
+      };
+    }
 
     writer?.write({
       type: 'data-sub-done',
@@ -145,13 +167,24 @@ export function createAgentTool(config: AgentToolConfig) {
 
   const configDirName = path.basename(config.configDir);
 
+  // 能力边界自动推导：写文件能力只看 write_file/edit_file/bash（bash 能 echo >/cat > 写文件），
+  // web_fetch 单列。标注随工具集客观事实走，不靠手写 metadata 维护。
+  // 后缀（括号内）是给 LLM 选型用的能力边界提示，不影响前面 `能力：{标签}` 的客观标签。
+  const deriveCapability = (tools: string[] | undefined): string => {
+    const canWrite = tools?.some((t) => ['write_file', 'edit_file', 'bash'].includes(t)) ?? false;
+    const hasWeb = tools?.includes('web_fetch') ?? false;
+    if (canWrite) return hasWeb ? '可写文件（全工具）' : '可写文件（可改文件，无 web）';
+    return hasWeb ? '只读 + web（可联网调研，不写文件）' : '只读（不写文件、不联网）';
+  };
+
   // 动态生成 input schema（使用正确的 configDirName）
   const AgentToolInputSchema = z.object({
     agentType: z.string().optional().describe(
-      'Agent type to use. Built-in: explore, research, plan, general-purpose. ' +
+      'Agent type to use. MUST choose EXPLICITLY based on the task and each agent capability (see "Currently available agents"). ' +
+      'Built-in: explore (只读查找), research (只读+web 调研), plan (只读规划), general-purpose (可写文件+web 全能力). ' +
       'Custom agents (like test-agent) are already loaded and can be used directly by name. ' +
       `Example: "test-agent" for a custom agent defined in ${configDirName}/agents/test-agent.md. ` +
-      'If not specified, auto-routes based on task keywords.'
+      'The system does NOT auto-route. Leave blank only if you intend general-purpose execution.'
     ),
     task: z.string().describe('The task for the sub-agent to complete'),
     todoId: z.string().optional().describe(
@@ -159,27 +192,37 @@ export function createAgentTool(config: AgentToolConfig) {
     ),
   });
 
-  // 动态生成 agent 列表描述
+  // 动态生成 agent 列表描述：只暴露可自动委派子Agent（metadata.isSubAgentAvailable），
+  // 不暴露全量列表——自动委派由系统决定（§12），模型不应看到不可委派 Agent。
   const registeredAgents = agentRegistry.getAll();
-  const agentList = registeredAgents
-    .map(a => {
-      const sourceTag = a.source === 'builtin' ? '' : ` (${a.source})`;
-      const brief = a.instructions.split('\n')[0]?.slice(0, 80) ?? '';
-      return `- **${a.agentType}**${sourceTag}: ${brief}`;
-    })
-    .join('\n');
+  const delegatableAgents = registeredAgents.filter((a) => {
+    const metadata = a.metadata as Record<string, unknown> | undefined;
+    return metadata?.isSubAgentAvailable === true;
+  });
+  const agentList = delegatableAgents.length > 0
+    ? delegatableAgents
+        .map(a => {
+          const sourceTag = a.source === 'builtin' ? '' : ` (${a.source})`;
+          const brief = a.instructions.split('\n')[0]?.slice(0, 80) ?? '';
+          const tools = a.tools?.length ? a.tools.join(', ') : '（无工具）';
+          return `- **${a.agentType}**${sourceTag}: ${brief}\n  工具：${tools} | 能力：${deriveCapability(a.tools)}`;
+        })
+        .join('\n')
+    : '（当前无可自动委派子Agent；agentType 留空时走通用执行，或按需手动指定）';
 
   return tool({
     description: `Delegate a task to a specialized sub-agent.
 
 IMPORTANT: All agents are ALREADY loaded and registered. Do NOT search for agent definition files - just call this tool with the agentType parameter.
 
+You MUST choose agentType EXPLICITLY — the system does NOT auto-route for you. Each agent below lists its 适用场景 / 工具 / 能力边界; pick the one that best fits the task.
+
 Currently available agents:
 ${agentList}
 
 Usage example: When user says "use test-agent to verify", call this tool with {agentType: "test-agent", task: "verify"} - do NOT use Glob/Read to find files.
 
-If no agentType specified, will auto-route based on task keywords (find→explore, research→research, plan→plan).`,
+Leave agentType blank only if you intend general-purpose execution (全工具).`,
     inputSchema: AgentToolInputSchema,
 
     execute: async ({ agentType, task, todoId }: AgentToolInput, options) => executeAgentTask({

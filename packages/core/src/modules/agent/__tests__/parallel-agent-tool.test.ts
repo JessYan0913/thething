@@ -94,6 +94,13 @@ describe('parallel-agent-tool', () => {
       expect(typeof tool.description === 'string' ? tool.description.toLowerCase() : '').toContain('parallel');
     });
 
+    it('description 包含 blockedBy 依赖检查指引（设计 §1.3 工具描述层）', () => {
+      const tool = createParallelAgentTool(createMockToolConfig({ agentRegistry: registry }));
+      const desc = typeof tool.description === 'string' ? tool.description : '';
+      expect(desc).toContain('blockedBy');
+      expect(desc).toContain('NOT independent');
+    });
+
     it('should require at least 2 tasks', async () => {
       const tool = createParallelAgentTool(createMockToolConfig({ agentRegistry: registry }));
 
@@ -116,6 +123,62 @@ describe('parallel-agent-tool', () => {
       );
 
       expect(result).toBeDefined();
+    });
+
+    it('含 blockedBy 依赖的任务 → 返回失败 + 降级指导，不执行子Agent（设计 §1.3 执行防护层）', async () => {
+      const store = {
+        getTodo: (id: string) => {
+          if (id === 't-1') return { id: 't-1', subject: '任务一', blockedBy: ['t-0'] };
+          if (id === 't-2') return { id: 't-2', subject: '任务二', blockedBy: [] };
+          return undefined;
+        },
+      } as any;
+
+      const tool = createParallelAgentTool(
+        createMockToolConfig({ agentRegistry: registry, todoStore: store })
+      );
+
+      const result = await (tool as any).execute(
+        {
+          tasks: [
+            { task: 'Task A', todoId: 't-1', label: 'a' },
+            { task: 'Task B', todoId: 't-2', label: 'b' },
+          ],
+        },
+        { toolCallId: 'parallel-test', abortSignal: new AbortController().signal }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.summary).toContain('存在依赖');
+      expect(result.summary).toContain('agent 工具按顺序执行');
+      expect(mockExecuteRoutedAgent).not.toHaveBeenCalled();
+    });
+
+    it('无 blockedBy 依赖 → 正常并行执行', async () => {
+      mockExecuteRoutedAgent
+        .mockResolvedValueOnce(createMockResult('Result A'))
+        .mockResolvedValueOnce(createMockResult('Result B'));
+
+      const store = {
+        getTodo: (id: string) => ({ id, subject: `任务 ${id}`, blockedBy: [] }),
+      } as any;
+
+      const tool = createParallelAgentTool(
+        createMockToolConfig({ agentRegistry: registry, todoStore: store })
+      );
+
+      const result = await (tool as any).execute(
+        {
+          tasks: [
+            { task: 'Task A', todoId: 't-1', label: 'a' },
+            { task: 'Task B', todoId: 't-2', label: 'b' },
+          ],
+        },
+        { toolCallId: 'parallel-test', abortSignal: new AbortController().signal }
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockExecuteRoutedAgent).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -279,6 +342,36 @@ describe('parallel-agent-tool', () => {
       // 结果中每个子任务都有独立的 token usage
       expect(result.results[0].result.tokenUsage.totalTokens).toBe(150);
       expect(result.results[1].result.tokenUsage.totalTokens).toBe(280);
+    });
+
+    it('子Agent 成功但无实质交付物 → 该任务判失败，批次继续（P0 部分失败隔离）', async () => {
+      mockExecuteRoutedAgent
+        .mockResolvedValueOnce({
+          success: true,
+          summary: 'Agent completed 2 tool calls using read_file. No text summary was produced.',
+          durationMs: 30,
+          stepsExecuted: 2,
+          toolsUsed: ['read_file'],
+          status: 'completed',
+        })
+        .mockResolvedValueOnce(createMockResult('Result from agent B'));
+
+      const tool = createParallelAgentTool(createMockToolConfig({ agentRegistry: registry }));
+
+      const result = await (tool as any).execute(
+        {
+          tasks: [
+            { task: 'Task A', label: 'a' },
+            { task: 'Task B', label: 'b' },
+          ],
+        },
+        { toolCallId: 'parallel-test', abortSignal: new AbortController().signal }
+      );
+
+      expect(result.success).toBe(false); // 有交付物失败 → 批次失败
+      expect(result.results[0].result.success).toBe(false);
+      expect(result.results[0].result.error).toContain('no deliverable');
+      expect(result.results[1].result.success).toBe(true); // 批次继续
     });
   });
 

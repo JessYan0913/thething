@@ -1,4 +1,4 @@
-import { ToolLoopAgent, isStepCount, generateText } from 'ai';
+import { ToolLoopAgent, generateText } from 'ai';
 import type { PrepareStepFunction, PrepareStepResult, StopCondition, ToolSet, ModelMessage } from 'ai';
 import type { AgentDefinition, AgentExecutionContext, AgentExecutionResult } from './types';
 import type { CompactionConfig} from '../../services/config/compaction-types';
@@ -7,15 +7,13 @@ import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
 import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
+import { triggerArchiveForTodos } from '../agent-control/archiver';
 import { getDefaultOutputTokens } from '../../services/model/capabilities';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
 // Helper Functions
 // ============================================================
-
-/** 子 Agent 默认最大步数 */
-const SUB_AGENT_MAX_STEPS = 20;
 
 /**
  * 子 Agent 的 prepareStep：每步 API 调用前执行 Layer 2 压缩
@@ -101,8 +99,11 @@ export async function executeRoutedAgent(
     // 3. 构建 System Prompt
     const instructions = buildSubAgentPrompt(definition, context);
 
-    // 4. 创建 ToolLoopAgent（默认 20 轮 + 可选 token 预算上限）
-    const stopWhen: StopCondition<ToolSet>[] = [isStepCount(SUB_AGENT_MAX_STEPS)];
+    // 4. 创建 ToolLoopAgent。
+    // 设计决策（2026-08-18）：不设步数上限（isStepCount），让子Agent 自主判断任务何时完成、
+    // 自行决定是否输出最终结论——系统只提供运行环境，不替 LLM 决定何时停止。
+    // 仅保留可选的 token 预算停止（成本护栏，非"完成判定"）。
+    const stopWhen: StopCondition<ToolSet>[] = [];
     if (context.maxTotalTokens && context.maxTotalTokens > 0) {
       stopWhen.push(isTokenBudgetExceeded(context.maxTotalTokens));
     }
@@ -253,11 +254,18 @@ export async function executeRoutedAgent(
 
     // 12. 完成任务（如果有）。同步完成（设计指令：消除 fire-and-forget 竞态）——
     //    确保 todo 状态在父 Agent 下一步 prepareStep 读取前已落库。
-    //    路径 B：completeTodo 直接写库，不经 todo-write-tool，不触发边界归档（此缺口按 A/B 占比数据另议）。
+    //    路径 B：completeTodo 直接写库，不经 todo-write-tool，故不触发边界归档（pendingArchiveTodoId
+    //    单槽由 todo-write 驱动）；归档经 triggerArchiveForTodos 以 result 入队 pendingArchiveRetries（§5.2 接线）。
     if (todoStore && todoId) {
       // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool，故不触发边界归档）
       logger.info('SubAgent', `[path-b-complete] todoId=${todoId}`);
       completeTodo(todoStore, todoId, result.summary);
+      // 路径 B 归档（设计 §5.2）：子Agent 完成，以 metadata.result 为输入入队 pendingArchiveRetries，
+      // 下一轮 prepareStep 经 retryPendingArchives 提炼 facts。agent 与 parallel_agent 共用此点，
+      // 一个接线点覆盖两条路径（triggerArchiveForTodos 内部过滤：仅 completed + 有 result + 无 facts 才入队）。
+      if (context.pendingArchiveRetries) {
+        triggerArchiveForTodos([todoId], todoStore, context.pendingArchiveRetries);
+      }
     }
 
     // 13. 标记 run 完成

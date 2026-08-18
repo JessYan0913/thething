@@ -21,6 +21,13 @@ describe('注入消息', () => {
     expect(prompt).toContain('【进度汇报】'); // 明确不机械汇报
   });
 
+  it('开工提示包含并行执行决策引导（blockedBy 依赖判断）', () => {
+    const prompt = buildPlanPrompt();
+    expect(prompt).toContain('parallel_agent');
+    expect(prompt).toContain('blockedBy');
+    expect(prompt).toContain('agent 工具按顺序执行');
+  });
+
   it('每步同步提醒：督促建后持续更新，且不诱导滚动窗口、不机械汇报', () => {
     const sync = buildTodoSyncReminder();
     expect(sync).toContain('todo_write');

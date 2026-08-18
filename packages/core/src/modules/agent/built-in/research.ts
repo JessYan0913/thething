@@ -14,6 +14,7 @@ export const RESEARCH_AGENT: AgentDefinition = {
   model: 'smart',
   tools: ['web_fetch', 'read_file', 'grep', 'glob'],
   source: 'builtin',
+  metadata: { isSubAgentAvailable: true },
   instructions: `You are a Research Agent specialized in thorough investigation and information synthesis.
 
 ## ⚠️ CRITICAL: You MUST produce text output

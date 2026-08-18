@@ -10,6 +10,9 @@
 // tokenizerBuffer 由 usage 真值 EMA 校准（usage-calibrator）驱动，替代静态
 // "拍脑袋"buffer。冷启动为 0（不额外加 buffer），首个真值样本接管后收敛；
 // 静态兜底由 deriveBudget 的 encode-level buffer 承担。
+// 设计契约：tokenizerBuffer 恒非负（校准比率 <1 即本地估算偏保守时负 buffer
+// 在数学上有意义，但 payload schema 要求 nonnegative，故兜底截断为 0——
+// 宁保守不报错）。
 //
 // 触发判断用 totalTokensWithBuffer 对比 policy.triggerTokens / hardLimitTokens
 // （见 compaction-redesign.md L1 触发语义），确保小窗口（如 22.8k）也按真实
@@ -63,7 +66,7 @@ export async function estimateRequestBudget(
   const { calibrator } = getEstimatorInfra();
   const bufferRatio = calibrator.getTokenizerBufferRatio(modelName);
   const baseTokens = base.messagesTokens + base.instructionsTokens + base.toolsTokens;
-  const tokenizerBuffer = Math.round(baseTokens * bufferRatio);
+  const tokenizerBuffer = Math.max(0, Math.round(baseTokens * bufferRatio));
   const totalTokensWithBuffer = base.totalTokens + tokenizerBuffer;
   const exceedsLimitWithBuffer = totalTokensWithBuffer > base.modelLimit;
 

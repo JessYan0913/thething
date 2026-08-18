@@ -89,7 +89,7 @@ describe('Agent Loader Integration', () => {
     expect(route.definition.agentType).toBe('test-agent');
   });
 
-  it('auto-routes builtin explore requests based on task keywords', () => {
+  it('自关键词路由移除后，未指定 agentType 一律回退 general-purpose（不再自动路由）', () => {
     const route = resolveAgentRoute(
       { task: 'find the main entry file' },
       {
@@ -104,7 +104,7 @@ describe('Agent Loader Integration', () => {
       },
     );
 
-    expect(route.definition.agentType).toBe('explore');
-    expect(route.reason).toContain('explore');
+    expect(route.type).toBe('general');
+    expect(route.definition.agentType).toBe('general-purpose');
   });
 });

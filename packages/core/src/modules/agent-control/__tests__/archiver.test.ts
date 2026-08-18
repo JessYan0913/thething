@@ -16,7 +16,9 @@ import {
   parseFactsJson,
   archiveSubtask,
   retryPendingArchives,
+  triggerArchiveForTodos,
   hasSubtaskFacts,
+  summarizeFactsFromText,
 } from '../archiver';
 import { createSQLiteDataStore } from '../../../services/datastore/sqlite/sqlite-data-store';
 import type { SQLiteDataStore } from '../../../services/datastore/sqlite/sqlite-data-store';
@@ -46,6 +48,66 @@ describe('parseFactsJson', () => {
   it('缺 conclusion/tool_chain 或非法 JSON → null', () => {
     expect(parseFactsJson('not json')).toBeNull();
     expect(parseFactsJson('{"conclusion":"x"}')).toBeNull();
+  });
+});
+
+describe('summarizeFactsFromText 错误分类', () => {
+  // vitest 怪癖：beforeEach 里 mockClear/mockReset 后，被测模块内 await 的 mock
+  // 拒绝会被误报为未处理拒绝（实测必失败），故改为在用例体内 mockClear 清计数。
+
+  it('成功 → 返回 facts，无失败原因', async () => {
+    vi.mocked(generateText).mockClear();
+    vi.mocked(generateText).mockResolvedValue({
+      text: '{"tool_chain":"read ×1","conclusion":"完成","key_facts":[]}',
+    } as never);
+    const r = await summarizeFactsFromText('subtask text', { model: {} as never });
+    expect(r.facts?.conclusion).toBe('完成');
+    expect(r.reason).toBeUndefined();
+  });
+
+  it('配额耗尽 → 原因 quota_exceeded，且不再尝试 fallback 模型', async () => {
+    vi.mocked(generateText).mockClear();
+    vi.mocked(generateText).mockRejectedValue(
+      Object.assign(new Error('You have exceeded the monthly usage quota'), { statusCode: 429 }),
+    );
+    const r = await summarizeFactsFromText('subtask text', {
+      model: {} as never,
+      fallbackModels: [{} as never],
+    });
+    expect(r.facts).toBeNull();
+    expect(r.reason).toBe('quota_exceeded');
+    expect(generateText).toHaveBeenCalledTimes(1); // 配额对全模型生效，中断候选循环
+  });
+
+  it('LLM 输出非 JSON → 原因 invalid_response', async () => {
+    vi.mocked(generateText).mockClear();
+    vi.mocked(generateText).mockResolvedValue({ text: '抱歉，这不是 JSON' } as never);
+    const r = await summarizeFactsFromText('subtask text', { model: {} as never });
+    expect(r.facts).toBeNull();
+    expect(r.reason).toBe('invalid_response');
+  });
+
+  it('蒸馏调用契约：紧凑 prompt（JSON 模板/上限/禁围栏）+ json_object + 预算 800（可靠性 P1）', async () => {
+    vi.mocked(generateText).mockClear();
+    vi.mocked(generateText).mockResolvedValue({
+      text: '{"tool_chain":"read ×1","conclusion":"完成","key_facts":[]}',
+    } as never);
+    await summarizeFactsFromText('subtask text', { model: {} as never });
+
+    const call = vi.mocked(generateText).mock.calls[0][0] as any;
+    expect(call.instructions).toContain('tool_chain');
+    expect(call.instructions).toContain('key_facts 最多 5 条');
+    expect(call.instructions).toContain('不要 markdown 代码围栏');
+    expect(call.providerOptions?.openai?.response_format).toEqual({ type: 'json_object' });
+    expect(call.maxOutputTokens).toBe(800);
+  });
+
+  it('空输入 → 原因 empty_input，不调 LLM', async () => {
+    vi.mocked(generateText).mockClear();
+    const r = await summarizeFactsFromText('   ', { model: {} as never });
+    expect(r.facts).toBeNull();
+    expect(r.reason).toBe('empty_input');
+    expect(generateText).not.toHaveBeenCalled();
   });
 });
 
@@ -205,5 +267,72 @@ describe('hasSubtaskFacts', () => {
     expect(hasSubtaskFacts({ metadata: {} } as never)).toBe(false);
     expect(hasSubtaskFacts({ metadata: { facts: { conclusion: '  ' } } } as never)).toBe(false);
     expect(hasSubtaskFacts({ metadata: { result: '只有 result' } } as never)).toBe(false);
+  });
+});
+
+describe('triggerArchiveForTodos', () => {
+  let tmpDir: string;
+  let store: SQLiteDataStore;
+
+  beforeEach(() => {
+    vi.mocked(generateText).mockReset();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'archiver-trigger-test-'));
+    store = createSQLiteDataStore({ dataDir: tmpDir });
+    store.conversationStore.createConversation('c1');
+  });
+
+  afterEach(() => {
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeTodo(status: string, metadata: Record<string, unknown> = {}) {
+    const t = store.todoStore.createTodo({ conversationId: 'c1', subject: 't', metadata });
+    if (status !== 'pending') {
+      store.todoStore.updateTodo({ id: t.id, status: status as never });
+    }
+    return store.todoStore.getTodo(t.id)!;
+  }
+
+  it('completed 且有 result → 入队（值为 result 文本），返回 [id]', () => {
+    const retries = new Map<string, string>();
+    const t = makeTodo('completed', { result: '子 Agent 结论摘要' });
+    const enqueued = triggerArchiveForTodos([t.id], store.todoStore, retries);
+    expect(enqueued).toEqual([t.id]);
+    expect(retries.get(t.id)).toBe('子 Agent 结论摘要');
+  });
+
+  it('非 completed（pending/in_progress/failed）→ 不入队', () => {
+    const retries = new Map<string, string>();
+    const pending = makeTodo('pending', { result: 'r' });
+    const doing = makeTodo('in_progress', { result: 'r' });
+    const failed = makeTodo('failed', { result: 'r' });
+    const enqueued = triggerArchiveForTodos([pending.id, doing.id, failed.id], store.todoStore, retries);
+    expect(enqueued).toEqual([]);
+    expect(retries.size).toBe(0);
+  });
+
+  it('completed 但无 result 文本 → 不入队', () => {
+    const retries = new Map<string, string>();
+    const t = makeTodo('completed', {});
+    expect(triggerArchiveForTodos([t.id], store.todoStore, retries)).toEqual([]);
+    expect(retries.size).toBe(0);
+  });
+
+  it('已有 facts → 不入队（避免重复提炼）', () => {
+    const retries = new Map<string, string>();
+    const t = makeTodo('completed', { result: 'r', facts: { conclusion: '已有', key_facts: [], tool_chain: '' } });
+    expect(triggerArchiveForTodos([t.id], store.todoStore, retries)).toEqual([]);
+    expect(retries.size).toBe(0);
+  });
+
+  it('多个 todo：只入队合法项', () => {
+    const retries = new Map<string, string>();
+    const ok = makeTodo('completed', { result: '结论A' });
+    const empty = makeTodo('completed', {});
+    const failed = makeTodo('failed', { result: 'r' });
+    const enqueued = triggerArchiveForTodos([ok.id, empty.id, failed.id], store.todoStore, retries);
+    expect(enqueued).toEqual([ok.id]);
+    expect(retries.size).toBe(1);
   });
 });

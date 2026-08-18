@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
+import { isSubstantiveDeliverable } from './deliverable';
 import { logger } from '../../primitives/logger';
 import type {
   AgentToolConfig,
@@ -29,7 +30,7 @@ const DEFAULT_PARALLEL_AGENTS = 5;
 // ============================================================
 
 interface ParallelTaskInput {
-  /** Agent 类型（可选，自动路由） */
+  /** Agent 类型（可选，LLM 自主选择；留空走通用执行） */
   agentType?: string;
   /** 任务描述 */
   task: string;
@@ -77,7 +78,7 @@ export function createParallelAgentTool(config: AgentToolConfig) {
           agentType: z
             .string()
             .optional()
-            .describe('Agent type (optional, auto-routes by task keywords)'),
+            .describe('Agent type (optional). Choose EXPLICITLY per task by capability; the system does NOT auto-route. Leave blank only for general-purpose execution.'),
           task: z.string().min(1).describe('Task description for this sub-agent'),
           label: z.string().optional().describe('Label for result identification'),
           todoId: z.string().optional().describe(
@@ -93,15 +94,30 @@ export function createParallelAgentTool(config: AgentToolConfig) {
       ),
   });
 
-  // 生成 agent 列表描述
+  // 能力边界自动推导（与 agent-tool 保持一致）：写文件看 write_file/edit_file/bash，web_fetch 单列
+  const deriveCapability = (tools: string[] | undefined): string => {
+    const canWrite = tools?.some((t) => ['write_file', 'edit_file', 'bash'].includes(t)) ?? false;
+    const hasWeb = tools?.includes('web_fetch') ?? false;
+    if (canWrite) return hasWeb ? '可写文件（全工具）' : '可写文件';
+    return hasWeb ? '只读 + web' : '只读';
+  };
+
+  // 生成 agent 列表描述（只列出可自动委派子Agent，与 agent-tool 一致）
   const registeredAgents = agentRegistry.getAll();
-  const agentList = registeredAgents
-    .map((a) => {
-      const sourceTag = a.source === 'builtin' ? '' : ` (${a.source})`;
-      const brief = a.instructions.split('\n')[0]?.slice(0, 80) ?? '';
-      return `- **${a.agentType}**${sourceTag}: ${brief}`;
-    })
-    .join('\n');
+  const delegatableAgents = registeredAgents.filter((a) => {
+    const metadata = a.metadata as Record<string, unknown> | undefined;
+    return metadata?.isSubAgentAvailable === true;
+  });
+  const agentList = delegatableAgents.length > 0
+    ? delegatableAgents
+        .map((a) => {
+          const sourceTag = a.source === 'builtin' ? '' : ` (${a.source})`;
+          const brief = a.instructions.split('\n')[0]?.slice(0, 80) ?? '';
+          const tools = a.tools?.length ? a.tools.join(', ') : '（无工具）';
+          return `- **${a.agentType}**${sourceTag}: ${brief}\n  工具：${tools} | 能力：${deriveCapability(a.tools)}`;
+        })
+        .join('\n')
+    : '（当前无可自动委派子Agent）';
 
   return tool({
     description: `Run multiple sub-agents in PARALLEL to handle independent tasks simultaneously.
@@ -111,7 +127,9 @@ Use this when you need to:
 - Investigate several questions simultaneously
 - Analyze different aspects of a problem concurrently
 
-IMPORTANT: Tasks must be INDEPENDENT. If tasks depend on each other, use the regular 'agent' tool sequentially.
+IMPORTANT: Tasks must be INDEPENDENT. Check the todos list: if any of these tasks have 'blockedBy' or 'depends on' dependencies, they are NOT independent and must be executed sequentially using the regular 'agent' tool.
+
+Choose agentType EXPLICITLY for each task by capability — the system does NOT auto-route.
 
 Available agents:
 ${agentList}
@@ -147,6 +165,24 @@ Results are collected and returned together with labels for easy identification.
           results: [],
           status: 'failed' as const,
         };
+      }
+
+      // 执行防护（设计 §1.3 执行防护层）：有 blockedBy 依赖的任务不能并行执行——
+      // 命中即返回失败 + 降级指导，系统不执行模型的错误并行决策。
+      const todoStore = config.todoStore;
+      if (todoStore) {
+        const blockedTasks = tasks
+          .map((t) => (t.todoId ? todoStore.getTodo(t.todoId) : undefined))
+          .filter((t): t is NonNullable<typeof t> => !!t && t.blockedBy.length > 0);
+        if (blockedTasks.length > 0) {
+          return {
+            success: false,
+            summary: `以下任务存在依赖，无法并行执行：${blockedTasks.map((t) => t.subject).join('、')}。请使用 agent 工具按顺序执行。`,
+            durationMs: Date.now() - startTime,
+            results: [],
+            status: 'failed' as const,
+          };
+        }
       }
 
       // 嵌套防护说明：一层子 Agent 由结构保证——resolveToolsForAgent
@@ -327,6 +363,7 @@ async function executeSingleTask(
       toolCallId: taskToolCallId,
       todoStore: config.todoStore,
       todoId: taskInput.todoId ?? config.todoId,
+      pendingArchiveRetries: config.pendingArchiveRetries,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,
@@ -353,6 +390,25 @@ async function executeSingleTask(
       context,
       taskInput.task
     );
+
+    // P0 交付物校验（§1.3 待设计对齐）：该任务成功但无实质交付物 → 视为该任务失败，
+    // 保持部分失败隔离（不影响并行批次其他任务）；buildParallelSummary 会列入失败组，
+    // 主Agent 据此决定重委派或透明说明。
+    if (result.success && !isSubstantiveDeliverable(result.summary)) {
+      return {
+        label: taskLabel,
+        agentType: routeDecision.definition.agentType,
+        result: {
+          success: false,
+          summary: `子Agent 未返回实质交付物（只有过程日志或空结果）`,
+          durationMs: result.durationMs,
+          stepsExecuted: result.stepsExecuted,
+          toolsUsed: result.toolsUsed,
+          error: 'no deliverable',
+          status: 'failed',
+        },
+      };
+    }
 
     return {
       label: taskLabel,

@@ -59,219 +59,47 @@ describe('subagents/router', () => {
       });
     });
 
-    describe('auto-routing based on task keywords', () => {
-      it('should auto-route to explore for "find" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'find the main entry file' },
-          createMockContext()
-        );
-
-        expect(result.type).toBe('named');
-        expect(result.definition.agentType).toBe('explore');
-        expect(result.reason).toContain('explore');
+    describe('untyped agentType (LLM 自主决策)', () => {
+      it('should NOT auto-route by keywords — always falls back to general-purpose', () => {
+        const cases = [
+          'find the main entry file',
+          'locate the config file',
+          'search for the API endpoint',
+          'investigate the authentication flow',
+          'analyze the performance bottleneck',
+          'plan the new feature implementation',
+          'design the database schema',
+          '查找主入口文件',
+          '调研认证流程的现状',
+          '规划新功能的实现步骤',
+          'do something random',
+        ];
+        for (const task of cases) {
+          const result = resolveAgentRoute({ task }, createMockContext());
+          expect(result.type).toBe('general');
+          expect(result.definition.agentType).toBe('general-purpose');
+          expect(result.reason).toContain('Default');
+        }
       });
 
-      it('should auto-route to explore for "locate" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'locate the config file' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('explore');
+      it('should NOT route to plan for "continue"/"follow up" or large parent message count', () => {
+        const eachCase: Array<[string, AgentExecutionContext]> = [
+          ['continue with the previous work', createMockContext()],
+          ['follow up on the investigation', createMockContext()],
+          [
+            'do something',
+            {
+              ...createMockContext(),
+              parentMessages: Array(10).fill({ role: 'user', parts: [] }),
+            },
+          ],
+        ];
+        for (const [task, context] of eachCase) {
+          const result = resolveAgentRoute({ task }, context);
+          expect(result.type).toBe('general');
+          expect(result.definition.agentType).toBe('general-purpose');
+        }
       });
-
-      it('should auto-route to explore for "search" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'search for the API endpoint' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('explore');
-      });
-
-      it('should auto-route to research for "investigate" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'investigate the authentication flow' },
-          createMockContext()
-        );
-
-        expect(result.type).toBe('named');
-        expect(result.definition.agentType).toBe('research');
-        expect(result.reason).toContain('research');
-      });
-
-      it('should auto-route to research for "analyze" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'analyze the performance bottleneck' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('research');
-      });
-
-      it('should auto-route to plan for "plan" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'plan the new feature implementation' },
-          createMockContext()
-        );
-
-        expect(result.type).toBe('named');
-        expect(result.definition.agentType).toBe('plan');
-        expect(result.reason).toContain('plan');
-      });
-
-      it('should auto-route to plan for "design" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'design the database schema' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('plan');
-      });
-
-      it('should auto-route to plan for "architecture" keyword', () => {
-        const result = resolveAgentRoute(
-          { task: 'architecture for the new module' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('plan');
-      });
-
-      it('should fallback to general-purpose for generic task', () => {
-        const result = resolveAgentRoute(
-          { task: 'do something random' },
-          createMockContext()
-        );
-
-        expect(result.type).toBe('general');
-        expect(result.definition.agentType).toBe('general-purpose');
-        expect(result.reason).toContain('Default');
-      });
-
-      it('should match keywords case-insensitively', () => {
-        const result = resolveAgentRoute(
-          { task: 'FIND the config file' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('explore');
-      });
-    });
-
-    describe('parent context detection', () => {
-      it('should route to plan when task mentions "continue"', () => {
-        const result = resolveAgentRoute(
-          { task: 'continue with the previous work' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('plan');
-        expect(result.reason).toContain('parent context');
-      });
-
-      it('should route to plan when task mentions "follow up"', () => {
-        const result = resolveAgentRoute(
-          { task: 'follow up on the investigation' },
-          createMockContext()
-        );
-
-        expect(result.definition.agentType).toBe('plan');
-      });
-
-      it('should route to plan when messages exceed threshold', () => {
-        const context = {
-          ...createMockContext(),
-          parentMessages: Array(10).fill({ role: 'user', parts: [] }),
-        };
-        const result = resolveAgentRoute(
-          { task: 'do something' },
-          context
-        );
-
-        // Should route to plan because of message count
-        expect(result.definition.agentType).toBe('plan');
-        expect(result.reason).toContain('parent context');
-      });
-
-      it('should not route to plan for small message count', () => {
-        const context = {
-          ...createMockContext(),
-          parentMessages: [{ id: 'msg-1', role: 'user' as const, parts: [] }],
-        };
-        const result = resolveAgentRoute(
-          { task: 'do something random' },
-          context
-        );
-
-        // Should fallback to general since no keywords match and small messages
-        expect(result.type).toBe('general');
-      });
-    });
-  });
-
-  describe('task classification functions', () => {
-    it('should classify "where is" as explore task', () => {
-      const result = resolveAgentRoute(
-        { task: 'where is the main function?' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('explore');
-    });
-
-    it('should classify "how do i find" as explore task', () => {
-      const result = resolveAgentRoute(
-        { task: 'how do i find the error source?' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('explore');
-    });
-
-    it('should classify "deep dive" as research task', () => {
-      const result = resolveAgentRoute(
-        { task: 'deep dive into the caching mechanism' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('research');
-    });
-
-    it('should classify "study" as research task', () => {
-      const result = resolveAgentRoute(
-        { task: 'study the error patterns' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('research');
-    });
-
-    it('should classify "how should i" as plan task', () => {
-      const result = resolveAgentRoute(
-        { task: 'how should i structure the API?' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('plan');
-    });
-
-    it('should classify "implement" as plan task', () => {
-      const result = resolveAgentRoute(
-        { task: 'implement the login feature' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('plan');
-    });
-
-    it('should classify "strategy" as plan task', () => {
-      const result = resolveAgentRoute(
-        { task: 'strategy for handling errors' },
-        createMockContext()
-      );
-
-      expect(result.definition.agentType).toBe('plan');
     });
   });
 

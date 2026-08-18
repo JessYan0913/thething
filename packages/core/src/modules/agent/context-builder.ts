@@ -18,10 +18,11 @@ export function buildSubAgentPrompt(
     prompt += `\n\n## Available Tools\nYou can use: ${definition.tools.join(', ')}`;
   }
 
-  // 添加输出指导
+  // 添加输出指导（P0 交付物契约：以最终结论收尾，不返回过程叙述）
   prompt += `\n\n## Output Guidelines
 - Be concise and focused on actionable results
 - State findings and conclusions directly with supporting evidence
+- END your reply with a "## Final Conclusion" section: state what was accomplished and the key evidence. This is the deliverable the parent agent reads — return the RESULT, not your process steps or tool call logs.
 - The parent agent knows the task context — no need to re-explain
 - If more details are needed, the parent agent will ask follow-up questions`;
 

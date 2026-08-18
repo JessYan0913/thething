@@ -11,50 +11,15 @@ import { logger } from '../../primitives/logger';
 const GENERAL_PURPOSE_FALLBACK: AgentDefinition = GENERAL_AGENT;
 
 // ============================================================
-// Task Keywords for Auto-routing
-// ============================================================
-
-const EXPLORE_KEYWORDS = ['find', 'locate', 'search', 'explore', 'where is', 'how do i find', 'look for', 'show me'];
-const RESEARCH_KEYWORDS = ['research', 'investigate', 'analyze', 'deep dive', 'study', 'examine', 'research on'];
-const PLAN_KEYWORDS = ['plan', 'design', 'architecture', 'how should i', 'implement', 'strategy', 'approach'];
-
-// ============================================================
-// Task Classification Functions
-// ============================================================
-
-function isExploreTask(task: string): boolean {
-  const lower = task.toLowerCase();
-  return EXPLORE_KEYWORDS.some((kw) => lower.includes(kw));
-}
-
-function isResearchTask(task: string): boolean {
-  const lower = task.toLowerCase();
-  return RESEARCH_KEYWORDS.some((kw) => lower.includes(kw));
-}
-
-function isPlanTask(task: string): boolean {
-  const lower = task.toLowerCase();
-  return PLAN_KEYWORDS.some((kw) => lower.includes(kw));
-}
-
-function needsParentContext(task: string, context: AgentExecutionContext): boolean {
-  if (task.toLowerCase().includes('continue') || task.toLowerCase().includes('follow up')) {
-    return true;
-  }
-  if (context.parentMessages.length > 6) {
-    return true;
-  }
-  return false;
-}
-
-// ============================================================
 // Agent Route Resolution
 // ============================================================
 
 /**
  * 解析 Agent 路由
  *
- * 根据输入参数和上下文决定使用哪个 Agent。
+ * 设计原则：系统只提供运行环境，不控制 LLM 的决策。
+ * 关键词自动路由（explore/research/plan）与父上下文启发式均已移除——
+ * 由 LLM 根据工具描述里的各子Agent 适用场景/工具/能力边界自行选择 agentType。
  *
  * @param input 输入参数（agentType 和 task）
  * @param context 执行上下文
@@ -84,36 +49,7 @@ export function resolveAgentRoute(
     return { type: 'general', definition: GENERAL_PURPOSE_FALLBACK, reason: `Unknown type: ${input.agentType}` };
   }
 
-  // 2. 自动路由（基于任务关键词）
-  if (isExploreTask(input.task)) {
-    const exploreDef = registry.get('explore');
-    if (exploreDef) {
-      return { type: 'named', definition: exploreDef, reason: 'Auto: explore keywords' };
-    }
-  }
-
-  if (isResearchTask(input.task)) {
-    const researchDef = registry.get('research');
-    if (researchDef) {
-      return { type: 'named', definition: researchDef, reason: 'Auto: research keywords' };
-    }
-  }
-
-  if (isPlanTask(input.task)) {
-    const planDef = registry.get('plan');
-    if (planDef) {
-      return { type: 'named', definition: planDef, reason: 'Auto: plan keywords' };
-    }
-  }
-
-  // 3. 检查是否需要父上下文
-  if (needsParentContext(input.task, context)) {
-    const planDef = registry.get('plan');
-    if (planDef) {
-      return { type: 'named', definition: planDef, reason: 'Needs parent context' };
-    }
-  }
-
-  // 4. 默认回退到 general-purpose
+  // 2. 未指定 agentType → LLM 已通过工具描述获得各类型能力信息；
+  //    若 LLM 决定委托会显式传 agentType，留空即表示走通用执行（general-purpose）。
   return { type: 'general', definition: GENERAL_PURPOSE_FALLBACK, reason: 'Default fallback' };
 }
