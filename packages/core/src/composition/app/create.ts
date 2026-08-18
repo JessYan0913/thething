@@ -14,7 +14,7 @@ import type { CreateAgentOptions, CreateAgentResult } from './types'
 import { resolveAgentConfig } from './resolve-agent-config'
 import { createSessionState } from '../../modules/session'
 import { createLanguageModel, createModelProvider } from '../../services/model'
-import { getModelOutputTokens } from '../../services/model/capabilities'
+import { getModelOutputTokens, getModelContextLimit } from '../../services/model/capabilities'
 import { createAgentPipeline, createDefaultStopConditions } from '../../modules/agent-control'
 import { catchAllApproval } from '../../modules/agent-control/tool-approval'
 import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-approval'
@@ -68,6 +68,12 @@ function formatMcpServerTools(
 
   return lines.join('\n')
 }
+
+// 子 Agent 总预算随模型上下文伸缩：isTokenBudgetExceeded 是跨步骤累计指标，
+// 每步重发累积上下文，故预算 = 模型上下文窗口 × 倍数（不能直接等于窗口，那会比原 200k 更小）。
+// 默认上下文窗口 128k → 384k（比原 200k 更宽，给探索+结论留足空间）；
+// 1M 上下文模型 → 3M 累计（原 200k 对能力强的模型过紧，Explore 子Agent 探索后常截断在结论前）。
+const SUBAGENT_TOKEN_BUDGET_CONTEXT_MULTIPLIER = 3
 
 /**
  * 创建 Agent。消费 AppContext，不再内部重新加载资源。
@@ -308,6 +314,13 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     compactionConfig: modules.compaction ? compactionCfg : undefined,
     // 子 Agent 输出预算上限（模型条目 outputTokens，缺省回落默认）
     maxOutputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
+    // 子 Agent 总预算上限：随模型上下文伸缩。getModelContextLimit 解析（session 的
+    // maxContextTokens 作 override 保证与父 Agent 同一上下文口径），× 倍数构成累计成本阀。
+    maxTotalTokens:
+      getModelContextLimit(
+        modelConfig.modelName || behavior.modelAliases.default?.model,
+        sessionOptions.maxContextTokens,
+      ) * SUBAGENT_TOKEN_BUDGET_CONTEXT_MULTIPLIER,
     cronStore: context.runtime.cronStore ?? undefined,
     tasksDir: context.runtime.tasksDir,
     userId,

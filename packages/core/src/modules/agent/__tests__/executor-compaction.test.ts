@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSubAgentPrepareStep, isTokenBudgetExceeded } from '../executor';
+import { createSubAgentPrepareStep, isTokenBudgetExceeded, extractSubAgentDeliverable, hasFinalConclusion } from '../executor';
 import { DEFAULT_COMPACTION_CONFIG } from '../../compaction/types';
 import type { ModelMessage } from 'ai';
 
@@ -93,5 +93,49 @@ describe('isTokenBudgetExceeded', () => {
       steps: [{ usage: undefined } as never, stepWithUsage(5000)],
     } as never);
     expect(result).toBe(false);
+  });
+});
+
+describe('extractSubAgentDeliverable（只收结尾结论，2026-08-18）', () => {
+  it('提取最后一个 "## Final Conclusion" 之后的内容作为交付物，丢弃过程叙述', () => {
+    const narration = '让我先搜索定义位置。\n我再读一下文件确认。\n';
+    const conclusion = 'todo_write 定义在 todo-write-tool.ts，通过 index.ts 装配。';
+    const deliverable = extractSubAgentDeliverable(`${narration}## Final Conclusion\n${conclusion}`);
+    expect(deliverable).toBe(conclusion);
+    expect(deliverable).not.toContain('让我先搜索');
+  });
+
+  it('标题后无文本时返回空（触发 fallback），不返回头部标题', () => {
+    expect(extractSubAgentDeliverable('过程叙述 ## Final Conclusion')).toBe('');
+  });
+
+  it('无 "## Final Conclusion" 标题时回退到全文原文（不劣化）', () => {
+    const text = '子Agent 直接给出了结论但没写标题。';
+    expect(extractSubAgentDeliverable(text)).toBe(text);
+  });
+
+  it('多个标题时取最后一个（结论段在末尾）', () => {
+    const early = '中间提到一个 Final Conclusion 段落';
+    const final_ = '最终结论内容';
+    const deliverable = extractSubAgentDeliverable(
+      `开头\n## Final Conclusion\n${early}\n## Final Conclusion\n${final_}`,
+    );
+    expect(deliverable).toBe(final_);
+  });
+});
+
+describe('hasFinalConclusion（结论交付契约锚点，2026-08-18）', () => {
+  it('含 "## Final Conclusion" 标题时为 true', () => {
+    expect(hasFinalConclusion('过程叙述\n## Final Conclusion\n结论')).toBe(true);
+  });
+
+  it('只有残片/过程叙述、无标题时为 false（触发强制摘要兜底）', () => {
+    expect(hasFinalConclusion('.**')).toBe(false);
+    expect(hasFinalConclusion('')).toBe(false);
+    expect(hasFinalConclusion('让我先搜索文件。')).toBe(false);
+  });
+
+  it('子Agent 直接产出结论但没写标题也为 false（未按契约交付 → 兜底保证结论）', () => {
+    expect(hasFinalConclusion('write 工具定义在 write.ts。')).toBe(false);
   });
 });

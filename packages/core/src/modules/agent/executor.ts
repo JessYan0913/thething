@@ -8,7 +8,6 @@ import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
 import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
 import { triggerArchiveForTodos } from '../agent-control/archiver';
-import { getDefaultOutputTokens } from '../../services/model/capabilities';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -49,6 +48,32 @@ export function createSubAgentPrepareStep(
 export function isTokenBudgetExceeded(maxTotalTokens: number): StopCondition<ToolSet> {
   return ({ steps }) =>
     steps.reduce((sum, step) => sum + Number(step.usage?.totalTokens ?? 0), 0) >= maxTotalTokens;
+}
+
+/**
+ * 提取子 Agent 交付物（结论）。
+ * Output Guidelines 要求子Agent 以 "## Final Conclusion" 标题收尾，该段是父Agent 要读的结论。
+ * textContent 是全程所有 text-delta 的拼接，含过程叙述；这里提取最后一个 Final Conclusion 段
+ * 作为交付物，避免把过程日志原样返回父Agent。子Agent 未按指令写标题时回退到全文原文（不劣化）。
+ *
+ * @internal 导出仅用于测试
+ */
+export function extractSubAgentDeliverable(textContent: string): string {
+  const FINAL_CONCLUSION_HEADING = '## Final Conclusion';
+  const conclusionStart = textContent.lastIndexOf(FINAL_CONCLUSION_HEADING);
+  if (conclusionStart === -1) return textContent;
+  return textContent.slice(conclusionStart + FINAL_CONCLUSION_HEADING.length).trim();
+}
+
+/**
+ * 判断子 Agent 是否按输出契约交付了结论。以 "## Final Conclusion" 标题为客观锚点，
+ * 不判内容质量（符合"系统不替 LLM 判定质量"哲学）。用于决定是否触发强制摘要兜底：
+ * 子 Agent 做了工具调用但没交付结论（残片/纯过程叙述）时，必须兜底保证结论。
+ *
+ * @internal 导出仅用于测试
+ */
+export function hasFinalConclusion(textContent: string): boolean {
+  return textContent.includes('## Final Conclusion');
 }
 
 // ============================================================
@@ -113,8 +138,9 @@ export async function executeRoutedAgent(
       tools: context.parentTools,
       activeTools,
       stopWhen,
-      // 输出预算上限：父级穿下来的 outputTokens，缺省回落默认（防 thinking 挤爆输出静默截断）
-      maxOutputTokens: context.maxOutputTokens ?? getDefaultOutputTokens(),
+      // 设计决策（2026-08-18）：不设 maxOutputTokens 输出上限——让 provider 走自身默认，
+      // 不强制截断子 Agent 的结论文本。实测子 Agent 输出仅 1.7k–4.3k，从没触到旧 8000 上限；
+      // 输出长度交给 LLM 自主（上下文由 Layer 2 落盘管理）。若未来某 thinking 模型需护栏再回归。
       // Layer 2 压缩：每步 API 调用前将旧工具输出替换为结构化元信息
       ...(context.compactionConfig
         ? { prepareStep: createSubAgentPrepareStep(context.compactionConfig) }
@@ -201,10 +227,11 @@ export async function executeRoutedAgent(
         }
       : undefined;
 
-    // 10. 强制摘要：当 agent 没有产出文本时，追加一次无工具的 LLM 调用写总结。
-    // 这是子 Agent 返回值的最后防线——没有它，父 Agent 只能拿到
-    // "completed N steps" 的零信息 fallback，子 Agent 的工作全部丢失。
-    if (!textContent && stepsExecuted > 0) {
+    // 10. 强制摘要：子 Agent 做了工具调用但没按契约交付 ## Final Conclusion（可能只有残片、
+    // 纯过程叙述，或被截断）时，追加一次无工具的 LLM 调用，把收集到的工具结果汇总成结论。
+    // 这是子 Agent 返回值的最后防线——没有它，父 Agent 只能拿到 "completed N steps" 的零信息
+    // fallback 或残片文本，子 Agent 的工作全部丢失。有 Final Conclusion 时信任子 Agent 自身输出。
+    if (stepsExecuted > 0 && !hasFinalConclusion(textContent)) {
       try {
         // 将工具结果格式化为上下文，让摘要调用能看到收集到的数据
         const toolContext = toolResults
@@ -214,7 +241,7 @@ export async function executeRoutedAgent(
 
         const summaryPrompt =
           `You just completed ${stepsExecuted} tool calls (${[...new Set(toolsUsed)].join(', ')}). ` +
-          `However, you did not produce any text output during those calls. ` +
+          `However, you did not produce a final conclusion in the required ## Final Conclusion format. ` +
           `Here are the results you gathered:\n\n${toolContext}\n\n` +
           `Based on the above information, write a concise summary of your findings.`;
 
@@ -237,14 +264,19 @@ export async function executeRoutedAgent(
       }
     }
 
-    // 12. 构建结果
+    // 12. 构建结果。
+    // extractSubAgentDeliverable 提取 Final Conclusion 段作为交付物（见该函数注释），
+    // 避免把全程过程叙述原样返回父Agent；未写标题时回退到全文原文。若上面触发了强制摘要，
+    // 此时 textContent 已被替换为生成的结论（无标题 → 回退返回全文即该结论），保证有实质交付。
+    const deliverable = extractSubAgentDeliverable(textContent);
+
     const fallbackSummary = stepsExecuted > 0
       ? `Agent completed ${stepsExecuted} tool calls using ${[...new Set(toolsUsed)].join(', ')}. No text summary was produced.`
       : 'Agent completed with no text output.';
 
     const result: AgentExecutionResult = {
       success: true,
-      summary: textContent || fallbackSummary,
+      summary: deliverable || fallbackSummary,
       durationMs: duration,
       tokenUsage,
       stepsExecuted,

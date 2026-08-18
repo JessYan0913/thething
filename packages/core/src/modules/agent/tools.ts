@@ -172,8 +172,9 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     configDir: config.sessionState.layout.configDir,
     dynamicReload: config.dynamicReload ?? false,
     compactionConfig: config.compactionConfig,
-    // 子 Agent 总 token 预算上限（经 stopWhen 用每步真实 usage 累计判断）
-    maxTotalTokens: 200_000,
+    // 子 Agent 总 token 预算上限（随模型上下文伸缩；create.ts loadAllTools 计算传入，
+    // 缺省未传时 executor 不设 stopWhen 预算闸门）
+    maxTotalTokens: config.maxTotalTokens,
     // 子 Agent 输出预算上限（父 Agent 穿下来的 outputTokens，缺省回落默认）
     maxOutputTokens: config.maxOutputTokens,
   }
