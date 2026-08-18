@@ -164,7 +164,7 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     name: "recalled-memory",
     create: async (options) => {
       if (options.memoryBaseDir) {
-        const section = await createRecalledMemorySection(options.memoryBaseDir, options.memoryQuery);
+        const section = await createRecalledMemorySection(options.memoryBaseDir, options.memoryQuery, options.memoryTopK);
         return section ?? { name: "recalled-memory", content: null, cacheStrategy: "dynamic" as const, priority: 44 };
       }
       return { name: "recalled-memory", content: null, cacheStrategy: "dynamic" as const, priority: 44 };

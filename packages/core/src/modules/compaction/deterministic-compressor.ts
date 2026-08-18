@@ -7,7 +7,8 @@
 // 策略：
 // 1. 保留首条 user 消息（任务目标）
 // 2. 保留最后 N 条消息（当前上下文）
-// 3. 中间消息提取关键信息：文件路径、命令、决策
+// 3. 中间消息组织信息：文件路径、命令、错误 + 真实文本按序摘录。
+//    C9：不替 LLM 判断"哪些语句是决策"，只组织客观信息结构。
 //
 // 仅被 lifecycle.ts 的 applyEmergencyCompression 内部使用，不对外导出。
 //
@@ -87,12 +88,13 @@ export async function compressMessagesDeterministic(
 interface KeyInformation {
   files: Set<string>;
   commands: string[];
-  decisions: string[];
   errors: string[];
+  /** 中间消息的非 tool 文本摘录（按时间顺序），系统只组织不判断"哪些是决策" */
+  excerpts: string[];
 }
 
 async function extractKeyInformation(messages: import('ai').ModelMessage[]): Promise<KeyInformation> {
-  const info: KeyInformation = { files: new Set<string>(), commands: [], decisions: [], errors: [] };
+  const info: KeyInformation = { files: new Set<string>(), commands: [], errors: [], excerpts: [] };
 
   const entries = extractActionLog(messages);
   const filePathPattern = /[\w\/\-\.]+\.(ts|tsx|js|jsx|py|md|json|yml|yaml|toml|lock|html|css|scss|vue|go|rs|java|kt|swift|c|cpp|h|hpp|sh|bash|ps1|txt|log|env|config|xml|sql|proto|graphql)/gi;
@@ -117,21 +119,17 @@ async function extractKeyInformation(messages: import('ai').ModelMessage[]): Pro
       continue;
     }
 
-    const text = e.text ?? '';
-    let m: RegExpMatchArray | null;
-    while ((m = filePathPattern.exec(text)) !== null) info.files.add(m[0]);
-    if (e.role === 'assistant') {
-      const decisionPatterns = [
-        /(?:decided to|选择|决定)[^。\n]{10,100}/gi,
-        /(?:because|因为|由于)[^。\n]{10,100}/gi,
-        /(?:will|将要|需要)[^。\n]{10,100}/gi,
-      ];
-      for (const pattern of decisionPatterns) {
-        const matches = text.match(pattern);
-        if (matches) matches.slice(0, 2).forEach((d) => info.decisions.push(d.trim()));
-      }
+    const text = (e.text ?? '').trim();
+    if (text) {
+      // C9：不再用正则抽取"决策"关键词（那是系统替 LLM 判断哪些语句重要）。
+      // 改为组织结构化摘录，保留真实文本由 LLM 自行判断。
+      let fm: RegExpMatchArray | null;
+      while ((fm = filePathPattern.exec(text)) !== null) info.files.add(fm[0]);
+      info.excerpts.push(text.slice(0, 200));
     }
   }
+  // 截断摘录条数，保持 O(1) 摘要规模（护栏，非筛选）
+  info.excerpts = info.excerpts.slice(0, 8);
 
   return info;
 }
@@ -161,9 +159,9 @@ function formatSummary(info: KeyInformation, messageCount: number): string {
     info.commands.slice(0, 3).forEach((cmd) => { parts.push(`  - ${cmd}`); });
   }
 
-  if (info.decisions.length > 0) {
-    parts.push('关键决策:');
-    info.decisions.slice(0, 5).forEach((dec) => { parts.push(`  - ${dec}`); });
+  if (info.excerpts.length > 0) {
+    parts.push('对话摘录:');
+    info.excerpts.slice(0, 5).forEach((ex) => { parts.push(`  - ${ex}`); });
   }
 
   if (info.errors.length > 0) {

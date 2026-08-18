@@ -25,6 +25,7 @@ import {
   MEMORY_MD_MAX_SIZE_KB,
   MAX_ENTRYPOINT_LINES,
   MAX_ENTRYPOINT_BYTES,
+  DEFAULT_MEMORY_TOP_K,
 } from './defaults';
 
 /**
@@ -70,6 +71,13 @@ export interface MemoryLimitsConfig {
   entrypointMaxLines: number;
   /** Memory 入口文件最大字节 */
   entrypointMaxBytes: number;
+  /**
+   * 每轮注入系统提示词的记忆条数上限（按三因子分数取前 N）。
+   * 仅作为"规模超限时的可用呈现护栏"：记忆量 ≤ 此值时全量注入，
+   * 超限才截断，且截断时在提示词中告知 LLM 省略了多少条。
+   * 由配置决定而非硬编码（架构审查 C1）。
+   */
+  memoryTopK: number;
 }
 
 /**
@@ -258,6 +266,7 @@ export function buildBehaviorConfig(partial?: Partial<BehaviorConfig>): Behavior
       mdMaxSizeKb: MEMORY_MD_MAX_SIZE_KB,
       entrypointMaxLines: MAX_ENTRYPOINT_LINES,
       entrypointMaxBytes: MAX_ENTRYPOINT_BYTES,
+      memoryTopK: DEFAULT_MEMORY_TOP_K,
     },
   };
 }

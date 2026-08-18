@@ -53,12 +53,23 @@ const MEMORY_EXTRACT_PROMPT = `从下面的对话历史中，提取关于用户�
 // 会话 → 提取输入文本
 // ============================================================
 
-const MAX_USER_MESSAGES = 12
-const MAX_MESSAGE_CHARS = 300
+/**
+ * C12（架构审查）：上限仅作护栏，不主动裁剪语义。
+ * 条数/单条长度上限由调用方配置决定（默认 12 条 / 每条 300 字），非硬编码。
+ * 截断发生时明确标记（单条省略加 …、整段省略加提示），让提取模型知道
+ * 它看到的只是部分历史，据此判断是否需要更完整的历史。
+ */
+const DEFAULT_MAX_USER_MESSAGES = 12
+const DEFAULT_MAX_MESSAGE_CHARS = 300
 
 /** 从会话消息中提取用户文本消息，拼接为提取输入（忽略工具调用/附件） */
-function formatConversationForExtraction(messages: Array<{ role: string; parts?: Array<{ type: string; text?: string }> }>): string {
-  const lines: string[] = []
+function formatConversationForExtraction(
+  messages: Array<{ role: string; parts?: Array<{ type: string; text?: string }> }>,
+  maxUserMessages = DEFAULT_MAX_USER_MESSAGES,
+  maxMessageChars = DEFAULT_MAX_MESSAGE_CHARS,
+): string {
+  // 先数出全部带文本的用户消息数，用于在省略时告知提取器
+  const allUserTexts: string[] = []
   for (const m of messages) {
     if (m.role !== 'user') continue
     const texts = (m.parts ?? [])
@@ -66,9 +77,17 @@ function formatConversationForExtraction(messages: Array<{ role: string; parts?:
       .map(p => p.text.trim())
       .filter(Boolean)
     if (texts.length === 0) continue
-    const joined = texts.join(' ').slice(0, MAX_MESSAGE_CHARS)
-    lines.push(`用户: ${joined}`)
-    if (lines.length >= MAX_USER_MESSAGES) break
+    allUserTexts.push(texts.join(' '))
+  }
+
+  const included = allUserTexts.slice(0, maxUserMessages).map(full =>
+    full.length > maxMessageChars ? `${full.slice(0, maxMessageChars)}…` : full,
+  )
+
+  const lines = included.map(t => `用户: ${t}`)
+  const skippedMessages = allUserTexts.length - included.length
+  if (skippedMessages > 0) {
+    lines.push(`(注：会话共 ${allUserTexts.length} 条用户消息，此处仅取前 ${included.length} 条；其余 ${skippedMessages} 条未纳入。)`)
   }
   return lines.join('\n')
 }
@@ -114,6 +133,10 @@ export interface ExtractMemoriesOptions {
   model: LanguageModelV3
   /** 最多处理最近 N 个会话（按最近更新排序），默认 10 */
   maxConversations?: number
+  /** 单会话内参与提取的用户消息条数上限（护栏，默认 12）；超限在提取文本中注明省略条数 */
+  maxUserMessages?: number
+  /** 单条用户消息参与提取的字符数上限（护栏，默认 300）；超限以 … 标记 */
+  maxMessageChars?: number
 }
 
 export interface ExtractMemoriesResult {
@@ -142,7 +165,11 @@ export async function extractMemoriesFromHistory(
   for (const conversation of conversations) {
     try {
       const messages = opts.dataStore.messageStore.getMessagesByConversation(conversation.id)
-      const conversationText = formatConversationForExtraction(messages)
+      const conversationText = formatConversationForExtraction(
+        messages,
+        opts.maxUserMessages,
+        opts.maxMessageChars,
+      )
       if (!conversationText) continue
 
       result.conversationsScanned++

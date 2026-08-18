@@ -90,3 +90,6 @@ export const MAX_ENTRYPOINT_LINES = 200;
 
 /** Memory 入口文件最大字节（25KB） */
 export const MAX_ENTRYPOINT_BYTES = 25_000;
+
+/** 每轮注入系统提示词的记忆条数默认上限（C1：可配置上限护栏，非硬编码筛选） */
+export const DEFAULT_MEMORY_TOP_K = 20;

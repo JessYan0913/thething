@@ -118,8 +118,14 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   const messagesWithAttachments = messages
 
-  // 最后一条用户消息文本，作为记忆 relevance 打分 query（从后往前找）
+  // 记忆 relevance 打分 query。
+  // C5（架构审查）：不把查询钉死在"最后一条用户消息"——那会让记忆召回只看
+  // 最近一句、遗漏更早承载关键背景的消息。这里聚合本次对话全部用户消息文本
+  // 作为检索 hint，仅作有界护栏（MAX_MEMORY_QUERY_CHARS 上限；截断处省略标记）。
+  // 记忆本身仍全量进入召回排序，query 只影响 relevance 分。
+  const MAX_MEMORY_QUERY_CHARS = 800
   const memoryQuery = (() => {
+    const userTexts: string[] = []
     for (let i = messagesWithAttachments.length - 1; i >= 0; i--) {
       const m = messagesWithAttachments[i]
       if (m.role !== 'user') continue
@@ -127,9 +133,14 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
         .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
         .map(p => p.text)
         .filter(Boolean)
-      if (texts.length > 0) return texts.join('\n')
+      if (texts.length > 0) userTexts.push(texts.join('\n'))
+      if (userTexts.length >= 20) break
     }
-    return ''
+    userTexts.reverse()
+    const joined = userTexts.join('\n')
+    return joined.length > MAX_MEMORY_QUERY_CHARS
+      ? `${joined.slice(0, MAX_MEMORY_QUERY_CHARS)}…`
+      : joined
   })()
 
   // ============================================================
@@ -217,6 +228,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     excludeSections: selectedAgentDef ? ['identity', 'capabilities'] : undefined,
     memoryBaseDir,
     memoryQuery,
+    memoryTopK: behavior.memory?.memoryTopK,
   })
 
   // ============================================================

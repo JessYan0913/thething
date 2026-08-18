@@ -127,13 +127,16 @@ async function checkOrphans(
 
 /**
  * 一致性检测：检查 name/description/content 是否一致
+ *
+ * C6（架构审查）：系统不自动重写 LLM 的产出。description 与 content 第一句
+ * 不一致时只报告问题（附建议），让 Agent 结合来源和上下文决定是否 update
+ * ——不要用正则拼出的字符串静默覆盖 description。
  */
 async function checkConsistency(
   wikiDir: string,
   config: WikiConfig,
 ): Promise<{ issues: LintIssue[]; fixed: number }> {
   const issues: LintIssue[] = []
-  let fixed = 0
   const pages = await readAllPages(wikiDir, config)
 
   for (const page of pages) {
@@ -143,31 +146,20 @@ async function checkConsistency(
       const descLower = page.data.description.toLowerCase()
       const firstLower = firstSentence.toLowerCase()
 
-      // 如果 description 与 content 第一句差异较大，更新 description
+      // 不一致时只报告，不自动改写 description
       if (!descLower.includes(firstLower.slice(0, 10)) && !firstLower.includes(descLower.slice(0, 10))) {
         issues.push({
           type: 'inconsistent',
           severity: 'low',
           pages: [page.filename],
           description: `页面 "${page.data.name}" 的 description 与 content 第一句不一致`,
-          suggestion: '自动修复：更新 description',
+          suggestion: '结合来源和上下文判断，若 description 已过时则用 save_wiki 更新；不要机械照抄第一句',
         })
-
-        // 自动修复
-        const newDesc = firstSentence.length > 80 ? firstSentence.slice(0, 80) + '...' : firstSentence
-        const filePath = path.join(wikiDir, page.filename)
-        const raw = await fs.readFile(filePath, 'utf-8')
-        const updated = raw.replace(
-          `description: ${page.data.description}`,
-          `description: ${newDesc}`,
-        )
-        await fs.writeFile(filePath, updated, 'utf-8')
-        fixed++
       }
     }
   }
 
-  return { issues, fixed }
+  return { issues, fixed: 0 }
 }
 
 // ============================================================
@@ -251,7 +243,7 @@ export async function lintDeterministic(
   // 孤儿检测
   issues.push(...await checkOrphans(wikiDir, config))
 
-  // 一致性检测（含自动修复）
+  // 一致性检测（只报告，不自动重写——C6 由 Agent 决定是否修订）
   const { issues: consistencyIssues } = await checkConsistency(wikiDir, config)
   issues.push(...consistencyIssues)
 
@@ -283,13 +275,10 @@ export async function lintWiki(
     fixed += missing.length
   }
 
-  // 3. 一致性修复
-  const { fixed: consistencyFixed } = await checkConsistency(wikiDir, config)
-  fixed += consistencyFixed
-
-  // 4. 语义检查（需要 LLM）
+  // 3. 语义检查（需要 LLM）
   // 语义问题只报告建议，不自动执行 replace/merge/invalidate。
   // Agent 应结合来源和上下文决定如何修订，避免模型误判造成不可逆覆盖。
+  // （description 一致性已在确定性检查中报告，C6 不自动重写，此处不重复调用。）
   if (model) {
     const semanticIssues = await checkSemantic(wikiDir, model, config)
     allIssues.push(...semanticIssues)

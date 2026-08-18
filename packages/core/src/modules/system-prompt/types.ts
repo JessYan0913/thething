@@ -65,6 +65,12 @@ export interface BuildSystemPromptOptions {
   /** 当前用户消息（用于记忆 relevance 打分） */
   memoryQuery?: string;
 
+  /**
+   * 每轮注入记忆条数上限（C1 可配置上限护栏）。未提供时回落默认（20）。
+   * 记忆量 ≤ 上限全量注入；超限截断时在内容中告知 LLM 省略条数。
+   */
+  memoryTopK?: number;
+
   /** 已连接的 MCP 服务器及工具列表文本（由调用方格式化） */
   mcpServerTools?: string;
 

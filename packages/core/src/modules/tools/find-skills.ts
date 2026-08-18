@@ -24,7 +24,7 @@ const FindSkillsInputSchema = z.object({
     .min(1)
     .max(50)
     .optional()
-    .describe('Maximum number of results to return (default 10)'),
+    .describe('Optional cap on how many results to return. If omitted, ALL matches are returned — the system ranks them by relevance but does not pre-filter; you decide which are relevant.'),
 });
 
 interface FindSkillsMatch {
@@ -74,7 +74,12 @@ Returns matching skills with name, description, and usage triggers. Invoke a fou
     inputSchema: FindSkillsInputSchema,
 
     execute: async ({ query, limit }) => {
-      const topK = limit ?? 10;
+      // 设计决策（C2，2026-08-18）：不默认硬截断到 topK 返回。
+      // find_skills 是 LLM 主动发起的检索——query 由 LLM 提供，返回的是技能
+      // 元数据。默认（LLM 未显式传 limit）返回全部匹配，把"哪些匹配更相关"
+      // 的选择权交还 LLM，系统只提供排序参考。仅当 LLM 显式传 limit 时才按
+      // 其要求做主动裁剪（这是 LLM 自己的选择，非系统预筛）。
+      const maxResults = limit !== undefined && limit > 0 ? limit : undefined;
 
       let skills = options.skills;
       if (options.reloadSkills) {
@@ -94,7 +99,8 @@ Returns matching skills with name, description, and usage triggers. Invoke a fou
 
       matches.sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name));
 
-      const results: FindSkillsMatch[] = matches.slice(0, topK).map(({ skill }) => ({
+      const scored = maxResults === undefined ? matches : matches.slice(0, maxResults);
+      const results: FindSkillsMatch[] = scored.map(({ skill }) => ({
         name: skill.name,
         description: skill.description,
         ...(skill.whenToUse ? { whenToUse: skill.whenToUse } : {}),

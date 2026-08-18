@@ -16,26 +16,22 @@ function userMsg(text: string): ModelMessage {
 }
 
 describe('validateSummaryQuality (语言无关)', () => {
-  const chineseMessages: ModelMessage[] = [
-    userMsg('帮我分析一下这个项目的上下文压缩机制有什么问题'),
-    userMsg('那 token 统计遗漏的问题怎么修比较好？'),
-  ];
-
   it('accepts a valid Chinese summary (no English keyword dependency)', () => {
     const summary =
       '用户询问了项目上下文压缩机制的问题，助手指出了 extractor 键名不匹配和 token 统计遗漏两处缺陷。' +
       '随后讨论深入到修复方案，助手建议在估算时纳入 text 与 tool-call input，最终确定了分步实施计划。';
-    expect(validateSummaryQuality(summary, chineseMessages)).toBe(true);
+    expect(validateSummaryQuality(summary)).toBe(true);
   });
 
   it('rejects a too-short summary', () => {
-    expect(validateSummaryQuality('好的。', chineseMessages)).toBe(false);
+    expect(validateSummaryQuality('好的。')).toBe(false);
   });
 
-  it('rejects a summary that is mostly copied from the original', () => {
-    // 摘要几乎全文复制第一条用户消息 → LCS 占比过高
+  it('C10: 不再因"照抄原文"丢弃摘要（质量由 LLM/用户判断，系统不判"照抄→丢弃"）', () => {
+    // 复制检测已移除：长度足够的摘要即使与消息原文重复也不再被系统拒绝；
+    // 过长仅由调用方按字数截断（资源护栏），不在校验层整条丢弃。
     const copied = '帮我分析一下这个项目的上下文压缩机制有什么问题';
-    expect(validateSummaryQuality(copied, chineseMessages)).toBe(false);
+    expect(validateSummaryQuality(copied)).toBe(true);
   });
 
   it('accepts an English summary as well (language-agnostic)', () => {
@@ -43,7 +39,7 @@ describe('validateSummaryQuality (语言无关)', () => {
     const summary =
       'The user asked for a review of the compaction module. The assistant identified two defects: ' +
       'mismatched extractor keys and missing token accounting, then proposed a staged fix plan.';
-    expect(validateSummaryQuality(summary, enMessages)).toBe(true);
+    expect(validateSummaryQuality(summary)).toBe(true);
   });
 
   // 8.4:结构化任务状态摘要(8-section 风格)应通过验证
@@ -61,7 +57,7 @@ describe('validateSummaryQuality (语言无关)', () => {
       '## 用户明确表达的约束与偏好',
       '用中文回复；不重构无关代码。',
     ].join('\n');
-    expect(validateSummaryQuality(summary, chineseMessages)).toBe(true);
+    expect(validateSummaryQuality(summary)).toBe(true);
   });
 });
 

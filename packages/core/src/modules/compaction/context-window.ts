@@ -7,7 +7,7 @@ import { generateText } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { DataStore } from '../../primitives/datastore/types';
 import { logger } from '../../primitives/logger';
-import { extractMessageText, stripImagesFromMessages } from './token-counter';
+import { stripImagesFromMessages } from './token-counter';
 import { extractActionLog, renderActionLog, renderKeysOnlyActionLog, appendActionLogProvenance } from './action-log';
 
 const SUMMARY_SYSTEM_PROMPT = `你是一个任务型 Agent 的上下文摘要助手。对话即将因超出上下文窗口而被截断，你的摘要将作为唯一的记忆用于继续任务。目标不是复述对话，而是让接手者能无缝继续工作。
@@ -66,14 +66,18 @@ export async function generateAndPersistCheckpointSummary(
     : conversationText;
 
   const summary = await callWithFallback(prompt, context.model, context.fallbackModels);
-  if (!summary || !validateSummaryQuality(summary, stripped)) {
+  if (!summary || !validateSummaryQuality(summary)) {
     return false;
   }
+  // C10 资源护栏：过长摘要截断到上限，保留 LLM 产出（不整条丢弃，不做"照抄→丢弃"判断）。
+  const boundedSummary = summary.length > MAX_SUMMARY_LENGTH
+    ? summary.slice(0, MAX_SUMMARY_LENGTH)
+    : summary;
 
   // 机器生成 provenance 段:keys-only 行动日志。列出曾执行过的工具调用
   // (web_fetch 的 URL / read_file 的 path / bash 的 command 等),让接手模型
   // 知道"这些是远程文件/这些路径怎么找回",不靠 LLM 摘要保留 provenance。
-  const fullSummary = appendActionLogProvenance(summary, stripped);
+  const fullSummary = appendActionLogProvenance(boundedSummary, stripped);
 
   try {
     context.dataStore.summaryStore.saveSummary(
@@ -121,23 +125,11 @@ async function callWithFallback(
   return null;
 }
 
-export function validateSummaryQuality(summary: string, messages: import('ai').ModelMessage[]): boolean {
-  if (!summary || summary.length < 20) return false;
-  if (summary.length > MAX_SUMMARY_LENGTH) {
-    logger.warn('ContextWindow', `Summary too long (${summary.length} chars), likely copying content`);
-    return false;
-  }
-
-  // 简单复制检测：摘要不应是任意单条消息的原文复制
-  const allTexts = messages.map((m) => extractMessageText(m));
-  for (const text of allTexts) {
-    if (text && text.length > 10 && summary.includes(text)) {
-      logger.warn('ContextWindow', 'Summary contains verbatim copy of a message');
-      return false;
-    }
-  }
-
-  return true;
+export function validateSummaryQuality(summary: string | null | undefined): boolean {
+  // C10：只做"是否有可持久化内容"的护栏判定（空/过短 → 不落盘）。
+  // 不再判"照抄→丢弃"或"过长→丢弃"——摘要质量由 LLM/用户判断，系统不主动丢弃产出。
+  // 过长由调用方按 MAX_SUMMARY_LENGTH 截断（资源护栏），而非整条拒绝。
+  return typeof summary === 'string' && summary.trim().length >= 20;
 }
 
 function getExistingSummarySafe(conversationId: string, dataStore: DataStore): string | null {

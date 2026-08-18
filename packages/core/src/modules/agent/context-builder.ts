@@ -32,22 +32,34 @@ export function buildSubAgentPrompt(
 /**
  * 构建包含父上下文的 Prompt
  *
+ * C-1（架构审查）：不再做无差别的机械截断。消息量与单条长度上限由调用方
+ * 配置决定（默认 6 条 / 每条 200 字保守护栏）；一旦发生裁剪，在摘要里明确
+ * 告知子 Agent 省略了多少上下文，让它据此决定是否向父级索取更多详情——
+ * 系统只提供可用呈现，不替 LLM 判定"哪部分关键"。
+ *
  * @param context 执行上下文
  * @param task 任务描述
  * @param maxMessages 最大消息数量
+ * @param maxCharsPerMessage 单条消息摘要最大字符数
  * @returns 包含上下文的 Prompt
  */
 export function buildContextPrompt(
   context: AgentExecutionContext,
   task: string,
   maxMessages: number = 6,
+  maxCharsPerMessage: number = 200,
 ): string {
   const recentMessages = context.parentMessages.slice(-maxMessages);
-  const summary = summarizeMessages(recentMessages);
+  const omittedCount = context.parentMessages.length - recentMessages.length;
+  const summary = summarizeMessages(recentMessages, maxCharsPerMessage);
+
+  const omissionNote = omittedCount > 0
+    ? `\n\n(父对话共 ${context.parentMessages.length} 条，此处仅展示最近 ${recentMessages.length} 条；更早的 ${omittedCount} 条未包含。如其中可能承载任务关键背景，请说明并请求父级提供。)`
+    : '';
 
   return `## Previous Conversation Context
 
-${summary}
+${summary}${omissionNote}
 
 ---
 
@@ -59,18 +71,18 @@ ${task}`;
 /**
  * 消息摘要
  */
-function summarizeMessages(messages: UIMessage[]): string {
+function summarizeMessages(messages: UIMessage[], maxCharsPerMessage = 200): string {
   const lines: string[] = [];
 
   for (const msg of messages) {
     const role = msg.role === 'user' ? 'User' : 'Assistant';
     const textParts = msg.parts?.filter((p) => p.type === 'text') ?? [];
-    const text = textParts
+    const fullText = textParts
       .map((p) => (p as { type: 'text'; text: string }).text)
-      .join(' ')
-      .slice(0, 200);
+      .join(' ');
+    const text = fullText.slice(0, maxCharsPerMessage);
     if (text) {
-      lines.push(`[${role}]: ${text}${text.length >= 200 ? '...' : ''}`);
+      lines.push(`[${role}]: ${text}${fullText.length > maxCharsPerMessage ? '…' : ''}`);
     }
   }
 

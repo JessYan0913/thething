@@ -45,6 +45,9 @@ export interface BuildInstructionsOptions {
   /** 当前用户消息（用于记忆 relevance 打分） */
   memoryQuery?: string
 
+  /** 每轮注入记忆条数上限（C1 可配置上限护栏）；未提供回落默认 */
+  memoryTopK?: number
+
   /** 任务存储（用于自动注入当前会话的任务清单） */
   todoStore?: TodoStore
 
@@ -68,6 +71,7 @@ export async function buildAgentInstructions(
     wikiBaseDir: options?.wikiBaseDir,
     memoryBaseDir: options?.memoryBaseDir,
     memoryQuery: options?.memoryQuery,
+    memoryTopK: options?.memoryTopK,
     customInstructions: options?.customInstructions ?? null,
     agentIdentity: options?.agentIdentity ?? null,
     mcpServerTools: options?.mcpServerTools,
