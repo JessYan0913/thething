@@ -166,6 +166,48 @@ describe('system-prompt', () => {
         }
       });
 
+      // 回归测试：锁定『每轮必变内容不得进入可缓存前缀』约束。
+      // 背景：session section 注入“当前时间”(new Date()) 与“这是第 N 条消息”，
+      // 每轮调用都会变化。若其 priority 被误降到 DYNAMIC_BOUNDARY(50) 之前，
+      // 整个可缓存前缀(QV cache)会随每次调用失效，命中率被打到接近 0。
+      // 同类风险：recalled-memory(已从 44 修复为 51)、recalled-wiki、todo-overview。
+      it('explicitly keeps time-injecting session section after the boundary', async () => {
+        const meta: ConversationMeta = {
+          messageCount: 7,
+          conversationStartTime: Date.now(),
+          isNewConversation: false,
+        };
+        const { includedSections } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+          conversationMeta: meta,
+        });
+        // session(含当前时间注入)必须存在且在 dynamic-boundary 之后
+        expect(includedSections).toContain('session');
+        const boundaryIdx = includedSections.indexOf('dynamic-boundary');
+        expect(boundaryIdx).toBeGreaterThan(-1);
+        const sessionIdx = includedSections.indexOf('session');
+        expect(sessionIdx).toBeGreaterThan(boundaryIdx);
+      });
+
+      // 回归测试：动态召回 section(recalled-memory/recalled-wiki 等)必须位于边界后。
+      // 这些内容每轮随召回结果变化，一旦落入前缀区会整段失效前缀。
+      it('keeps recalled/dynamic sections after the boundary when enabled', async () => {
+        const { includedSections } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+          memoryBaseDir: '__fixtures__/nonexistent',
+          wikiBaseDir: '__fixtures__/nonexistent',
+        });
+        const boundaryIdx = includedSections.indexOf('dynamic-boundary');
+        expect(boundaryIdx).toBeGreaterThan(-1);
+        for (const name of ['recalled-memory', 'recalled-wiki']) {
+          if (includedSections.includes(name)) {
+            expect(includedSections.indexOf(name)).toBeGreaterThan(boundaryIdx);
+          }
+        }
+      });
+
       it('places customInstructions before dynamic sections', async () => {
         const customInstructions = 'TEST_CUSTOM_INSTR';
         const { prompt } = await buildSystemPrompt({
