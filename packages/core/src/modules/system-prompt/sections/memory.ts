@@ -40,11 +40,14 @@ export async function createRecalledMemorySection(
       ? `\n\n(共 ${all.length} 条记忆，按评分注入前 ${entries.length} 条；其余 ${omitted} 条未展示。如需，可要求列出更多。)`
       : ''
 
+    // 召回记忆每轮动态变化，必须排在 DYNAMIC_BOUNDARY(50) 之后的动态区
+    // （与 recalled-wiki 的 priority 51 对齐）。若排在边界前(priority<50)，
+    // 任何记忆变化都会导致整个可缓存前缀失效，彻底打爆 prompt cache 命中。
     return {
       name: 'recalled-memory',
       content: `## 你记住的用户信息\n\n${formatMemoryForPrompt(entries)}${omissionNote}`,
       cacheStrategy: 'dynamic',
-      priority: 44,
+      priority: 51,
     }
   } catch (err) {
     logger.warn('MemorySection', `Failed to load memories: ${err}`)
