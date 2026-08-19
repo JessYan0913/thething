@@ -204,13 +204,23 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     }
 
     if (stepNumber === 0) {
-      const todosEmpty = (todoStore?.getTodosByConversation(sessionState.conversationId) ?? []).length === 0;
+      const convTodos = todoStore?.getTodosByConversation(sessionState.conversationId) ?? [];
+      const todosEmpty = convTodos.length === 0;
       if (todosEmpty) {
+        // 第一轮 / 无任何 todo：注入任务规划引导，鼓励对复杂需求建清单
         messages = [...messages, {
           role: 'user',
           content: buildPlanPrompt(),
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Plan prompt injected at step 0`);
+      } else {
+        // 后续轮新消息：清单非空（延续既有任务），注入“同步/添加”引导，
+        // 让模型对新的子需求向现有清单追加维护，而不是既不建也不维护。
+        messages = [...messages, {
+          role: 'user',
+          content: buildTodoSyncReminder(),
+        } as ModelMessageType];
+        debugLog(debugEnabled, `[Agent] Todo sync reminder injected at step 0 (${convTodos.length} persisted todos, continuation)`);
       }
     } else {
       // rung-2 跟进：有活跃 todo（pending/in_progress）时，每次决策前轻提一行，
