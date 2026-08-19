@@ -250,6 +250,7 @@ export {
 export {
   createTodoStore,
 } from './modules/todos';
+export { settleInProgressTodos } from './modules/todos/todo-settle';
 export {
   STATUS_CONFIG,
 } from './modules/todos/types';

@@ -12,6 +12,7 @@ import {
   fingerprintMessage,
   sanitizeToolErrorInputs,
   isOutputTruncated,
+  settleInProgressTodos,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -268,7 +269,7 @@ export async function POST(request: Request) {
 
     // 按用户所选模型读取凭据与上下文窗口(模型真名;旧别名值回落 defaultModel)
     const chatModelConfig = getModelConfig(modelName);
-    const { agent, sessionState, mcpRegistry, ownedMcpRegistry, model, adjustedMessages, wikiBaseDir } = await createAgent({
+    const { agent, sessionState, mcpRegistry, ownedMcpRegistry, model, adjustedMessages, wikiBaseDir, tools } = await createAgent({
       context,
       conversationId,
       messages,
@@ -540,6 +541,32 @@ export async function POST(request: Request) {
         console.log(
           `[Storage] Appended ${newAssistantMessages.length} assistant messages after ${resultAnchorId} (headMoved=${headMoved})`,
         );
+
+        // ── 收尾闸门：一轮正常结束但仍有未落账的 in_progress todo（模型漏标 completed 的
+        //    "面板没更新"幻影）→ 发一次只开放 todo_write 的小 LLM 调用让其结账，再推一次
+        //    data-todo-update 刷新面板。仅在正常结束（非中止/非截断）时跑。 ──
+        const todoWriteTool = (tools as Record<string, any> | undefined)?.['todo_write'];
+        if (todoWriteTool && model) {
+          try {
+            const settled = await settleInProgressTodos({
+              todoStore: store.todoStore,
+              conversationId,
+              model,
+              todoWriteTool,
+            });
+            if (settled.triggered) {
+              const todos = store.todoStore.getTodosByConversation(conversationId);
+              controller.enqueue(JSON.stringify({
+                type: 'data-todo-update',
+                id: `todo-settle-${runId}`,
+                data: { todos },
+              }));
+            }
+          } catch (e) {
+            // 收尾闸门失败不影响本轮主流程落库
+            console.warn('[Chat API] settle-gate error:', e);
+          }
+        }
 
         const costSummary = sessionState.costTracker.getSummary();
         console.log(

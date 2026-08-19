@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryTodoStore } from '../store';
 import { HighWaterMarkImpl } from '../high-water-mark';
-import { createTodoWriteToolForConversation } from '../todo-tools/todo-write-tool';
+import { createTodoWriteToolForConversation, todoWriteToolSchema } from '../todo-tools/todo-write-tool';
 import type { TodoStore } from '../types';
 
 const CONV = 'conv-1';
@@ -289,5 +289,44 @@ describe('todo_write continuation dedup (id-less title maps to existing active i
     // 本会话 Task A 是新建（other-conv 不参与映射）
     expect(store.getTodosByConversation(CONV)).toHaveLength(1);
     expect(store.getTodosByConversation('other-conv')).toHaveLength(1);
+  });
+});
+
+describe('todo_write id-only update (subject optional, carries existing title forward)', () => {
+  let store: TodoStore;
+  let execute: (input: unknown) => Promise<any>;
+
+  beforeEach(() => {
+    store = new InMemoryTodoStore(new HighWaterMarkImpl());
+    const tool = createTodoWriteToolForConversation(store, CONV);
+    execute = tool.execute! as any;
+  });
+
+  it('schema accepts id + status without subject (the shape that previously failed)', () => {
+    const parsed = todoWriteToolSchema.safeParse({
+      todos: [{ id: 'todo-1', status: 'completed', result: 'done' }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('schema rejects creating a new todo without subject', () => {
+    const parsed = todoWriteToolSchema.safeParse({
+      todos: [{ status: 'completed', result: 'done' }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('execute completes an existing todo by id only, keeping its original subject', async () => {
+    const created = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const a = created.todos[0];
+
+    // 只传 id + status + result（不传 subject）→ 应成功，标题沿用既有值
+    const result = await execute({
+      todos: [{ id: a.id, status: 'completed', result: 'all verified' }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.todos[0]).toMatchObject({ id: a.id, subject: 'Task A', status: 'completed' });
+    expect(store.getTodosByConversation(CONV)).toHaveLength(1); // 没有新增重复行
   });
 });

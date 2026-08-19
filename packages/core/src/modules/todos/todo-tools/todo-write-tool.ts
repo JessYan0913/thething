@@ -22,8 +22,8 @@ const TodoWriteItemSchema = z.object({
   id: z.string().optional().describe('Existing todo ID (omit when referring to an already-listed task — the title is matched to the list; or when creating a new one, see create)'),
   /** 强制新建：即使标题与清单既有活跃项相同也创建新任务，而不是映射过去（默认省略=尽量映射到既有项） */
   create: z.boolean().optional().describe('Set true to force creating a NEW todo, even if the title matches an existing active item (use only when you explicitly mean a separate new task). Omit to map to the existing item by title.'),
-  /** 任务标题（祈使句） */
-  subject: z.string().min(1).describe('Task title in imperative form'),
+  /** 任务标题（祈使句）。更新已有任务（带 id）时可省略——沿用既有标题；新建任务时必填。 */
+  subject: z.string().min(1).optional().describe('Task title in imperative form. Optional when updating an existing todo by id (the existing title is kept); required when creating a new todo.'),
   /** 任务状态 */
   status: z.enum(['pending', 'in_progress', 'completed', 'failed', 'cancelled'])
     .describe('Task status'),
@@ -45,6 +45,21 @@ export const todoWriteToolSchema = z.object({
   /** 完整任务列表（整表替换语义） */
   todos: z.array(TodoWriteItemSchema).max(20)
     .describe('The FULL todo list. Replaces the current list: existing todos not included here are removed.'),
+  /**
+   * 交叉字段契约：subject 在新建时必填（没 id 就没有可沿用的标题），
+   * 更新已有任务（带 id）时允许省略——由 execute 沿用既有标题，避免
+   * "只传 id+status+result 完成某任务" 因缺 subject 而整体报错。
+   */
+}).superRefine((val, ctx) => {
+  val.todos.forEach((item, i) => {
+    if (!item.id && !item.subject) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['todos', i, 'subject'],
+        message: 'subject is required when creating a new todo (an id was not provided)',
+      });
+    }
+  });
 });
 
 export type TodoWriteToolInput = z.infer<typeof todoWriteToolSchema>;
@@ -175,6 +190,7 @@ When the user's request is complex — a problem that benefits from being split 
 Usage:
 - Pass the FULL list each call to keep it accurate. Omitted items are KEPT — the tool never silently deletes; to cancel a task, pass it with status "cancelled".
 - Include the \`id\` for todos you are updating; omit it for todos you are creating.
+- When updating by \`id\`, \`subject\` is optional — you may pass only \`id\` + \`status\` (optionally \`result\`/activeForm) and the existing title is kept. \`subject\` is only required when creating a new todo (no id).
 - Continuation safety: if you omit \`id\` and the title matches an existing active item on the list, that item is UPDATED (its id reused) — it is NOT duplicated. There is no need to re-issue matching titles after a Resume/Compaction; just update by id or by title.
 - Use \`create: true\` ONLY when you explicitly mean a NEW task whose title coincidentally matches an existing item.
 - Keep exactly one item in_progress at a time; update the list right after each step finishes.
@@ -205,7 +221,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
           // 复用其 id 走 update——续做/压缩后重提同标题不会复制出新重复行。
           const mappedId =
             !item.create && !item.id
-              ? findActiveBySubject(existing, item.subject)?.id
+              ? findActiveBySubject(existing, item.subject!)?.id
               : undefined;
 
           const targetId = item.id && existingById.has(item.id) ? item.id : mappedId;
@@ -232,8 +248,12 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
               notifyTodoCompleted(opts, updated.id, updated.status);
             }
           } else {
-            // 新建任务（无 id 且标题未命中既有活跃项，或显式 create:true；store 创建后默认 pending）
-            const created = store.createTodo({ conversationId, subject: item.subject });
+            // 新建任务（无 id 且标题未命中既有活跃项，或显式 create:true；store 创建后默认 pending）。
+            // subject 在此处必为真值：scheme superRefine 保证无 id 时 subject 必填。
+            const created = store.createTodo({
+              conversationId,
+              subject: item.subject!,
+            });
             if (item.status !== 'pending' || item.activeForm || metadata) {
               store.updateTodo({
                 id: created.id,
