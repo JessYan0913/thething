@@ -18,8 +18,10 @@ import { logger } from '../../../primitives/logger';
  */
 
 const TodoWriteItemSchema = z.object({
-  /** 已有任务的 ID（更新时传，新建时省略） */
-  id: z.string().optional().describe('Existing todo ID (omit for new todos)'),
+  /** 已有任务的 ID（更新时传；省略时按标题映射到清单既有项，若清单无匹配则为新任务） */
+  id: z.string().optional().describe('Existing todo ID (omit when referring to an already-listed task — the title is matched to the list; or when creating a new one, see create)'),
+  /** 强制新建：即使标题与清单既有活跃项相同也创建新任务，而不是映射过去（默认省略=尽量映射到既有项） */
+  create: z.boolean().optional().describe('Set true to force creating a NEW todo, even if the title matches an existing active item (use only when you explicitly mean a separate new task). Omit to map to the existing item by title.'),
   /** 任务标题（祈使句） */
   subject: z.string().min(1).describe('Task title in imperative form'),
   /** 任务状态 */
@@ -91,6 +93,29 @@ function collectPlanWarnings(todos: TodoWriteToolInput['todos']): string[] {
   return warnings;
 }
 
+/**
+ * 标题规范化：trim + 折叠内部连续空白。
+ * 只用作"权威快照内"的辅助线索（解释无 id 写入指向快照哪一项），
+ * 不做跨快照的模糊判重——身份锚点始终是快照里的 id，不是标题。
+ */
+function normalizeSubject(subject: string): string {
+  return subject.trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * 在权威快照（同会话）内按规范化标题查找既有的"活跃"项（pending/in_progress/failed）。
+ * 用于把"无 id 且标题命中清单"的续做写入映射回既有 id，避免恢复后重建同一任务造成重复。
+ * 已完成/已取消项不参与映射——它们已被结清，重提标题通常是新任务。
+ */
+function findActiveBySubject(todos: Todo[], subject: string): Todo | undefined {
+  const normalized = normalizeSubject(subject);
+  return todos.find(
+    (t) =>
+      (t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed') &&
+      normalizeSubject(t.subject) === normalized,
+  );
+}
+
 /** 是否为本调用中真实发生的 completed/failed 跃迁（排除全表重传时已完成的项） */
 function isCompletionTransition(
   item: TodoWriteToolInput['todos'][number],
@@ -149,7 +174,9 @@ When the user's request is complex — a problem that benefits from being split 
 
 Usage:
 - Pass the FULL list each call to keep it accurate. Omitted items are KEPT — the tool never silently deletes; to cancel a task, pass it with status "cancelled".
-- Include the \`id\` for todos you are updating; omit it for new todos.
+- Include the \`id\` for todos you are updating; omit it for todos you are creating.
+- Continuation safety: if you omit \`id\` and the title matches an existing active item on the list, that item is UPDATED (its id reused) — it is NOT duplicated. There is no need to re-issue matching titles after a Resume/Compaction; just update by id or by title.
+- Use \`create: true\` ONLY when you explicitly mean a NEW task whose title coincidentally matches an existing item.
 - Keep exactly one item in_progress at a time; update the list right after each step finishes.
 - Mark at most ONE todo completed (or failed) per call. To close several, call this tool once per todo.
 - Close the loop: when a task is done, mark it completed with a result (what was done + how it was verified) written into the result field; when it fails, record why. The list is a running ledger you settle as you go — do not create it and then stop updating it until the final answer.
@@ -173,17 +200,30 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
 
         for (const item of input.todos) {
           const metadata = itemMetadata(item);
-          if (item.id && existingById.has(item.id)) {
-            // 更新已有任务
+
+          // 权威快照内按标题映射：无 id（且未显式 create）时，若标题命中清单既有活跃项，
+          // 复用其 id 走 update——续做/压缩后重提同标题不会复制出新重复行。
+          const mappedId =
+            !item.create && !item.id
+              ? findActiveBySubject(existing, item.subject)?.id
+              : undefined;
+
+          const targetId = item.id && existingById.has(item.id) ? item.id : mappedId;
+
+          if (targetId) {
+            // 更新已有任务（按 id，或按标题映射到的既有项）
             const updated = store.updateTodo({
-              id: item.id,
+              id: targetId,
               subject: item.subject,
               status: item.status,
               activeForm: item.activeForm ?? null,
               ...(metadata ? { metadata } : {}),
             });
-            seenIds.add(item.id);
+            seenIds.add(targetId);
             if (updated) {
+              if (mappedId) {
+                logger.info('TodoWrite', `[subject-map] todoId=${targetId} subject="${item.subject}"`);
+              }
               result.push({ id: updated.id, subject: updated.subject, status: updated.status });
               // 可观测：路径 A 完成（todo_write 跃迁，非全表重传的已完成项）
               if (updated.status === 'completed' && isCompletionTransition(item, existingById)) {
@@ -192,7 +232,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
               notifyTodoCompleted(opts, updated.id, updated.status);
             }
           } else {
-            // 新建任务（store 创建后默认 pending，需要时再置状态）
+            // 新建任务（无 id 且标题未命中既有活跃项，或显式 create:true；store 创建后默认 pending）
             const created = store.createTodo({ conversationId, subject: item.subject });
             if (item.status !== 'pending' || item.activeForm || metadata) {
               store.updateTodo({

@@ -190,3 +190,104 @@ describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
     expect(result.error).toContain('一次只能将一个');
   });
 });
+
+describe('todo_write continuation dedup (id-less title maps to existing active item)', () => {
+  let store: TodoStore;
+  let execute: (input: unknown) => Promise<any>;
+
+  beforeEach(() => {
+    store = new InMemoryTodoStore(new HighWaterMarkImpl());
+    const tool = createTodoWriteToolForConversation(store, CONV);
+    execute = tool.execute! as any;
+  });
+
+  it('maps an id-less title to the existing active item (no new row)', async () => {
+    const first = await execute({
+      todos: [
+        { subject: 'Task A', status: 'in_progress', activeForm: 'Doing A' },
+        { subject: 'Task B', status: 'pending' },
+      ],
+    });
+    const [a] = first.todos;
+
+    // 续做：无 id 重提同标题 → 应映射回 a.id，不新增行
+    const second = await execute({
+      todos: [{ subject: 'Task A', status: 'in_progress', activeForm: 'Still doing A' }],
+    });
+
+    expect(second.success).toBe(true);
+    expect(second.todos[0].id).toBe(a.id);
+    const all = store.getTodosByConversation(CONV);
+    expect(all).toHaveLength(2); // 未新增第三行
+    expect(store.getTodo(a.id)?.activeForm).toBe('Still doing A');
+  });
+
+  it('normalizes surrounding/duplicate whitespace before matching', async () => {
+    const first = await execute({ todos: [{ subject: '调研 write 工具的实现', status: 'in_progress' }] });
+    const id = first.todos[0].id;
+
+    const second = await execute({
+      todos: [{ subject: '  调研  write 工具的实现  ', status: 'in_progress' }],
+    });
+
+    expect(second.todos[0].id).toBe(id);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
+  });
+
+  it('creates a new row when title has no active match in the list', async () => {
+    await execute({ todos: [{ subject: 'Task A', status: 'completed', result: 'done' }] });
+    // Task A 已完成 → 不参与映射；Task B 是全新
+    const result = await execute({ todos: [{ subject: 'Task B', status: 'pending' }] });
+
+    expect(result.success).toBe(true);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
+  });
+
+  it('maps id-less title but treats completed/failed explicitly by id', async () => {
+    await execute({
+      todos: [{ subject: 'Task A', status: 'in_progress' }],
+    });
+    // 无 id 命中进行中任务 → 直接标 completed 也应映射到原 id
+    const result = await execute({
+      todos: [{ subject: 'Task A', status: 'completed', result: 'verified' }],
+    });
+    const all = store.getTodosByConversation(CONV);
+    expect(all).toHaveLength(1);
+    expect(all[0].status).toBe('completed');
+    expect(all[0].metadata.result).toBe('verified');
+  });
+
+  it('create:true forces a new row even when the title matches an active item', async () => {
+    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const a = first.todos[0];
+
+    const result = await execute({
+      todos: [{ subject: 'Task A', status: 'in_progress', create: true }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.todos[0].id).not.toBe(a.id);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
+  });
+
+  it('maps id-less title with exact id semantics but honors an explicit stale id to update', async () => {
+    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const a = first.todos[0];
+
+    // 带真实 id → 更新（原行为），不新增
+    const result = await execute({
+      todos: [{ id: a.id, subject: 'Task A', status: 'pending' }],
+    });
+    expect(result.todos[0].id).toBe(a.id);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
+  });
+
+  it('mapping does not cross conversations', async () => {
+    store.createTodo({ conversationId: 'other-conv', subject: 'Task A' });
+
+    await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    // 本会话 Task A 是新建（other-conv 不参与映射）
+    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
+    expect(store.getTodosByConversation('other-conv')).toHaveLength(1);
+  });
+});

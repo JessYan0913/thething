@@ -194,29 +194,65 @@ export async function POST(request: Request) {
       interruptedTodo.status = 'in_progress'; // 让下方过滤与 note 反映恢复后的状态
     }
 
-    const unfinishedTodos = conversationTodos.filter(
+    // 权威任务台账：恢复/续做时给模型一份带真实 id 的确定性清单（实体台账，非对话词汇）。
+    // id 是唯一身份锚点——摘要/叙述里提到的任务一律以本清单 id 为准，按 id 更新、不要重建。
+    const activeTodos = conversationTodos.filter(
       (t: Todo) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed'
     );
+    const recentlyCompleted = conversationTodos
+      .filter((t: Todo) => t.status === 'completed')
+      .sort((a: Todo, b: Todo) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
+      .slice(0, 3);
 
     let finalInstructions = systemPrompt;
-    if (unfinishedTodos.length > 0) {
-      const todoLines = unfinishedTodos.map((t: Todo) => {
-        const parts = ['ID: ' + t.id, '\u72b6\u6001: ' + t.status];
-        if (t.activeForm) parts.push('\u8fdb\u5ea6: ' + t.activeForm);
-        if (t.status === 'failed') parts.push('\u4e0a\u6b21\u5931\u8d25');
-        // 被中断任务可能未完成：警示 agent 先检查/补全再标完成，不要盲判完成跳过
-        const interrupted = interruptedTodo && t.id === interruptedTodo.id
-          ? ' \u26a0\ufe0f \u8be5\u4efb\u52a1\u4e0a\u6b21\u6267\u884c\u4e2d\u88ab\u4e2d\u65ad\uff0c\u53ef\u80fd\u672a\u5b8c\u6210\uff1a\u8bf7\u5148\u68c0\u67e5\u5176\u4ea7\u51fa\u662f\u5426\u5b8c\u6574\uff0c\u8865\u5168\u540e\u518d\u6807 completed\uff0c\u4e0d\u8981\u76f4\u63a5\u89c6\u4e3a\u5b8c\u6210\u8df3\u8fc7'
-          : '';
-        return '- **' + t.subject + '** (' + parts.join(', ') + ')' + interrupted;
-      });
-      const todoNote = '\n\n## \u672a\u5b8c\u6210\u4efb\u52a1\n\u4ee5\u4e0b\u662f\u4f60\u4e4b\u524d\u4e2d\u65ad\u540e\u7559\u4e0b\u7684\u672a\u5b8c\u6210\u4efb\u52a1\uff0c\u9700\u8981\u7ee7\u7eed\u5904\u7406\uff1a\n'
-        + todoLines.join('\n')
-        + '\n\n\u4f60\u53ef\u4ee5\u4f7f\u7528 todo_write \u66f4\u65b0\u4efb\u52a1\u72b6\u6001\uff0c\u7136\u540e\u7ee7\u7eed\u6267\u884c\u3002';
+    if (activeTodos.length > 0) {
+      const authLines: string[] = [];
+      authLines.push('## \u2705 \u4efb\u52a1\u8d26\u672c\uff08\u6743\u5a01\u5feb\u7167\uff09');
+      authLines.push('');
+      authLines.push(
+        '\u4ee5\u4e0b\u662f\u5f53\u524d\u4efb\u52a1\u7684\u552f\u4e00\u771f\u5b9e\u6765\u6e90\u3002' +
+        '\u6bcf\u9879\u540e\u7684 id \u662f\u552f\u4e00\u8eab\u4efd\u6807\u8bc6\uff1a' +
+        '\u6267\u884c\u65f6\u7528 todo_write \u6309 id \u66f4\u65b0\uff0c\u4e0d\u8981\u6839\u636e\u6807\u9898\u91cd\u5efa\u5df2\u5b58\u5728\u7684\u4efb\u52a1\u3002' +
+        '\u786e\u5c5e\u8d26\u672c\u4e4b\u5916\u7684\u65b0\u4efb\u52a1\uff0c\u624d\u7528 todo_write \u65b0\u5efa\u3002'
+      );
+      authLines.push('');
 
-      finalInstructions = systemPrompt
-        ? systemPrompt + '\n\n' + todoNote
-        : todoNote;
+      const inProgress = activeTodos.filter((t: Todo) => t.status === 'in_progress');
+      const pending = activeTodos.filter((t: Todo) => t.status === 'pending');
+      const failed = activeTodos.filter((t: Todo) => t.status === 'failed');
+
+      if (inProgress.length > 0) {
+        authLines.push('### \u8fdb\u884c\u4e2d');
+        for (const t of inProgress) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+        authLines.push('');
+      }
+      if (pending.length > 0) {
+        const unblocked = pending.filter((t: Todo) => t.blockedBy.length === 0);
+        const blocked = pending.filter((t: Todo) => t.blockedBy.length > 0);
+        if (unblocked.length > 0) {
+          authLines.push('### \u5f85\u529e');
+          for (const t of unblocked) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+          authLines.push('');
+        }
+        if (blocked.length > 0) {
+          authLines.push('### \u5f85\u529e\uff08\u6709\u4f9d\u8d56\uff09');
+          for (const t of blocked) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+          authLines.push('');
+        }
+      }
+      if (failed.length > 0) {
+        authLines.push('### \u5931\u8d25');
+        for (const t of failed) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+        authLines.push('');
+      }
+      if (recentlyCompleted.length > 0) {
+        authLines.push('### \u6700\u8fd1\u5b8c\u6210');
+        for (const t of recentlyCompleted) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+        authLines.push('');
+      }
+
+      const authNote = '\n\n' + authLines.join('\n').trim();
+      finalInstructions = systemPrompt ? systemPrompt + authNote : authNote;
     }
 
     const writerRef: { current: SubAgentStreamWriter | null } = { current: null };
@@ -865,5 +901,18 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: 'Failed to process chat request' }, { status: 500 });
   }
+}
+
+/** 权威任务台账的单行渲染：带真实 id + 状态 + 进度，供恢复层注入（见 POST 内任务台账段）。 */
+function formatAuthTodoLine(t: Todo, interruptedTodo: Todo | undefined): string {
+  const parts = ['id: `' + t.id + '`'];
+  if (t.activeForm) parts.push('\u8fdb\u5ea6: ' + t.activeForm);
+  if (t.status === 'failed') parts.push('\u4e0a\u6b21\u5931\u8d25');
+  const interrupted =
+    interruptedTodo && t.id === interruptedTodo.id
+      ? ' \u26a0\ufe0f \u4e0a\u6b21\u6267\u884c\u4e2d\u88ab\u4e2d\u65ad\uff0c\u53ef\u80fd\u672a\u5b8c\u6210\uff1a\u5148\u68c0\u67e5\u4ea7\u51fa\u662f\u5426\u5b8c\u6574\uff0c\u8865\u5168\u540e\u518d\u6807 completed'
+      : '';
+  const mark = t.status === 'in_progress' ? '[ \u2192 ]' : t.status === 'failed' ? '[ ! ]' : '[ ]';
+  return `- ${mark} **${t.subject}** (${parts.join(', ')})${interrupted}`;
 }
 
