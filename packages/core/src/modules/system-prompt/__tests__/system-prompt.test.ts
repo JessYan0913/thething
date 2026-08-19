@@ -170,7 +170,8 @@ describe('system-prompt', () => {
       // 背景：session section 注入“当前时间”(new Date()) 与“这是第 N 条消息”，
       // 每轮调用都会变化。若其 priority 被误降到 DYNAMIC_BOUNDARY(50) 之前，
       // 整个可缓存前缀(QV cache)会随每次调用失效，命中率被打到接近 0。
-      // 同类风险：recalled-memory(已从 44 修复为 51)、recalled-wiki、todo-overview。
+      // 同类风险：recalled-memory(已从 44 修复为 51)、todo-overview。
+      // recalled-wiki 已迁移到静态前缀区（priority 46，固定指引字符串，不读动态输入），故不在此列。
       it('explicitly keeps time-injecting session section after the boundary', async () => {
         const meta: ConversationMeta = {
           messageCount: 7,
@@ -190,9 +191,9 @@ describe('system-prompt', () => {
         expect(sessionIdx).toBeGreaterThan(boundaryIdx);
       });
 
-      // 回归测试：动态召回 section(recalled-memory/recalled-wiki 等)必须位于边界后。
-      // 这些内容每轮随召回结果变化，一旦落入前缀区会整段失效前缀。
-      it('keeps recalled/dynamic sections after the boundary when enabled', async () => {
+      // 回归测试：recalled-memory（每轮随召回结果变化）必须位于边界后，
+      // 一旦落入前缀区会整段失效前缀。
+      it('keeps recalled-memory (per-turn-changing) after the boundary', async () => {
         const { includedSections } = await buildSystemPrompt({
           skills: [],
           includeProjectContext: false,
@@ -201,10 +202,26 @@ describe('system-prompt', () => {
         });
         const boundaryIdx = includedSections.indexOf('dynamic-boundary');
         expect(boundaryIdx).toBeGreaterThan(-1);
-        for (const name of ['recalled-memory', 'recalled-wiki']) {
-          if (includedSections.includes(name)) {
-            expect(includedSections.indexOf(name)).toBeGreaterThan(boundaryIdx);
-          }
+        if (includedSections.includes('recalled-memory')) {
+          expect(includedSections.indexOf('recalled-memory')).toBeGreaterThan(boundaryIdx);
+        }
+      });
+
+      // 回归测试：recalled-wiki 为固定指引字符串（不读任何动态输入），
+      // 已安全迁移到缓存前缀区（priority 46 < 50），必须位于边界之前以参与稳定缓存。
+      it('keeps recalled-wiki (static guide) in the cacheable prefix before the boundary', async () => {
+        const { includedSections } = await buildSystemPrompt({
+          skills: [],
+          includeProjectContext: false,
+          memoryBaseDir: '__fixtures__/nonexistent',
+          wikiBaseDir: '__fixtures__/nonexistent',
+        });
+        const boundaryIdx = includedSections.indexOf('dynamic-boundary');
+        expect(boundaryIdx).toBeGreaterThan(-1);
+        // 未注入 index 时 recalledContent 为 null，内容跳过，可能不出现；
+        // 若出现则必须位于边界之前（缓存前缀区）。
+        if (includedSections.includes('recalled-wiki')) {
+          expect(includedSections.indexOf('recalled-wiki')).toBeLessThan(boundaryIdx);
         }
       });
 

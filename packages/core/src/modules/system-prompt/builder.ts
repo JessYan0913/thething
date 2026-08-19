@@ -189,11 +189,11 @@ const SESSION_SECTION_FACTORIES: SectionFactory[] = [
     create: async (options) => {
       if (options.wikiContext?.recalledContent) {
         const section = await createRecalledWikiSection(options.wikiContext.recalledContent);
-        return section ?? { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 51 };
+        return section ?? { name: "recalled-wiki", content: null, cacheStrategy: "session" as const, priority: 46 };
       }
-      return { name: "recalled-wiki", content: null, cacheStrategy: "dynamic" as const, priority: 51 };
+      return { name: "recalled-wiki", content: null, cacheStrategy: "session" as const, priority: 46 };
     },
-    cacheStrategy: "dynamic",
+    cacheStrategy: "session",
   },
   {
     name: "todo-overview",

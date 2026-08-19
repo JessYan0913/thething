@@ -36,22 +36,25 @@ vi.mock('../../../modules/system-prompt', () => ({
 
 describe('runtime/agent/context', () => {
   describe('loadWikiContextForAgent', () => {
-    it('should return empty content when no wiki pages found', async () => {
+    it('should return the fixed wiki recall guide (按需读取模式，不预注入 index 全文)', async () => {
       const messages: any[] = [
         { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
       ];
 
       const result = await loadWikiContextForAgent(messages, '/wiki');
 
-      expect(result.recalledContent).toBe('');
+      expect(result.recalledContent).not.toBe('');
+      expect(result.recalledContent).toContain('read_wiki_page');
+      expect(result.recalledContent).toContain('index');
     });
 
-    it('should handle empty messages', async () => {
+    it('should handle empty messages (仍返回固定指引串，保持前缀静态)', async () => {
       const messages: any[] = [];
 
       const result = await loadWikiContextForAgent(messages, '/wiki');
 
-      expect(result.recalledContent).toBe('');
+      expect(result.recalledContent).not.toBe('');
+      expect(result.recalledContent).toContain('read_wiki_page');
     });
   });
 
