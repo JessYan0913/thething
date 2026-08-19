@@ -222,6 +222,33 @@ describe('system-prompt', () => {
         expect(boundaryIdx).toBeGreaterThan(-1);
         expect(customIdx).toBeLessThan(boundaryIdx);
       });
+
+      it('places custom-system-prompt.md (systemPromptMd) in the cacheable prefix before the dynamic boundary', async () => {
+        // Regression test: the user-defined system-prommpt.md section must be
+        // injected at priority 49 (cacheable prefix) so its tokens are amortized
+        // across turns instead of being re-charged at full cost every turn.
+        const os = await import('node:os');
+        const fsp = await import('node:fs/promises');
+        const path = await import('node:path');
+        const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'sysprompt-md-'));
+        const nested = path.join(dir, '.thething');
+        await fsp.mkdir(nested, { recursive: true });
+        await fsp.writeFile(path.join(nested, 'system-prompt.md'), 'CUSTOM_SYS_PROMPT_MD_BODY');
+        try {
+          const { prompt } = await buildSystemPrompt({
+            skills: [],
+            includeProjectContext: false,
+            cwd: dir,
+          });
+          const mdIdx = prompt.indexOf('CUSTOM_SYS_PROMPT_MD_BODY');
+          const boundaryIdx = prompt.indexOf('__DYNAMIC_CONTENT_BOUNDARY__');
+          expect(mdIdx).toBeGreaterThan(-1);
+          expect(boundaryIdx).toBeGreaterThan(-1);
+          expect(mdIdx).toBeLessThan(boundaryIdx);
+        } finally {
+          await fsp.rm(dir, { recursive: true, force: true });
+        }
+      });
     });
   });
 });

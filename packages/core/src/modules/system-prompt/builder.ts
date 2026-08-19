@@ -303,6 +303,10 @@ export async function buildSystemPrompt(
     });
   }
 
+  // Load user-defined ~/.thething/system-prompt.md (or ./.thething/system-prompt.md)
+  // before assembling cacheable prefix, so it can be injected as a stable section.
+  const systemPromptMd = await loadCustomSystemPromptMd(opts.cwd);
+
   // Add session sections (async)
   for (const factory of SESSION_SECTION_FACTORIES) {
     // Skip sections that are explicitly disabled in options
@@ -352,6 +356,23 @@ export async function buildSystemPrompt(
     });
   }
 
+  // Cacheable tail: custom system-prompt.md (user-defined, byte-stable within a
+  // session as long as the file on disk doesn't change). Placed at priority 49,
+  // right before the dynamic boundary marker, so it participates in the stable
+  // cache prefix instead of being re-charged at full token cost every turn.
+  // Previously this was appended to the very end of the prompt (after the
+  // per-turn dynamic suffixes), which meant it could never be amortized across
+  // turns — its tokens were re-billed 100% every single turn. Moving it into
+  // the cacheable prefix mirrors the existing custom-instructions(47) approach.
+  if (systemPromptMd) {
+    allSections.push({
+      name: "custom-system-prompt-md",
+      content: systemPromptMd,
+      cacheStrategy: "session",
+      priority: 49,
+    });
+  }
+
   // Dynamic boundary marker (constant string — does not invalidate cache)
   allSections.push({
     name: "dynamic-boundary",
@@ -382,9 +403,7 @@ export async function buildSystemPrompt(
     .map((s) => s.content)
     .join("\n\n");
 
-  // Append ~/.thething/system-prompt.md 内容
-  const systemPromptMd = await loadCustomSystemPromptMd(opts.cwd);
-  const finalPrompt = systemPromptMd ? `${prompt}\n\n${systemPromptMd}` : prompt;
+  const finalPrompt = prompt;
 
   const finalSections = allSections.filter((s) => s.content !== null);
 
