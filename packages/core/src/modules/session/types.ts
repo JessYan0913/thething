@@ -145,6 +145,9 @@ export interface SessionState {
   /** 归档失败待重试队列：todoId → 已渲染子任务文本（首败缓存，下一轮 prepareStep 重试一次，最多一次） */
   pendingArchiveRetries: Map<string, string>;
 
+  /** Completion Audit 注入 latch：quiescent 后注入一次；新 todo/新用户消息/新 ready 出现时清除 */
+  completionAuditInjected?: boolean;
+
   /** 上次请求预算估算结果（含策略触发线），供 onStepEnd 推送前端 + 校准配对 + 写库使用 */
   lastEstimation?: import('../compaction/request-budget').RequestBudgetEstimation;
 

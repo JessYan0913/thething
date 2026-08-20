@@ -94,7 +94,7 @@ export async function executeRoutedAgent(
   task: string,
 ): Promise<AgentExecutionResult> {
   const startTime = Date.now();
-  const { toolCallId, writerRef, abortSignal, todoStore, todoId, agentRunStore, conversationId } = context;
+  const { toolCallId, writerRef, abortSignal, todoStore, todoId, agentRunStore, conversationId, scheduler, executionMode } = context;
   const writer = writerRef.current;
 
   try {
@@ -152,9 +152,26 @@ export async function executeRoutedAgent(
       ? buildContextPrompt(context, task)
       : task;
 
-    // 7. 更新任务状态
+    // 7. 更新任务状态（统一写入口：有 runtime 经 runtime.claimTodo；无则回落 store 直写）
     if (todoStore && todoId) {
-      updateTodoStatus(todoStore, todoId, 'in_progress');
+      // 并行路径需每任务独立 agentId（store claim 按 agentId 判 busy，共享 agentId 会互相拒绝）；
+      // 单进行中约束由 runtime.allowParallel 跳过，blockedBy/DEPENDENCIES 校验仍生效。
+      const isParallel = executionMode === 'parallel_agent';
+      const subAgentId = isParallel ? `parallel:${todoId}` : (definition.agentType ?? 'sub_agent');
+      if (scheduler) {
+        try {
+          scheduler.claimTodo(todoId, {
+            agentId: subAgentId,
+            mode: executionMode ?? 'main_agent',
+            ...(isParallel ? { allowParallel: true } : {}),
+          });
+        } catch (claimErr) {
+          // blocked/illegal claim 不作为崩溃，抛给外层记失败
+          throw claimErr;
+        }
+      } else {
+        updateTodoStatus(todoStore, todoId, 'in_progress');
+      }
     }
 
     // 8. 执行流式输出
@@ -291,7 +308,11 @@ export async function executeRoutedAgent(
     if (todoStore && todoId) {
       // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool，故不触发边界归档）
       logger.info('SubAgent', `[path-b-complete] todoId=${todoId}`);
-      completeTodo(todoStore, todoId, result.summary);
+      if (scheduler) {
+        scheduler.completeTodo(todoId, result.summary);
+      } else {
+        completeTodo(todoStore, todoId, result.summary);
+      }
       // 路径 B 归档（设计 §5.2）：子Agent 完成，以 metadata.result 为输入入队 pendingArchiveRetries，
       // 下一轮 prepareStep 经 retryPendingArchives 提炼 facts。agent 与 parallel_agent 共用此点，
       // 一个接线点覆盖两条路径（triggerArchiveForTodos 内部过滤：仅 completed + 有 result + 无 facts 才入队）。
@@ -322,7 +343,11 @@ export async function executeRoutedAgent(
     };
 
     if (todoStore && todoId) {
-      failTodo(todoStore, todoId, errorMsg);
+      if (scheduler) {
+        scheduler.failTodo(todoId, errorMsg);
+      } else {
+        failTodo(todoStore, todoId, errorMsg);
+      }
     }
 
     // 标记 run 失败

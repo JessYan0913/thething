@@ -4,6 +4,7 @@ import type { TodoStore } from '../types';
 import { updateTodo } from '../todo-update';
 import { deleteTodoWithDependents } from '../todo-delete';
 import { resolveActiveByIndex } from '../snapshot-index';
+import type { TodoRuntime } from '../todo-runtime';
 
 /**
  * TodoDeleteTool - Soft-delete (cancel) a todo
@@ -40,7 +41,7 @@ export type TodoDeleteToolOutput = {
  * @param store - The todo store
  * @param conversationId - The conversation whose active todo indices we resolve against
  */
-export function createTodoDeleteTool(store: TodoStore, conversationId: string) {
+export function createTodoDeleteTool(store: TodoStore, conversationId: string, runtime?: TodoRuntime) {
   return tool({
     description: 'Cancel a todo (soft delete) by its list index. Marks it as cancelled instead of removing it. The todo must not be in progress. Use cascade: true to permanently delete this todo and all of its dependent todos.',
     inputSchema: todoDeleteToolSchema,
@@ -82,10 +83,12 @@ export function createTodoDeleteTool(store: TodoStore, conversationId: string) {
           };
         }
 
-        const updated = updateTodo(store, {
-          id: target.id,
-          status: 'cancelled',
-        });
+        const updated = runtime
+          ? runtime.cancelTodo(target.id, 'deleted')
+          : updateTodo(store, {
+              id: target.id,
+              status: 'cancelled',
+            });
 
         if (!updated) {
           return {

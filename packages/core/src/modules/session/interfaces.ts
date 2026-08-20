@@ -196,6 +196,9 @@ export interface PipelineContext {
   /** 归档失败待重试队列：todoId → 已渲染子任务文本（首败缓存，下一轮 prepareStep 重试一次，最多一次） */
   pendingArchiveRetries: Map<string, string>;
 
+  /** Completion Audit 注入 latch：quiescent 后注入一次；新 todo/新用户消息/新 ready 出现时清除 */
+  completionAuditInjected?: boolean;
+
   /** 遥测收集器（任务拆分 / 视图命中率等） */
   telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 }

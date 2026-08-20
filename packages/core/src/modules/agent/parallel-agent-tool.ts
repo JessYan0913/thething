@@ -370,6 +370,8 @@ async function executeSingleTask(
       abortSignal: abortSignal ?? new AbortController().signal,
       toolCallId: taskToolCallId,
       todoStore: config.todoStore,
+      scheduler: config.scheduler,
+      executionMode: 'parallel_agent',
       // 模型面用编号/标题引用 → 解析为内部 todo id（Path B 状态同步）；无引用或解析不到则回落父 id
       todoId:
         taskInput.todo && config.todoStore && config.conversationId

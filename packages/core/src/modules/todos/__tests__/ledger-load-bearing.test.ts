@@ -4,6 +4,7 @@ import { HighWaterMarkImpl } from '../high-water-mark';
 import { createTodo } from '../todo-create';
 import { completeTodo, failTodo, updateTodoStatus } from '../todo-update';
 import { createTodoWriteToolForConversation } from '../todo-tools/todo-write-tool';
+import { createTodoRuntime } from '../todo-runtime';
 import { buildCompactTaskSnapshot } from '../todo-tools/todo-snapshot';
 import type { TodoStore } from '../types';
 
@@ -55,7 +56,8 @@ describe('账本承重：父 todo_write 不破坏账本', () => {
 
   beforeEach(() => {
     store = makeStore();
-    execute = createTodoWriteToolForConversation(store, CONV).execute! as any;
+    const runtime = createTodoRuntime({ store, conversationId: CONV });
+    execute = createTodoWriteToolForConversation(store, CONV, { scheduler: runtime }).execute! as any;
   });
 
   it('按 index 更新已完成 todo 时不抹掉子 Agent 写下的 result', async () => {

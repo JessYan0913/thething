@@ -28,6 +28,7 @@ import {
   createDeleteMemoryTool,
 } from '../tools'
 import { createTodoToolsForConversation } from '../todos'
+import { createGoalTool } from '../goal'
 import { createSubmitPlanTool } from '../plan'
 import { AgentRegistry, registerBuiltinAgents, createAgentTool, createParallelAgentTool } from '.'
 import { createMcpRegistry, type McpRegistry, createRegistryBoundMcpTool } from '../../modules/mcp'
@@ -91,10 +92,17 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
 
   Object.assign(tools, createTodoToolsForConversation(config.sessionState.todoStore, config.conversationId, {
     onTodoCompleted: (todoId) => { config.sessionState.pendingArchiveTodoId = todoId; },
+    scheduler: config.scheduler,
   }))
 
   // 计划确认：复杂请求先呈现计划供用户批准（审批走 tool-approval 通道）
-  tools.submit_plan = createSubmitPlanTool(config.sessionState.todoStore, config.conversationId)
+  tools.submit_plan = createSubmitPlanTool(config.sessionState.todoStore, config.conversationId, config.scheduler)
+
+  // Goal 工具：让模型能显式声明 set/complete/blocked/status（决策归模型）
+  tools.goal = createGoalTool({
+    getGoal: () => config.sessionState.goalState ?? null,
+    setGoalState: (g) => { config.sessionState.goalState = g; },
+  })
 
   if (config.cronStore) {
     tools.cron = createCronTool({
@@ -161,6 +169,8 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     writerRef: config.writerRef ?? { current: null },
     // todo 自动同步：子 Agent 带 todoId 启动时置 in_progress，结束时置 completed/failed
     todoStore: config.sessionState.todoStore,
+    // 统一写入口：子 Agent 状态迁移经 runtime（executor claim/complete/fail）
+    scheduler: config.scheduler,
     // 路径 B 归档：子 Agent 完成入队 pendingArchiveRetries（与 pipeline prepareStep 读的同一 Map）
     pendingArchiveRetries: config.sessionState.pendingArchiveRetries,
     cwd: config.sessionState.projectRoot,

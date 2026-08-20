@@ -21,6 +21,7 @@ import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-ap
 import { setReviewerDenial, extractInputKey } from '../../modules/agent-control/reviewer-feedback'
 import { telemetryMiddleware, costTrackingMiddleware } from '../../modules/middleware'
 import { loadAllTools } from '../../modules/agent/tools'
+import { createTodoRuntime } from '../../modules/todos/todo-runtime'
 import { filterToolNames } from '../../modules/agent/tool-resolver'
 import { repairAskUserQuestionRawInput } from '../../modules/tools'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
@@ -289,6 +290,12 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // Tools
   // ============================================================
+  // TodoRuntime（Todo Runtime）：模型面(todo_write)的状态翻转经此强校验；prepareStep 据其派生就绪/quiescence。
+  const todoScheduler = createTodoRuntime({
+    store: sessionState.todoStore,
+    conversationId,
+    pendingArchiveRetries: () => sessionState.pendingArchiveRetries,
+  });
   const { tools, mcpRegistry, isSharedMcpRegistry, connectorToolNames } = await loadAllTools({
     conversationId,
     sessionState,
@@ -326,6 +333,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     userId,
     wikiBaseDir,
     memoryBaseDir,
+    scheduler: todoScheduler,
   })
 
   // 如果 Agent 定义了工具白名单/能力开关，过滤工具集
@@ -501,12 +509,14 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     triggerPercent: compactionCfg.contextWindow.triggerPercent,
     resolveModel: resolveStepModel,
     compactionCallbackRef: options.compactionCallbackRef,
+    scheduler: todoScheduler,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {
     maxSteps,
     denialTracker: sessionState.denialTracker,
     sessionState,
+    goalState: sessionState.goalState,
   })
 
   // ── v7 智能审批：runtimeContext + toolApproval ─────────

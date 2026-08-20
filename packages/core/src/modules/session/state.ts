@@ -123,6 +123,7 @@ export async function createSessionState(
     pendingArchiveTodoId: null,
     subtaskStartMessageIndex: 0,
     enableSubtaskArchiving: options?.enableSubtaskArchiving ?? true,
+    completionAuditInjected: false,
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {

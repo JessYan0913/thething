@@ -96,6 +96,27 @@ export {
 // 收尾闸门（段末未收尾 in_progress 的结账）
 export { settleInProgressTodos } from './todo-settle';
 
+// TodoRuntime（Todo Runtime 状态机/派生就绪/quiescence）+ Metadata V2 访问器
+export {
+  createTodoRuntime,
+  TODO_TRANSITIONS,
+  getExecution,
+  getLifecycle,
+  getVerification,
+  getArchive,
+  type TodoRuntime,
+  type TodoRuntimeState,
+  type ExecutionInfo,
+  type TransitionError,
+  type ExecutionMode,
+  type QuiescenceReason,
+  type TaskFinishState,
+  type TodoExecutionMeta,
+  type TodoLifecycleMeta,
+  type TodoVerificationMeta,
+  type TodoArchiveMeta,
+} from './todo-runtime';
+
 // 快照编号（方案 C：agent 凭编号定位/合并）
 export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus, type IndexedActiveTodo } from './snapshot-index';
 export { renderIndexedActiveList, renderIndexedActiveLine } from './todo-tools/todo-snapshot';

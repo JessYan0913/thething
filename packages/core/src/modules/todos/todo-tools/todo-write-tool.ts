@@ -4,6 +4,7 @@ import type { TodoStore, Todo, TodoStatus } from '../types';
 import { logger } from '../../../primitives/logger';
 import { indexActiveTodos, resolveActiveByIndex, isActiveStatus } from '../snapshot-index';
 import { renderIndexedActiveList } from './todo-snapshot';
+import type { TodoRuntime, TransitionError } from '../todo-runtime';
 
 /**
  * TodoWriteTool - 任务清单管理（主入口，方案 C：agent 自管）
@@ -163,18 +164,86 @@ function itemMetadata(item: TodoWriteToolInput['todos'][number]): Record<string,
   return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
+/** TransitionError → 面向模型的友好错误 + 重读快照 hint（与 index 越界行为一致）。 */
+function transitionErrorHint(code: TransitionError, subject: string): string {
+  const hints: Record<TransitionError, string> = {
+    NOT_FOUND: `${subject} no longer exists.`,
+    ILLEGAL_TRANSITION: `Illegal status change for ${subject} — a task cannot jump to that status directly (e.g. pending→completed is not allowed; it must go through in_progress). Re-read the latest snapshot.`,
+    ALREADY_CLAIMED: `${subject} is already claimed/being worked on.`,
+    AGENT_BUSY: `${subject} cannot be claimed because the agent is busy.`,
+    DEPENDENCIES_UNMET: `${subject} is blocked by unfinished dependencies — finish those first.`,
+    TOO_MANY_IN_PROGRESS: `Already one task is in_progress; keep exactly one at a time before advancing ${subject}.`,
+  };
+  return hints[code];
+}
+
+/**
+ * 对已存在 todo 执行 status 迁移：经 runtime 强校验（模型决策、系统执行分层）。
+ * 返回 { todo } 成功，或 { error } 失败。仅处理状态语义；其余字段由调用方另走 store.updateTodo。
+ */
+function applyStatusTransition(
+  store: TodoStore,
+  scheduler: TodoRuntime,
+  todo: Todo,
+  status: TodoStatus,
+  opts: {
+    result?: string;
+    error?: string;
+    retryable?: boolean;
+    cancelReason?: string;
+  } = {},
+):
+  | { todo: Todo }
+  | { error: string }
+{
+  const subject = `#${todo.subject}`;
+  const label = `"${todo.subject}"`;
+  // no-op：同状态重传（方案 C 每轮重发整个活跃清单必然重发当前 in_progress/pending）→ 直接沿用，不触发 claim。
+  if (todo.status === status) {
+    return { todo };
+  }
+  try {
+    switch (status) {
+      case 'in_progress':
+        return { todo: scheduler.claimTodo(todo.id, { agentId: 'main' }) };
+      case 'completed':
+        return { todo: scheduler.completeTodo(todo.id, opts.result ?? '') };
+      case 'failed':
+        return { todo: scheduler.failTodo(todo.id, opts.error ?? '', opts.retryable) };
+      case 'cancelled':
+        return { todo: scheduler.cancelTodo(todo.id, opts.cancelReason) };
+      case 'pending':
+        // failed→pending 重试：显式 retry
+        if (todo.status === 'failed' || todo.status === 'cancelled') {
+          return { todo: scheduler.retryTodo(todo.id) };
+        }
+        // 其他 pending 场景（同状态/no-op）走 store 宽松更新
+        return { todo: store.updateTodo({ id: todo.id, status }) ?? todo };
+      default:
+        return { todo: store.updateTodo({ id: todo.id, status }) ?? todo };
+    }
+  } catch (e) {
+    const code = (e as unknown as { code?: TransitionError })?.code;
+    if (e instanceof Error && code) {
+      return { error: `(${transitionErrorHint(code, label)}) ${e.message}` };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /**
  * Create a TodoWriteTool bound to a conversation
  *
  * @param store - The todo store
  * @param conversationId - The conversation ID to associate todos with
- * @param opts - 可选回调；onTodoCompleted 在子任务标记 completed 时触发（子任务独立上下文范式）
+ * @param opts - onTodoCompleted 在子任务标记 completed 时触发（子任务独立上下文范式）；
+ *   scheduler（必填）供状态翻转经 TodoRuntime 强校验（模型决策、系统执行分层）。
  * @returns The tool definition
  */
 export function createTodoWriteToolForConversation(
   store: TodoStore,
   conversationId: string,
-  opts?: { onTodoCompleted?: (todoId: string) => void },
+  opts: { onTodoCompleted?: (todoId: string) => void; scheduler: TodoRuntime },
 ) {
   return tool({
     description: `Create and update the task list for the current session. The PREFERRED tool for task planning — use it to decompose complex work.
@@ -223,13 +292,25 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
 
           if (target) {
             touchedIds.add(target.id);
+            // 状态迁移经 Scheduler 强校验（模型决策、系统执行分层）；subject/activeForm/metadata 另走 store。
+            const transition = applyStatusTransition(store, opts.scheduler, target, item.status, {
+              result: item.result,
+              error: item.error,
+              cancelReason: 'todo_write',
+            });
+            if ('error' in transition) {
+              return {
+                success: false as const,
+                error: `${transition.error} (re-read the latest snapshot and retry)`,
+              };
+            }
+            const afterStatus = transition.todo;
             const updated = store.updateTodo({
               id: target.id,
               subject: item.subject, // undefined → 沿用既有标题
-              status: item.status,
               activeForm: item.activeForm ?? null,
               ...(metadata ? { metadata } : {}),
-            });
+            }) ?? afterStatus;
             if (updated) {
               result.push({ index: item.index!, subject: updated.subject, status: updated.status });
               if (updated.status === 'completed' && isCompletionTransition(item.status, target, false)) {
@@ -241,15 +322,40 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
             // 新建（无 index 且 subject 必填）
             const created = store.createTodo({ conversationId, subject: item.subject! });
             touchedIds.add(created.id);
-            if (item.status !== 'pending' || item.activeForm || metadata) {
+            let final = store.getTodo(created.id) ?? created;
+            // 新建即完成/失败：经 Scheduler 走 claim→complete/fail 内部链（terminal 只允许从 in_progress 转出）。
+            const declared = item.status;
+            if (declared !== 'pending' || item.activeForm || metadata) {
+              const chainedStatus = declared === 'completed' || declared === 'failed'
+                ? 'in_progress'
+                : declared;
+              const claimRes = applyStatusTransition(store, opts.scheduler, final, chainedStatus, {
+                cancelReason: 'todo_write',
+              });
+              if ('error' in claimRes) {
+                store.deleteTodo(created.id);
+                return { success: false as const, error: `${claimRes.error} (new todo rolled back; re-read the latest snapshot and retry)` };
+              }
+              final = claimRes.todo;
+              // 应用非状态字段（activeForm/metadata），随后按声明状态收尾
               store.updateTodo({
                 id: created.id,
-                status: item.status,
                 activeForm: item.activeForm ?? null,
                 ...(metadata ? { metadata } : {}),
               });
+              if (declared === 'completed' || declared === 'failed') {
+                const done = applyStatusTransition(store, opts.scheduler, store.getTodo(created.id) ?? final, declared, {
+                  result: item.result,
+                  error: item.error,
+                });
+                if ('error' in done) {
+                  store.deleteTodo(created.id);
+                  return { success: false as const, error: `${done.error} (new todo rolled back; re-read the latest snapshot and retry)` };
+                }
+                final = done.todo;
+              }
+              final = store.getTodo(created.id) ?? final;
             }
-            const final = store.getTodo(created.id) ?? created;
             // 新建项没有 index（不在调用前快照里）——按最终活跃顺序补编号
             result.push({ index: -1, subject: final.subject, status: final.status });
             if (final.status === 'completed' && isCompletionTransition(item.status, undefined, true)) {
@@ -281,10 +387,17 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
             }
             dropIds.push(drop.id);
             touchedIds.add(drop.id);
+            const cancel = applyStatusTransition(store, opts.scheduler, drop, 'cancelled', { cancelReason: 'merged' });
+            if ('error' in cancel) {
+              return { success: false as const, error: `${cancel.error} (re-read the latest snapshot and retry)` };
+            }
+            // 合并结清：在生命周期上记录 mergedInto，替换旧 ad-hoc `_merged_into` metadata
             store.updateTodo({
               id: drop.id,
-              status: 'cancelled',
-              metadata: { ...(drop.metadata ?? {}), _merged_into: keep.id },
+              metadata: {
+                ...(drop.metadata ?? {}),
+                lifecycle: { ...((drop.metadata?.lifecycle ?? {}) as object), mergedInto: keep.id },
+              },
             });
             logger.info('TodoWrite', `[merge] drop todoId=${drop.id} (${drop.subject}) -> keep todoId=${keep.id}`);
             // 若被合并的项恰是 in_progress → 结束它，避免面板残留
@@ -301,7 +414,10 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
         // Phase 3: 真替换——未列出的活跃待办（pending/failed）软取消；in_progress 恒保留
         for (const t of existing) {
           if ((t.status === 'pending' || t.status === 'failed') && !touchedIds.has(t.id)) {
-            store.updateTodo({ id: t.id, status: 'cancelled' });
+            const cancel = applyStatusTransition(store, opts.scheduler, t, 'cancelled', { cancelReason: 'todo_write' });
+            if ('error' in cancel) {
+              return { success: false as const, error: `${cancel.error} (re-read the latest snapshot and retry)` };
+            }
             logger.info('TodoWrite', `[title-reconcile-cancelled] todoId=${t.id} subject="${t.subject}"`);
           }
         }

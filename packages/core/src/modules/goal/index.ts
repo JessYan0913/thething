@@ -53,3 +53,6 @@ export {
   buildGoalContextBlock,
   buildMaxTurnsPrompt,
 } from './goal-prompts'
+
+// Tool
+export { createGoalTool } from './goal-tool'

@@ -10,11 +10,32 @@ import { buildPlanPrompt, buildTodoSyncReminder, buildEmptyTodoReminder } from '
 import { buildSubtaskContext, getCurrentTodo, getIndexPoolSize } from './context-builder';
 import { archiveSubtask, renderSubtaskText, retryPendingArchives } from './archiver';
 import { splitTodo } from './splitter';
+import type { TodoRuntime } from '../todos/todo-runtime';
+import { buildCompletionAuditPrompt } from './completion-audit';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
     logger.debug('Pipeline', args.map(a => String(a)).join(' '));
   }
+}
+
+/** 从 Scheduler 派生「Ready / In Progress / Blocked」运行时视图（补充到任务快照）。 */
+function buildRuntimeOverlay(scheduler: TodoRuntime): string {
+  const state = scheduler.getRuntimeState();
+  const lines: string[] = ['[任务运行时]'];
+  const render = (title: string, todos: Array<{ subject: string }>): string => {
+    if (todos.length === 0) return `${title}: 无`;
+    return `${title}: ${todos.map(t => t.subject).join(' | ')}`;
+  };
+  lines.push(render('Ready(可执行)', state.ready));
+  lines.push(render('In Progress', state.inProgress));
+  if (state.blocked.length > 0) {
+    lines.push(render('Blocked(等依赖)', state.blocked));
+  }
+  if (state.quiescent) {
+    lines.push('(运行时寂静：无 ready / 无进行中 / 无待归档)');
+  }
+  return lines.join('\n');
 }
 
 /** 连续纯推理步数阈值，超过此值注入提示强制行动 */
@@ -63,6 +84,8 @@ export interface AgentPipelineConfig {
   resolveModel?: (modelName: string) => LanguageModel;
   /** 压缩状态回调引用（流式通知前端） */
   compactionCallbackRef?: { current: ((event: CompactionStatusEvent) => void) | null };
+  /** TodoRuntime（Todo Runtime）——任务状态派生 / 就绪判定的单一来源 */
+  scheduler?: TodoRuntime;
 }
 
 export function getSkillStepOverrides(
@@ -174,6 +197,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
           if (current) {
             const created = await splitTodo(todoStore, current, {
               model: sessionState.compactModel,
+              runtime: config.scheduler,
             });
             if (created.length > 0) {
               sessionState.telemetry.recordTaskSplit({
@@ -355,10 +379,20 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     const compactionJustRan = compactResult?.executed === true;
     const inactivityThreshold = !revisionChanged && !compactionJustRan && stepsSinceMutation >= 5;
 
+    // 任何 todo 变更（出现新 ready / 新用户声明）→ 重新武装 Completion Audit（下一次 quiescence 再注入）
+    if (revisionChanged) {
+      sessionState.completionAuditInjected = false;
+    }
+
     if (revisionChanged || compactionJustRan || inactivityThreshold) {
       const todos = todoStore?.getTodosByConversation(sessionState.conversationId);
       const snapshot = todos ? buildCompactTaskSnapshot(todos, todoStore) : null;
-      if (snapshot) {
+      // 运行时派生视图（Ready/In Progress/Blocked）——从 Scheduler 单一来源，不重复实现就绪判定
+      const runtimeOverlay = config.scheduler && todos && todos.length > 0
+        ? buildRuntimeOverlay(config.scheduler)
+        : null;
+      const snapshotText = snapshot ? (runtimeOverlay ? `${snapshot}\n${runtimeOverlay}` : snapshot) : null;
+      if (snapshotText) {
         const prefix = revisionChanged
           ? '[任务状态已更新]'
           : compactionJustRan
@@ -366,7 +400,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
             : '[任务提醒]';
         messages = [...messages, {
           role: 'user',
-          content: `${prefix}\n${snapshot}`,
+          content: `${prefix}\n${snapshotText}`,
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Task snapshot injected: revision=${currentRevision} changed=${revisionChanged} compact=${compactionJustRan} inactive=${inactivityThreshold}`);
       } else if (inactivityThreshold) {
@@ -380,6 +414,23 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       }
       sessionState.lastTodoRevision = currentRevision;
       sessionState.stepsSinceTodoMutation = 0;
+    }
+
+    // ── Completion Audit ──
+    // quiescent（无 ready / 无 in_progress / 无待归档）后，让模型判 complete/continue/blocked/replan。
+    // 不直接宣告完成——quiescent ≠ Goal 完成。latch 防重复注入（busy-loop）。
+    const scheduler = config.scheduler;
+    if (scheduler && stepNumber > 0) {
+      const runtime = scheduler.getRuntimeState();
+      const goalActive = !!sessionState.goalState && shouldContinue(sessionState.goalState);
+      if (runtime.quiescent && !sessionState.aborted && !goalActive && !sessionState.completionAuditInjected) {
+        sessionState.completionAuditInjected = true;
+        messages = [...messages, {
+          role: 'user',
+          content: buildCompletionAuditPrompt(runtime, sessionState.goalState?.objective),
+        } as ModelMessageType];
+        debugLog(debugEnabled, `[Agent] Completion Audit injected (quiescent)`);
+      }
     }
 
     // Context usage progress bar + 闸门(复用同一次估算,零新增开销)

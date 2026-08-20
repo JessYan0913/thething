@@ -12,6 +12,7 @@ import { generateText } from 'ai';
 import { InMemoryTodoStore } from '../store';
 import { HighWaterMarkImpl } from '../high-water-mark';
 import { createTodoWriteToolForConversation } from '../todo-tools/todo-write-tool';
+import { createTodoRuntime } from '../todo-runtime';
 import {
   settleInProgressTodos,
   findUnsettledInProgress,
@@ -31,9 +32,10 @@ describe('todo settle gate (段末未收尾 in_progress → 结账)', () => {
 
   beforeEach(() => {
     store = new InMemoryTodoStore(new HighWaterMarkImpl());
-    todoWrite = createTodoWriteToolForConversation(store, CONV);
+    const runtime = createTodoRuntime({ store, conversationId: CONV });
+    todoWrite = createTodoWriteToolForConversation(store, CONV, { scheduler: runtime });
     execute = todoWrite.execute as any;
-    vi.mocked(generateText).mockReset();
+vi.mocked(generateText).mockReset();
   });
 
   it('findUnsettledInProgress 只选 in_progress 项', () => {

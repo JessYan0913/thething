@@ -150,6 +150,12 @@ export interface AgentExecutionContext {
   /** 任务存储 */
   todoStore?: TodoStore;
 
+  /** 统一写入口：子 Agent 的状态迁移（claim/complete/fail）经 runtime，避免散落 store 直写 */
+  scheduler?: import('../todos/todo-runtime').TodoRuntime;
+
+  /** 子 Agent 执行模式（agent=顺序 / parallel_agent=并行）；executor 据此定 claim 的 mode/allowParallel */
+  executionMode?: import('../todos/todo-runtime').ExecutionMode;
+
   /** 已解析的内部 todo ID（模型面用编号/标题，由 agent-tool 解析后填入；Path B 状态同步用） */
   todoId?: string;
 
@@ -270,6 +276,12 @@ export interface AgentToolConfig {
 
   /** 任务存储 */
   todoStore?: TodoStore;
+
+  /** 统一写入口：子 Agent 的状态迁移经 runtime，避免散落 store 直写 */
+  scheduler?: import('../todos/todo-runtime').TodoRuntime;
+
+  /** 子 Agent 执行模式（agent=顺序 / parallel_agent=并行） */
+  executionMode?: import('../todos/todo-runtime').ExecutionMode;
 
   /** 任务 ID */
   todoId?: string;
@@ -440,6 +452,8 @@ export interface LoadToolsConfig {
   wikiBaseDir?: string
   /** 用户记忆基础目录 */
   memoryBaseDir?: string
+  /** TodoRuntime（Todo Runtime）——模型面工具的状态翻转经此强校验（会话绑定工具必填） */
+  scheduler: import('../todos/todo-runtime').TodoRuntime
 }
 
 export interface WikiContext {

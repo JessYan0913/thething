@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryTodoStore } from '../store';
 import { HighWaterMarkImpl } from '../high-water-mark';
 import { createTodoWriteToolForConversation, todoWriteToolSchema } from '../todo-tools/todo-write-tool';
+import { createTodoRuntime, getLifecycle } from '../todo-runtime';
 import type { TodoStore } from '../types';
 
 const CONV = 'conv-1';
@@ -12,7 +13,8 @@ describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
 
   beforeEach(() => {
     store = new InMemoryTodoStore(new HighWaterMarkImpl());
-    const tool = createTodoWriteToolForConversation(store, CONV);
+    const runtime = createTodoRuntime({ store, conversationId: CONV });
+    const tool = createTodoWriteToolForConversation(store, CONV, { scheduler: runtime });
     execute = tool.execute! as any;
   });
 
@@ -130,7 +132,7 @@ describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
     expect(kept.status).toBe('in_progress');
     const dropped = all.find(t => t.id === ids[1])!;
     expect(dropped.status).toBe('cancelled');
-    expect(dropped.metadata?._merged_into).toBe(ids[0]);
+    expect(getLifecycle(dropped).mergedInto).toBe(ids[0]);
   });
 
   it('merge keeps the kept task active and drops the row', async () => {
@@ -179,16 +181,17 @@ describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
 
   // ---- 规划警告 ----
 
-  it('warns when more than one todo is in_progress', async () => {
+  it('rejects creating more than one in_progress (single-in-progress invariant)', async () => {
+    // 方案 C 单进行中由 runtime 强制：第二个 in_progress 的 claim 被拒（非仅警告）
     const result = await execute({
       todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'in_progress' }],
     });
-    expect(result.success).toBe(true);
-    expect(result.message).toContain('in_progress');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/in_progress/i);
   });
 
   it('warns when the same index is referenced twice in one call', async () => {
-    await execute({ todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'pending' }] });
+    await execute({ todos: [{ subject: 'A', status: 'pending' }, { subject: 'B', status: 'pending' }] });
     const result = await execute({
       todos: [
         { index: 1, status: 'pending' },
@@ -197,6 +200,7 @@ describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
     });
     expect(result.success).toBe(true);
     expect(result.message).toContain('index 1');
+    expect(result.message).toContain('referenced more than once');
   });
 
   it('warns when completed without result', async () => {

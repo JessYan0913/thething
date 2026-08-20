@@ -9,6 +9,7 @@
 import { generateText } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { TodoStore, Todo } from '../todos/types';
+import { getLifecycle, type TodoRuntime } from '../todos/todo-runtime';
 
 const SPLIT_PROMPT = `你是一个任务拆分助手。请将以下过大的子任务拆分为 2-5 个更小、更独立、可逐个在有限上下文内完成的子任务。
 只输出 JSON 数组，每个元素为 {"subject":"子任务标题(祈使句)","verify":"完成标准(可执行，可选)"}。不要前缀或解释。`;
@@ -62,6 +63,8 @@ async function llmSplit(subject: string, model: LanguageModelV3): Promise<Array<
 
 export interface SplitTodoOptions {
   model?: LanguageModelV3;
+  /** 统一写入口：取消/创建经 runtime（记录 lifecycle.split）。缺省回落 store 直写。 */
+  runtime?: TodoRuntime;
 }
 
 /**
@@ -83,16 +86,39 @@ export async function splitTodo(
   }
   if (!items) return []; // 已原子，无法拆分
 
-  // 取消原 todo（保留 id）+ 创建新子任务
-  store.updateTodo({ id: todo.id, status: 'cancelled' });
+  // 取消原 todo（保留 id）+ 创建新子任务（经 runtime：记录 lifecycle.split / createdBy=splitter）
+  const parentLifecycle = getLifecycle(todo);
+  const rootTodoId = parentLifecycle.rootTodoId ?? todo.id;
+  if (opts.runtime) {
+    opts.runtime.cancelTodo(todo.id, 'split');
+  } else {
+    store.updateTodo({ id: todo.id, status: 'cancelled' });
+  }
+
   const createdIds: string[] = [];
   for (const item of items.slice(0, 5)) {
     const created = store.createTodo({
       conversationId: todo.conversationId,
       subject: item.subject,
-      ...(item.verify ? { metadata: { verify: item.verify } } : {}),
+      metadata: {
+        ...(item.verify ? { verify: item.verify } : {}),
+        lifecycle: { createdBy: 'splitter', parentTodoId: todo.id, rootTodoId },
+      },
     });
     createdIds.push(created.id);
+  }
+
+  // 在被取消的原 todo 上记录 supersededBy（仅生命周期合并，status 已由 runtime 处理）
+  if (createdIds.length > 0) {
+    const cancelled = store.getTodo(todo.id);
+    if (cancelled) {
+      store.updateTodo({
+        id: todo.id,
+        metadata: {
+          lifecycle: { ...getLifecycle(cancelled), supersededBy: createdIds[0] },
+        },
+      });
+    }
   }
   return createdIds;
 }

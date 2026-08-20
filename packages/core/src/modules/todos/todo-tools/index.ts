@@ -64,11 +64,11 @@ export function createTodoTools(store: TodoStore, conversationId = 'default'): T
 export function createTodoToolsForConversation(
   store: TodoStore,
   conversationId: string,
-  opts?: { onTodoCompleted?: (todoId: string) => void },
+  opts: { onTodoCompleted?: (todoId: string) => void; scheduler: import('../todo-runtime').TodoRuntime },
 ): TodoTools {
   return {
     todo_write: createTodoWriteToolForConversation(store, conversationId, opts),
-    todo_delete: createTodoDeleteTool(store, conversationId),
+    todo_delete: createTodoDeleteTool(store, conversationId, opts.scheduler),
     todo_list: createTodoListToolForConversation(store, conversationId),
     todo_create_batch: createTodoBatchCreateToolForConversation(store, conversationId),
   };

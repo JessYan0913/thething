@@ -60,6 +60,8 @@ export async function executeAgentTask({
       abortSignal: abortSignal ?? new AbortController().signal,
       toolCallId,
       todoStore: config.todoStore,
+      scheduler: config.scheduler,
+      executionMode: config.executionMode ?? 'agent',
       todoId: todoId ?? config.todoId,
       pendingArchiveRetries: config.pendingArchiveRetries,
       provider: config.provider,

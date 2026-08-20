@@ -250,6 +250,23 @@ export {
 export {
   createTodoStore,
 } from './modules/todos';
+export {
+  createTodoRuntime,
+  TODO_TRANSITIONS,
+  getExecution,
+  getLifecycle,
+  getVerification,
+  getArchive,
+} from './modules/todos';
+export type {
+  TodoRuntime,
+  TodoRuntimeState,
+  ExecutionInfo,
+  TransitionError,
+  ExecutionMode,
+  QuiescenceReason,
+  TaskFinishState,
+} from './modules/todos';
 export { settleInProgressTodos } from './modules/todos/todo-settle';
 export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus } from './modules/todos/snapshot-index';
 export { renderIndexedActiveList, renderIndexedActiveLine } from './modules/todos/todo-tools/todo-snapshot';

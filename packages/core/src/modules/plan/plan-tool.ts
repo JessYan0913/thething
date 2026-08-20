@@ -16,6 +16,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore } from '../todos/types';
+import type { TodoRuntime } from '../todos/todo-runtime';
 
 // ============================================================
 // Schema
@@ -53,7 +54,7 @@ export type SubmitPlanToolOutput = {
  * @param store - The todo store
  * @param conversationId - Conversation to write the approved plan into
  */
-export function createSubmitPlanTool(store: TodoStore, conversationId: string) {
+export function createSubmitPlanTool(store: TodoStore, conversationId: string, runtime?: TodoRuntime) {
   return tool({
     description: `Present a plan for user approval BEFORE executing high-stakes or user-requested-confirmation work. Use ONLY when (a) the user explicitly asked you to show or confirm a plan first, or (b) the work is high-stakes (irreversible actions, sending external messages, deleting data). For ordinary multi-step work, use todo_write instead — do not call this tool for normal multi-step tasks.
 
@@ -65,11 +66,15 @@ Usage:
 - If the user rejects, revise the plan based on their feedback and call this tool again.`,
     inputSchema: submitPlanToolSchema,
     execute: async (input: SubmitPlanToolInput) => {
-      // 整表替换：先清掉当前活跃 todo（已完成任务保留），再写入计划
+      // 整表替换：先清掉当前活跃 todo（已完成任务保留；状态迁移经 runtime 取消，留 cancelled 软标记），再写入计划
       const existing = store.getTodosByConversation(conversationId);
       for (const todo of existing) {
         if (todo.status !== 'completed') {
-          store.deleteTodo(todo.id);
+          if (runtime) {
+            runtime.cancelTodo(todo.id, 'plan_replaced');
+          } else {
+            store.deleteTodo(todo.id);
+          }
         }
       }
 
@@ -78,7 +83,10 @@ Usage:
         store.createTodo({
           conversationId,
           subject: item.subject,
-          ...(item.verify ? { metadata: { verify: item.verify } } : {}),
+          metadata: {
+            ...(item.verify ? { verify: item.verify } : {}),
+            lifecycle: { createdBy: 'planner' },
+          },
         });
         created++;
       }
