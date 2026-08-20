@@ -217,14 +217,19 @@ For dependency graphs (blockedBy), use todo_create_batch instead. When delegatin
         for (const item of input.todos) {
           const metadata = itemMetadata(item);
 
-          // 权威快照内按标题映射：无 id（且未显式 create）时，若标题命中清单既有活跃项，
-          // 复用其 id 走 update——续做/压缩后重提同标题不会复制出新重复行。
+          // 权威快照内按标题映射：模型可能带 id 也可能不带；无论哪种，只要不是显式
+          // create，就尝试把标题映射回清单既有活跃项——防"拿不存在的/错格式 id 重建
+          // 同标题"造成重复行（超限塌缩+模型乱拼 id 时常见）。
+          // 映射用标题 = 本次显式的 subject，缺省时取该 id 既有 todo 的 subject。
+          // id 是显式身份锚点：id 真实存在时优先按 id 更新（可能和被映射项不同，尊重显式 id）。
+          const byId = item.id ? existingById.get(item.id) : undefined;
+          const subjectForMapping = item.subject ?? byId?.subject;
           const mappedId =
-            !item.create && !item.id
-              ? findActiveBySubject(existing, item.subject!)?.id
+            !item.create && subjectForMapping
+              ? findActiveBySubject(existing, subjectForMapping)?.id
               : undefined;
 
-          const targetId = item.id && existingById.has(item.id) ? item.id : mappedId;
+          const targetId = byId ? byId.id : mappedId;
 
           if (targetId) {
             // 更新已有任务（按 id，或按标题映射到的既有项）

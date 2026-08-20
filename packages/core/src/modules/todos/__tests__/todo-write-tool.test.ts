@@ -282,6 +282,51 @@ describe('todo_write continuation dedup (id-less title maps to existing active i
     expect(store.getTodosByConversation(CONV)).toHaveLength(1);
   });
 
+  it('collapses a non-existent/stale id onto the existing active same-subject todo (no duplicate row)', async () => {
+    // 超限塌缩根因回归：模型拿"不存在/错格式的 id"重提一个已有活跃任务的标题时，
+    // 不能走 create 分支新建重复行，而应按标题映射回既有项。
+    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const a = first.todos[0];
+
+    const result = await execute({
+      todos: [{ id: 'todo-stale-ghost', subject: 'Task A', status: 'in_progress' }],
+    });
+
+    expect(result.todos[0].id).toBe(a.id); // 映射回既有项
+    expect(store.getTodosByConversation(CONV)).toHaveLength(1); // 没有新增重复行
+  });
+
+  it('still creates a new row when id is stale AND subject has no active match', async () => {
+    await execute({ todos: [{ subject: 'Task A', status: 'completed', result: 'done' }] });
+    // 带错 id 但标题 Task A 已完成（不参与映射）→ 仍应新建
+    const result = await execute({
+      todos: [{ id: 'todo-ghost', subject: 'Task B', status: 'pending' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.todos[0].id).not.toBe('todo-ghost');
+    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
+  });
+
+  it('id-only updates of a stale id with no subject fall back to create (matching current contract)', async () => {
+    // id 不存在且无 subject 可供映射 → 无既有的对应行，只能新建（superRefine 允许 id+status）
+    const before = store.getTodosByConversation(CONV).length;
+    const result = await execute({ todos: [{ id: 'todo-ghost2', status: 'in_progress' }] });
+    expect(result.success).toBe(true);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(before + 1);
+  });
+
+  it('explicit create:true with a stale id still creates a new row', async () => {
+    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const a = first.todos[0];
+
+    const result = await execute({
+      todos: [{ id: 'todo-ghost3', subject: 'Task A', status: 'in_progress', create: true }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.todos[0].id).not.toBe(a.id);
+    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
+  });
+
   it('mapping does not cross conversations', async () => {
     store.createTodo({ conversationId: 'other-conv', subject: 'Task A' });
 
