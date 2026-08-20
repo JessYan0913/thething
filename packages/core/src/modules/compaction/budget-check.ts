@@ -140,6 +140,16 @@ export async function checkInitialBudget(
       }
     }
 
+    // 先按 step 打散单条巨型合并消息（与 step-time manageCompaction 一致，
+    // 见 lifecycle.ts slimOversizedMessages）：forceTruncate 只按消息数截断，
+    // 若保留的最近一条消息本身就是超大工具输出/推理合并体，截断触底仍超限。
+    const { slimOversizedMessages } = await import('./lifecycle');
+    currentMessages = await slimOversizedMessages(
+      currentMessages,
+      currentEstimation.modelLimit,
+      modelName,
+    );
+
     // 强制截断消息到极限:只给 messages 可用输入预算的 30%(从统一策略推导)
     const { forceTruncateMessages } = await import('./force-truncate');
     const policy = deriveBudget(currentEstimation.modelLimit, currentEstimation.outputReserve, modelName);

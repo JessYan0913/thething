@@ -53,6 +53,40 @@ describe('extractToolResultView — UIMessage (.parts)', () => {
     expect(view.toolResults[0].isError).toBe(false);
   });
 
+  // 超限根因回归：read_file 输出 {type:"text", content:...} 内容在 .content 而非 .value。
+  // 曾因 getToolOutputString 对带 type 键缺 value 的输出返回空 → outputSize=0 →
+  // MIN_COMPACT_SIZE 把 read_file 全跳过 → 永不压缩（见 task #1/#2）。
+  it('tool-read_file: outputSize 反映 content 而非 0（压缩层不可失明）', () => {
+    const msg = makeUIMsg('assistant', [
+      {
+        type: 'tool-read_file',
+        toolCallId: 'tc-rf',
+        state: 'output-available',
+        input: { filePath: 'src/a.ts' },
+        output: { path: 'src/a.ts', content: 'x'.repeat(300), totalLines: 1, type: 'text' },
+      },
+    ]);
+
+    const view = extractToolResultView(msg);
+    expect(view.toolResults[0].outputSize).toBeGreaterThan(200); // 应 ≥ content 长度，而非 0
+    // 且应真实进入可压缩区间（超 MIN_COMPACT_SIZE=200）
+  });
+
+  it('bash: 带 type 键但内容在 .stdout 的输出同样反映真实大小', () => {
+    const msg = makeUIMsg('assistant', [
+      {
+        type: 'tool-bash',
+        toolCallId: 'tc-bash',
+        state: 'output-available',
+        input: { command: 'cat file' },
+        output: { command: 'cat file', stdout: 'y'.repeat(500), type: 'text' },
+      },
+    ]);
+
+    const view = extractToolResultView(msg);
+    expect(view.toolResults[0].outputSize).toBeGreaterThan(200);
+  });
+
   it('extracts dynamic-tool part via .toolName field', () => {
     const msg = makeUIMsg('assistant', [
       {
