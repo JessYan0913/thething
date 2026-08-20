@@ -43,9 +43,9 @@ export interface TodoTools {
  * const tools = createTodoTools(store);
  * ```
  */
-export function createTodoTools(store: TodoStore): TodoTools {
+export function createTodoTools(store: TodoStore, conversationId = 'default'): TodoTools {
   return {
-    todo_delete: createTodoDeleteTool(store),
+    todo_delete: createTodoDeleteTool(store, conversationId),
     todo_list: createTodoListTool(store),
     todo_create_batch: createTodoBatchCreateTool(store),
   };
@@ -68,7 +68,7 @@ export function createTodoToolsForConversation(
 ): TodoTools {
   return {
     todo_write: createTodoWriteToolForConversation(store, conversationId, opts),
-    todo_delete: createTodoDeleteTool(store),
+    todo_delete: createTodoDeleteTool(store, conversationId),
     todo_list: createTodoListToolForConversation(store, conversationId),
     todo_create_batch: createTodoBatchCreateToolForConversation(store, conversationId),
   };

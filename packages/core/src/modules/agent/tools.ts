@@ -164,6 +164,7 @@ export async function loadAllTools(config: LoadToolsConfig): Promise<LoadedTools
     // 路径 B 归档：子 Agent 完成入队 pendingArchiveRetries（与 pipeline prepareStep 读的同一 Map）
     pendingArchiveRetries: config.sessionState.pendingArchiveRetries,
     cwd: config.sessionState.projectRoot,
+    conversationId: config.conversationId,
     agentsLayoutDirs: config.sessionState.layout.resources.agents,
     provider: config.provider,
     modelAliases: config.modelAliases,

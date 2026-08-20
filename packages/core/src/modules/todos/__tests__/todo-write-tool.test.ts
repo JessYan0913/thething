@@ -6,7 +6,7 @@ import type { TodoStore } from '../types';
 
 const CONV = 'conv-1';
 
-describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
+describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
   let store: TodoStore;
   let execute: (input: unknown) => Promise<any>;
 
@@ -16,7 +16,9 @@ describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
     execute = tool.execute! as any;
   });
 
-  it('creates new todos without ids', async () => {
+  // ---- 新建 ----
+
+  it('creates new todos by subject (no index)', async () => {
     const result = await execute({
       todos: [
         { subject: 'Task A', status: 'in_progress', activeForm: 'Doing A' },
@@ -25,7 +27,6 @@ describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.todos).toHaveLength(2);
     const all = store.getTodosByConversation(CONV);
     expect(all).toHaveLength(2);
     expect(all.find(t => t.subject === 'Task A')?.status).toBe('in_progress');
@@ -33,345 +34,214 @@ describe('todo_write (upsert; omitted kept, explicit cancel)', () => {
     expect(all.find(t => t.subject === 'Task B')?.status).toBe('pending');
   });
 
-  it('updates existing todos by id and keeps omitted ones (no silent delete)', async () => {
-    const first = await execute({
-      todos: [
-        { subject: 'Task A', status: 'in_progress' },
-        { subject: 'Task B', status: 'pending' },
-      ],
-    });
-    const [a, b] = first.todos;
-
-    const second = await execute({
-      todos: [
-        { id: a.id, subject: 'Task A', status: 'completed' },
-        // Task B omitted → kept（不再被静默删除）
-        { subject: 'Task C', status: 'in_progress' },
-      ],
-    });
-
-    expect(second.success).toBe(true);
-    const all = store.getTodosByConversation(CONV);
-    expect(all).toHaveLength(3);
-    expect(store.getTodo(a.id)?.status).toBe('completed');
-    expect(store.getTodo(b.id)?.status).toBe('pending'); // 保留
-    expect(all.find(t => t.subject === 'Task C')?.status).toBe('in_progress');
+  it('schema rejects creating a new todo without subject (no index)', () => {
+    const parsed = todoWriteToolSchema.safeParse({ todos: [{ status: 'in_progress' }] });
+    expect(parsed.success).toBe(false);
   });
 
-  it('keeps omitted todos (completed and active) — explicit cancelled is the only way to drop', async () => {
-    const first = await execute({
+  // ---- 按 index 更新 ----
+
+  it('updates an existing todo by index (subject optional → keeps title)', async () => {
+    await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const id = store.getTodosByConversation(CONV)[0].id;
+
+    const result = await execute({ todos: [{ index: 1, status: 'completed', result: 'done and verified' }] });
+
+    expect(result.success).toBe(true);
+    const after = store.getTodo(id)!;
+    expect(after.status).toBe('completed');
+    expect(after.subject).toBe('Task A'); // 沿用标题
+    expect(after.metadata?.result).toBe('done and verified');
+  });
+
+  it('updates by index and keeps omitted metadata (verify not lost)', async () => {
+    await execute({ todos: [{ subject: 'Task A', status: 'in_progress', verify: 'npx vitest passes' }] });
+    const id = store.getTodosByConversation(CONV)[0].id;
+
+    await execute({ todos: [{ index: 1, status: 'completed', result: 'green' }] });
+
+    const after = store.getTodo(id)!;
+    expect(after.metadata?.verify).toBe('npx vitest passes');
+    expect(after.metadata?.result).toBe('green');
+  });
+
+  it('rejects an out-of-range / stale index instead of silently creating', async () => {
+    await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    const before = store.getTodosByConversation(CONV).length;
+
+    const result = await execute({ todos: [{ index: 7, subject: 'Ghost', status: 'pending' }] });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/index 7/);
+    // 没有静默新建第 8 行
+    expect(store.getTodosByConversation(CONV)).toHaveLength(before);
+  });
+
+  // ---- 真替换：未列即取消；in_progress 恒保留 ----
+
+  it('true-replace cancels unlisted active pending/failed, keeps in_progress and listed', async () => {
+    await execute({
       todos: [
-        { subject: 'Task A', status: 'in_progress' },
-        { subject: 'Task B', status: 'pending' },
+        { subject: 'A', status: 'in_progress' },
+        { subject: 'B', status: 'pending' },
+        { subject: 'C', status: 'pending' },
       ],
     });
-    const [a, b] = first.todos;
-    await execute({ todos: [{ id: a.id, subject: 'Task A', status: 'completed' }] });
 
-    // 省略 A(completed) 和 B(pending)：两者都保留
-    await execute({ todos: [{ subject: 'Task C', status: 'in_progress' }] });
+    // 只引用 A(1) 保留 + 新增 D；B(2)、C(3) 未列出 → 应被取消
+    await execute({ todos: [{ index: 1, status: 'in_progress' }, { subject: 'D', status: 'pending' }] });
 
     const all = store.getTodosByConversation(CONV);
-    expect(store.getTodo(a.id)?.status).toBe('completed');
-    expect(store.getTodo(b.id)?.status).toBe('pending'); // 保留
-    expect(all.some(t => t.subject === 'Task C' && t.status === 'in_progress')).toBe(true);
+    expect(all.find(t => t.subject === 'A')?.status).toBe('in_progress'); // 已列出+in_progress，保留
+    expect(all.find(t => t.subject === 'D')?.status).toBe('pending'); // 新增
+    expect(all.find(t => t.subject === 'B')?.status).toBe('cancelled'); // 未列出→取消
+    expect(all.find(t => t.subject === 'C')?.status).toBe('cancelled'); // 未列出→取消
   });
+
+  it('in_progress is never auto-cancelled even if not referenced', async () => {
+    await execute({ todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'pending' }] });
+
+    // 不引用任何 index，只新增 D → A(in_progress) 必须保留，B(pending) 被取消
+    await execute({ todos: [{ subject: 'D', status: 'pending' }] });
+
+    const all = store.getTodosByConversation(CONV);
+    expect(all.find(t => t.subject === 'A')?.status).toBe('in_progress'); // 恒保留
+    expect(all.find(t => t.subject === 'B')?.status).toBe('cancelled');
+  });
+
+  // ---- merge：语义重复合一 ----
+
+  it('merge folds a semantic duplicate into the kept task (no duplicate rows)', async () => {
+    await execute({
+      todos: [
+        { subject: '调研X', status: 'in_progress' }, // index 1 (created first)
+        { subject: '写X', status: 'pending' },        // index 2
+      ],
+    });
+    const ids = store.getTodosByConversation(CONV).map(t => t.id);
+
+    const result = await execute({ merge: [{ keepIndex: 1, dropIndices: [2], subject: '写X' }] });
+
+    expect(result.success).toBe(true);
+    const all = store.getTodosByConversation(CONV);
+    expect(all).toHaveLength(2); // 1 kept + 1 cancelled，没有第三行
+    const kept = all.find(t => t.id === ids[0])!;
+    expect(kept.subject).toBe('写X'); // 标题按 merge.subject 更新
+    expect(kept.status).toBe('in_progress');
+    const dropped = all.find(t => t.id === ids[1])!;
+    expect(dropped.status).toBe('cancelled');
+    expect(dropped.metadata?._merged_into).toBe(ids[0]);
+  });
+
+  it('merge keeps the kept task active and drops the row', async () => {
+    await execute({
+      todos: [
+        { subject: 'A', status: 'in_progress' },
+        { subject: 'A', status: 'pending' }, // 字面重复也由 agent 显式 merge（机器零去重）
+      ],
+    });
+    const before = store.getTodosByConversation(CONV);
+    expect(before).toHaveLength(2); // 机器不自动去重
+
+    await execute({ merge: [{ keepIndex: 1, dropIndices: [2] }] });
+
+    const after = store.getTodosByConversation(CONV);
+    expect(after.filter(t => isActive(t))).toHaveLength(1); // 只剩一个活跃
+    expect(after.find(t => t.subject === 'A' && isActive(t))?.status).toBe('in_progress');
+  });
+
+  it('merge errors when keepIndex/dropIndex is stale', async () => {
+    await execute({ todos: [{ subject: 'A', status: 'in_progress' }] });
+    const result = await execute({ merge: [{ keepIndex: 99, dropIndices: [1] }] });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/keepIndex 99/);
+  });
+
+  // ---- 输出快照 ----
+
+  it('returns the latest indexed active snapshot for the next turn', async () => {
+    await execute({ todos: [{ subject: '调研X', status: 'in_progress' }, { subject: '写X', status: 'pending' }] });
+
+    const result = await execute({
+      todos: [
+        { index: 1, status: 'in_progress' },
+        { index: 2, status: 'pending' },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.todos).toContainEqual(expect.objectContaining({ index: 1, subject: '调研X' }));
+    expect(result.todos).toContainEqual(expect.objectContaining({ index: 2, subject: '写X' }));
+    expect(result.snapshot).toMatch(/\[#1\]/);
+    expect(result.snapshot).toMatch(/\[#2\]/);
+    expect(result.snapshot).not.toContain('todo-'); // 无 id
+  });
+
+  // ---- 规划警告 ----
 
   it('warns when more than one todo is in_progress', async () => {
     const result = await execute({
-      todos: [
-        { subject: 'Task A', status: 'in_progress' },
-        { subject: 'Task B', status: 'in_progress' },
-      ],
+      todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'in_progress' }],
     });
-
     expect(result.success).toBe(true);
     expect(result.message).toContain('in_progress');
   });
 
-  it('does not touch todos of other conversations', async () => {
-    store.createTodo({ conversationId: 'other-conv', subject: 'Other task' });
-
-    await execute({ todos: [{ subject: 'Mine', status: 'pending' }] });
-    await execute({ todos: [] });
-
-    expect(store.getTodosByConversation('other-conv')).toHaveLength(1);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1); // 空列表不再清空（不静默删）
-  });
-
-  it('treats unknown ids as new todos', async () => {
+  it('warns when the same index is referenced twice in one call', async () => {
+    await execute({ todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'pending' }] });
     const result = await execute({
-      todos: [{ id: 'nonexistent', subject: 'Task X', status: 'pending' }],
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.todos[0].id).not.toBe('nonexistent');
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
-  });
-
-  it('persists verify on create and result/error on update into metadata', async () => {
-    const first = await execute({
       todos: [
-        { subject: 'Task A', status: 'in_progress', verify: 'npx vitest run passes' },
-        { subject: 'Task B', status: 'pending' },
+        { index: 1, status: 'pending' },
+        { index: 1, status: 'in_progress' },
       ],
     });
-    const [a, b] = first.todos;
-    expect(store.getTodo(a.id)?.metadata.verify).toBe('npx vitest run passes');
-
-    // 单完成约束：一次只标记一个 completed/failed，分两次调用
-    await execute({
-      todos: [{ id: a.id, subject: 'Task A', status: 'completed', result: 'All 12 tests green' }],
-    });
-    await execute({
-      todos: [{ id: b.id, subject: 'Task B', status: 'failed', error: 'Missing fixture file' }],
-    });
-
-    const aFinal = store.getTodo(a.id)!;
-    expect(aFinal.metadata.result).toBe('All 12 tests green');
-    // metadata 合并语义:更新 result 不应丢掉创建时的 verify
-    expect(aFinal.metadata.verify).toBe('npx vitest run passes');
-    expect(store.getTodo(b.id)?.metadata.error).toBe('Missing fixture file');
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('index 1');
   });
 
   it('warns when completed without result', async () => {
-    const result = await execute({
-      todos: [{ subject: 'Task A', status: 'completed' }],
-    });
-
-    expect(result.success).toBe(true);
+    const result = await execute({ todos: [{ subject: 'A', status: 'completed' }] });
     expect(result.message).toContain('completed without a result');
   });
 
   it('warns when failed without error', async () => {
-    const result = await execute({
-      todos: [{ subject: 'Task B', status: 'failed' }],
-    });
-
-    expect(result.success).toBe(true);
+    const result = await execute({ todos: [{ subject: 'A', status: 'failed' }] });
     expect(result.message).toContain('failed without an error');
   });
 
-  it('does not warn when completed carries result', async () => {
-    const result = await execute({
-      todos: [{ subject: 'Task A', status: 'completed', result: 'done and verified' }],
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.message).toBeUndefined();
+  it('does not warn when completed carries result / failed carries error', async () => {
+    const ok = await execute({ todos: [{ subject: 'A', status: 'completed', result: 'done' }] });
+    expect(ok.message).toBeUndefined();
+    const ok2 = await execute({ todos: [{ subject: 'B', status: 'failed', error: 'boom' }] });
+    expect(ok2.message).toBeUndefined();
   });
 
-  it('does not warn when failed carries error', async () => {
-    const result = await execute({
-      todos: [{ subject: 'Task B', status: 'failed', error: 'timeout' }],
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.message).toBeUndefined();
-  });
+  // ---- 单完成约束 ----
 
   it('rejects marking multiple todos completed/failed in one call', async () => {
-    const first = await execute({
-      todos: [
-        { subject: 'Task A', status: 'in_progress' },
-        { subject: 'Task B', status: 'in_progress' },
-      ],
-    });
-    const [a, b] = first.todos;
+    await execute({ todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'in_progress' }] });
 
     const result = await execute({
       todos: [
-        { id: a.id, subject: 'Task A', status: 'completed', result: 'done' },
-        { id: b.id, subject: 'Task B', status: 'completed', result: 'done too' },
+        { index: 1, status: 'completed', result: 'done' },
+        { index: 2, status: 'completed', result: 'done too' },
       ],
     });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('一次只能将一个');
   });
-});
 
-describe('todo_write continuation dedup (id-less title maps to existing active item)', () => {
-  let store: TodoStore;
-  let execute: (input: unknown) => Promise<any>;
+  // ---- 会话隔离 ----
 
-  beforeEach(() => {
-    store = new InMemoryTodoStore(new HighWaterMarkImpl());
-    const tool = createTodoWriteToolForConversation(store, CONV);
-    execute = tool.execute! as any;
-  });
+  it('does not touch todos of other conversations', async () => {
+    store.createTodo({ conversationId: 'other-conv', subject: 'Other task' });
+    await execute({ todos: [{ subject: 'Mine', status: 'pending' }] });
 
-  it('maps an id-less title to the existing active item (no new row)', async () => {
-    const first = await execute({
-      todos: [
-        { subject: 'Task A', status: 'in_progress', activeForm: 'Doing A' },
-        { subject: 'Task B', status: 'pending' },
-      ],
-    });
-    const [a] = first.todos;
-
-    // 续做：无 id 重提同标题 → 应映射回 a.id，不新增行
-    const second = await execute({
-      todos: [{ subject: 'Task A', status: 'in_progress', activeForm: 'Still doing A' }],
-    });
-
-    expect(second.success).toBe(true);
-    expect(second.todos[0].id).toBe(a.id);
-    const all = store.getTodosByConversation(CONV);
-    expect(all).toHaveLength(2); // 未新增第三行
-    expect(store.getTodo(a.id)?.activeForm).toBe('Still doing A');
-  });
-
-  it('normalizes surrounding/duplicate whitespace before matching', async () => {
-    const first = await execute({ todos: [{ subject: '调研 write 工具的实现', status: 'in_progress' }] });
-    const id = first.todos[0].id;
-
-    const second = await execute({
-      todos: [{ subject: '  调研  write 工具的实现  ', status: 'in_progress' }],
-    });
-
-    expect(second.todos[0].id).toBe(id);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
-  });
-
-  it('creates a new row when title has no active match in the list', async () => {
-    await execute({ todos: [{ subject: 'Task A', status: 'completed', result: 'done' }] });
-    // Task A 已完成 → 不参与映射；Task B 是全新
-    const result = await execute({ todos: [{ subject: 'Task B', status: 'pending' }] });
-
-    expect(result.success).toBe(true);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
-  });
-
-  it('maps id-less title but treats completed/failed explicitly by id', async () => {
-    await execute({
-      todos: [{ subject: 'Task A', status: 'in_progress' }],
-    });
-    // 无 id 命中进行中任务 → 直接标 completed 也应映射到原 id
-    const result = await execute({
-      todos: [{ subject: 'Task A', status: 'completed', result: 'verified' }],
-    });
-    const all = store.getTodosByConversation(CONV);
-    expect(all).toHaveLength(1);
-    expect(all[0].status).toBe('completed');
-    expect(all[0].metadata.result).toBe('verified');
-  });
-
-  it('create:true forces a new row even when the title matches an active item', async () => {
-    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
-    const a = first.todos[0];
-
-    const result = await execute({
-      todos: [{ subject: 'Task A', status: 'in_progress', create: true }],
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.todos[0].id).not.toBe(a.id);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
-  });
-
-  it('maps id-less title with exact id semantics but honors an explicit stale id to update', async () => {
-    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
-    const a = first.todos[0];
-
-    // 带真实 id → 更新（原行为），不新增
-    const result = await execute({
-      todos: [{ id: a.id, subject: 'Task A', status: 'pending' }],
-    });
-    expect(result.todos[0].id).toBe(a.id);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
-  });
-
-  it('collapses a non-existent/stale id onto the existing active same-subject todo (no duplicate row)', async () => {
-    // 超限塌缩根因回归：模型拿"不存在/错格式的 id"重提一个已有活跃任务的标题时，
-    // 不能走 create 分支新建重复行，而应按标题映射回既有项。
-    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
-    const a = first.todos[0];
-
-    const result = await execute({
-      todos: [{ id: 'todo-stale-ghost', subject: 'Task A', status: 'in_progress' }],
-    });
-
-    expect(result.todos[0].id).toBe(a.id); // 映射回既有项
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1); // 没有新增重复行
-  });
-
-  it('still creates a new row when id is stale AND subject has no active match', async () => {
-    await execute({ todos: [{ subject: 'Task A', status: 'completed', result: 'done' }] });
-    // 带错 id 但标题 Task A 已完成（不参与映射）→ 仍应新建
-    const result = await execute({
-      todos: [{ id: 'todo-ghost', subject: 'Task B', status: 'pending' }],
-    });
-    expect(result.success).toBe(true);
-    expect(result.todos[0].id).not.toBe('todo-ghost');
-    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
-  });
-
-  it('id-only updates of a stale id with no subject fall back to create (matching current contract)', async () => {
-    // id 不存在且无 subject 可供映射 → 无既有的对应行，只能新建（superRefine 允许 id+status）
-    const before = store.getTodosByConversation(CONV).length;
-    const result = await execute({ todos: [{ id: 'todo-ghost2', status: 'in_progress' }] });
-    expect(result.success).toBe(true);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(before + 1);
-  });
-
-  it('explicit create:true with a stale id still creates a new row', async () => {
-    const first = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
-    const a = first.todos[0];
-
-    const result = await execute({
-      todos: [{ id: 'todo-ghost3', subject: 'Task A', status: 'in_progress', create: true }],
-    });
-    expect(result.success).toBe(true);
-    expect(result.todos[0].id).not.toBe(a.id);
-    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
-  });
-
-  it('mapping does not cross conversations', async () => {
-    store.createTodo({ conversationId: 'other-conv', subject: 'Task A' });
-
-    await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
-    // 本会话 Task A 是新建（other-conv 不参与映射）
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1);
     expect(store.getTodosByConversation('other-conv')).toHaveLength(1);
   });
 });
 
-describe('todo_write id-only update (subject optional, carries existing title forward)', () => {
-  let store: TodoStore;
-  let execute: (input: unknown) => Promise<any>;
-
-  beforeEach(() => {
-    store = new InMemoryTodoStore(new HighWaterMarkImpl());
-    const tool = createTodoWriteToolForConversation(store, CONV);
-    execute = tool.execute! as any;
-  });
-
-  it('schema accepts id + status without subject (the shape that previously failed)', () => {
-    const parsed = todoWriteToolSchema.safeParse({
-      todos: [{ id: 'todo-1', status: 'completed', result: 'done' }],
-    });
-    expect(parsed.success).toBe(true);
-  });
-
-  it('schema rejects creating a new todo without subject', () => {
-    const parsed = todoWriteToolSchema.safeParse({
-      todos: [{ status: 'completed', result: 'done' }],
-    });
-    expect(parsed.success).toBe(false);
-  });
-
-  it('execute completes an existing todo by id only, keeping its original subject', async () => {
-    const created = await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
-    const a = created.todos[0];
-
-    // 只传 id + status + result（不传 subject）→ 应成功，标题沿用既有值
-    const result = await execute({
-      todos: [{ id: a.id, status: 'completed', result: 'all verified' }],
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.todos[0]).toMatchObject({ id: a.id, subject: 'Task A', status: 'completed' });
-    expect(store.getTodosByConversation(CONV)).toHaveLength(1); // 没有新增重复行
-  });
-});
+function isActive(t: { status: string }): boolean {
+  return t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed';
+}

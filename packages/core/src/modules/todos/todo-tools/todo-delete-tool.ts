@@ -3,19 +3,18 @@ import { z } from 'zod';
 import type { TodoStore } from '../types';
 import { updateTodo } from '../todo-update';
 import { deleteTodoWithDependents } from '../todo-delete';
+import { resolveActiveByIndex } from '../snapshot-index';
 
 /**
  * TodoDeleteTool - Soft-delete (cancel) a todo
  *
+ * 方案 C：按快照序号（index）定位，不传 id。同会话活跃任务编号与 todo_write/清单一致。
  * Marks a todo as cancelled instead of actually deleting it.
- * This preserves dependency integrity and history.
- * The todo must not be in_progress.
- *
- * Use cascade: true to also delete all dependent todos.
+ * The todo must not be in_progress. Use cascade to also delete dependents.
  */
 export const todoDeleteToolSchema = z.object({
-  /** Todo ID to cancel (required) */
-  id: z.string().describe('The ID of the todo to cancel (soft-delete)'),
+  /** 要取消的活跃任务序号（对应清单里的 [#N]） */
+  index: z.number().int().positive().describe('Index (1-based) of the active task to cancel, as shown in the task list like [#3].'),
   /** Force cancellation even if todo has dependents (optional) */
   force: z.boolean().optional().default(false)
     .describe('Force cancel even if other todos depend on this todo'),
@@ -36,81 +35,69 @@ export type TodoDeleteToolOutput = {
 };
 
 /**
- * Create a TodoDeleteTool
- *
- * Soft-deletes a todo by marking it as cancelled.
- * This preserves dependency relationships and history.
+ * Create a TodoDeleteTool bound to a conversation for index-based deletion.
  *
  * @param store - The todo store
- * @returns The tool definition
- *
- * @example
- * ```typescript
- * const store = createTodoStore();
- * const todoDeleteTool = createTodoDeleteTool(store);
- *
- * // Cancel a todo
- * const result = await todoDeleteTool.execute({ id: 'todo-1' });
- * ```
+ * @param conversationId - The conversation whose active todo indices we resolve against
  */
-export function createTodoDeleteTool(store: TodoStore) {
+export function createTodoDeleteTool(store: TodoStore, conversationId: string) {
   return tool({
-    description: 'Cancel a todo (soft delete). Marks it as cancelled instead of removing it. The todo must not be in progress. Use cascade: true to permanently delete this todo and all of its dependent todos.',
+    description: 'Cancel a todo (soft delete) by its list index. Marks it as cancelled instead of removing it. The todo must not be in progress. Use cascade: true to permanently delete this todo and all of its dependent todos.',
     inputSchema: todoDeleteToolSchema,
     execute: async (input: TodoDeleteToolInput) => {
       try {
+        const todos = store.getTodosByConversation(conversationId);
+        const target = resolveActiveByIndex(todos, input.index);
+
+        if (!target) {
+          return {
+            success: false as const,
+            error: `index ${input.index} does not match any active task. Re-read the latest task list and retry.`,
+          };
+        }
+
         // Cascade delete: permanently delete this todo and all its dependents
         if (input.cascade) {
-          const deletedIds = deleteTodoWithDependents(store, input.id);
+          const deletedIds = deleteTodoWithDependents(store, target.id);
           return {
             success: true as const,
-            cancelledId: input.id,
+            cancelledId: target.id,
             message: `Deleted ${deletedIds.length} todos (cascade): ${deletedIds.join(', ')}`,
           };
         }
 
-        const todo = store.getTodo(input.id);
-
-        if (!todo) {
+        if (target.status === 'in_progress') {
           return {
             success: false as const,
-            error: `Todo ${input.id} not found`,
-          };
-        }
-
-        if (todo.status === 'in_progress') {
-          return {
-            success: false as const,
-            error: `Cannot cancel todo ${input.id} while it is in progress. Stop it first.`,
+            error: `Cannot cancel todo #${input.index} while it is in progress. Stop it first.`,
           };
         }
 
         // Check if todo blocks others
-        if (!input.force && todo.blocks.length > 0) {
-          const dependentIds = todo.blocks.join(', ');
+        if (!input.force && target.blocks.length > 0) {
+          const dependentIds = target.blocks.join(', ');
           return {
             success: false as const,
-            error: `Todo ${input.id} is blocking other todos: ${dependentIds}. Use force: true to cancel anyway.`,
+            error: `Todo #${input.index} is blocking other todos: ${dependentIds}. Use force: true to cancel anyway.`,
           };
         }
 
-        // Soft delete: mark as cancelled
         const updated = updateTodo(store, {
-          id: input.id,
+          id: target.id,
           status: 'cancelled',
         });
 
         if (!updated) {
           return {
             success: false as const,
-            error: `Failed to cancel todo ${input.id}`,
+            error: `Failed to cancel todo #${input.index}`,
           };
         }
 
         return {
           success: true as const,
-          cancelledId: input.id,
-          message: `Todo ${input.id} cancelled`,
+          cancelledId: target.id,
+          message: `Todo #${input.index} cancelled`,
         };
       } catch (error) {
         return {

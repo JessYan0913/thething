@@ -13,6 +13,9 @@ import {
   sanitizeToolErrorInputs,
   isOutputTruncated,
   settleInProgressTodos,
+  indexActiveTodos,
+  renderIndexedActiveLine,
+  renderIndexedActiveList,
   type SubAgentStreamWriter,
   type Todo,
 } from '@the-thing/core';
@@ -195,8 +198,10 @@ export async function POST(request: Request) {
       interruptedTodo.status = 'in_progress'; // 让下方过滤与 note 反映恢复后的状态
     }
 
-    // 权威任务台账：恢复/续做时给模型一份带真实 id 的确定性清单（实体台账，非对话词汇）。
-    // id 是唯一身份锚点——摘要/叙述里提到的任务一律以本清单 id 为准，按 id 更新、不要重建。
+    // 权威任务台账：恢复/续做时给模型一份确定性清单（实体台账，非对话词汇）。
+    // 方案 C：任务身份由 agent 凭语义管理——清单按快照序号 [#N] 展示，agent 用编号
+    // 定位/合并，机器不发明不判重。编号由 indexActiveTodos（createdAt ASC）统一生成，
+    // 与 todo_write / todo_list / overview 完全一致，可跨界面引用。
     const activeTodos = conversationTodos.filter(
       (t: Todo) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed'
     );
@@ -205,50 +210,69 @@ export async function POST(request: Request) {
       .sort((a: Todo, b: Todo) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
       .slice(0, 3);
 
+    // 一次算出全局活跃编号，供各分组行复用（保证与 todo_write 的 index 一致）
+    const indexedActive = indexActiveTodos(activeTodos);
+
     let finalInstructions = systemPrompt;
     if (activeTodos.length > 0) {
       const authLines: string[] = [];
-      authLines.push('## \u2705 \u4efb\u52a1\u8d26\u672c\uff08\u6743\u5a01\u5feb\u7167\uff09');
+      authLines.push('## ✅ 任务台账（权威快照）');
       authLines.push('');
       authLines.push(
-        '\u4ee5\u4e0b\u662f\u5f53\u524d\u4efb\u52a1\u7684\u552f\u4e00\u771f\u5b9e\u6765\u6e90\u3002' +
-        '\u6bcf\u9879\u540e\u7684 id \u662f\u552f\u4e00\u8eab\u4efd\u6807\u8bc6\uff1a' +
-        '\u6267\u884c\u65f6\u7528 todo_write \u6309 id \u66f4\u65b0\uff0c\u4e0d\u8981\u6839\u636e\u6807\u9898\u91cd\u5efa\u5df2\u5b58\u5728\u7684\u4efb\u52a1\u3002' +
-        '\u786e\u5c5e\u8d26\u672c\u4e4b\u5916\u7684\u65b0\u4efb\u52a1\uff0c\u624d\u7528 todo_write \u65b0\u5efa\u3002'
+        '以下是当前任务的唯一真实来源。每项前的 [#N] 是快照序号：执行时用 todo_write 按编号更新（如 [#1]、[#2]），不要发明编号、不要按标题重建已存在的任务。' +
+        '若发现两个编号其实是同一件事（例如不同标题语义重复），用 todo_write 的 merge 把它们合并为一个。' +
+        '确属台账之外的新任务，才用 todo_write 新建。真替换：你每轮传入想保留的完整活跃清单，清单外未列出的待办会被取消（in_progress 恒保留）。'
       );
       authLines.push('');
+
+      const markInterrupted = (idx: number, t: Todo): string =>
+        interruptedTodo && t.id === interruptedTodo.id
+          ? ' ⚠️ 上次执行中被中断，可能未完成：先检查产出是否完整，补全后再标 completed'
+          : '';
 
       const inProgress = activeTodos.filter((t: Todo) => t.status === 'in_progress');
       const pending = activeTodos.filter((t: Todo) => t.status === 'pending');
       const failed = activeTodos.filter((t: Todo) => t.status === 'failed');
 
       if (inProgress.length > 0) {
-        authLines.push('### \u8fdb\u884c\u4e2d');
-        for (const t of inProgress) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+        authLines.push('### 进行中');
+        for (const t of inProgress) {
+          const idx = indexedActive.find((e) => e.todo.id === t.id)?.index ?? -1;
+          authLines.push(renderIndexedActiveLine(idx, t, store.todoStore) + markInterrupted(idx, t));
+        }
         authLines.push('');
       }
       if (pending.length > 0) {
         const unblocked = pending.filter((t: Todo) => t.blockedBy.length === 0);
         const blocked = pending.filter((t: Todo) => t.blockedBy.length > 0);
         if (unblocked.length > 0) {
-          authLines.push('### \u5f85\u529e');
-          for (const t of unblocked) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+          authLines.push('### 待办');
+          for (const t of unblocked) {
+            const idx = indexedActive.find((e) => e.todo.id === t.id)?.index ?? -1;
+            authLines.push(renderIndexedActiveLine(idx, t, store.todoStore));
+          }
           authLines.push('');
         }
         if (blocked.length > 0) {
-          authLines.push('### \u5f85\u529e\uff08\u6709\u4f9d\u8d56\uff09');
-          for (const t of blocked) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+          authLines.push('### 待办（有依赖）');
+          for (const t of blocked) {
+            const idx = indexedActive.find((e) => e.todo.id === t.id)?.index ?? -1;
+            authLines.push(renderIndexedActiveLine(idx, t, store.todoStore));
+          }
           authLines.push('');
         }
       }
       if (failed.length > 0) {
-        authLines.push('### \u5931\u8d25');
-        for (const t of failed) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+        authLines.push('### 失败');
+        for (const t of failed) {
+          const idx = indexedActive.find((e) => e.todo.id === t.id)?.index ?? -1;
+          authLines.push(renderIndexedActiveLine(idx, t, store.todoStore));
+        }
         authLines.push('');
       }
       if (recentlyCompleted.length > 0) {
-        authLines.push('### \u6700\u8fd1\u5b8c\u6210');
-        for (const t of recentlyCompleted) authLines.push(formatAuthTodoLine(t, interruptedTodo));
+        authLines.push('### 最近完成');
+        for (const t of recentlyCompleted) authLines.push(`- ✅ **${t.subject}**${t.metadata?.result ? `: ${t.metadata.result}` : ''}`);
         authLines.push('');
       }
 
@@ -928,18 +952,5 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: 'Failed to process chat request' }, { status: 500 });
   }
-}
-
-/** 权威任务台账的单行渲染：带真实 id + 状态 + 进度，供恢复层注入（见 POST 内任务台账段）。 */
-function formatAuthTodoLine(t: Todo, interruptedTodo: Todo | undefined): string {
-  const parts = ['id: `' + t.id + '`'];
-  if (t.activeForm) parts.push('\u8fdb\u5ea6: ' + t.activeForm);
-  if (t.status === 'failed') parts.push('\u4e0a\u6b21\u5931\u8d25');
-  const interrupted =
-    interruptedTodo && t.id === interruptedTodo.id
-      ? ' \u26a0\ufe0f \u4e0a\u6b21\u6267\u884c\u4e2d\u88ab\u4e2d\u65ad\uff0c\u53ef\u80fd\u672a\u5b8c\u6210\uff1a\u5148\u68c0\u67e5\u4ea7\u51fa\u662f\u5426\u5b8c\u6574\uff0c\u8865\u5168\u540e\u518d\u6807 completed'
-      : '';
-  const mark = t.status === 'in_progress' ? '[ \u2192 ]' : t.status === 'failed' ? '[ ! ]' : '[ ]';
-  return `- ${mark} **${t.subject}** (${parts.join(', ')})${interrupted}`;
 }
 

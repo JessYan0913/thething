@@ -150,7 +150,7 @@ export interface AgentExecutionContext {
   /** 任务存储 */
   todoStore?: TodoStore;
 
-  /** 任务 ID */
+  /** 已解析的内部 todo ID（模型面用编号/标题，由 agent-tool 解析后填入；Path B 状态同步用） */
   todoId?: string;
 
   /** 子Agent 完成归档队列：todoId → result 文本（与 sessionState.pendingArchiveRetries 同一引用，路径 B 归档入队用） */
@@ -245,8 +245,8 @@ export interface AgentToolInput {
   /** 任务描述 */
   task: string;
 
-  /** 关联的 todo ID（可选，子 Agent 完成后自动更新该 todo 状态） */
-  todoId?: string;
+  /** 关联的任务引用（可选）：当前清单里的编号 `[#N]` 或精确标题。解析后自动置 in_progress / complete / fail。 */
+  todo?: string;
 }
 
 export interface AgentToolConfig {
@@ -279,6 +279,9 @@ export interface AgentToolConfig {
 
   /** 工作目录 */
   cwd?: string;
+
+  /** 会话 ID（agent-tool 据此解析模型面编号[#N]/标题 → 内部 todo id） */
+  conversationId?: string;
 
   /** 模型提供者 */
   provider?: (modelName: string) => LanguageModel;
@@ -317,7 +320,7 @@ export interface AgentTaskExecutionOptions {
   config: AgentToolConfig;
   toolCallId: string;
   abortSignal?: AbortSignal;
-  /** 关联的 todo ID（覆盖 config.todoId，子 Agent 完成后自动更新状态） */
+  /** 已解析的内部 todo ID（覆盖 config.todoId；模型面用编号/标题，由 agent-tool 解析） */
   todoId?: string;
   /** fork Skill 不继承父对话历史。 */
   includeParentMessages?: boolean;

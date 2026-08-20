@@ -251,6 +251,8 @@ export {
   createTodoStore,
 } from './modules/todos';
 export { settleInProgressTodos } from './modules/todos/todo-settle';
+export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus } from './modules/todos/snapshot-index';
+export { renderIndexedActiveList, renderIndexedActiveLine } from './modules/todos/todo-tools/todo-snapshot';
 export {
   STATUS_CONFIG,
 } from './modules/todos/types';

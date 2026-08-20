@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore, Todo } from '../types';
 import { logger } from '../../../primitives/logger';
+import { renderIndexedActiveList } from './todo-snapshot';
 
 /**
  * TodoListTool - List todos with a compact snapshot, or get a single todo's full details
@@ -59,56 +60,26 @@ export type TodoListToolOutput = {
 
 /**
  * Build a compact text snapshot of the todo list
+ * 活跃任务经共享 renderIndexedActiveList 渲染（方案 C：编号 [#N]，无 id），
+ * 与 todo_write 输出 / 台账保持编号一致，agent 可跨界面引用同一编号。
  */
-function buildSnapshot(todos: Array<{
-  id: string;
-  subject: string;
-  status: string;
-  activeForm: string | null;
-  claimedBy: string | null;
-  blockedBy: string[];
-}>, store: TodoStore): string {
+function buildSnapshot(todos: Todo[], store: TodoStore): string {
   if (todos.length === 0) {
     return '当前没有任务。';
   }
 
   const lines: string[] = [];
-  const inProgress = todos.filter(t => t.status === 'in_progress');
-  const pending = todos.filter(t => t.status === 'pending');
   const completed = todos.filter(t => t.status === 'completed');
-
-  // Stats line
-  const stats = [
-    inProgress.length > 0 ? `进行中: ${inProgress.length}` : '',
-    pending.length > 0 ? `待办: ${pending.length}` : '',
-    completed.length > 0 ? `已完成: ${completed.length}` : '',
-  ].filter(Boolean).join(' | ');
+  const stats = renderStats(todos);
 
   if (stats) {
     lines.push(`任务清单 (${stats})`);
     lines.push('');
   }
 
-  // In progress
-  for (const todo of inProgress) {
-    const active = todo.activeForm ? ` — ${todo.activeForm}` : '';
-    const owner = todo.claimedBy ? ` (${todo.claimedBy})` : '';
-    lines.push(`[→] #${todo.id} ${todo.subject}${active}${owner}`);
-  }
-
-  // Pending (unblocked first)
-  const unblocked = pending.filter(t => t.blockedBy.length === 0);
-  const blocked = pending.filter(t => t.blockedBy.length > 0);
-
-  for (const todo of unblocked) {
-    lines.push(`[ ] #${todo.id} ${todo.subject}`);
-  }
-  for (const todo of blocked) {
-    const depNames = todo.blockedBy.map(id => {
-      const dep = store.getTodo(id);
-      return dep ? `#${dep.id} ${dep.subject}` : `#${id} (已删除)`;
-    });
-    lines.push(`[ ] #${todo.id} ${todo.subject} (被 ${depNames.join(', ')} 阻塞)`);
+  const active = renderIndexedActiveList(todos, store);
+  if (active) {
+    lines.push(active);
   }
 
   // Completed (last 3)
@@ -116,7 +87,8 @@ function buildSnapshot(todos: Array<{
     lines.push('');
     const recent = completed.slice(-3);
     for (const todo of recent) {
-      lines.push(`[x] #${todo.id} ${todo.subject}`);
+      const result = todo.metadata?.result ? `: ${todo.metadata.result}` : '';
+      lines.push(`[x] ${todo.subject}${result}`);
     }
     if (completed.length > 3) {
       lines.push(`... 还有 ${completed.length - 3} 条已完成`);
@@ -124,6 +96,19 @@ function buildSnapshot(todos: Array<{
   }
 
   return lines.join('\n');
+}
+
+function renderStats(todos: Todo[]): string {
+  const inProgress = todos.filter(t => t.status === 'in_progress').length;
+  const pending = todos.filter(t => t.status === 'pending').length;
+  const completed = todos.filter(t => t.status === 'completed').length;
+  const failed = todos.filter(t => t.status === 'failed').length;
+  return [
+    inProgress > 0 ? `进行中: ${inProgress}` : '',
+    pending > 0 ? `待办: ${pending}` : '',
+    completed > 0 ? `已完成: ${completed}` : '',
+    failed > 0 ? `失败: ${failed}` : '',
+  ].filter(Boolean).join(' | ');
 }
 
 function toCompact(todo: Todo): CompactTodo {
@@ -185,7 +170,7 @@ export function createTodoListTool(store: TodoStore) {
         }
 
         const compact = todos.map(toCompact);
-        const snapshot = buildSnapshot(compact, store);
+        const snapshot = buildSnapshot(todos, store);
 
         return {
           success: true as const,
@@ -240,7 +225,7 @@ export function createTodoListToolForConversation(store: TodoStore, conversation
         }
 
         const compact = todos.map(toCompact);
-        const snapshot = buildSnapshot(compact, store);
+        const snapshot = buildSnapshot(todos, store);
 
         return {
           success: true as const,

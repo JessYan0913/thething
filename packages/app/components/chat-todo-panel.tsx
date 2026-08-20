@@ -127,6 +127,17 @@ export function TodoPanel({
     });
   }, [todos]);
 
+  // 方案 C：面板编号须与台账/快照一致——仅活跃任务（pending/in_progress/failed）
+  // 按 createdAt ASC 定序编号；已完成/取消等历史不编号、不暴露内部 id。
+  const activeIndexMap = React.useMemo(() => {
+    const active = todos
+      .filter((t) => ['pending', 'in_progress', 'failed'].includes(t.status))
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const map = new Map<string, number>();
+    active.forEach((t, i) => map.set(t.id, i + 1));
+    return map;
+  }, [todos]);
+
   const totalTodos = stats.pending + stats.in_progress + stats.completed + stats.failed + stats.cancelled;
   const activeCount = stats.pending + stats.in_progress;
   const allDone = totalTodos > 0 && activeCount === 0;
@@ -188,7 +199,7 @@ export function TodoPanel({
             allDone && "opacity-60",
           )}>
             {sortedTodos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} />
+              <TodoItem key={todo.id} todo={todo} index={activeIndexMap.get(todo.id)} />
             ))}
           </div>
         </CollapsibleContent>
@@ -197,7 +208,7 @@ export function TodoPanel({
   );
 }
 
-function TodoItem({ todo }: { todo: Todo }) {
+function TodoItem({ todo, index }: { todo: Todo; index?: number }) {
   const cfg = STATUS_CONFIG[todo.status];
   const isDone = todo.status === 'completed' || todo.status === 'cancelled' || todo.status === 'failed';
 
@@ -228,9 +239,11 @@ function TodoItem({ todo }: { todo: Todo }) {
           )}>
             {todo.subject}
           </span>
-          <span className="text-[11px] text-muted-foreground/50 shrink-0 font-mono">
-            #{todo.id}
-          </span>
+          {index !== undefined && (
+            <span className="text-[11px] text-muted-foreground/50 shrink-0 font-mono">
+              #{index}
+            </span>
+          )}
         </div>
 
         {todo.metadata?.error && todo.status === "failed" && (

@@ -7,6 +7,7 @@
 
 import type { SystemPromptSection } from '../types';
 import type { TodoStore, Todo } from '../../todos/types';
+import { indexActiveTodos, renderIndexedActiveLine } from '../../todos';
 
 /**
  * Maximum number of todos to display in the overview
@@ -86,11 +87,17 @@ function buildTodoOverview(todos: Todo[], store: TodoStore): string {
     lines.push('');
   }
 
+  // 活跃任务统一定序编号（createdAt ASC），与 todo_write 输出/快照/台账共用同一编号——
+  // agent 据此引用 [#N]，见方案 C。分组渲染但编号全局一致。
+  const active = indexActiveTodos(todos);
+  const byId = new Map(active.map(({ index, todo }) => [todo.id, index]));
+
   // 进行中任务
   if (inProgress.length > 0) {
     lines.push('### 进行中');
     for (const todo of inProgress) {
-      lines.push(formatTodoLine(todo, store));
+      const idx = byId.get(todo.id);
+      lines.push(idx !== undefined ? renderIndexedActiveLine(idx, todo, store) : formatTodoLine(todo, store));
     }
     lines.push('');
   }
@@ -101,7 +108,8 @@ function buildTodoOverview(todos: Todo[], store: TodoStore): string {
     lines.push('### 待办（可领取）');
     const shown = available.slice(0, MAX_TODOS);
     for (const todo of shown) {
-      lines.push(formatTodoLine(todo, store));
+      const idx = byId.get(todo.id);
+      lines.push(idx !== undefined ? renderIndexedActiveLine(idx, todo, store) : formatTodoLine(todo, store));
     }
     if (available.length > MAX_TODOS) {
       lines.push(`... 还有 ${available.length - MAX_TODOS} 条`);
@@ -115,7 +123,8 @@ function buildTodoOverview(todos: Todo[], store: TodoStore): string {
     lines.push('### 待办（有依赖）');
     const shown = blocked.slice(0, MAX_TODOS);
     for (const todo of shown) {
-      lines.push(formatTodoLine(todo, store));
+      const idx = byId.get(todo.id);
+      lines.push(idx !== undefined ? renderIndexedActiveLine(idx, todo, store) : formatTodoLine(todo, store));
     }
     if (blocked.length > MAX_TODOS) {
       lines.push(`... 还有 ${blocked.length - MAX_TODOS} 条`);
@@ -150,17 +159,12 @@ function formatTodoLine(todo: Todo, store: TodoStore): string {
     parts.push('⚡');
   }
 
-  // 任务 ID 和标题
-  parts.push(`[${todo.id}] ${todo.subject}`);
+  // 标题（非活跃行如已完成/取消不编号——编号只给 agent 当前可引用的活跃任务）
+  parts.push(todo.subject);
 
   // 认领人标记
   if (todo.claimedBy) {
     parts.push(`(${todo.claimedBy})`);
-  }
-
-  // 活跃表单（正在做什么）
-  if (todo.activeForm) {
-    parts.push(`— ${todo.activeForm}`);
   }
 
   // 完成标准（未完结任务展示，提示按此验证）
@@ -188,17 +192,6 @@ function formatTodoLine(todo: Todo, store: TodoStore): string {
   // 已取消的任务整体画横线
   const prefix = todo.status === 'cancelled' ? '~~' : '';
   const suffix = todo.status === 'cancelled' ? '~~' : '';
-
-  // 依赖信息
-  if (todo.blockedBy.length > 0 && todo.status === 'pending') {
-    const deps = todo.blockedBy.map(id => {
-      const dep = store.getTodo(id);
-      if (!dep) return `${id}(已删除)`;
-      const statusIcon = dep.status === 'completed' ? '✅' : '⏳';
-      return `${dep.subject} ${statusIcon}`;
-    });
-    parts.push(`(依赖: ${deps.join(', ')})`);
-  }
 
   return `- ${prefix}${parts.join(' ')}${suffix}`;
 }

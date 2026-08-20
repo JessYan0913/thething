@@ -95,3 +95,7 @@ export {
 
 // 收尾闸门（段末未收尾 in_progress 的结账）
 export { settleInProgressTodos } from './todo-settle';
+
+// 快照编号（方案 C：agent 凭编号定位/合并）
+export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus, type IndexedActiveTodo } from './snapshot-index';
+export { renderIndexedActiveList, renderIndexedActiveLine } from './todo-tools/todo-snapshot';

@@ -126,23 +126,26 @@ describe('parallel-agent-tool', () => {
     });
 
     it('含 blockedBy 依赖的任务 → 返回失败 + 降级指导，不执行子Agent（设计 §1.3 执行防护层）', async () => {
+      const todos = [
+        { id: 't-0', subject: '前置任务', status: 'completed', blockedBy: [] },
+        { id: 't-1', subject: '任务一', status: 'pending', blockedBy: ['t-0'] },
+        { id: 't-2', subject: '任务二', status: 'pending', blockedBy: [] },
+      ];
       const store = {
-        getTodo: (id: string) => {
-          if (id === 't-1') return { id: 't-1', subject: '任务一', blockedBy: ['t-0'] };
-          if (id === 't-2') return { id: 't-2', subject: '任务二', blockedBy: [] };
-          return undefined;
-        },
+        // 按 createdAt 顺序返回，故快照编号：任务一=1、任务二=2
+        getTodosByConversation: () => todos.filter((t) => t.status !== 'completed'),
+        getTodo: (id: string) => todos.find((t) => t.id === id),
       } as any;
 
       const tool = createParallelAgentTool(
-        createMockToolConfig({ agentRegistry: registry, todoStore: store })
+        createMockToolConfig({ agentRegistry: registry, todoStore: store, conversationId: 'conv-1' })
       );
 
       const result = await (tool as any).execute(
         {
           tasks: [
-            { task: 'Task A', todoId: 't-1', label: 'a' },
-            { task: 'Task B', todoId: 't-2', label: 'b' },
+            { task: 'Task A', todo: '[#1]', label: 'a' },
+            { task: 'Task B', todo: '[#2]', label: 'b' },
           ],
         },
         { toolCallId: 'parallel-test', abortSignal: new AbortController().signal }
@@ -159,19 +162,24 @@ describe('parallel-agent-tool', () => {
         .mockResolvedValueOnce(createMockResult('Result A'))
         .mockResolvedValueOnce(createMockResult('Result B'));
 
+      const todos = [
+        { id: 't-1', subject: '任务一', status: 'pending', blockedBy: [] },
+        { id: 't-2', subject: '任务二', status: 'pending', blockedBy: [] },
+      ];
       const store = {
-        getTodo: (id: string) => ({ id, subject: `任务 ${id}`, blockedBy: [] }),
+        getTodosByConversation: () => todos,
+        getTodo: (id: string) => todos.find((t) => t.id === id),
       } as any;
 
       const tool = createParallelAgentTool(
-        createMockToolConfig({ agentRegistry: registry, todoStore: store })
+        createMockToolConfig({ agentRegistry: registry, todoStore: store, conversationId: 'conv-1' })
       );
 
       const result = await (tool as any).execute(
         {
           tasks: [
-            { task: 'Task A', todoId: 't-1', label: 'a' },
-            { task: 'Task B', todoId: 't-2', label: 'b' },
+            { task: 'Task A', todo: '[#1]', label: 'a' },
+            { task: 'Task B', todo: '[#2]', label: 'b' },
           ],
         },
         { toolCallId: 'parallel-test', abortSignal: new AbortController().signal }

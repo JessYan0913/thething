@@ -7,6 +7,7 @@ import { executeRoutedAgent } from './executor';
 import { scanAgentDirs } from './loader';
 import { isSubstantiveDeliverable } from './deliverable';
 import { logger } from '../../primitives/logger';
+import { resolveTodoReference } from '../todos';
 import type { AgentToolConfig, AgentExecutionContext, AgentExecutionResult, AgentToolInput, AgentTaskExecutionOptions } from './types';
 
 export async function executeAgentTask({
@@ -187,8 +188,8 @@ export function createAgentTool(config: AgentToolConfig) {
       'The system does NOT auto-route. Leave blank only if you intend general-purpose execution.'
     ),
     task: z.string().describe('The task for the sub-agent to complete'),
-    todoId: z.string().optional().describe(
-      'ID of the todo this task corresponds to. When provided, the todo is automatically marked in_progress on start and completed/failed on finish — no manual status update needed.'
+    todo: z.string().optional().describe(
+      'Reference to the todo this task corresponds to: its list index like [#3], or its exact title. When it resolves to a task, that todo is automatically marked in_progress on start and completed/failed on finish — no manual status update needed.'
     ),
   });
 
@@ -225,14 +226,20 @@ Usage example: When user says "use test-agent to verify", call this tool with {a
 Leave agentType blank only if you intend general-purpose execution (全工具).`,
     inputSchema: AgentToolInputSchema,
 
-    execute: async ({ agentType, task, todoId }: AgentToolInput, options) => executeAgentTask({
-      agentType,
-      task,
-      todoId,
-      config: { ...config, agentRegistry },
-      toolCallId: options.toolCallId ?? `agent-${Date.now()}`,
-      abortSignal: options.abortSignal,
-    }),
+    execute: async ({ agentType, task, todo }: AgentToolInput, options) => {
+      // 方案 C：模型面用编号/标题引用任务，此处解析为内部 todoId 供 Path B 状态同步
+      const todoId = todo && config.todoStore && config.conversationId
+        ? resolveTodoReference(config.todoStore, config.conversationId, todo)
+        : undefined;
+      return executeAgentTask({
+        agentType,
+        task,
+        todoId,
+        config: { ...config, agentRegistry },
+        toolCallId: options.toolCallId ?? `agent-${Date.now()}`,
+        abortSignal: options.abortSignal,
+      });
+    },
 
     toModelOutput: ({ output }) => {
       if (output && typeof output === 'object' && 'summary' in output) {

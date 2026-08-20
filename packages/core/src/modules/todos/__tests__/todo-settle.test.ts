@@ -48,26 +48,29 @@ describe('todo settle gate (段末未收尾 in_progress → 结账)', () => {
     expect(unsettled.map(t => t.subject)).toEqual(['B']);
   });
 
-  it('buildSettlePrompt 列出未收尾项并要求用 todo_write 结账', () => {
+  it('buildSettlePrompt 列出全部活跃任务并要求用 todo_write 结账 in_progress 项', () => {
     const b = store.createTodo({ conversationId: CONV, subject: '向用户文字汇报' });
     store.updateTodo({ id: b.id, status: 'in_progress' });
-    const prompt = buildSettlePrompt([store.getTodo(b.id)!]);
-    expect(prompt).toContain(b.id);
+    const prompt = buildSettlePrompt(store.getTodosByConversation(CONV), store);
+    expect(prompt).toContain('向用户文字汇报');
+    expect(prompt).toContain('[#1]');
     expect(prompt).toContain('todo_write');
     expect(prompt).toContain('completed');
+    expect(prompt).toContain('TRUE-REPLACE');
   });
 
   it('有未收尾 in_progress 时触发结账，模型结账后 store 落库（不复现“面板没更新”）', async () => {
     // 布置：一个 in_progress 任务未落账（本轮实际已完成，只是模型漏标 completed）
-    const created = await execute({
+    await execute({
       todos: [{ subject: '向用户文字汇报', status: 'in_progress', activeForm: '文字汇报' }],
     });
-    const id = created.todos[0].id;
+    const active = store.getTodosByConversation(CONV)[0];
 
-    // 模拟模型收到“结账”提示后，用 todo_write 把该项标 completed + result
+    // 模拟模型收到“结账”提示后，用 todo_write 按编号把该项标 completed + result
     vi.mocked(generateText).mockImplementation(async (args) => {
       const tool = (args as any).tools?.todo_write as any;
-      await tool.execute({ todos: [{ id, status: 'completed', result: '数字已汇报，验证通过' }] });
+      // 结账调用传全量活跃清单（含该项），把该项按 index 置 completed
+      await tool.execute({ todos: [{ index: 1, status: 'completed', result: '数字已汇报，验证通过' }] });
       return { text: 'settled' } as never;
     });
 
@@ -83,7 +86,7 @@ describe('todo settle gate (段末未收尾 in_progress → 结账)', () => {
     // 闸门触发了一次结账调用
     expect(generateText).toHaveBeenCalledTimes(1);
     // store 已被 todo_write 结账 → 不再有 in_progress 幻影
-    expect(store.getTodo(id)?.status).toBe('completed');
+    expect(store.getTodo(active.id)?.status).toBe('completed');
     expect(findUnsettledInProgress(store.getTodosByConversation(CONV))).toHaveLength(0);
   });
 

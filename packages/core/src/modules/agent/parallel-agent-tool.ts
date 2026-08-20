@@ -8,6 +8,7 @@ import { AgentRegistry } from './registry';
 import { resolveAgentRoute } from './router';
 import { executeRoutedAgent } from './executor';
 import { isSubstantiveDeliverable } from './deliverable';
+import { resolveTodoReference } from '../todos';
 import { logger } from '../../primitives/logger';
 import type {
   AgentToolConfig,
@@ -36,8 +37,8 @@ interface ParallelTaskInput {
   task: string;
   /** 标签（用于结果标识） */
   label?: string;
-  /** 关联的 todo ID（可选，子 Agent 完成后自动更新该 todo 状态） */
-  todoId?: string;
+  /** 关联的任务引用（可选，子 Agent 完成后自动更新该 todo 状态）：编号 [#N] 或精确标题 */
+  todo?: string;
 }
 
 interface ParallelAgentResult {
@@ -81,8 +82,8 @@ export function createParallelAgentTool(config: AgentToolConfig) {
             .describe('Agent type (optional). Choose EXPLICITLY per task by capability; the system does NOT auto-route. Leave blank only for general-purpose execution.'),
           task: z.string().min(1).describe('Task description for this sub-agent'),
           label: z.string().optional().describe('Label for result identification'),
-          todoId: z.string().optional().describe(
-            'ID of the todo this task corresponds to. When provided, the todo is automatically marked in_progress on start and completed/failed on finish.'
+          todo: z.string().optional().describe(
+            'Reference to the todo this task corresponds to: its list index like [#3], or its exact title. Resolves to in_progress on start and completed/failed on finish.'
           ),
         })
       )
@@ -170,9 +171,14 @@ Results are collected and returned together with labels for easy identification.
       // 执行防护（设计 §1.3 执行防护层）：有 blockedBy 依赖的任务不能并行执行——
       // 命中即返回失败 + 降级指导，系统不执行模型的错误并行决策。
       const todoStore = config.todoStore;
-      if (todoStore) {
+      if (todoStore && config.conversationId) {
         const blockedTasks = tasks
-          .map((t) => (t.todoId ? todoStore.getTodo(t.todoId) : undefined))
+          .map(
+            (t) =>
+              t.todo && config.conversationId
+                ? todoStore.getTodo(resolveTodoReference(todoStore, config.conversationId, t.todo) ?? '')
+                : undefined
+          )
           .filter((t): t is NonNullable<typeof t> => !!t && t.blockedBy.length > 0);
         if (blockedTasks.length > 0) {
           return {
@@ -191,7 +197,7 @@ Results are collected and returned together with labels for easy identification.
       // 可观测：并行 agent 调用计数 + 带 todoId 的任务占比（路径 B 影响评估）
       logger.info(
         'ParallelAgent',
-        `[invoke] tasks=${tasks.length} withTodoId=${tasks.filter((t) => t.todoId).length}`
+        `[invoke] tasks=${tasks.length} withTodo=${tasks.filter((t) => t.todo).length}`
       );
 
       // 广播并行开始事件
@@ -364,7 +370,11 @@ async function executeSingleTask(
       abortSignal: abortSignal ?? new AbortController().signal,
       toolCallId: taskToolCallId,
       todoStore: config.todoStore,
-      todoId: taskInput.todoId ?? config.todoId,
+      // 模型面用编号/标题引用 → 解析为内部 todo id（Path B 状态同步）；无引用或解析不到则回落父 id
+      todoId:
+        taskInput.todo && config.todoStore && config.conversationId
+          ? resolveTodoReference(config.todoStore, config.conversationId, taskInput.todo)
+          : (config.todoId ?? undefined),
       pendingArchiveRetries: config.pendingArchiveRetries,
       provider: config.provider,
       modelAliases: config.modelAliases,
