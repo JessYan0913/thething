@@ -200,11 +200,10 @@ export async function POST(request: Request) {
       interruptedTodo.status = 'in_progress'; // 让下方过滤与 note 反映恢复后的状态
     }
 
-    // 权威任务台账：恢复/续做时给模型一份确定性清单（实体台账，非对话词汇）。
-    // 方案 C（轻量化）：任务身份由 agent 凭语义管理——清单按稳定编号 [#N] 展示，
-    // agent 用编号定位/合并，机器不发明不判重。编号 = 创建序稳定号：indexActiveTodos
-    // 必须传**全量** conversationTodos（含终态行）才能不重排，与 todo_write / overview
-    // 完全一致，可跨界面引用。
+    // 权威任务台账：恢复/续做给模型一份确定性清单（实体台账，非对话词汇）。
+    // 编号 = 快照内物化的 todo.number（创建时分配、永不复用）：indexActiveTodos
+    // 必须传**全量** conversationTodos（含终态行）才能不重排，与 todo 工具 / overview
+    // 完全一致，可跨界面引用。不再按标题重建/合并。
     const activeTodos = conversationTodos.filter(
       (t: Todo) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed'
     );
@@ -213,7 +212,7 @@ export async function POST(request: Request) {
       .sort((a: Todo, b: Todo) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
       .slice(0, 3);
 
-    // 一次算出全局稳定编号，供各分组行复用（保证与 todo_write 的 index 一致）
+    // 活跃视图按物化编号展示（indexActiveTodos 读 todo.number，保证与 todo 工具一致）
     const indexedActive = indexActiveTodos(conversationTodos);
 
     let finalInstructions = systemPrompt;
@@ -222,9 +221,9 @@ export async function POST(request: Request) {
       authLines.push('## ✅ 任务台账（权威快照）');
       authLines.push('');
       authLines.push(
-        '以下是当前任务的唯一真实来源。每项前的 [#N] 是快照序号：执行时用 todo_write 按编号更新（如 [#1]、[#2]），不要发明编号、不要按标题重建已存在的任务。' +
-        '若发现两个编号其实是同一件事（例如不同标题语义重复），用 todo_write 的 merge 把它们合并为一个。' +
-        '确属台账之外的新任务，才用 todo_write 新建。真替换：你每轮传入想保留的完整活跃清单，清单外未列出的待办会被取消（in_progress 恒保留）。'
+        '以下是当前任务的唯一权威来源。每项前的 [#N] 是创建时物化的稳定序号（永不复用）：更新用 todo 的 update 按编号引用（如 id: "#1"），不要发明编号、不要按标题重建已存在的任务。' +
+        '新增任务用 todo 的 add（可一次建多行）；不再需要的任务用 update status= "cancelled" 或 delete 软取消。' +
+        '只 patch 你引用的编号项；未提及的任务保持原样，不会被自动清除。'
       );
       authLines.push('');
 

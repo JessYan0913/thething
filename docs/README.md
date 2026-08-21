@@ -27,5 +27,6 @@
 ## 文档导航
 
 - [`runtime.md`](./runtime.md) — One Loop / One Canvas / One Close 完整机制
-- [`state-model.md`](./state-model.md) — 状态模型:task 状态、run 终态、todo patch 语义
+- [`state-model.md`](./state-model.md) — 状态模型:task 状态、run 终态、todo 单工具 + 事件化快照
+- [`todos-lite.md`](./todos-lite.md) — todo 账本化:五状态、无闸门、稳定号 `#N`、`todo_events` 快照事件存储
 - [`implementation-phases.md`](./implementation-phases.md) — 分阶段实施清单与验收标准

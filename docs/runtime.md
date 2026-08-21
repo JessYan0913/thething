@@ -132,7 +132,7 @@ run 终止时的所有情形,由系统**确定性**推导为一种 `StopReason`:
 
 - `settleInProgressTodos`(额外 LLM 调用)
 - `Completion Audit`(审问)
-- 子任务归档 `archiver`(LLM 提炼 facts)——facts 由 `todo_write result` 自然携带。
+- 子任务归档 `archiver`(LLM 提炼 facts)——facts 由 `todo` 工具的 `result`/`metadata.result` 自然携带。
 - 后台标题生成 / MCP disconnect 等属各自清理,不受影响。
 
 ---
@@ -151,7 +151,9 @@ run 终止时的所有情形,由系统**确定性**推导为一种 `StopReason`:
 
 ## 6. 明确不做
 
-- 不做 Event Sourcing(CRUD 足够)。
+- **消息层不做 Event Sourcing**(消息 CRUD 足够)。唯一例外:**todo 层独立采用快照事件**
+  存储(`todo_events` 追加表,每次 mutation append 全会话快照),这是消除重复/编号漂移的
+  结构性手段,与消息层无关(见 docs/todos-lite.md §5.5)。
 - 不新增 `task_execution` 表(由 `agent_runs + todos + goals` 聚合足够)。
 - 不把 harness 演化为 Workflow Engine(不自动重试 / 不自动调度 / 不自动验证)。
 - 不新增"每步 LLM 辅导"类的机制(本设计要消灭的就是这一类)。

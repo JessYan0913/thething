@@ -87,8 +87,8 @@ function buildTodoOverview(todos: Todo[], store: TodoStore): string {
     lines.push('');
   }
 
-  // 活跃任务统一定序编号（createdAt ASC），与 todo_write 输出/快照/台账共用同一编号——
-  // agent 据此引用 [#N]，见方案 C。分组渲染但编号全局一致。
+  // 活跃任务统一编号（创建时物化的 todo.number，永不复用/重排），与 todo 工具输出/
+  // 快照/台账共用同一编号——agent 据此引用 [#N]（D2）。分组渲染但编号全局一致。
   const active = indexActiveTodos(todos);
   const byId = new Map(active.map(({ index, todo }) => [todo.id, index]));
 

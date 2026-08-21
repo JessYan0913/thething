@@ -164,7 +164,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         // 性质 = 确定性状态呈现（I2），非劝导话术；触发条件 = stepsSinceMutation >= 5。
         messages = [...messages, {
           role: 'user',
-          content: '[任务画布 — 当前无任务清单。若本工作需多步完成，先用 todo_write 建立清单再继续]',
+          content: '[任务画布 — 当前无任务清单。若本工作需多步完成，先用 todo(add) 建立清单再继续]',
         } as ModelMessageType];
         debugLog(debugEnabled, `[Agent] Empty todo canvas injected: no todos after ${stepsSinceMutation} steps`);
       }

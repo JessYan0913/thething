@@ -1,65 +1,42 @@
 /**
- * Todo Tools
+ * Todo Tools —— 单工具面（docs/todos-lite.md §5.5，D4 收敛）。
  *
- * Tools for todo management:
- * - todo_write: Update/create tasks by index (patch semantics; preferred for planning/progress)
- * - todo_create_batch: Create multiple todos with dependency declarations (blockedBy)
- * - todo_delete: Soft-delete (cancel) a todo
- * - todo_list: Inspect the task list (snapshot), or get a single todo's full details (id)
+ * 旧的四工具面（todo_write / todo_create_batch / todo_delete / todo_list / todo_merge）
+ * 全部退役，收敛为**一个** `todo` 工具（action: list | add | update | delete | clear）：
+ * - add     ：items[] 批量建骨架（依赖提示 dependsOnSteps），一次建齐；
+ * - update  ：按 `#N` 引用任务改状态/字段（claim/complete/fail/retry 都是 status）；
+ * - delete  ：按 `#N` 软取消；
+ * - list    ：重读清单（默认紧凑视图；scope:'all' 全量；id:'#N' 单条详情）；
+ * - clear  ：取消全部活跃任务。
  *
- * The task list is automatically injected into the agent's system prompt,
- * so agents do not need to call todo_list to see their tasks.
+ * 模型面 id 一律 = `#N`（创建时物化的稳定编号，永不复用/重排，D2）。
+ * lint 只提示不阻断；merge 退役（delete + 依赖 lint 提示承接）。
  */
 
 import type { Tool } from 'ai';
 import type { TodoStore } from '../types';
-import { createTodoDeleteTool } from './todo-delete-tool';
-import { createTodoListTool, createTodoListToolForConversation } from './todo-list-tool';
-import { createTodoBatchCreateTool, createTodoBatchCreateToolForConversation } from './todo-batch-create-tool';
-import { createTodoWriteToolForConversation } from './todo-write-tool';
+import { createTodoToolForConversation } from './todo-tool';
+import { createTodoRuntime } from '../todo-runtime';
 
 /**
- * All todo tools
+ * 工具集面：只暴露单 `todo` 工具。
  */
 export interface TodoTools {
-  todo_delete: ReturnType<typeof createTodoDeleteTool>;
-  todo_list: ReturnType<typeof createTodoListTool>;
-  todo_create_batch: ReturnType<typeof createTodoBatchCreateTool>;
-  /** 仅会话绑定变体提供（整表替换需要 conversationId 圈定范围） */
-  todo_write?: ReturnType<typeof createTodoWriteToolForConversation>;
+  todo: ReturnType<typeof createTodoToolForConversation>;
 }
 
 /**
- * Create all todo tools bound to a store
- *
- * @param store - The todo store
- * @returns Object containing all todo tools
- *
- * @example
- * ```typescript
- * import { createTodoTools } from '@/todos/tools';
- *
- * const store = createTodoStore();
- * const tools = createTodoTools(store);
- * ```
+ * 创建绑定到 store 的 todo 工具集。无会话上下文时以 'default' 圈定。
  */
 export function createTodoTools(store: TodoStore, conversationId = 'default'): TodoTools {
+  const runtime = createTodoRuntime({ store, conversationId });
   return {
-    todo_delete: createTodoDeleteTool(store, conversationId),
-    todo_list: createTodoListTool(store),
-    todo_create_batch: createTodoBatchCreateTool(store),
+    todo: createTodoToolForConversation(store, conversationId, { scheduler: runtime }),
   };
 }
 
 /**
- * Create todo tools with conversation context injected
- *
- * This is useful when todo tools are used within a specific conversation,
- * ensuring todos are automatically associated with that conversation.
- *
- * @param store - The todo store
- * @param conversationId - The conversation ID to associate todos with
- * @returns Object containing all todo tools
+ * 创建绑定会话的 todo 工具集（agent/tools.ts 装配入口）。
  */
 export function createTodoToolsForConversation(
   store: TodoStore,
@@ -67,62 +44,44 @@ export function createTodoToolsForConversation(
   opts: { scheduler: import('../todo-runtime').TodoRuntime },
 ): TodoTools {
   return {
-    todo_write: createTodoWriteToolForConversation(store, conversationId, opts),
-    todo_delete: createTodoDeleteTool(store, conversationId, opts.scheduler),
-    todo_list: createTodoListToolForConversation(store, conversationId),
-    todo_create_batch: createTodoBatchCreateToolForConversation(store, conversationId),
+    todo: createTodoToolForConversation(store, conversationId, opts),
   };
 }
 
 /**
- * Tool names as constants
+ * 工具名常量
  */
 export const TODO_TOOL_NAMES = {
-  TODO_WRITE: 'todo_write',
-  TODO_DELETE: 'todo_delete',
-  TODO_LIST: 'todo_list',
-  TODO_CREATE_BATCH: 'todo_create_batch',
+  TODO: 'todo',
 } as const;
 
 export type TodoToolName = typeof TODO_TOOL_NAMES[keyof typeof TODO_TOOL_NAMES];
 
 /**
- * Tool descriptions for display
+ * 工具描述（展示用）
  */
 export const TODO_TOOL_DESCRIPTIONS: Record<TodoToolName, string> = {
-  [TODO_TOOL_NAMES.TODO_WRITE]: 'Create and update the task list (patch semantics: only referenced items change)',
-  [TODO_TOOL_NAMES.TODO_DELETE]: 'Cancel a todo (soft-delete)',
-  [TODO_TOOL_NAMES.TODO_LIST]: 'List todos (compact snapshot) or get a single todo\'s full details',
-  [TODO_TOOL_NAMES.TODO_CREATE_BATCH]: 'Create multiple todos at once with dependency declarations',
+  [TODO_TOOL_NAMES.TODO]: 'Manage the session task list: list / add (batch) / update by #N / delete / clear',
 };
 
 /**
- * Get a single tool by name
- *
- * @param store - The todo store
- * @param name - The tool name
- * @returns The tool or undefined if not found
+ * 按名字取工具
  */
 export function getTodoTool(store: TodoStore, name: TodoToolName): Tool | undefined {
   const tools = createTodoTools(store);
-  return tools[name] as Tool | undefined;
+  return (tools as unknown as Record<string, Tool>)[name];
 }
 
 /**
- * Get all tool names
+ * 全部工具名
  */
 export function getTodoToolNames(): TodoToolName[] {
   return Object.values(TODO_TOOL_NAMES);
 }
 
-// Re-export individual tools
-export { createTodoDeleteTool } from './todo-delete-tool';
-export { createTodoListTool, createTodoListToolForConversation } from './todo-list-tool';
-export { createTodoBatchCreateTool, createTodoBatchCreateToolForConversation } from './todo-batch-create-tool';
-export { createTodoWriteToolForConversation } from './todo-write-tool';
+// Re-export single tool
+export { createTodoToolForConversation } from './todo-tool';
 
-// Re-export schemas
-export { todoDeleteToolSchema } from './todo-delete-tool';
-export { todoListToolSchema } from './todo-list-tool';
-export { todoBatchCreateToolSchema } from './todo-batch-create-tool';
-export { todoWriteToolSchema } from './todo-write-tool';
+// Re-export schema
+export { todoToolSchema } from './todo-tool';
+export type { TodoToolInput } from './todo-tool';

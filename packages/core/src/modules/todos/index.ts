@@ -34,15 +34,15 @@ export * from './types';
 // Core store
 export { InMemoryTodoStore, createTodoStore } from './store';
 
-// High water mark
+// 事件化快照存储（统一实现，见 services/datastore/todo-event-store.ts）
 export {
-  HighWaterMarkImpl,
-  getGlobalHighWaterMark,
-  setGlobalHighWaterMark,
-  resetGlobalHighWaterMark,
-  parseTodoId,
-  createHighWaterMarkFromIds,
-} from './high-water-mark';
+  SnapshotTodoStore,
+  MemoryTodoEventSink,
+  withTodoReason,
+  serializeTodos,
+  deserializeTodos,
+} from './event-store';
+export type { TodoEventSink, TodoSnapshotEvent, TodoEventReason } from './event-store';
 
 // Todo operations
 export { createTodo, createTodos, createTodoWithDependencies } from './todo-create';
@@ -56,7 +56,6 @@ export {
   stopTodo,
   retryTodo,
 } from './todo-update';
-export { deleteTodo, deleteTodos, deleteTodoWithDependents, removeTodoDependencies } from './todo-delete';
 export { claimTodo, unclaimTodo, forceClaimTodo, getTodoClaimant, isTodoClaimed } from './todo-claim';
 export {
   getAvailableTodos,
@@ -85,13 +84,8 @@ export {
   type TodoTools,
 } from './todo-tools';
 
-// Individual tool creators
-export {
-  createTodoListTool,
-  createTodoListToolForConversation,
-  createTodoBatchCreateTool,
-  createTodoBatchCreateToolForConversation,
-} from './todo-tools';
+// Individual tool creator（单 todo 工具）
+export { createTodoToolForConversation } from './todo-tools';
 
 // TodoRuntime（Todo Runtime 状态机 + 派生就绪/quiescence）+ Metadata V2 访问器
 export {

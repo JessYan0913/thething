@@ -113,11 +113,11 @@ describe('Doctor checks', () => {
       expect(r.fixHint).toBe('prune-conversations');
     });
 
-    it('无主 todos 行 → 无主行 warn 且 fixHint=delete-orphan-rows', async () => {
+    it('无主 todo_events 行 → 无主行 warn 且 fixHint=delete-orphan-rows', async () => {
       setupStore();
       const db = rawDb();
       db.prepare(
-        "INSERT INTO todos (id, conversation_id, subject, status, blocked_by, blocks, metadata) VALUES ('t1', 'missing-conv', 'x', 'pending', '[]', '[]', '{}')",
+        "INSERT INTO todo_events (conversation_id, event_type, reason, payload) VALUES ('missing-conv', 'snapshot', 'api', '[]')",
       ).run();
       db.close();
       const ctx = makeCtx();

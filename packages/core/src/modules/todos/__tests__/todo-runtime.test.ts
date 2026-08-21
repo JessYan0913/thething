@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { InMemoryTodoStore } from '../store';
-import { HighWaterMarkImpl } from '../high-water-mark';
 import { createTodoRuntime, TODO_TRANSITIONS, getExecution, getLifecycle, getVerification, getArchive } from '../todo-runtime';
 import { createTodo, createTodoWithDependencies } from '../todo-create';
 import type { TodoRuntime } from '../todo-runtime';
@@ -10,7 +9,7 @@ const CONV = 'conv-1';
 const CONV2 = 'conv-2';
 
 function makeScheduler(conversationId = CONV): { store: TodoStore; scheduler: TodoRuntime } {
-  const store = new InMemoryTodoStore(new HighWaterMarkImpl());
+  const store = new InMemoryTodoStore();
   const scheduler = createTodoRuntime({ store, conversationId });
   return { store, scheduler };
 }
@@ -64,8 +63,8 @@ describe('claimTodo（T2：无闸门，claim = 标 in_progress + 记执行者）
   });
 
   it('跨会话：他会话已有 in_progress 不再卡本会话 claim（P1 消除）', () => {
-    const storeA = new InMemoryTodoStore(new HighWaterMarkImpl());
-    const storeB = new InMemoryTodoStore(new HighWaterMarkImpl());
+    const storeA = new InMemoryTodoStore();
+    const storeB = new InMemoryTodoStore();
     const schedA = createTodoRuntime({ store: storeA, conversationId: CONV });
     const schedB = createTodoRuntime({ store: storeB, conversationId: CONV2 });
     const a = createTodo(storeA, { conversationId: CONV, subject: 'A' });
@@ -206,45 +205,45 @@ describe('Metadata V2 访问器缺省值', () => {
   });
 });
 
-describe('todo_write + scheduler 集成（无闸门）', () => {
-  it('T2 验收：pending→completed 直通（todo_write 层不再 ILLEGAL_TRANSITION）', async () => {
+describe('todo 工具 + scheduler 集成（无闸门）', () => {
+  it('T2 验收：pending→completed 直通（todo 层不再 ILLEGAL_TRANSITION）', async () => {
     const { store, scheduler } = makeScheduler();
     const t = createTodo(store, { conversationId: CONV, subject: 'A' });
     store.updateTodo({ id: t.id, status: 'pending', claimedBy: null });
-    const { createTodoWriteToolForConversation } = await import('../todo-tools/todo-write-tool');
-    const execute = createTodoWriteToolForConversation(store, CONV, { scheduler }).execute! as any;
-    const res = await execute({ todos: [{ index: 1, status: 'completed', result: 'x' }] });
+    const { createTodoToolForConversation } = await import('../todo-tools/todo-tool');
+    const execute = createTodoToolForConversation(store, CONV, { scheduler }).execute! as any;
+    const res = await execute({ action: 'update', id: '#1', status: 'completed', result: 'x' });
     expect(res.success).toBe(true);
     expect(store.getTodosByConversation(CONV)[0].status).toBe('completed');
   });
 
   it('新建即完成 走 internal claim→complete 链成功', async () => {
     const { store, scheduler } = makeScheduler();
-    const { createTodoWriteToolForConversation } = await import('../todo-tools/todo-write-tool');
-    const execute = createTodoWriteToolForConversation(store, CONV, { scheduler }).execute! as any;
-    const res = await execute({ todos: [{ subject: 'T', status: 'completed', result: 'done' }] });
+    const { createTodoToolForConversation } = await import('../todo-tools/todo-tool');
+    const execute = createTodoToolForConversation(store, CONV, { scheduler }).execute! as any;
+    const res = await execute({ action: 'add', items: [{ subject: 'T', status: 'completed', result: 'done' }] });
     expect(res.success).toBe(true);
     const t = store.getTodosByConversation(CONV).find(x => x.subject === 'T')!;
     expect(t.status).toBe('completed');
     expect(t.metadata.result).toBe('done');
   });
 
-  it('no-op 重发 in_progress（方案C每轮整体重传）不报错', async () => {
+  it('no-op 重发 in_progress（每轮整体重传）不报错', async () => {
     const { store, scheduler } = makeScheduler();
-    const { createTodoWriteToolForConversation } = await import('../todo-tools/todo-write-tool');
-    const execute = createTodoWriteToolForConversation(store, CONV, { scheduler }).execute! as any;
-    await execute({ todos: [{ subject: 'A', status: 'in_progress' }] });
-    const res = await execute({ todos: [{ index: 1, status: 'in_progress' }] });
+    const { createTodoToolForConversation } = await import('../todo-tools/todo-tool');
+    const execute = createTodoToolForConversation(store, CONV, { scheduler }).execute! as any;
+    await execute({ action: 'add', items: [{ subject: 'A', status: 'in_progress' }] });
+    const res = await execute({ action: 'update', id: '#1', status: 'in_progress' });
     expect(res.success).toBe(true);
     expect(store.getTodosByStatus('in_progress')).toHaveLength(1);
   });
 
-  it('patch 语义：未列出的 pending 保持原状（无自动取消）', async () => {
+  it('patch 语义：未提及的 pending 保持原状（无自动取消）', async () => {
     const { store, scheduler } = makeScheduler();
-    const { createTodoWriteToolForConversation } = await import('../todo-tools/todo-write-tool');
-    const execute = createTodoWriteToolForConversation(store, CONV, { scheduler }).execute! as any;
-    await execute({ todos: [{ subject: 'A', status: 'pending' }] });
-    await execute({ todos: [{ subject: 'B', status: 'pending' }] });
+    const { createTodoToolForConversation } = await import('../todo-tools/todo-tool');
+    const execute = createTodoToolForConversation(store, CONV, { scheduler }).execute! as any;
+    await execute({ action: 'add', items: [{ subject: 'A' }] });
+    await execute({ action: 'add', items: [{ subject: 'B' }] });
     const all = store.getTodosByConversation(CONV);
     expect(all.find(t => t.subject === 'A')?.status).toBe('pending');
     expect(all.find(t => t.subject === 'B')?.status).toBe('pending');

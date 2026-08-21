@@ -250,6 +250,7 @@ export {
 // Todos
 export {
   createTodoStore,
+  withTodoReason,
 } from './modules/todos';
 export {
   createTodoRuntime,
@@ -268,7 +269,7 @@ export type {
   QuiescenceReason,
   TaskFinishState,
 } from './modules/todos';
-export { createTodoWriteToolForConversation } from './modules/todos/todo-tools/todo-write-tool';
+export { createTodoToolForConversation } from './modules/todos/todo-tools/todo-tool';
 export { indexActiveTodos, resolveActiveByIndex, resolveByStableIndex, resolveTodoReference, isActiveStatus } from './modules/todos/snapshot-index';
 export { renderIndexedActiveList, renderIndexedActiveLine } from './modules/todos/todo-tools/todo-snapshot';
 export {

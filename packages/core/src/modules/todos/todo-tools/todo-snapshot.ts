@@ -50,7 +50,7 @@ export function renderIndexedActiveLine(index: number, todo: Todo, store: TodoSt
 
 /**
  * 渲染当前所有活跃任务（pending/in_progress/failed）的编号清单。
- * 所有模型面界面（todo_write 输出、快照、台账/overview）共用，保证编号一致。
+ * 所有模型面界面（todo 工具回执、快照、台账/overview）共用，保证编号一致。
  */
 export function renderIndexedActiveList(todos: Todo[], store: TodoStore): string | null {
   const active = indexActiveTodos(todos);

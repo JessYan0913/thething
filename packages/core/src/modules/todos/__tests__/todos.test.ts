@@ -18,6 +18,7 @@ describe('todos', () => {
       it('should have required fields', () => {
         const todo: Todo = {
           id: 'todo-1',
+          number: 1,
           conversationId: 'conv-1',
           subject: 'Test todo',
           status: 'pending',

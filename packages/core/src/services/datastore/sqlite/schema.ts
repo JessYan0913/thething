@@ -9,7 +9,8 @@ import { logger } from '../../../primitives/logger';
 import { extractMessageText } from './message-store';
 
 // 当前 schema 版本。doctor 诊断用 user_version 与其比对。
-export const SCHEMA_VERSION = 21;
+// v22：todos 表和 agent_status 废弃 → todo_events 快照事件表（docs/todos-lite.md §5.5）。
+export const SCHEMA_VERSION = 22;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -597,6 +598,110 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
     logger.debug('Schema', 'Migrated to v21: dropped agent_status table');
   }
 
+  if (currentVersion < 22) {
+    // v22: todos → 事件化快照账本（todo_events 追加表）。
+    // 参考 pi（earendil-works/pi）todo 的「不可变快照事件 + 从日志重建」：
+    //   - 旧 todos 行按创建序（created_at ASC, id 决胜）赋稳定号 #1..#n（物化 number）；
+    //   - 每会话 append 一条 backfill 快照事件（payload = 全量 todos JSON）；
+    //   - 有数据的旧表留备份 todos_legacy（数据安全回退，确认后手工删），空表直接 DROP。
+    // 详见 docs/todos-lite.md §5.5。
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS todo_events (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT 'snapshot',
+        reason TEXT NOT NULL DEFAULT 'migration',
+        payload TEXT NOT NULL,
+        run_id TEXT,
+        branch_id TEXT NOT NULL DEFAULT 'main',
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_todo_events_conversation
+        ON todo_events(conversation_id);
+    `);
+
+    const tableInfo = db.pragma('table_info(todos)') as { name: string }[] | undefined;
+    if (tableInfo && tableInfo.length > 0) {
+      // 无主 todos 行（conversation_id 不在 conversations，历史遗留无主行）不参与回填——
+      // todo_events 有 FK，且它们本就是要被 delete-orphan-rows 清理的对象。
+      // 行仍保留在 todos_legacy 备份中，doctor 清理即可。
+      const rows = db
+        .prepare(
+          `SELECT id, conversation_id, subject, status, claimed_by, active_form,
+                  blocked_by, blocks, created_at, updated_at, completed_at, metadata
+           FROM todos WHERE conversation_id IN (
+             SELECT id FROM conversations
+           ) ORDER BY conversation_id ASC, created_at ASC, id ASC`,
+        )
+        .all() as unknown as Array<{
+          id: string;
+          conversation_id: string;
+          subject: string;
+          status: string;
+          claimed_by: string | null;
+          active_form: string | null;
+          blocked_by: string;
+          blocks: string;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+          metadata: string;
+        }>;
+
+      // 逐会话按创建序赋稳定号（number），组内自增
+      const byConv = new Map<string, unknown[]>();
+      let total = 0;
+      for (const r of rows) {
+        total++;
+        const list = byConv.get(r.conversation_id) ?? [];
+        byConv.set(r.conversation_id, list);
+        list.push({
+          id: r.id,
+          number: list.length + 1,
+          conversationId: r.conversation_id,
+          subject: r.subject,
+          status: r.status,
+          claimedBy: r.claimed_by,
+          activeForm: r.active_form,
+          blockedBy: JSON.parse(r.blocked_by || '[]'),
+          blocks: JSON.parse(r.blocks || '[]'),
+          createdAt: new Date(r.created_at).getTime(),
+          updatedAt: new Date(r.updated_at).getTime(),
+          completedAt: r.completed_at ? new Date(r.completed_at).getTime() : null,
+          metadata: JSON.parse(r.metadata || '{}'),
+        });
+      }
+
+      const insert = db.prepare(
+        `INSERT INTO todo_events (conversation_id, reason, payload) VALUES (?, 'backfill', ?)`,
+      );
+      const migrate = db.transaction(() => {
+        for (const [convId, todos] of byConv) {
+          insert.run(convId, JSON.stringify(todos));
+        }
+        if (rows.length > 0) {
+          // 留备份一周供数据安全回退（确认后手工 DROP TABLE todos_legacy）
+          db.exec(`ALTER TABLE todos RENAME TO todos_legacy;`);
+        } else {
+          db.exec(`DROP TABLE IF EXISTS todos;`);
+        }
+        db.exec(`
+          DROP INDEX IF EXISTS idx_todos_conversation;
+          DROP INDEX IF EXISTS idx_todos_status;
+          DROP INDEX IF EXISTS idx_todos_claimed;
+        `);
+      });
+      migrate();
+      logger.info(
+        'Schema',
+        `Migrated to v22: todos → todo_events (backfilled ${total} todos across ${byConv.size} conversations${rows.length > 0 ? ', legacy kept as todos_legacy' : ''})`,
+      );
+    } else {
+      logger.debug('Schema', 'Migrated to v22: created todo_events (no legacy todos table)');
+    }
+  }
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -694,26 +799,8 @@ export function initializeSchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_chat_costs_conversation
       ON chat_costs(conversation_id);
 
-    -- Todos table
-    CREATE TABLE IF NOT EXISTS todos (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      subject TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')),
-      claimed_by TEXT,
-      active_form TEXT,
-      blocked_by TEXT NOT NULL DEFAULT '[]',
-      blocks TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      completed_at TEXT,
-      metadata TEXT NOT NULL DEFAULT '{}',
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_todos_conversation ON todos(conversation_id);
-    CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
-    CREATE INDEX IF NOT EXISTS idx_todos_claimed ON todos(claimed_by);
+    -- (todos 表已在 v22 废弃：改为 todo_events 快照事件表，由 ensureSchemaVersion 的
+    --  v22 迁移创建。旧版 v2/v4 迁移块对存量库仍会重建并随后回填/drop，不影响最终态。)
   `);
 
   ensureSchemaVersion(db);

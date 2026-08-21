@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryTodoStore } from '../../todos/store';
-import { HighWaterMarkImpl } from '../../todos/high-water-mark';
 import { createSubmitPlanTool } from '../plan-tool';
 import type { TodoStore } from '../../todos/types';
 
@@ -11,7 +10,7 @@ describe('submit_plan', () => {
   let execute: (input: unknown) => Promise<any>;
 
   beforeEach(() => {
-    store = new InMemoryTodoStore(new HighWaterMarkImpl());
+    store = new InMemoryTodoStore();
     const tool = createSubmitPlanTool(store, CONV);
     execute = tool.execute! as any;
   });

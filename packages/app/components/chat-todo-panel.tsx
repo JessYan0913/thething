@@ -127,16 +127,8 @@ export function TodoPanel({
     });
   }, [todos]);
 
-  // 方案 C：面板编号须与台账/快照一致（core snapshot-index.ts 的稳定编号）——
-  // 对**全量**清单（含已完成/取消等终态行）按创建序编全局稳定号，永不重排、不复用；
-  // 编号只随「新行创建」追加，状态流转/完成/取消不使其他行前移、已收尾行保留历史编号。
-  const indexMap = React.useMemo(() => {
-    const all = [...todos].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
-    const map = new Map<string, number>();
-    all.forEach((t, i) => map.set(t.id, i + 1));
-    return map;
-  }, [todos]);
-
+  // 编号直接用快照里已物化的 todo.number（创建时分配、永不复用，v22 起随快照持久化）——
+  // 不再本地按创建序推导，画布/面板/模型三方同源，删除或恢复边界不重排。
   const totalTodos = stats.pending + stats.in_progress + stats.completed + stats.failed + stats.cancelled;
   const activeCount = stats.pending + stats.in_progress;
   const allDone = totalTodos > 0 && activeCount === 0;
@@ -198,7 +190,7 @@ export function TodoPanel({
             allDone && "opacity-60",
           )}>
             {sortedTodos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} index={indexMap.get(todo.id)} />
+              <TodoItem key={todo.id} todo={todo} index={todo.number} />
             ))}
           </div>
         </CollapsibleContent>

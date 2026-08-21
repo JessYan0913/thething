@@ -116,9 +116,10 @@ async function dirSize(dir: string): Promise<number> {
   return total;
 }
 
-/** conversation 级表（含 conversation_id 列）。修复 delete-orphan-rows 复用。 */
+/** conversation 级表（含 conversation_id 列）。修复 delete-orphan-rows 复用。
+ *  注意：todos 表已在 v22 废弃，孤儿清理目标为 todo_events（快照事件表）。 */
 export const CONVERSATION_SCOPED_TABLES = [
-  'messages', 'messages_tree', 'summaries', 'todos', 'pending_approvals',
+  'messages', 'messages_tree', 'summaries', 'todo_events', 'pending_approvals',
   'conversation_branches', 'conversation_branch_selections', 'conversation_runs',
   'agent_runs', 'stream_chunks', 'suspended_agent_states', 'chat_costs',
   'message_text',

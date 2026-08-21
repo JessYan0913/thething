@@ -1,4 +1,5 @@
 import { getServerRuntime } from '@/lib/runtime';
+import { withTodoReason } from '@the-thing/core';
 import type { Todo } from '@/lib/todos/types';
 import { NextResponse } from 'next/server';
 
@@ -49,75 +50,78 @@ export async function POST(request: Request) {
     const rt = await getServerRuntime();
     const store = rt.dataStore.todoStore;
 
-    switch (action) {
-      case 'claim': {
-        const { todoId, agentId } = params as { todoId: string; agentId: string };
-        const result = store.claimTodo(todoId, agentId);
-        return NextResponse.json(result);
-      }
-
-      case 'update': {
-        const { todoId, ...updates } = params as { todoId: string; [key: string]: unknown };
-        const todo = store.updateTodo({ id: todoId, ...updates });
-        if (!todo) {
-          return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+    // 面板写方统一标 reason='api'（docs/todos-lite.md §5.5 事件审计）
+    return withTodoReason(store, 'api', () => {
+      switch (action) {
+        case 'claim': {
+          const { todoId, agentId } = params as { todoId: string; agentId: string };
+          const result = store.claimTodo(todoId, agentId);
+          return NextResponse.json(result);
         }
-        return NextResponse.json({ success: true, todo });
-      }
 
-      case 'complete': {
-        const { todoId, result } = params as { todoId: string; result?: string };
-        const todo = store.updateTodo({
-          id: todoId,
-          status: 'completed',
-          metadata: { result },
-          activeForm: null,
-        });
-        if (!todo) {
-          return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+        case 'update': {
+          const { todoId, ...updates } = params as { todoId: string; [key: string]: unknown };
+          const todo = store.updateTodo({ id: todoId, ...updates });
+          if (!todo) {
+            return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+          }
+          return NextResponse.json({ success: true, todo });
         }
-        return NextResponse.json({ success: true, todo });
-      }
 
-      case 'stop': {
-        const { todoId, reason } = params as { todoId: string; reason: string };
-        const todo = store.updateTodo({
-          id: todoId,
-          status: 'cancelled',
-          metadata: { stopReason: reason },
-          activeForm: null,
-        });
-        if (!todo) {
-          return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
-        }
-        return NextResponse.json({ success: true, todo });
-      }
-
-      case 'reset-conversation': {
-        const { conversationId } = params as { conversationId: string };
-        const todos = store.getTodosByConversation(conversationId);
-        const inProgress: Todo[] = todos.filter((t: Todo) => t.status === 'in_progress');
-        for (const todo of inProgress) {
-          store.updateTodo({
-            id: todo.id,
-            status: 'pending',
-            claimedBy: null,
+        case 'complete': {
+          const { todoId, result } = params as { todoId: string; result?: string };
+          const todo = store.updateTodo({
+            id: todoId,
+            status: 'completed',
+            metadata: { result },
             activeForm: null,
-            metadata: { ...todo.metadata, stopReason: 'Agent stopped by user' },
           });
+          if (!todo) {
+            return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+          }
+          return NextResponse.json({ success: true, todo });
         }
-        return NextResponse.json({ success: true, reset: inProgress.length });
-      }
 
-      case 'delete': {
-        const { todoId } = params as { todoId: string };
-        const deleted = store.deleteTodo(todoId);
-        return NextResponse.json({ success: deleted });
-      }
+        case 'stop': {
+          const { todoId, reason } = params as { todoId: string; reason: string };
+          const todo = store.updateTodo({
+            id: todoId,
+            status: 'cancelled',
+            metadata: { stopReason: reason },
+            activeForm: null,
+          });
+          if (!todo) {
+            return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+          }
+          return NextResponse.json({ success: true, todo });
+        }
 
-      default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
-    }
+        case 'reset-conversation': {
+          const { conversationId } = params as { conversationId: string };
+          const todos = store.getTodosByConversation(conversationId);
+          const inProgress: Todo[] = todos.filter((t: Todo) => t.status === 'in_progress');
+          for (const todo of inProgress) {
+            store.updateTodo({
+              id: todo.id,
+              status: 'pending',
+              claimedBy: null,
+              activeForm: null,
+              metadata: { ...todo.metadata, stopReason: 'Agent stopped by user' },
+            });
+          }
+          return NextResponse.json({ success: true, reset: inProgress.length });
+        }
+
+        case 'delete': {
+          const { todoId } = params as { todoId: string };
+          const deleted = store.deleteTodo(todoId);
+          return NextResponse.json({ success: deleted });
+        }
+
+        default:
+          return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+      }
+    });
   } catch (error) {
     console.error('[Todos API] POST error:', error);
     return NextResponse.json(

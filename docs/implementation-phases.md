@@ -46,17 +46,17 @@
 
 **验收**:run 中间无任何"劝导"注入;子任务完成后模型继续思考链完整;文档闸门从不抛异常。
 
-## Phase C — todo_write 写语义改 patch
+## Phase C — todo 写语义:patch → 单 `todo` 工具(已完成,被事件化重构吸收)
 
-**目标**:废除 true-replace 自动取消。
+**目标**:废除 true-replace 自动取消;最终收敛为单 `todo` 工具(action: list|add|update|delete|clear)。
 
-- `todo-write-tool.ts`:
-  - 删除 Phase 3 true-replace 循环(未列入即取消)。
-  - schema 与 tool description 改为"patch + 显式 cancel"语义。
-  - 更新 `renderIndexedActiveList` 仍作为快照返回。
+- `todo-write-tool.ts`:先删 Phase 3 true-replace 循环,schema/description 改"patch + 显式 cancel"语义。
+- **后续(事件化快照重构,见 docs/todos-lite.md §5.5)**:`todo_write` 与 `todo_create_batch`/`todo_delete`/`todo_merge` 全部退役,
+  收敛为单 `todo` 工具;`update` 按稳定编号 `#N` patch(含 claim/complete/fail 状态流转),`clear` 显式清空。
+  `renderIndexedActiveList` 改由 `todo` 工具回执与画布共用。
 - 相关测试更新(`todo-write` 相关与 `todo-runtime` 中依赖 true-replace 的用例)。
 
-**验收**:只有 index 引用的项被变更;未提及 todo 保持活跃;显式 cancel 可用。
+**验收**:update 只 patch 引用的编号项;未提及 todo 保持活跃;显式 delete/clear 可用;编号永不复用。
 
 ## Phase D — 闸门语义(已在 A/B 内完成)
 

@@ -300,7 +300,7 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   // ============================================================
   // Tools
   // ============================================================
-  // TodoRuntime（Todo Runtime）：模型面(todo_write)的状态翻转经此强校验；prepareStep 据其派生就绪/quiescence。
+  // TodoRuntime（Todo Runtime）：模型面(todo)的状态翻转经此强校验；prepareStep 据其派生就绪/quiescence。
   const todoScheduler = createTodoRuntime({
     store: sessionState.todoStore,
     conversationId,

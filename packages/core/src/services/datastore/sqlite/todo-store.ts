@@ -1,355 +1,69 @@
 // ============================================================
-// SQLite Todo Store Implementation
+// SQLite Todo Store — 事件化快照账本（事件落 todo_events 表）
 // ============================================================
-// Persistent todo storage using SQLite database.
-// Implements the TodoStore interface from runtime/todos/types.ts.
+// 旧版逐行 CRUD（todos 表）已被事件日志取代（v22 迁移把现有行回填为
+// 每条会话一条 backfill 快照事件后 DROP todos，见 schema.ts）：
+//   append  = INSERT INTO todo_events（全量快照 payload）
+//   rebuild = 取每会话最后一条快照事件 → SnapshotTodoStore 内存重建
+// 写出路径与 InMemory 版完全一致（同一个 SnapshotTodoStore），
+// 唯一区别是事件落 SQLite 而非内存数组。
 
-import { nanoid } from 'nanoid';
 import type { SqliteDatabase } from '../../../primitives/datastore/types';
-import type { TodoRow } from '../../../primitives/datastore/types';
-import { logger } from '../../../primitives/logger';
-import type {
-  Todo,
-  TodoStore,
-  TodoCreateInput,
-  TodoUpdateInput,
-  TodoClaimResult,
-  TodoStatus,
-  TodoEvent,
-  TodoEventListener,
-  TodoEventType,
-} from '../../../primitives/datastore/types';
+import type { TodoEventSink, TodoSnapshotEvent } from '../todo-event-store';
+import { SnapshotTodoStore } from '../todo-event-store';
+
+/** todo_events 行 → 事件（供给 SnapshotTodoStore 启动重建）。 */
+interface TodoEventRow {
+  seq: number;
+  conversation_id: string;
+  reason: string;
+  payload: string;
+  created_at: string;
+  run_id: string | null;
+}
+
+class SqliteTodoEventSink implements TodoEventSink {
+  constructor(private db: SqliteDatabase) {}
+
+  append(event: Omit<TodoSnapshotEvent, 'seq'>): void {
+    this.db
+      .prepare(
+        `INSERT INTO todo_events (conversation_id, event_type, reason, payload, run_id, branch_id, created_at)
+         VALUES (?, 'snapshot', ?, ?, ?, 'main', ?)`,
+      )
+      .run(
+        event.conversationId,
+        event.reason,
+        event.payload,
+        event.runId ?? null,
+        new Date(event.createdAt).toISOString(),
+      );
+  }
+
+  loadAll(): TodoSnapshotEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT seq, conversation_id, reason, payload, created_at, run_id
+         FROM todo_events ORDER BY seq ASC`,
+      )
+      .all() as unknown as TodoEventRow[];
+    return rows.map((r) => ({
+      seq: r.seq,
+      conversationId: r.conversation_id,
+      reason: r.reason as TodoSnapshotEvent['reason'],
+      payload: r.payload,
+      createdAt: new Date(r.created_at).getTime(),
+      runId: r.run_id,
+    }));
+  }
+}
 
 /**
- * SQLite-based TodoStore implementation
+ * SQLite 版 SnapshotTodoStore：事件落 todo_events，启动时重建内存快照。
+ * 复用统一实现（docs/todos-lite.md §5.5）——两个 store 收敛为同一个。
  */
-export class SQLiteTodoStore implements TodoStore {
-  private db: SqliteDatabase;
-  private listeners: Set<TodoEventListener> = new Set();
-  private revision: number = 0;
-
+export class SQLiteTodoStore extends SnapshotTodoStore {
   constructor(db: SqliteDatabase) {
-    this.db = db;
-  }
-
-  getRevision(): number {
-    return this.revision;
-  }
-
-  // ============================================================
-  // Helper: Parse todo row to Todo object
-  // ============================================================
-  private parseRow(row: TodoRow): Todo {
-    return {
-      id: row.id,
-      conversationId: row.conversation_id,
-      subject: row.subject,
-      status: row.status as TodoStatus,
-      claimedBy: row.claimed_by,
-      activeForm: row.active_form,
-      blockedBy: JSON.parse(row.blocked_by || '[]'),
-      blocks: JSON.parse(row.blocks || '[]'),
-      createdAt: new Date(row.created_at).getTime(),
-      updatedAt: new Date(row.updated_at).getTime(),
-      completedAt: row.completed_at ? new Date(row.completed_at).getTime() : null,
-      metadata: JSON.parse(row.metadata || '{}'),
-    };
-  }
-
-  // ============================================================
-  // Helper: Emit event to listeners
-  // ============================================================
-  private emit(type: TodoEventType, todo: Todo, metadata?: Record<string, unknown>): void {
-    const event: TodoEvent = {
-      type,
-      todo,
-      timestamp: Date.now(),
-      metadata,
-    };
-    for (const listener of this.listeners) {
-      try {
-        listener(event);
-      } catch (e) {
-        logger.error('SQLiteTodoStore', 'Event listener error:', e);
-      }
-    }
-  }
-
-  // ============================================================
-  // Helper: Update blocks reverse index
-  // ============================================================
-  private updateBlocksIndex(todoId: string, blockedBy: string[]): void {
-    // Get current blocks list
-    const currentTodo = this.getTodo(todoId);
-    if (!currentTodo) return;
-
-    const oldBlockedBy = currentTodo.blockedBy;
-    const newBlockedBy = blockedBy;
-
-    // Remove from old blockers' blocks list
-    for (const oldDep of oldBlockedBy) {
-      const blocker = this.getTodo(oldDep);
-      if (blocker) {
-        const newBlocks = blocker.blocks.filter(id => id !== todoId);
-        this.db.prepare(`UPDATE todos SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), oldDep);
-      }
-    }
-
-    // Add to new blockers' blocks list
-    for (const newDep of newBlockedBy) {
-      const blocker = this.getTodo(newDep);
-      if (blocker) {
-        const newBlocks = [...blocker.blocks, todoId];
-        this.db.prepare(`UPDATE todos SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), newDep);
-      }
-    }
-  }
-
-  // ============================================================
-  // Helper: Check if all dependencies are completed
-  // ============================================================
-  private areDependenciesCompleted(blockedBy: string[]): boolean {
-    if (blockedBy.length === 0) return true;
-    for (const depId of blockedBy) {
-      const dep = this.getTodo(depId);
-      if (!dep || dep.status !== 'completed') return false;
-    }
-    return true;
-  }
-
-  // ============================================================
-  // Helper: Unblock dependent todos when this todo completes
-  // ============================================================
-  private unblockDependents(todoId: string): void {
-    const todo = this.getTodo(todoId);
-    if (!todo) return;
-
-    // Notify listeners that dependent todos may now be available
-    for (const depId of todo.blocks) {
-      const dep = this.getTodo(depId);
-      if (dep && dep.status === 'pending' && this.areDependenciesCompleted(dep.blockedBy)) {
-        this.emit('todo:updated', dep, { reason: 'dependency_completed', completedTodoId: todoId });
-      }
-    }
-  }
-
-  // ============================================================
-  // TodoStore Implementation
-  // ============================================================
-
-  createTodo(input: TodoCreateInput): Todo {
-    const id = `todo-${nanoid(8)}`;
-    const now = new Date().toISOString();
-    const blockedBy = input.blockedBy ?? [];
-
-    // Validate dependencies exist and belong to same conversation
-    for (const depId of blockedBy) {
-      const dep = this.getTodo(depId);
-      if (!dep) {
-        throw new Error(`[SQLiteTodoStore] Dependency ${depId} does not exist`);
-      }
-      if (dep.conversationId !== input.conversationId) {
-        throw new Error(`[SQLiteTodoStore] Dependency ${depId} belongs to different conversation`);
-      }
-    }
-
-    const stmt = this.db.prepare(`
-      INSERT INTO todos (id, conversation_id, subject, status, blocked_by, created_at, updated_at, metadata)
-      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      id,
-      input.conversationId,
-      input.subject,
-      JSON.stringify(blockedBy),
-      now,
-      now,
-      JSON.stringify(input.metadata ?? {})
-    );
-
-    // Update blockers' blocks reverse index
-    for (const depId of blockedBy) {
-      const blocker = this.getTodo(depId);
-      if (blocker) {
-        const newBlocks = [...blocker.blocks, id];
-        this.db.prepare(`UPDATE todos SET blocks = ? WHERE id = ?`).run(JSON.stringify(newBlocks), depId);
-      }
-    }
-
-    const todo = this.getTodo(id)!;
-    this.emit('todo:created', todo);
-    this.revision++;
-    return todo;
-  }
-
-  getTodo(id: string): Todo | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM todos WHERE id = ?`);
-    const row = stmt.get(id) as TodoRow | undefined;
-    return row ? this.parseRow(row) : undefined;
-  }
-
-  getAllTodos(): Todo[] {
-    const stmt = this.db.prepare(`SELECT * FROM todos ORDER BY created_at DESC`);
-    const rows = stmt.all() as unknown as TodoRow[];
-    return rows.map(row => this.parseRow(row));
-  }
-
-  getTodosByConversation(conversationId: string): Todo[] {
-    const stmt = this.db.prepare(`SELECT * FROM todos WHERE conversation_id = ? ORDER BY created_at DESC`);
-    const rows = stmt.all(conversationId) as unknown as TodoRow[];
-    return rows.map(row => this.parseRow(row));
-  }
-
-  updateTodo(input: TodoUpdateInput): Todo | undefined {
-    const existing = this.getTodo(input.id);
-    if (!existing) return undefined;
-
-    const now = new Date().toISOString();
-    const updates: string[] = [];
-    const values: unknown[] = [];
-
-    // Handle status change
-    if (input.status !== undefined) {
-      updates.push('status = ?');
-      values.push(input.status);
-
-      // Handle completion status
-      if (['completed', 'failed', 'cancelled'].includes(input.status)) {
-        updates.push('completed_at = ?');
-        values.push(now);
-        updates.push('claimed_by = NULL');
-        updates.push('active_form = NULL');
-
-        // Unblock dependents if completed
-        if (input.status === 'completed') {
-          this.unblockDependents(input.id);
-        }
-      }
-    }
-
-    // Handle other fields
-    if (input.subject !== undefined) {
-      updates.push('subject = ?');
-      values.push(input.subject);
-    }
-
-    if (input.activeForm !== undefined) {
-      updates.push('active_form = ?');
-      values.push(input.activeForm);
-    }
-
-    if (input.claimedBy !== undefined) {
-      updates.push('claimed_by = ?');
-      values.push(input.claimedBy);
-    }
-
-    // Handle blockedBy change
-    if (input.blockedBy !== undefined) {
-      updates.push('blocked_by = ?');
-      values.push(JSON.stringify(input.blockedBy));
-      this.updateBlocksIndex(input.id, input.blockedBy);
-    }
-
-    // Handle metadata merge
-    if (input.metadata !== undefined) {
-      const mergedMetadata = { ...existing.metadata, ...input.metadata };
-      updates.push('metadata = ?');
-      values.push(JSON.stringify(mergedMetadata));
-    }
-
-    // Always update updated_at
-    updates.push('updated_at = ?');
-    values.push(now);
-
-    // Add WHERE clause value
-    values.push(input.id);
-
-    const stmt = this.db.prepare(`UPDATE todos SET ${updates.join(', ')} WHERE id = ?`);
-    stmt.run(...values);
-
-    const updated = this.getTodo(input.id)!;
-    this.emit('todo:updated', updated);
-    this.revision++;
-    return updated;
-  }
-
-  deleteTodo(id: string): boolean {
-    const existing = this.getTodo(id);
-    if (!existing) return false;
-
-    // Clean up blocks reverse index
-    this.updateBlocksIndex(id, []);
-
-    const stmt = this.db.prepare(`DELETE FROM todos WHERE id = ?`);
-    stmt.run(id);
-
-    this.emit('todo:deleted', existing);
-    this.revision++;
-    return true;
-  }
-
-  claimTodo(todoId: string, agentId: string): TodoClaimResult {
-    const todo = this.getTodo(todoId);
-    if (!todo) {
-      return { success: false, message: `Todo ${todoId} not found` };
-    }
-
-    // 账本语义：claim = 标注 in_progress + 记录执行者（展示），不做任何 gate
-    // （不查 busy、不要求 pending、不判依赖、不拒重复认领），见 docs/todos-lite.md §3.4。
-    this.db.prepare(`
-      UPDATE todos SET status = 'in_progress', claimed_by = ?, updated_at = ?
-      WHERE id = ?
-    `).run(agentId, new Date().toISOString(), todoId);
-
-    const claimed = this.getTodo(todoId)!;
-    this.emit('todo:claimed', claimed, { agentId });
-    this.revision++;
-    return { success: true, todo: claimed };
-  }
-
-  getAvailableTodos(): Todo[] {
-    // Get all pending todos
-    const pending = this.getTodosByStatus('pending');
-
-    // Filter by dependency completion and not claimed
-    return pending.filter(todo => {
-      if (todo.claimedBy) return false;
-      return this.areDependenciesCompleted(todo.blockedBy);
-    });
-  }
-
-  getTodosByStatus(status: TodoStatus): Todo[] {
-    const stmt = this.db.prepare(`SELECT * FROM todos WHERE status = ? ORDER BY created_at DESC`);
-    const rows = stmt.all(status) as unknown as TodoRow[];
-    return rows.map(row => this.parseRow(row));
-  }
-
-  getTodosByAgent(agentId: string): Todo[] {
-    const stmt = this.db.prepare(`SELECT * FROM todos WHERE claimed_by = ? ORDER BY updated_at DESC`);
-    const rows = stmt.all(agentId) as unknown as TodoRow[];
-    return rows.map(row => this.parseRow(row));
-  }
-
-  getBlockingTodos(todoId: string): Todo[] {
-    const todo = this.getTodo(todoId);
-    if (!todo) return [];
-    return todo.blocks.map(id => this.getTodo(id)!).filter(Boolean);
-  }
-
-  getBlockedByTodos(todoId: string): Todo[] {
-    const todo = this.getTodo(todoId);
-    if (!todo) return [];
-    return todo.blockedBy.map(id => this.getTodo(id)!).filter(Boolean);
-  }
-
-  subscribe(listener: TodoEventListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  clearAllTodos(): void {
-    this.db.prepare(`DELETE FROM todos`).run();
-    logger.debug('SQLiteTodoStore', 'All todos cleared');
+    super(new SqliteTodoEventSink(db));
   }
 }

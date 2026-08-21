@@ -127,12 +127,12 @@ describe('parallel-agent-tool', () => {
 
     it('含 blockedBy 依赖的任务 → 返回失败 + 降级指导，不执行子Agent（设计 §1.3 执行防护层）', async () => {
       const todos = [
-        { id: 't-0', subject: '前置任务', status: 'completed', blockedBy: [] },
-        { id: 't-1', subject: '任务一', status: 'pending', blockedBy: ['t-0'] },
-        { id: 't-2', subject: '任务二', status: 'pending', blockedBy: [] },
+        { id: 't-0', subject: '前置任务', status: 'completed', number: 3, blockedBy: [] },
+        { id: 't-1', subject: '任务一', status: 'pending', number: 1, blockedBy: ['t-0'] },
+        { id: 't-2', subject: '任务二', status: 'pending', number: 2, blockedBy: [] },
       ];
       const store = {
-        // 按 createdAt 顺序返回，故快照编号：任务一=1、任务二=2
+        // 活跃视图（物化编号）：任务一=#1、任务二=#2
         getTodosByConversation: () => todos.filter((t) => t.status !== 'completed'),
         getTodo: (id: string) => todos.find((t) => t.id === id),
       } as any;

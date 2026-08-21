@@ -17,6 +17,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore } from '../todos/types';
 import type { TodoRuntime } from '../todos/todo-runtime';
+import { withTodoReason } from '../todos';
 
 // ============================================================
 // Schema
@@ -56,45 +57,47 @@ export type SubmitPlanToolOutput = {
  */
 export function createSubmitPlanTool(store: TodoStore, conversationId: string, runtime?: TodoRuntime) {
   return tool({
-    description: `Present a plan for user approval BEFORE executing high-stakes or user-requested-confirmation work. Use ONLY when (a) the user explicitly asked you to show or confirm a plan first, or (b) the work is high-stakes (irreversible actions, sending external messages, deleting data). For ordinary multi-step work, use todo_write instead — do not call this tool for normal multi-step tasks.
+    description: `Present a plan for user approval BEFORE executing high-stakes or user-requested-confirmation work. Use ONLY when (a) the user explicitly asked you to show or confirm a plan first, or (b) the work is high-stakes (irreversible actions, sending external messages, deleting data). For ordinary multi-step work, use todo instead — do not call this tool for normal multi-step tasks.
 
-The plan becomes the active task list once approved. For simple single-step work or Q&A, skip both this tool and todo_write.
+The plan becomes the active task list once approved. For simple single-step work or Q&A, skip both this tool and todo.
 
 Usage:
 - Include every step in the plan, each with a concrete verify (how to check it's done).
-- After approval, execute the steps in order and keep the task list updated with todo_write.
+- After approval, execute the steps in order and keep the task list updated with todo.
 - If the user rejects, revise the plan based on their feedback and call this tool again.`,
     inputSchema: submitPlanToolSchema,
     execute: async (input: SubmitPlanToolInput) => {
       // 整表替换：先清掉当前活跃 todo（已完成任务保留；状态迁移经 runtime 取消，留 cancelled 软标记），再写入计划
-      const existing = store.getTodosByConversation(conversationId);
-      for (const todo of existing) {
-        if (todo.status !== 'completed') {
-          if (runtime) {
-            runtime.cancelTodo(todo.id, 'plan_replaced');
-          } else {
-            store.deleteTodo(todo.id);
+      // 写方标注 reason='approval'，事件审计可区分计划批准产生的快照事件（docs/todos-lite.md §5.5）
+      withTodoReason(store, 'approval', () => {
+        const existing = store.getTodosByConversation(conversationId);
+        for (const todo of existing) {
+          if (todo.status !== 'completed') {
+            if (runtime) {
+              runtime.cancelTodo(todo.id, 'plan_replaced');
+            } else {
+              store.deleteTodo(todo.id);
+            }
           }
         }
-      }
 
-      let created = 0;
-      for (const item of input.todos) {
-        store.createTodo({
-          conversationId,
-          subject: item.subject,
-          metadata: {
-            ...(item.verify ? { verify: item.verify } : {}),
-            lifecycle: { createdBy: 'planner' },
-          },
-        });
-        created++;
-      }
+        for (const item of input.todos) {
+          store.createTodo({
+            conversationId,
+            subject: item.subject,
+            metadata: {
+              ...(item.verify ? { verify: item.verify } : {}),
+              lifecycle: { createdBy: 'planner' },
+            },
+          });
+        }
+      });
+      const created = input.todos.length;
 
       return {
         approved: true,
         created,
-        message: `Plan approved with ${created} task(s). Execute them in order and keep the task list updated with todo_write.`,
+        message: `Plan approved with ${created} task(s). Execute them in order and keep the task list updated.`,
       } satisfies SubmitPlanToolOutput;
     },
   });

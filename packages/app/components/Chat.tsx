@@ -49,7 +49,7 @@ import type { ConversationItem } from '@/components/ConversationSidebar';
 import { useChat } from '@ai-sdk/react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { DefaultChatTransport, type ToolUIPart, type DynamicToolUIPart, type UIMessageChunk, UIMessage, lastAssistantMessageIsCompleteWithApprovalResponses, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, TrashIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon, ListChecksIcon, TriangleAlertIcon, InfoIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, SearchIcon, FileIcon, EditIcon, TerminalIcon, UserIcon, BookIcon, CheckCircleIcon, BrainIcon, PenLineIcon, WrenchIcon, XIcon, FileTextIcon, CheckIcon, Loader2Icon, GitBranchIcon, ChevronDownIcon, HelpCircleIcon, ListChecksIcon, TriangleAlertIcon, InfoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ModelSelector, AgentSelector, ApprovalModeSelector } from '@/components/chat-selectors';
 import type { ApprovalMode } from '@/components/chat-selectors';
@@ -76,8 +76,7 @@ import { useChatPreferences } from '@/hooks/useChatPreferences';
 const CONVERSATION_ID_KEY = 'chat_conversation_id';
 
 const TODO_TOOL_TYPES = new Set([
-  'tool-todo_write',
-  'tool-todo_delete',
+  'tool-todo',
 ]);
 
 // 工具调用折叠阈值：一条消息的工具数达到该值才折叠为一行摘要（流式与完成后均折叠）
@@ -127,10 +126,8 @@ function getToolTitleAndIcon(type: string, input: Record<string, unknown> | null
       return { title: `Search: ${i.query ?? ''}`, icon: SearchIcon };
     case 'agent':
       return { title: `${i.agentType ?? 'Agent'}: ${String(i.task ?? '').slice(0, 30)}...`, icon: UserIcon };
-    case 'todo_write':
-      return { title: `Todos: ${(i.todos as unknown[] | undefined)?.length ?? ''} items`, icon: ListChecksIcon };
-    case 'todo_delete':
-      return { title: `Cancel: ${i.id ?? ''}`, icon: TrashIcon };
+    case 'todo':
+      return { title: `Todos: ${i.action ?? ''} ${'items' in i ? (i.items as unknown[] | undefined)?.length ?? '' : ''}`, icon: ListChecksIcon };
     case 'research':
       return { title: `Research: ${i.task ?? ''}`, icon: BookIcon };
     case 'ask_user_question':

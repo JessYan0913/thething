@@ -23,13 +23,6 @@ export {
 import type { Todo, TodoStatus } from '../../primitives/datastore/types';
 
 // ============================================================
-// Constants
-// ============================================================
-
-/** Todo ID 前缀 */
-export const TODO_ID_PREFIX = '';
-
-// ============================================================
 // Runtime-specific Types
 // ============================================================
 
@@ -41,18 +34,6 @@ export interface TodoListResult {
   todos: Todo[];
   /** Total count */
   total: number;
-}
-
-/**
- * HighWaterMark interface for ID generation
- */
-export interface HighWaterMark {
-  /** Get the next unique ID */
-  next(): string;
-  /** Get the current value without incrementing */
-  current(): number;
-  /** Reset to a specific value */
-  reset(value: number): void;
 }
 
 /**

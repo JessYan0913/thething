@@ -14,6 +14,7 @@
 import type { DataStore } from '../../primitives/datastore/types';
 import type { GoalState } from '../goal/types';
 import type { Todo } from '../todos/types';
+import { withTodoReason } from '../todos';
 import { logger } from '../../primitives/logger';
 
 /** Run 终止原因——决定 agent_runs 终态是 completed / exhausted / failed */
@@ -141,27 +142,30 @@ export function downgradeUnsettledInProgress(
   conversationId: string,
   reason: StopReason,
 ): Todo[] {
-  const todos = dataStore.todoStore.getTodosByConversation(conversationId);
-  const changed: Todo[] = [];
-  for (const t of todos) {
-    if (t.status !== 'in_progress') continue;
-    const execution = {
-      ...((t.metadata as Record<string, unknown> | undefined)?.execution as Record<string, unknown> | undefined),
-      interruptedAt: Date.now(),
-      interruptedReason: reason,
-    };
-    const updated = dataStore.todoStore.updateTodo({
-      id: t.id,
-      status: 'pending',
-      claimedBy: null,
-      metadata: { ...((t.metadata as Record<string, unknown>) ?? {}), execution },
-    });
-    if (updated) changed.push(updated);
-  }
-  if (changed.length > 0) {
-    logger.info('RunFinalization', `[downgrade] conversation=${conversationId} ${changed.length} in_progress todo(s) reset to pending (reason=${reason})`);
-  }
-  return changed;
+  // 写方标注 reason='run-downgrade'（docs/todos-lite.md §5.5）；幂等：重复收尾仅多一条同态快照事件，终态一致
+  return withTodoReason(dataStore.todoStore, 'run-downgrade', () => {
+    const todos = dataStore.todoStore.getTodosByConversation(conversationId);
+    const changed: Todo[] = [];
+    for (const t of todos) {
+      if (t.status !== 'in_progress') continue;
+      const execution = {
+        ...((t.metadata as Record<string, unknown> | undefined)?.execution as Record<string, unknown> | undefined),
+        interruptedAt: Date.now(),
+        interruptedReason: reason,
+      };
+      const updated = dataStore.todoStore.updateTodo({
+        id: t.id,
+        status: 'pending',
+        claimedBy: null,
+        metadata: { ...((t.metadata as Record<string, unknown>) ?? {}), execution },
+      });
+      if (updated) changed.push(updated);
+    }
+    if (changed.length > 0) {
+      logger.info('RunFinalization', `[downgrade] conversation=${conversationId} ${changed.length} in_progress todo(s) reset to pending (reason=${reason})`);
+    }
+    return changed;
+  });
 }
 
 /**

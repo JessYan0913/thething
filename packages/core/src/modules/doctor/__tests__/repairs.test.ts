@@ -142,7 +142,7 @@ describe('Doctor repairs', () => {
     setupStore();
     const db = rawDb();
     db.prepare(
-      "INSERT INTO todos (id, conversation_id, subject, status, blocked_by, blocks, metadata) VALUES ('t1', 'missing-conv', 'x', 'pending', '[]', '[]', '{}')",
+      "INSERT INTO todo_events (conversation_id, event_type, reason, payload) VALUES ('missing-conv', 'snapshot', 'api', '[]')",
     ).run();
     db.close();
     const ctx = makeCtx();
@@ -153,7 +153,7 @@ describe('Doctor repairs', () => {
     const confirmed = await applyRepair(ctx, 'delete-orphan-rows', { confirmed: true });
     expect(confirmed.status).toBe('done');
     const after = rawDb();
-    const row = after.prepare('SELECT count(*) AS c FROM todos WHERE id = ?').get('t1') as { c: number };
+    const row = after.prepare('SELECT count(*) AS c FROM todo_events WHERE conversation_id = ?').get('missing-conv') as { c: number };
     after.close();
     expect(row.c).toBe(0);
   });

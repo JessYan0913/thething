@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Todo } from '../types';
 import { isActiveStatus, indexActiveTodos, resolveActiveByIndex, resolveByStableIndex } from '../snapshot-index';
 
-function mk(partial: Partial<Todo> & { id: string; subject: string; createdAt: number }): Todo {
+function mk(partial: Partial<Todo> & { id: string; subject: string; number: number }): Todo {
   return {
     conversationId: 'conv-1',
     status: 'pending',
@@ -10,7 +10,8 @@ function mk(partial: Partial<Todo> & { id: string; subject: string; createdAt: n
     activeForm: null,
     blockedBy: [],
     blocks: [],
-    updatedAt: partial.createdAt,
+    createdAt: partial.number * 10,
+    updatedAt: partial.number * 10,
     completedAt: null,
     metadata: {},
     ...partial,
@@ -18,19 +19,19 @@ function mk(partial: Partial<Todo> & { id: string; subject: string; createdAt: n
 }
 
 describe('snapshot-index: indexActiveTodos', () => {
-  it('稳定编号 = 创建序（含终态占位；已完成/取消不重排活跃项）', () => {
+  it('编号 = 创建时物化的 number（含终态占位；已完成/取消不重排活跃项）', () => {
     const todos = [
-      mk({ id: 'a', subject: '调研X', status: 'in_progress', createdAt: 30 }),
-      mk({ id: 'b', subject: '写X', status: 'pending', createdAt: 10 }),
-      mk({ id: 'c', subject: '验证', status: 'failed', createdAt: 20 }),
-      mk({ id: 'd', subject: '已完', status: 'completed', createdAt: 5 }),
-      mk({ id: 'e', subject: '已取消', status: 'cancelled', createdAt: 40 }),
+      mk({ id: 'a', subject: '调研X', status: 'in_progress', number: 4 }),
+      mk({ id: 'b', subject: '写X', status: 'pending', number: 2 }),
+      mk({ id: 'c', subject: '验证', status: 'failed', number: 3 }),
+      mk({ id: 'd', subject: '已完', status: 'completed', number: 1 }),
+      mk({ id: 'e', subject: '已取消', status: 'cancelled', number: 5 }),
     ];
 
     const indexed = indexActiveTodos(todos);
 
-    // 创建序全序：#1=d(5) #2=b(10) #3=c(20) #4=a(30) #5=e(40)
-    // 活跃视图只留活跃行，编号随创建序保留（可稀疏）
+    // 物化编号全序：#1=d(completed) #2=b #3=c #4=a #5=e(cancelled)
+    // 活跃视图只留活跃行，编号随物化值保留（可稀疏）
     expect(indexed).toHaveLength(3);
     expect(indexed.map(e => e.todo.id)).toEqual(['b', 'c', 'a']);
     expect(indexed.map(e => e.index)).toEqual([2, 3, 4]);
@@ -38,9 +39,9 @@ describe('snapshot-index: indexActiveTodos', () => {
   });
 
   it('T1 验收：创建 3 项 → 完成 #1 → 剩余编号仍是 2,3；引用 #3 命中稳定行', () => {
-    const t1 = mk({ id: 'a', subject: 'A', createdAt: 10 });
-    const t2 = mk({ id: 'b', subject: 'B', createdAt: 20 });
-    const t3 = mk({ id: 'c', subject: 'C', createdAt: 30 });
+    const t1 = mk({ id: 'a', subject: 'A', number: 1 });
+    const t2 = mk({ id: 'b', subject: 'B', number: 2 });
+    const t3 = mk({ id: 'c', subject: 'C', number: 3 });
 
     const full = [t1, t2, t3];
     expect(indexActiveTodos(full).map(e => e.index)).toEqual([1, 2, 3]);
@@ -55,8 +56,8 @@ describe('snapshot-index: indexActiveTodos', () => {
   });
 
   it('状态流转不改变编号（同一行编号恒定）', () => {
-    const t1 = mk({ id: 'a', subject: 'A', status: 'pending', createdAt: 10 });
-    const t2 = mk({ id: 'b', subject: 'B', status: 'pending', createdAt: 20 });
+    const t1 = mk({ id: 'a', subject: 'A', status: 'pending', number: 1 });
+    const t2 = mk({ id: 'b', subject: 'B', status: 'pending', number: 2 });
 
     expect(indexActiveTodos([t1, t2]).map(e => e.index)).toEqual([1, 2]);
 
@@ -71,8 +72,8 @@ describe('snapshot-index: indexActiveTodos', () => {
 describe('snapshot-index: resolveActiveByIndex', () => {
   it('resolves a stable index to its active todo', () => {
     const todos = [
-      mk({ id: 'a', subject: 'A', createdAt: 10 }),
-      mk({ id: 'b', subject: 'B', createdAt: 20 }),
+      mk({ id: 'a', subject: 'A', number: 1 }),
+      mk({ id: 'b', subject: 'B', number: 2 }),
     ];
     expect(resolveActiveByIndex(todos, 1)?.id).toBe('a');
     expect(resolveActiveByIndex(todos, 2)?.id).toBe('b');
@@ -80,8 +81,8 @@ describe('snapshot-index: resolveActiveByIndex', () => {
 
   it('已收尾编号：活跃解析返回 undefined，稳定解析仍命中终态行', () => {
     const todos = [
-      mk({ id: 'a', subject: 'A', createdAt: 10 }),
-      mk({ id: 'c', subject: 'C', status: 'completed', createdAt: 30 }),
+      mk({ id: 'a', subject: 'A', number: 1 }),
+      mk({ id: 'c', subject: 'C', status: 'completed', number: 2 }),
     ];
     // a=#1、c=#2(completed)
     expect(resolveActiveByIndex(todos, 1)?.id).toBe('a');

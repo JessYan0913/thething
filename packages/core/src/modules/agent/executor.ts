@@ -6,7 +6,7 @@ import { manageToolOutputLifecycle } from '../compaction/lifecycle';
 import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
-import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
+import { completeTodo, failTodo, updateTodoStatus, withTodoReason } from '../../modules/todos';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -152,24 +152,27 @@ export async function executeRoutedAgent(
       : task;
 
     // 7. 更新任务状态（统一写入口：有 runtime 经 runtime.claimTodo；无则回落 store 直写）
+    //    写方标注 reason='agent-delegation'（docs/todos-lite.md §5.5 审计）
     if (todoStore && todoId) {
-      // 并行路径需每任务独立 agentId（展示用 claimedBy；账本化后无 busy/单进行中/依赖闸门）。
-      const isParallel = executionMode === 'parallel_agent';
-      const subAgentId = isParallel ? `parallel:${todoId}` : (definition.agentType ?? 'sub_agent');
-      if (scheduler) {
-        try {
-          scheduler.claimTodo(todoId, {
-            agentId: subAgentId,
-            mode: executionMode ?? 'main_agent',
-            ...(isParallel ? { allowParallel: true } : {}),
-          });
-        } catch (claimErr) {
-          // blocked/illegal claim 不作为崩溃，抛给外层记失败
-          throw claimErr;
+      withTodoReason(todoStore, 'agent-delegation', () => {
+        // 并行路径需每任务独立 agentId（展示用 claimedBy；账本化后无 busy/单进行中/依赖闸门）。
+        const isParallel = executionMode === 'parallel_agent';
+        const subAgentId = isParallel ? `parallel:${todoId}` : (definition.agentType ?? 'sub_agent');
+        if (scheduler) {
+          try {
+            scheduler.claimTodo(todoId, {
+              agentId: subAgentId,
+              mode: executionMode ?? 'main_agent',
+              ...(isParallel ? { allowParallel: true } : {}),
+            });
+          } catch (claimErr) {
+            // blocked/illegal claim 不作为崩溃，抛给外层记失败
+            throw claimErr;
+          }
+        } else {
+          updateTodoStatus(todoStore, todoId, 'in_progress');
         }
-      } else {
-        updateTodoStatus(todoStore, todoId, 'in_progress');
-      }
+      });
     }
 
     // 8. 执行流式输出
@@ -303,13 +306,15 @@ export async function executeRoutedAgent(
     //    确保 todo 状态在父 Agent 下一步 prepareStep 读取前已落库。
     //    One Canvas：子任务完成结果经 metadata.result 自然携带，下一轮画布展示（无边界整段重建）。
     if (todoStore && todoId) {
-      // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool）
+      // 可观测：路径 B 完成（executor 直接写库，不经 todo 工具）
       logger.info('SubAgent', `[path-b-complete] todoId=${todoId}`);
-      if (scheduler) {
-        scheduler.completeTodo(todoId, result.summary);
-      } else {
-        completeTodo(todoStore, todoId, result.summary);
-      }
+      withTodoReason(todoStore, 'agent-delegation', () => {
+        if (scheduler) {
+          scheduler.completeTodo(todoId, result.summary);
+        } else {
+          completeTodo(todoStore, todoId, result.summary);
+        }
+      });
     }
 
     // 13. 标记 run 完成
@@ -334,11 +339,13 @@ export async function executeRoutedAgent(
     };
 
     if (todoStore && todoId) {
-      if (scheduler) {
-        scheduler.failTodo(todoId, errorMsg);
-      } else {
-        failTodo(todoStore, todoId, errorMsg);
-      }
+      withTodoReason(todoStore, 'agent-delegation', () => {
+        if (scheduler) {
+          scheduler.failTodo(todoId, errorMsg);
+        } else {
+          failTodo(todoStore, todoId, errorMsg);
+        }
+      });
     }
 
     // 标记 run 失败
