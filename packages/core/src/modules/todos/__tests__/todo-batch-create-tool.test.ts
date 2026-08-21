@@ -54,4 +54,30 @@ describe('todo_create_batch', () => {
     expect(store.getTodo(result.created[0].id)?.metadata.verify).toBe('curl /export returns 200');
     expect(store.getTodo(result.created[1].id)?.metadata.verify).toBeUndefined();
   });
+
+  it('warns (非阻断) when a task subject matches an existing active todo', async () => {
+    store.createTodo({ conversationId: CONV, subject: 'Implement' });
+
+    const result = await execute({ tasks: [{ subject: 'Implement' }] });
+
+    expect(result.success).toBe(true);
+    expect(result.total).toBe(1); // 行照常建，不拦截
+    expect(result.warnings?.[0]).toMatch(/matches existing active/);
+    expect(result.warnings?.[0]).toContain('#1');
+  });
+
+  it('warns when two tasks in the batch share the same subject', async () => {
+    const result = await execute({ tasks: [{ subject: '调研X' }, { subject: '调研X' }] });
+
+    expect(result.success).toBe(true);
+    expect(result.total).toBe(2);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.join(' ')).toMatch(/share the same subject/);
+  });
+
+  it('does not warn for fresh unique subjects', async () => {
+    const result = await execute({ tasks: [{ subject: 'A' }, { subject: 'B' }] });
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeUndefined();
+  });
 });

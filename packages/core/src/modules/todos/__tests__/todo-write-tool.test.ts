@@ -237,6 +237,38 @@ describe('todo_write (方案C：index 定位 + patch 语义 + merge)', () => {
     expect(result.message).toContain('failed without an error');
   });
 
+  it('warns (lint, 不阻断) when creating a subject matching an existing active todo', async () => {
+    await execute({ todos: [{ subject: '调研X', status: 'in_progress' }] });
+    // 模型把已有任务当新任务再发一次（无 index）→ 不拦截、不静默，给出 [#1] 提示
+    const result = await execute({ todos: [{ subject: '调研X', status: 'in_progress' }] });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('#1');
+    // 系统零去重：行确实建了，只提示由 agent 决定 update/merge
+    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
+  });
+
+  it('warns when the same subject is created twice in one call', async () => {
+    const result = await execute({
+      todos: [{ subject: 'A', status: 'pending' }, { subject: 'A', status: 'pending' }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('twice in this call');
+    expect(store.getTodosByConversation(CONV)).toHaveLength(2);
+  });
+
+  it('does not warn when creating a subject that only exists as a completed task', async () => {
+    await execute({ todos: [{ subject: '调研X', status: 'in_progress' }] });
+    await execute({ todos: [{ index: 1, status: 'completed', result: 'done' }] });
+
+    // 终态历史不参与活跃清单 → 重新调研不判重复
+    const result = await execute({ todos: [{ subject: '调研X', status: 'pending' }] });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toBeUndefined();
+  });
+
   it('does not warn when completed carries result / failed carries error', async () => {
     const ok = await execute({ todos: [{ subject: 'A', status: 'completed', result: 'done' }] });
     expect(ok.message).toBeUndefined();

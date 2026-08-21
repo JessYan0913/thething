@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore } from '../types';
+import { indexActiveTodos } from '../snapshot-index';
+import { normalizeSubject } from '../subject-match';
 import { createTodo } from '../todo-create';
 
 /**
@@ -50,6 +52,8 @@ export type TodoBatchCreateToolOutput = {
     status: string;
   }>;
   total: number;
+  /** 非阻断重复提示：subject 命中活跃清单已有标题，或本批次内重复 */
+  warnings?: string[];
 } | {
   success: false;
   error: string;
@@ -88,11 +92,13 @@ function validateDependsOnSteps(
 const TODO_BATCH_CREATE_DESCRIPTION = `Create multiple todos at once with dependency declarations. Use this to plan and track complex multi-step work.
 
 IMPORTANT:
+- Build the FULL skeleton plan in ONE call, before starting work — do not create tasks piecemeal as you go.
 - Tasks are created in order. dependsOnSteps uses 1-based indices referring to positions in the tasks array.
 - Example: task at index 1, task at index 2 with dependsOnSteps: [1] means task 2 depends on task 1.
 - Only forward references are allowed (can only depend on earlier tasks).
-- After creating tasks, use todo_write (referencing each by its list index [#N]) to update their status as you work through them.
+- After creating tasks, use todo_write (referencing each by its list index [#N]) to update their status as you work through them — update existing tasks, never re-create them.
 - When delegating to a sub-agent, describe the task (by its title or [#N] index) in the agent tool's \`task\` text so the sub-agent knows what it owns.
+- A \`warnings\` field in the result is a non-blocking hint: it flags titles that match an already-active task or repeat within the batch. If the warning is right, update the existing task (or merge) instead of duplicating; only create when the task is genuinely new.
 
 For very simple work (1-2 steps), just use the tools directly without creating tasks.`;
 
@@ -112,6 +118,26 @@ async function executeBatchCreate(
         success: false as const,
         error: validationError,
       };
+    }
+
+    // 非阻断重复提示：待建 subject 命中活跃清单已有标题（跨调用），或本批次内重复。
+    // 方案 C 系统零去重——只提示，不拦截；由模型决定更新/merge/显式多建。
+    const warnings: string[] = [];
+    const activeIndexBySubject = new Map<string, number>();
+    for (const { index, todo } of indexActiveTodos(store.getTodosByConversation(conversationId))) {
+      const key = normalizeSubject(todo.subject);
+      if (!activeIndexBySubject.has(key)) activeIndexBySubject.set(key, index);
+    }
+    const inBatch = new Set<string>();
+    for (const task of input.tasks) {
+      const key = normalizeSubject(task.subject);
+      const hit = activeIndexBySubject.get(key);
+      if (hit !== undefined) {
+        warnings.push(`"${task.subject}" matches existing active task [#${hit}]. If it's the same work, update [#${hit}] instead of creating a duplicate.`);
+      } else if (inBatch.has(key)) {
+        warnings.push(`tasks in this batch share the same subject ("${task.subject}") — use distinct titles for distinct tasks.`);
+      }
+      inBatch.add(key);
     }
 
     const created: Array<{ id: string; subject: string; status: string }> = [];
@@ -148,6 +174,7 @@ async function executeBatchCreate(
       success: true as const,
       created,
       total: created.length,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (error) {
     return {

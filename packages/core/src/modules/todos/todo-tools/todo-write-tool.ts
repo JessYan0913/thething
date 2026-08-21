@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { TodoStore, Todo, TodoStatus } from '../types';
 import { logger } from '../../../primitives/logger';
 import { indexActiveTodos, resolveActiveByIndex, resolveByStableIndex, isActiveStatus } from '../snapshot-index';
+import { normalizeSubject } from '../subject-match';
 import { renderIndexedActiveList } from './todo-snapshot';
 import type { TodoRuntime, TransitionError } from '../todo-runtime';
 
@@ -87,6 +88,7 @@ export type TodoWriteToolOutput = {
 function collectPlanWarnings(
   todos: Array<{ index?: number; subject?: string; status: TodoStatus; result?: string; error?: string }>,
   resolve: (index: number) => Todo | undefined,
+  existing: Todo[] = [],
 ): string[] {
   const warnings: string[] = [];
 
@@ -112,6 +114,26 @@ function collectPlanWarnings(
   }
   if (completions.size > 1) {
     warnings.push(`marked ${completions.size} todos completed/failed in one call (${[...completions].join(', ')}). Prefer finishing one task per call so each result is recorded before moving on.`);
+  }
+
+  // 新建 lint（方案 C 保持系统零去重，只提示不阻断）：待创建 subject 命中当前活跃清单
+  // 已有标题（跨调用），或本调用内重复 → 提示疑似重复，由 agent 决定标改、merge 或显式新建。
+  const activeIndexBySubject = new Map<string, number>();
+  for (const { index, todo } of indexActiveTodos(existing)) {
+    const key = normalizeSubject(todo.subject);
+    if (!activeIndexBySubject.has(key)) activeIndexBySubject.set(key, index);
+  }
+  const createdInCall = new Set<string>();
+  for (const t of todos) {
+    if (t.index !== undefined || !t.subject) continue;
+    const key = normalizeSubject(t.subject);
+    const hit = activeIndexBySubject.get(key);
+    if (hit !== undefined) {
+      warnings.push(`creating "${t.subject}" as a new todo, but the active list already has the same title at [#${hit}]. If it is the same work, update [#${hit}] instead (or use merge); create only when this is genuinely a new task.`);
+    } else if (createdInCall.has(key)) {
+      warnings.push(`"${t.subject}" is created twice in this call — task titles should be unique; make them distinct or drop one.`);
+    }
+    createdInCall.add(key);
   }
 
   const seenIndex = new Set<number>();
@@ -251,7 +273,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
         const resolve = (index: number) => resolveActiveByIndex(existing, index);
 
         const todos = input.todos ?? [];
-        const warnings = collectPlanWarnings(todos, resolve);
+        const warnings = collectPlanWarnings(todos, resolve, existing);
         const touchedIds = new Set<string>();
 
         // Phase 1: todos[] — 按 index 更新，或新建
