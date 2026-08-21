@@ -120,7 +120,7 @@ async function dirSize(dir: string): Promise<number> {
 export const CONVERSATION_SCOPED_TABLES = [
   'messages', 'messages_tree', 'summaries', 'todos', 'pending_approvals',
   'conversation_branches', 'conversation_branch_selections', 'conversation_runs',
-  'agent_runs', 'stream_chunks', 'agent_status', 'suspended_agent_states', 'chat_costs',
+  'agent_runs', 'stream_chunks', 'suspended_agent_states', 'chat_costs',
   'message_text',
 ] as const;
 

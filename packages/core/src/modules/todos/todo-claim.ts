@@ -2,19 +2,16 @@ import type { TodoStore, TodoClaimResult, Todo } from './types';
 
 /**
  * Claim a todo for an agent
- * 
- * This will fail if:
- * - The todo doesn't exist
- * - The todo is not pending
- * - The todo has incomplete dependencies
- * - The todo is already claimed by another agent
- * - The agent is already busy with another todo
- * 
+ *
+ * 账本语义（docs/todos-lite.md §3.4）：claim = 标注 in_progress + 记录执行者（展示），
+ * 不做任何 gate——不查 pending、不判依赖、不管 busy、不拒重复认领。
+ * 仅当 todo 不存在时失败。
+ *
  * @param store - The todo store
  * @param todoId - The todo ID to claim
  * @param agentId - The agent ID claiming the todo
  * @returns The claim result
- * 
+ *
  * @example
  * ```typescript
  * const result = claimTodo(store, 'todo-1', 'agent-1');
@@ -52,11 +49,10 @@ export function unclaimTodo(store: TodoStore, todoId: string): Todo | undefined 
 }
 
 /**
- * Force claim a todo (overrides busy check)
- * 
- * Use with caution - this will make any agent currently holding the todo
- * appear as if they're no longer busy with it.
- * 
+ * Force claim a todo
+ *
+ * Use with caution - this will claim a todo even when another agent currently holds it.
+ *
  * @param store - The todo store
  * @param todoId - The todo ID to claim
  * @param agentId - The agent ID claiming the todo
@@ -68,23 +64,18 @@ export function forceClaimTodo(
   agentId: string
 ): TodoClaimResult {
   const todo = store.getTodo(todoId);
-  
+
   if (!todo) {
     return { success: false, message: `Todo ${todoId} not found` };
   }
-  
+
   if (todo.status !== 'pending' && todo.status !== 'in_progress') {
     return {
       success: false,
       message: `Todo ${todoId} is not claimable (current status: ${todo.status})`,
     };
   }
-  
-  // If the todo was claimed by another agent, free them
-  if (todo.claimedBy && todo.claimedBy !== agentId) {
-    store.setAgentBusy(todo.claimedBy, false, todoId);
-  }
-  
+
   // Claim the todo
   return store.claimTodo(todoId, agentId);
 }

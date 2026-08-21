@@ -269,7 +269,7 @@ export type {
   TaskFinishState,
 } from './modules/todos';
 export { createTodoWriteToolForConversation } from './modules/todos/todo-tools/todo-write-tool';
-export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus } from './modules/todos/snapshot-index';
+export { indexActiveTodos, resolveActiveByIndex, resolveByStableIndex, resolveTodoReference, isActiveStatus } from './modules/todos/snapshot-index';
 export { renderIndexedActiveList, renderIndexedActiveLine } from './modules/todos/todo-tools/todo-snapshot';
 export {
   STATUS_CONFIG,

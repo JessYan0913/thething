@@ -9,7 +9,7 @@ import { logger } from '../../../primitives/logger';
 import { extractMessageText } from './message-store';
 
 // 当前 schema 版本。doctor 诊断用 user_version 与其比对。
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -205,16 +205,8 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
 
       CREATE INDEX IF NOT EXISTS idx_stream_chunks_conversation
         ON stream_chunks(conversation_id, sequence);
-
-      -- Agent busy/idle status (persisted across restarts)
-      CREATE TABLE IF NOT EXISTS agent_status (
-        agent_id TEXT PRIMARY KEY,
-        is_busy INTEGER NOT NULL DEFAULT 0,
-        current_todo_id TEXT,
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
     `);
-    logger.debug('Schema', 'Migrated to v7: added agent_runs, stream_chunks, and agent_status tables');
+    logger.debug('Schema', 'Migrated to v7: added agent_runs and stream_chunks tables');
   }
 
   if (currentVersion < 8) {
@@ -597,6 +589,12 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
       migrate();
     }
     logger.debug('Schema', 'Migrated to v20: agent_runs extended with exhausted status + stop_reason');
+  }
+
+  if (currentVersion < 21) {
+    // v21: 删除 agent_status（改动版认领体制已废弃，表无任何读写路径）。
+    db.exec(`DROP TABLE IF EXISTS agent_status;`);
+    logger.debug('Schema', 'Migrated to v21: dropped agent_status table');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

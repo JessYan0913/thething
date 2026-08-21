@@ -150,26 +150,29 @@ describe('todos', () => {
         expect(result.success).toBe(false);
       });
 
-      it('should fail if todo not pending', () => {
+      it('should claim todo even after terminal (账本不判状态)', () => {
         const todo = store.createTodo({ conversationId: 'conv-1', subject: 'Todo' });
         store.updateTodo({ id: todo.id, status: 'completed' });
         const result = store.claimTodo(todo.id, 'agent-1');
-        expect(result.success).toBe(false);
+        expect(result.success).toBe(true); // T3：claim 不做任何 gate → 终态也能重开
+        expect(result.todo?.status).toBe('in_progress');
       });
 
-      it('should fail if agent already busy', () => {
+      it('should allow same agent to hold multiple todos (单一 busy 门拆除)', () => {
         const todo1 = store.createTodo({ conversationId: 'conv-1', subject: 'Todo 1' });
         const todo2 = store.createTodo({ conversationId: 'conv-1', subject: 'Todo 2' });
         store.claimTodo(todo1.id, 'agent-1');
         const result = store.claimTodo(todo2.id, 'agent-1');
-        expect(result.success).toBe(false);
+        expect(result.success).toBe(true);
+        expect(result.todo?.status).toBe('in_progress');
       });
 
-      it('should fail if todo already claimed', () => {
+      it('should allow re-claim by another agent (重复认领幂等)', () => {
         const todo = store.createTodo({ conversationId: 'conv-1', subject: 'Todo' });
         store.claimTodo(todo.id, 'agent-1');
         const result = store.claimTodo(todo.id, 'agent-2');
-        expect(result.success).toBe(false);
+        expect(result.success).toBe(true);
+        expect(result.todo?.claimedBy).toBe('agent-2');
       });
     });
 
@@ -214,22 +217,6 @@ describe('todos', () => {
         store.claimTodo(todo2.id, 'agent-2');
         const agent1Todos = store.getTodosByAgent('agent-1');
         expect(agent1Todos.length).toBe(1);
-      });
-    });
-
-    describe('getAgentStatus', () => {
-      it('should return not busy for unclaimed agent', () => {
-        const status = store.getAgentStatus('agent-1');
-        expect(status.isBusy).toBe(false);
-        expect(status.currentTodoId).toBeNull();
-      });
-
-      it('should return busy after claim', () => {
-        const todo = store.createTodo({ conversationId: 'conv-1', subject: 'Todo' });
-        store.claimTodo(todo.id, 'agent-1');
-        const status = store.getAgentStatus('agent-1');
-        expect(status.isBusy).toBe(true);
-        expect(status.currentTodoId).toBe(todo.id);
       });
     });
 
@@ -291,7 +278,7 @@ describe('todos', () => {
         expect(todo1.blocks).toContain(todo2.id);
       });
 
-      it('should not claim todo with incomplete dependency', () => {
+      it('should claim todo even with incomplete dependency (依赖降级为提示字段)', () => {
         const todo1 = store.createTodo({ conversationId: 'conv-1', subject: 'Todo 1' });
         const todo2 = store.createTodo({
           conversationId: 'conv-1',
@@ -299,8 +286,7 @@ describe('todos', () => {
           blockedBy: [todo1.id],
         });
         const result = store.claimTodo(todo2.id, 'agent-1');
-        expect(result.success).toBe(false);
-        expect(result.message).toContain('blocked');
+        expect(result.success).toBe(true);
       });
 
       it('should claim todo after dependency completed', () => {

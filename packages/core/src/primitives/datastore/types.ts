@@ -794,18 +794,6 @@ export interface TodoClaimResult {
 }
 
 /**
- * Agent busy status
- */
-export interface AgentStatus {
-  /** Agent ID */
-  agentId: string;
-  /** Whether the agent is currently busy */
-  isBusy: boolean;
-  /** Todo ID currently being worked on (if busy) */
-  currentTodoId: string | null;
-}
-
-/**
  * Todo event type
  */
 export type TodoEventType =
@@ -850,8 +838,6 @@ export interface TodoStore {
   getBlockingTodos(todoId: string): Todo[];
   getBlockedByTodos(todoId: string): Todo[];
   subscribe(listener: TodoEventListener): () => void;
-  getAgentStatus(agentId: string): AgentStatus;
-  setAgentBusy(agentId: string, busy: boolean, todoId?: string): void;
   clearAllTodos(): void;
   /** Get the current revision counter. Monotonically increasing, incremented on every mutation. Used for change detection in ContextInjector. */
   getRevision(): number;

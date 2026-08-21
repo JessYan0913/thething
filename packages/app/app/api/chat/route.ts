@@ -201,9 +201,10 @@ export async function POST(request: Request) {
     }
 
     // 权威任务台账：恢复/续做时给模型一份确定性清单（实体台账，非对话词汇）。
-    // 方案 C：任务身份由 agent 凭语义管理——清单按快照序号 [#N] 展示，agent 用编号
-    // 定位/合并，机器不发明不判重。编号由 indexActiveTodos（createdAt ASC）统一生成，
-    // 与 todo_write / todo_list / overview 完全一致，可跨界面引用。
+    // 方案 C（轻量化）：任务身份由 agent 凭语义管理——清单按稳定编号 [#N] 展示，
+    // agent 用编号定位/合并，机器不发明不判重。编号 = 创建序稳定号：indexActiveTodos
+    // 必须传**全量** conversationTodos（含终态行）才能不重排，与 todo_write / overview
+    // 完全一致，可跨界面引用。
     const activeTodos = conversationTodos.filter(
       (t: Todo) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'failed'
     );
@@ -212,8 +213,8 @@ export async function POST(request: Request) {
       .sort((a: Todo, b: Todo) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
       .slice(0, 3);
 
-    // 一次算出全局活跃编号，供各分组行复用（保证与 todo_write 的 index 一致）
-    const indexedActive = indexActiveTodos(activeTodos);
+    // 一次算出全局稳定编号，供各分组行复用（保证与 todo_write 的 index 一致）
+    const indexedActive = indexActiveTodos(conversationTodos);
 
     let finalInstructions = systemPrompt;
     if (activeTodos.length > 0) {

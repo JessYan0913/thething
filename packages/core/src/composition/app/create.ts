@@ -518,7 +518,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     triggerPercent: compactionCfg.contextWindow.triggerPercent,
     resolveModel: resolveStepModel,
     compactionCallbackRef: options.compactionCallbackRef,
-    scheduler: todoScheduler,
   })
 
   const stopWhen = createDefaultStopConditions<ChatToolsType>(sessionState.costTracker, {

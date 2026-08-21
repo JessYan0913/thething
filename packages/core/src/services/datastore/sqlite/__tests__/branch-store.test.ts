@@ -242,12 +242,6 @@ describe('SQLiteBranchStore', () => {
         chunk_data TEXT NOT NULL,
         created_at TEXT DEFAULT (datetime('now'))
       );
-      CREATE TABLE agent_status (
-        agent_id TEXT PRIMARY KEY,
-        is_busy INTEGER NOT NULL DEFAULT 0,
-        current_todo_id TEXT,
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
       CREATE TABLE suspended_agent_states (
         conversation_id TEXT PRIMARY KEY,
         suspended_state TEXT NOT NULL,

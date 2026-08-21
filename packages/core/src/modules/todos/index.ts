@@ -114,6 +114,6 @@ export {
   type TodoArchiveMeta,
 } from './todo-runtime';
 
-// 快照编号（方案 C：agent 凭编号定位/合并）
-export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus, type IndexedActiveTodo } from './snapshot-index';
+// 快照编号（方案 C 轻量：agent 凭稳定编号定位/合并）
+export { indexActiveTodos, resolveActiveByIndex, resolveByStableIndex, resolveTodoReference, isActiveStatus, type IndexedActiveTodo } from './snapshot-index';
 export { renderIndexedActiveList, renderIndexedActiveLine } from './todo-tools/todo-snapshot';

@@ -7,24 +7,21 @@ import type {
   TodoEvent,
   TodoEventListener,
   TodoStatus,
-  AgentStatus,
 } from './types';
 import { HighWaterMarkImpl, getGlobalHighWaterMark } from './high-water-mark';
 import { logger } from '../../primitives/logger';
 
 /**
  * In-memory TodoStore implementation
- * 
+ *
  * Features:
  * - Doubly-linked dependency tracking (blockedBy / blocks)
- * - Agent busy status tracking
  * - Event subscription for state changes
  * - Automatic unblocking of dependent todos
  */
 export class InMemoryTodoStore implements TodoStore {
   private todos: Map<string, Todo> = new Map();
   private hwm: HighWaterMarkImpl;
-  private agentStatus: Map<string, AgentStatus> = new Map();
   private listeners: Set<TodoEventListener> = new Set();
   private revision: number = 0;
 
@@ -165,9 +162,6 @@ export class InMemoryTodoStore implements TodoStore {
       if (input.status === 'completed' || input.status === 'failed' || input.status === 'cancelled') {
         todo.completedAt = now;
         // Unclaim the todo
-        if (todo.claimedBy) {
-          this.setAgentBusy(todo.claimedBy, false, todo.id);
-        }
         todo.claimedBy = null;
       }
     }
@@ -181,15 +175,6 @@ export class InMemoryTodoStore implements TodoStore {
     }
 
     if (input.claimedBy !== undefined) {
-      // Handle agent busy status
-      if (todo.claimedBy && input.claimedBy !== todo.claimedBy) {
-        // Old agent is now free
-        this.setAgentBusy(todo.claimedBy, false, todo.id);
-      }
-      if (input.claimedBy) {
-        // New agent is now busy
-        this.setAgentBusy(input.claimedBy, true, todo.id);
-      }
       todo.claimedBy = input.claimedBy;
     }
 
@@ -269,11 +254,6 @@ export class InMemoryTodoStore implements TodoStore {
       }
     }
 
-    // If todo was claimed, free the agent
-    if (todo.claimedBy) {
-      this.setAgentBusy(todo.claimedBy, false, id);
-    }
-
     this.emitTodoEvent('todo:deleted', todo);
     this.revision++;
     return this.todos.delete(id);
@@ -286,55 +266,11 @@ export class InMemoryTodoStore implements TodoStore {
       return { success: false, message: `Todo ${todoId} not found` };
     }
 
-    // Check if agent is already busy
-    const agentStatus = this.getAgentStatus(agentId);
-    if (agentStatus.isBusy) {
-      return {
-        success: false,
-        message: `Agent ${agentId} is already busy with todo ${agentStatus.currentTodoId}`,
-      };
-    }
-
-    // Check if todo is pending
-    if (todo.status !== 'pending') {
-      return {
-        success: false,
-        message: `Todo ${todoId} is not pending (current status: ${todo.status})`,
-      };
-    }
-
-    // Check if all dependencies are met
-    const allDependenciesMet = todo.blockedBy.every(blockedById => {
-      const blockedByTodo = this.todos.get(blockedById);
-      return blockedByTodo && blockedByTodo.status === 'completed';
-    });
-
-    if (!allDependenciesMet) {
-      const unmetDeps = todo.blockedBy.filter(blockedById => {
-        const blockedByTodo = this.todos.get(blockedById);
-        return !blockedByTodo || blockedByTodo.status !== 'completed';
-      });
-      return {
-        success: false,
-        message: `Todo ${todoId} is blocked by incomplete dependencies: ${unmetDeps.join(', ')}`,
-      };
-    }
-
-    // Check if todo is already claimed
-    if (todo.claimedBy) {
-      return {
-        success: false,
-        message: `Todo ${todoId} is already claimed by agent ${todo.claimedBy}`,
-      };
-    }
-
-    // Claim the todo
+    // 账本语义：claim = 标注 in_progress + 记录执行者（展示），不做任何 gate
+    // （不查 busy、不要求 pending、不判依赖、不拒重复认领），见 docs/todos-lite.md §3.4。
     todo.claimedBy = agentId;
     todo.status = 'in_progress';
     todo.updatedAt = Date.now();
-
-    // Update agent status
-    this.setAgentBusy(agentId, true, todoId);
 
     this.emitTodoEvent('todo:claimed', todo);
     this.revision++;
@@ -384,26 +320,8 @@ export class InMemoryTodoStore implements TodoStore {
     };
   }
 
-  getAgentStatus(agentId: string): AgentStatus {
-    const status = this.agentStatus.get(agentId);
-    return status || { agentId, isBusy: false, currentTodoId: null };
-  }
-
-  setAgentBusy(agentId: string, busy: boolean, todoId?: string): void {
-    if (busy) {
-      this.agentStatus.set(agentId, {
-        agentId,
-        isBusy: true,
-        currentTodoId: todoId || null,
-      });
-    } else {
-      this.agentStatus.delete(agentId);
-    }
-  }
-
   clearAllTodos(): void {
     this.todos.clear();
-    this.agentStatus.clear();
     this.hwm.reset(1);
   }
 }

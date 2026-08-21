@@ -1,39 +1,43 @@
 import type { TodoStore, Todo, TodoStatus, TodoMetadata } from './types';
 
 /**
- * TodoRuntime — Todo Runtime 的状态与运行时心脏。
+ * TodoRuntime — Todo Runtime（轻量化账本，docs/todos-lite.md）。
  *
- * 分层（模型决策 / 系统执行）：
- * - 模型负责「做什么、何时做、是否完成」；系统（本模块）只做运行时约束。
- * - 系统可以判断：迁移是否合法、claim 是否冲突、依赖是否满足、是否 quiescent。
- * - 系统不得判断：任务"实际上"是否完成、是否要验证、该做哪个任务。
+ * 定调：系统只记、不判（I2）。模型决定「做什么、何时做、是否完成」；
+ * 本模块只负责把模型声明的状态变化**原样写入**，不做任何闸门/合法性判断。
+ * - 不校验迁移是否合法（pending→completed 直通、终态→active 重开都允许）；
+ * - 不做单进行中约束、不判依赖、不查认领冲突、不读 agent busy；
+ * - 只保留一致性收尾：run 结束时把未落账的 in_progress 回卷（见 run-finalization）。
  *
- * READY 是派生属性（pending + 依赖完成 + 未 claim），不落库。
+ * READY / blocked / quiescent 仍派生（读视图），但只退化为**展示/lint 建议**，不进任何 gate。
  * Quiescent ≠ Goal 完成：isQuiescent() 只表示「没有正在运行的 runtime work」。
  */
 import { logger } from '../../primitives/logger';
 
-/** 严格状态迁移矩阵 —— 唯一事实源。terminal 态(completed/cancelled)无出边。 */
+/**
+ * 状态迁移矩阵 —— 仅作**参考资料**（lint 建议 / 文档），**不执行**。
+ * 账本模型下系统允许任意迁移（含终态→active 重开），见 docs/todos-lite.md §3.1。
+ */
 export const TODO_TRANSITIONS: Record<TodoStatus, readonly TodoStatus[]> = {
   pending: ['in_progress', 'cancelled'],
   in_progress: ['completed', 'failed', 'cancelled'],
   failed: ['pending', 'cancelled'],
-  completed: [], // terminal
-  cancelled: [], // terminal
+  completed: [], // 参考：终态无出边（但系统不再强制）
+  cancelled: [], // 参考：终态无出边（但系统不再强制）
 };
 
-/** 执行模式（模型选择，系统只记录与约束）。 */
+/** 执行模式（模型选择，系统只记录）。 */
 export type ExecutionMode = 'main_agent' | 'agent' | 'parallel_agent';
 
 /**
- * Quiescent 的原因（区分「可完成候选」vs「卡住」）：
- * - completed_candidate：无就绪/进行中/failed/blocked，且会话内有 todo（多为全 terminal）→ 值得 Completion Audit。
- * - blocked：卡在未完成的依赖上（有 blocked todo）。
- * - failed：有 failed todo（失败是模型决策，不自动忽略）。
+ * Quiescent 的原因 —— 账本语义（docs/todos-lite.md §4「收尾信号」）：
+ * `quiescent = 不存在 status ∈ {pending, in_progress, failed} 的项`（一个查询）。
+ * ready/blocked 派生只退化为展示/lint，不再参与收尾判定。
+ * - completed_candidate：会话内有 todo 且全部 terminal（无 pending/in_progress/failed）。
  * - no_work：会话内根本没有 todo（空会话）。
- * - null：非 quiescent（还有 runtime work）。
+ * - null：非 quiescent（还有未办/在办/失败待处理的活）。
  */
-export type QuiescenceReason = 'completed_candidate' | 'blocked' | 'failed' | 'no_work';
+export type QuiescenceReason = 'completed_candidate' | 'no_work';
 
 /** 谁/什么在执行一个 todo（写入 metadata.execution） */
 export interface ExecutionInfo {
@@ -41,18 +45,12 @@ export interface ExecutionInfo {
   mode?: ExecutionMode;
   source?: string;
   startedAt?: number;
-  /** 并行路径：跳过「单进行中」门（仍保留 blockedBy/重复 claim 校验）。 */
+  /** 并行路径：历史字段，仅记录不再 gate（单进行中门已拆除）。 */
   allowParallel?: boolean;
 }
 
-/** Scheduler 拒绝时的错误类别（不做静默覆盖）。 */
-export type TransitionError =
-  | 'NOT_FOUND'
-  | 'ILLEGAL_TRANSITION'
-  | 'ALREADY_CLAIMED'
-  | 'AGENT_BUSY'
-  | 'DEPENDENCIES_UNMET'
-  | 'TOO_MANY_IN_PROGRESS';
+/** 账本层不再有闸门性失败；仅保留 NOT_FOUND（引用不存在的 todo）。 */
+export type TransitionError = 'NOT_FOUND';
 
 class TodoRuntimeError extends Error {
   constructor(public code: TransitionError, message: string) {
@@ -148,18 +146,14 @@ export function getArchive(todo: Todo): TodoArchiveMeta {
 }
 
 /**
- * 计算 quiescent 的原因（纯函数）。仅在 quiescent 时调用（调用方保证 ready/inProgress 为空）。
- * completed_candidate 与 no_work 的区分依赖会话内 todo 总数（convCount）：
+ * 计算 quiescent 的原因（纯函数）。仅在 quiescent 时调用（调用方保证没有
+ * pending/in_progress/failed）。completed_candidate 与 no_work 的区分依赖会话内 todo 总数：
  * - 会话为空（无任何 todo）→ no_work；
- * - 会话非空且无 failed/blocked（多为全 terminal）→ completed_candidate。
+ * - 会话非空且全 terminal → completed_candidate。
  */
 export function computeQuiescenceReason(args: {
-  failed: number;
-  blocked: number;
   convCount: number;
 }): QuiescenceReason {
-  if (args.failed > 0) return 'failed';
-  if (args.blocked > 0) return 'blocked';
   if (args.convCount === 0) return 'no_work';
   return 'completed_candidate';
 }
@@ -180,38 +174,11 @@ export type TodoRuntime = {
 export function createTodoRuntime(deps: {
   store: TodoStore;
   conversationId: string;
-  /** 是否强制「同一时刻仅一个 in_progress」（方案 C 单进行中约束）。默认 true。 */
-  enforceSingleInProgress?: boolean;
 }): TodoRuntime {
   const store = deps.store;
-  const enforceSingleInProgress = deps.enforceSingleInProgress ?? true;
-
-  /** 校验迁移合法，非法抛 ILLEGAL_TRANSITION。 */
-  function assertTransition(from: TodoStatus, to: TodoStatus): void {
-    if (!TODO_TRANSITIONS[from].includes(to)) {
-      throw new TodoRuntimeError(
-        'ILLEGAL_TRANSITION',
-        `Illegal todo status transition ${from} → ${to}. Allowed: [${TODO_TRANSITIONS[from].join(', ') || 'terminal'}].`,
-      );
-    }
-  }
-
-  /** 依赖是否全部完成。 */
-  function depsMet(todo: Todo): boolean {
-    return todo.blockedBy.every((id) => store.getTodo(id)?.status === 'completed');
-  }
-
-  /** 该 todo 是否已 claim（claimedBy 非空 或 已是 in_progress）。 */
-  function isClaimed(todo: Todo): boolean {
-    return todo.claimedBy !== null && todo.claimedBy !== undefined;
-  }
 
   function getReadyTodos(): Todo[] {
     return store.getAvailableTodos();
-  }
-
-  function inProgressIds(): string[] {
-    return store.getTodosByStatus('in_progress').map((t) => t.id);
   }
 
   function getRuntimeState(): TodoRuntimeState {
@@ -226,8 +193,10 @@ export function createTodoRuntime(deps: {
     const completed = store.getTodosByStatus('completed');
     const cancelled = store.getTodosByStatus('cancelled');
 
-    // One Canvas 之后不再有内存归档队列；quiescent 只由 ready / in_progress 决定。
-    const quiescent = ready.length === 0 && inProgress.length === 0;
+    // One Canvas 之后不再有内存归档队列。收尾信号（docs/todos-lite.md §4）：
+    // quiescent = 不存在 {pending, in_progress, failed} 的项（一个查询）。
+    // ready/blocked 仍保留为展示/lint 视图，不再参与收尾判定。
+    const quiescent = pending.length === 0 && inProgress.length === 0 && failed.length === 0;
 
     return {
       ready,
@@ -242,8 +211,6 @@ export function createTodoRuntime(deps: {
       quiescent,
       quiescenceReason: quiescent
         ? computeQuiescenceReason({
-            failed: failed.length,
-            blocked: blocked.length,
             convCount: store.getTodosByConversation(deps.conversationId).length,
           })
         : null,
@@ -251,8 +218,9 @@ export function createTodoRuntime(deps: {
   }
 
   function isQuiescent(): boolean {
-    return getReadyTodos().length === 0
-      && store.getTodosByStatus('in_progress').length === 0;
+    return store.getTodosByStatus('pending').length === 0
+      && store.getTodosByStatus('in_progress').length === 0
+      && store.getTodosByStatus('failed').length === 0;
   }
 
   /** 统一终局判定视图。requiresCompletionAudit 需调用方结合 goal/latch 计算，此处只给原始派生态。 */
@@ -274,49 +242,24 @@ export function createTodoRuntime(deps: {
     if (!todo) {
       throw new TodoRuntimeError('NOT_FOUND', `Todo ${todoId} not found`);
     }
-    // 已 claim（含 in_progress 重复 claim）→ ALREADY_CLAIMED，不静默覆盖
-    if (isClaimed(todo)) {
-      throw new TodoRuntimeError('ALREADY_CLAIMED', `ALREADY_CLAIMED: Todo ${todoId} is already claimed.`);
-    }
-    if (todo.status !== 'pending') {
-      throw new TodoRuntimeError(
-        'ILLEGAL_TRANSITION',
-        `Illegal todo status transition: cannot claim a todo in status ${todo.status}; only pending can be claimed.`,
-      );
-    }
-    if (!depsMet(todo)) {
-      throw new TodoRuntimeError('DEPENDENCIES_UNMET', `DEPENDENCIES_UNMET: Todo ${todoId} is blocked by incomplete dependencies.`);
-    }
-    if (enforceSingleInProgress && !execution.allowParallel && inProgressIds().length > 0) {
-      throw new TodoRuntimeError('TOO_MANY_IN_PROGRESS', 'TOO_MANY_IN_PROGRESS: Already one todo is in_progress; keep exactly one at a time.');
-    }
-
+    // 账本语义：claim = 「标注 in_progress + 记录执行者（展示）」，不做任何 gate。
+    // 重复 claim / 依赖未完成 / 跨会话并存在途项 都不再阻塞（docs/todos-lite.md §3.3-3.4）。
     const agentId = execution.agentId;
-    const result = store.claimTodo(todoId, agentId);
-    if (!result.success || !result.todo) {
-      // store 的 claim 也做满足性检查；此处做兜底映射
-      const msg = result.message ?? '';
-      if (/busy/i.test(msg)) throw new TodoRuntimeError('AGENT_BUSY', msg);
-      if (/blocked by/i.test(msg)) throw new TodoRuntimeError('DEPENDENCIES_UNMET', msg);
-      if (/already claimed/i.test(msg) || /not pending/i.test(msg)) {
-        throw new TodoRuntimeError('ALREADY_CLAIMED', msg);
-      }
-      throw new TodoRuntimeError('ILLEGAL_TRANSITION', msg);
-    }
-
     const executionMeta: TodoExecutionMeta = {
       agentId,
       mode: execution.mode,
       source: execution.source,
       startedAt: execution.startedAt ?? Date.now(),
     };
-    const lifecycle = getLifecycle(result.todo);
-    store.updateTodo({
+    const lifecycle = getLifecycle(todo);
+    const updated = store.updateTodo({
       id: todoId,
+      status: 'in_progress',
+      claimedBy: agentId,
       metadata: { execution: executionMeta, lifecycle: lifecycle },
     });
     logger.debug('TodoRuntime', `[claim] todoId=${todoId} agent=${agentId}`);
-    return store.getTodo(todoId)!;
+    return updated ?? todo;
   }
 
   function completeTodo(todoId: string, result: string): Todo {
@@ -324,8 +267,7 @@ export function createTodoRuntime(deps: {
     if (!todo) {
       throw new TodoRuntimeError('NOT_FOUND', `Todo ${todoId} not found`);
     }
-    assertTransition(todo.status, 'completed');
-
+    // 账本语义：模型声明完成即写完成，不校验是否经 in_progress（pending→completed 直通，§3.1）。
     const execution = getExecution(todo);
     const updatedExecution = { ...execution, finishedAt: Date.now() };
     store.updateTodo({
@@ -343,8 +285,7 @@ export function createTodoRuntime(deps: {
     if (!todo) {
       throw new TodoRuntimeError('NOT_FOUND', `Todo ${todoId} not found`);
     }
-    assertTransition(todo.status, 'failed');
-
+    // 账本：模型声明失败即写，不校验是否 in_progress。
     const execution = getExecution(todo);
     store.updateTodo({
       id: todoId,
@@ -361,8 +302,7 @@ export function createTodoRuntime(deps: {
     if (!todo) {
       throw new TodoRuntimeError('NOT_FOUND', `Todo ${todoId} not found`);
     }
-    assertTransition(todo.status, 'pending');
-
+    // 重开：failed/cancelled/completed → 回 pending（终态→active 重开允许）。
     const lifecycle = getLifecycle(todo);
     const execution = getExecution(todo);
     store.updateTodo({
@@ -384,8 +324,7 @@ export function createTodoRuntime(deps: {
     if (!todo) {
       throw new TodoRuntimeError('NOT_FOUND', `Todo ${todoId} not found`);
     }
-    assertTransition(todo.status, 'cancelled');
-
+    // 账本：模型声明放弃即写，不校验阶段。
     const lifecycle = getLifecycle(todo);
     store.updateTodo({
       id: todoId,

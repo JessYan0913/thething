@@ -79,6 +79,19 @@ describe('todo_write (方案C：index 定位 + patch 语义 + merge)', () => {
     expect(store.getTodosByConversation(CONV)).toHaveLength(before);
   });
 
+  it('hints the terminal status when an index refers to a finished task (T5: 含终态给予提示)', async () => {
+    await execute({ todos: [{ subject: 'Task A', status: 'in_progress' }] });
+    // 完成 #1 → 编号 1 不再出现在活跃清单（稳定编号，收尾行占号不移位）
+    await execute({ todos: [{ index: 1, status: 'completed', result: 'done' }] });
+
+    const result = await execute({ todos: [{ index: 1, status: 'in_progress' }] });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('already completed'); // 终态提示而非泛化「不存在」
+    // 未迁到活跃清单 → 不会误重开完成的行
+    expect(store.getTodosByConversation(CONV).find(t => t.subject === 'Task A')?.status).toBe('completed');
+  });
+
   // ---- patch 语义：未提及的项原样保留 ----
 
   it('patch: unlisted active todos are left untouched (no auto-cancel)', async () => {
@@ -189,15 +202,16 @@ describe('todo_write (方案C：index 定位 + patch 语义 + merge)', () => {
     expect(result.snapshot).not.toContain('todo-'); // 无 id
   });
 
-  // ---- 规划警告 ----
+  // ---- 规划警告（T2：不阻断，lint 提示）----
 
-  it('rejects creating more than one in_progress (single-in-progress invariant)', async () => {
-    // 方案 C 单进行中由 runtime 强制：第二个 in_progress 的 claim 被拒（非仅警告）
+  it('warns (lint, 不阻断) when more than one is in_progress', async () => {
+    // T2：单进行中门拆除 → 第二个 in_progress 不再被拒，仅返回 lint 警告
     const result = await execute({
       todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'in_progress' }],
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toMatch(/in_progress/i);
+    expect(result.success).toBe(true);
+    expect(result.message).toMatch(/in_progress/);
+    expect(result.message).toMatch(/exactly one/i);
   });
 
   it('warns when the same index is referenced twice in one call', async () => {
@@ -230,9 +244,9 @@ describe('todo_write (方案C：index 定位 + patch 语义 + merge)', () => {
     expect(ok2.message).toBeUndefined();
   });
 
-  // ---- 单完成约束 ----
+  // ---- 单完成约束（T5：硬失败 → lint）----
 
-  it('rejects marking multiple todos completed/failed in one call', async () => {
+  it('warns (lint, 不阻断) when marking multiple todos completed in one call', async () => {
     await execute({ todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'in_progress' }] });
 
     const result = await execute({
@@ -242,8 +256,10 @@ describe('todo_write (方案C：index 定位 + patch 语义 + merge)', () => {
       ],
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('一次只能将一个');
+    expect(result.success).toBe(true); // T5：硬失败降级为 lint
+    expect(result.message).toContain('completed/failed');
+    const all = store.getTodosByConversation(CONV);
+    expect(all.filter(t => t.status === 'completed')).toHaveLength(2); // 两个都完成，机器不拦
   });
 
   // ---- 会话隔离 ----

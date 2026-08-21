@@ -153,8 +153,7 @@ export async function executeRoutedAgent(
 
     // 7. 更新任务状态（统一写入口：有 runtime 经 runtime.claimTodo；无则回落 store 直写）
     if (todoStore && todoId) {
-      // 并行路径需每任务独立 agentId（store claim 按 agentId 判 busy，共享 agentId 会互相拒绝）；
-      // 单进行中约束由 runtime.allowParallel 跳过，blockedBy/DEPENDENCIES 校验仍生效。
+      // 并行路径需每任务独立 agentId（展示用 claimedBy；账本化后无 busy/单进行中/依赖闸门）。
       const isParallel = executionMode === 'parallel_agent';
       const subAgentId = isParallel ? `parallel:${todoId}` : (definition.agentType ?? 'sub_agent');
       if (scheduler) {

@@ -186,11 +186,12 @@ describe('finalizeRun', () => {
 
   it('machine-downgrades unsettled in_progress todos to pending with interrupted metadata', async () => {
     const { dataStore, calls, todoStore, push } = makeFakeStore();
-    push(makeTodo({ id: 'a', status: 'in_progress' }));
+    push(makeTodo({ id: 'a', status: 'in_progress', claimedBy: 'main' }));
     push(makeTodo({ id: 'b', status: 'pending' }));
     const r = await finalizeRun({ dataStore, conversationId: 'c1', sessionState: baseState, maxSteps: 50 });
     const a = todoStore.getTodosByConversation('c1')[0];
     expect(a.status).toBe('pending');
+    expect(a.claimedBy).toBeNull(); // T4：回卷后清 claimedBy，可再次 claim
     const exec = a.metadata.execution as { interruptedReason?: string; interruptedAt?: number } | undefined;
     expect(exec?.interruptedReason).toBe('done');
     expect(typeof exec?.interruptedAt).toBe('number');

@@ -15,7 +15,6 @@ export {
   type TodoUpdateInput,
   type TodoClaimResult,
   type TodoStore,
-  type AgentStatus,
   type TodoEvent,
   type TodoEventListener,
   type TodoEventType,

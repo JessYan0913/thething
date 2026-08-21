@@ -131,9 +131,10 @@ export function deriveStopReason(input: DeriveStopReasonInput): StopReason {
 }
 
 /**
- * 机器回卷:run 结束后仍为 in_progress 的 todo 确定性置回 pending,
- * 并在 metadata.execution 记录中断现场。不调用 LLM,不做"完成/失败"判断(那是模型的权利)。
- * 返回被回卷的 todo 列表(供 UI 同步)。
+ * 机器回卷:run 结束后仍为 in_progress 的 todo 确定性置回 pending、
+ * 清 claimedBy,并在 metadata.execution 记录中断现场(interruptedAt/interruptedReason)。
+ * 收尾对称化(T4):降级后的行 = pending + claimedBy=null + interrupted 现场,可再次 claim。
+ * 不调用 LLM,不做"完成/失败"判断(那是模型的权利)。返回被回卷的 todo 列表(供 UI 同步)。
  */
 export function downgradeUnsettledInProgress(
   dataStore: DataStore,
@@ -152,6 +153,7 @@ export function downgradeUnsettledInProgress(
     const updated = dataStore.todoStore.updateTodo({
       id: t.id,
       status: 'pending',
+      claimedBy: null,
       metadata: { ...((t.metadata as Record<string, unknown>) ?? {}), execution },
     });
     if (updated) changed.push(updated);

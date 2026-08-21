@@ -81,11 +81,12 @@ describe('账本承重：父 todo_write 不破坏账本', () => {
     const active = createTodo(store, { conversationId: CONV, subject: '进行项' });
     const pending = createTodo(store, { conversationId: CONV, subject: '待办项' });
 
-    // 活跃编号按 createdAt ASC：进行项=1、待办项=2（完成项不占编号）。
-    // patch：只更新进行项（index 1 → in_progress）+ 新增；完成项历史保留，未列出的待办项原样保留。
+    // 稳定编号 = 创建序（含终态占位）：完成项=#1、进行项=#2、待办项=#3。
+    // 完成 #1 后其余编号不重排 → 引用进行项用 index: 2。
+    // patch：只更新进行项（index 2 → in_progress）+ 新增；完成项历史保留，未列出的待办项原样保留。
     await execute({
       todos: [
-        { index: 1, status: 'in_progress' },
+        { index: 2, status: 'in_progress' },
         { subject: '新任务', status: 'pending' },
       ],
     });

@@ -1,21 +1,21 @@
 /**
- * Snapshot Index - active-todo 的唯一编号来源
+ * Snapshot Index - 稳定编号的唯一来源
  *
- * 方案 C：agent 靠"快照序号"定位任务。本模块是唯一的事实来源——
+ * 方案 C（轻量化，docs/todos-lite.md §3.2）：编号 = **创建序稳定号**，永不重排、永不复用。
+ * 每行在「全会话清单」里按 createdAt ASC（id 决胜）占一个固定序号——第 N 次创建 = #N。
+ * 完成/取消只是移出**活跃视图**（挪"已收尾"区），不占用活跃位、不使其他行前移。
+ * 因此 `[#3]` 在任何时刻都指向同一件事——即使 #1、#2 已收尾。
+ *
  * 所有渲染方（权威台账 / todo-overview / compact snapshot / todo_write 输出）
- * 都通过 `indexActiveTodos` 对**活跃**任务（pending/in_progress/failed）赋
- * 1-based 编号，保证 agent 在任何一个界面看到的 `[N]` 都是同一个任务。
+ * 都必须传入**全量**会话清单（getTodosByConversation 原始返回，含终态行），
+ * 编号才稳定；传入过滤子集等于自行截断创建序，会得出漂移的编号。
  *
- * 排序：按 createdAt ASC（稳定、可预期）。只随任务的**创建/取消**改变，
- * 不随状态流转（pending→in_progress→completed）漂移——这是"先看清单再操作"
- * 能在多轮推进中保持可引用的关键。
- *
- * 已完成/已取消是终态历史，不占用活跃编号、不参与引用。
+ * 已完成/已取消是终态历史，不占用活跃编号、不参与活跃引用。
  */
 
 import type { Todo, TodoStore } from './types';
 
-/** 活跃状态（参与编号引用 / 参与真替换判定） */
+/** 活跃状态（参与编号引用） */
 const ACTIVE_STATUSES = new Set(['pending', 'in_progress', 'failed']);
 
 export function isActiveStatus(status: string): boolean {
@@ -23,28 +23,51 @@ export function isActiveStatus(status: string): boolean {
 }
 
 export type IndexedActiveTodo = {
-  /** 1-based 活跃编号（快照序号），agent 用它引用/合并 */
+  /** 1-based 稳定编号（创建序快照号），agent 用它引用/合并 */
   index: number;
   todo: Todo;
 };
 
 /**
- * 对活跃任务按 createdAt ASC 赋 1-based 编号。
- * 所有渲染方共用，保证编号全一致性。
+ * 创建序稳定编号表：对**全量**会话行（含终态）按 createdAt ASC、id 决胜赋 1-based 号。
+ * 编号只随「新行创建」追加，不随状态流转、不随收尾前移——
+ * 完成 #1 后活跃项仍是原编号（可能稀疏：#2、#4）。
  */
-export function indexActiveTodos(todos: Todo[]): IndexedActiveTodo[] {
-  return todos
-    .filter((t) => ACTIVE_STATUSES.has(t.status))
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .map((todo, i) => ({ index: i + 1, todo }));
+function stableIndexByTodoId(todos: Todo[]): Map<string, number> {
+  const sorted = [...todos].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  const numById = new Map<string, number>();
+  sorted.forEach((t, i) => numById.set(t.id, i + 1));
+  return numById;
 }
 
 /**
- * 由活跃编号解析出对应任务。越界/不存在 → undefined。
- * 调用方（todo_write）对 undefined 应报错而非静默新建，逼 agent 重读清单。
+ * 活跃任务的稳定编号视图（所有渲染方共用的唯一编号来源）。
+ * 已收尾行不出现，但它们的编号占位保留 → 活跃编号可能稀疏，符合「永不重排」。
+ */
+export function indexActiveTodos(todos: Todo[]): IndexedActiveTodo[] {
+  const numById = stableIndexByTodoId(todos);
+  return todos
+    .filter((t) => ACTIVE_STATUSES.has(t.status))
+    .map((t) => ({ index: numById.get(t.id)!, todo: t }))
+    .sort((a, b) => a.index - b.index);
+}
+
+/**
+ * 按稳定编号解析**全量**行（含终态）。引用已收尾项时（#1 已完成），
+ * 这里仍能命中——供 todo_write 对终态引用给出提示（T5），而非报"不存在"。
+ */
+export function resolveByStableIndex(todos: Todo[], index: number): Todo | undefined {
+  const numById = stableIndexByTodoId(todos);
+  return todos.find((t) => numById.get(t.id) === index);
+}
+
+/**
+ * 由稳定编号解析**活跃**任务。已收尾编号命中全量表但这里返回 undefined——
+ * 调用方应给出「该编号已收尾」的提示，而不是静默新建/报不存在（T5 落地）。
  */
 export function resolveActiveByIndex(todos: Todo[], index: number): Todo | undefined {
-  return indexActiveTodos(todos).find((e) => e.index === index)?.todo;
+  const found = resolveByStableIndex(todos, index);
+  return found && ACTIVE_STATUSES.has(found.status) ? found : undefined;
 }
 
 /**

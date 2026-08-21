@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { TodoStore, Todo, TodoStatus } from '../types';
 import { logger } from '../../../primitives/logger';
-import { indexActiveTodos, resolveActiveByIndex, isActiveStatus } from '../snapshot-index';
+import { indexActiveTodos, resolveActiveByIndex, resolveByStableIndex, isActiveStatus } from '../snapshot-index';
 import { renderIndexedActiveList } from './todo-snapshot';
 import type { TodoRuntime, TransitionError } from '../todo-runtime';
 
@@ -86,12 +86,32 @@ export type TodoWriteToolOutput = {
 /** 确定性的规划质量检查（lint 式返回值反馈，不阻断执行）。 */
 function collectPlanWarnings(
   todos: Array<{ index?: number; subject?: string; status: TodoStatus; result?: string; error?: string }>,
+  resolve: (index: number) => Todo | undefined,
 ): string[] {
   const warnings: string[] = [];
 
   const inProgressCount = todos.filter((t) => t.status === 'in_progress').length;
   if (inProgressCount > 1) {
     warnings.push(`${inProgressCount} todos are in_progress. Keep exactly one in_progress at a time.`);
+  }
+
+  // T5：单完成约束硬失败 → lint。账本不判：一次标多个 completed/failed 仅提醒，不再阻断。
+  // 只统计真实发生的 completed/failed 跃迁（整表重传已终态的项不计）。
+  const completions = new Set<string>();
+  for (const item of todos) {
+    if (item.index !== undefined) {
+      const target = resolve(item.index);
+      if (item.status === 'completed' || item.status === 'failed') {
+        if (target && target.status !== 'completed' && target.status !== 'failed') {
+          completions.add(item.subject ?? `#${item.index}`);
+        }
+      }
+    } else if (item.status === 'completed' || item.status === 'failed') {
+      completions.add(item.subject ?? '(new)');
+    }
+  }
+  if (completions.size > 1) {
+    warnings.push(`marked ${completions.size} todos completed/failed in one call (${[...completions].join(', ')}). Prefer finishing one task per call so each result is recorded before moving on.`);
   }
 
   const seenIndex = new Set<number>();
@@ -124,27 +144,6 @@ function isCompletionTransition(
   return target.status !== 'completed' && target.status !== 'failed'; // 状态跃迁到完成/失败
 }
 
-/** 单完成约束：一次调用只能将一个活跃 todo 标记为 completed/failed。 */
-function validateSingleCompletion(
-  items: TodoWriteToolInput['todos'],
-  resolve: (index: number) => Todo | undefined,
-): string | null {
-  const transitions = new Set<string>();
-  for (const item of items) {
-    if (!item.index) continue; // 新建即完成按 subject 计
-    const target = resolve(item.index);
-    if (isCompletionTransition(item.status, target, false)) {
-      transitions.add(item.subject ?? item.index.toString());
-    }
-  }
-  const bySubject = items.filter((i) => !i.index && isCompletionTransition(i.status, undefined, true));
-  const transitionsCount = transitions.size + bySubject.length;
-  if (transitionsCount > 1) {
-    return `一次只能将一个 todo 标记为 completed/failed，本次标记了 ${transitionsCount} 个。请分多次调用 todo_write。`;
-  }
-  return null;
-}
-
 /** 从工具入参提取 metadata 增量（只包含显式提供的字段，避免覆盖已有值）。 */
 function itemMetadata(item: TodoWriteToolInput['todos'][number]): Record<string, string> | undefined {
   const meta: Record<string, string> = {};
@@ -158,11 +157,6 @@ function itemMetadata(item: TodoWriteToolInput['todos'][number]): Record<string,
 function transitionErrorHint(code: TransitionError, subject: string): string {
   const hints: Record<TransitionError, string> = {
     NOT_FOUND: `${subject} no longer exists.`,
-    ILLEGAL_TRANSITION: `Illegal status change for ${subject} — a task cannot jump to that status directly (e.g. pending→completed is not allowed; it must go through in_progress). Re-read the latest snapshot.`,
-    ALREADY_CLAIMED: `${subject} is already claimed/being worked on.`,
-    AGENT_BUSY: `${subject} cannot be claimed because the agent is busy.`,
-    DEPENDENCIES_UNMET: `${subject} is blocked by unfinished dependencies — finish those first.`,
-    TOO_MANY_IN_PROGRESS: `Already one task is in_progress; keep exactly one at a time before advancing ${subject}.`,
   };
   return hints[code];
 }
@@ -244,8 +238,8 @@ How to reference tasks (方案 C — you manage the list by semantics, no ids):
 - \`index\` + \`status\`/fields → update that task. Omit \`index\` and provide \`subject\` → create a new task.
 - PATCH semantics: this call only changes the tasks you reference. Tasks you DON'T mention are left exactly as they are — no automatic cancellation. To cancel a task, reference it by index with status "cancelled" (or use todo_delete). So: update progress/state explicitly, and cancel explicitly — nothing vanishes silently.
 - SEMANTIC DUPLICATES: if two active tasks are really the same work even with different titles (e.g. [#1] "调研 write" and [#3] "写 write"), merge them: \`merge\` with keepIndex and dropIndices. The dropped one is cancelled and folded in. This is how you keep the list clean by judgment — the system never dedupes for you.
-- Keep exactly one item in_progress at a time; update the list right after each work step so the canvas stays honest.
-- Mark at MOST one task completed (or failed) per call. To close several, call this tool once per todo.
+- Keep exactly one item in_progress at a time — a lint-style recommendation, not enforced; update the list right after each work step so the canvas stays honest.
+- Prefer finishing one task per call — marking several completed/failed in one call only warns, it does not block.
 - Close the loop: when a task is done, mark it completed with a result (what was done + how verified); when it fails, record why. Do not create the list and stop updating it until the final answer.
 - Skip it only for trivial single-step tasks, pure Q&A, or chat.
 
@@ -257,12 +251,7 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
         const resolve = (index: number) => resolveActiveByIndex(existing, index);
 
         const todos = input.todos ?? [];
-        const completionError = validateSingleCompletion(todos, resolve);
-        if (completionError) {
-          return { success: false as const, error: completionError };
-        }
-
-        const warnings = collectPlanWarnings(todos);
+        const warnings = collectPlanWarnings(todos, resolve);
         const touchedIds = new Set<string>();
 
         // Phase 1: todos[] — 按 index 更新，或新建
@@ -271,11 +260,19 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
           const metadata = itemMetadata(item);
           const target = item.index !== undefined ? resolve(item.index) : undefined;
 
-          // 越界/不存在 index：报错而非静默新建——逼 agent 重读最新清单
+          // index 不在活跃清单：全级解析（含终态）给出有针对性的提示，而非静默新建——
+          // 逼 agent 重读最新清单，但先告知它这个编号指向什么（T5：含终态给予提示）。
           if (item.index !== undefined && !target) {
+            const terminal = resolveByStableIndex(existing, item.index);
+            if (terminal) {
+              return {
+                success: false as const,
+                error: `index ${item.index} refers to "${terminal.subject}", which is already ${terminal.status} (收尾/终态) — the active list no longer includes it. If you meant to reopen that work, create a NEW task with the same subject; otherwise re-read the latest snapshot for current [#N] indices.`,
+              };
+            }
             return {
               success: false as const,
-              error: `index ${item.index} does not match any active task. The list changed — re-read the latest snapshot and retry with current indices.`,
+              error: `index ${item.index} does not match any task. The list changed — re-read the latest snapshot and retry with current indices.`,
             };
           }
 

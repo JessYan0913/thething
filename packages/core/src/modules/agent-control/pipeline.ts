@@ -1,35 +1,15 @@
-import type { LanguageModel, ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, Tool } from 'ai';
+import type { ModelMessage as ModelMessageType, PrepareStepFunction, PrepareStepResult, ToolSet, Tool, LanguageModel } from 'ai';
 
 import type { PipelineContext } from '../session/interfaces';
 import { estimateRequestBudget, type RequestBudgetEstimation } from '../compaction/request-budget';
 import { recordUsageSample } from '../compaction/tokenizer';
 import { logger } from '../../primitives/logger';
 import { buildCompactTaskSnapshot } from '../todos/todo-tools/todo-snapshot';
-import type { TodoRuntime } from '../todos/todo-runtime';
 
 function debugLog(debugEnabled: boolean | undefined, ...args: unknown[]): void {
   if (debugEnabled) {
     logger.debug('Pipeline', args.map(a => String(a)).join(' '));
   }
-}
-
-/** 从 Scheduler 派生「Ready / In Progress / Blocked」运行时视图（补充到任务画布）。 */
-function buildRuntimeOverlay(scheduler: TodoRuntime): string {
-  const state = scheduler.getRuntimeState();
-  const lines: string[] = ['[任务运行时]'];
-  const render = (title: string, todos: Array<{ subject: string }>): string => {
-    if (todos.length === 0) return `${title}: 无`;
-    return `${title}: ${todos.map(t => t.subject).join(' | ')}`;
-  };
-  lines.push(render('Ready(可执行)', state.ready));
-  lines.push(render('In Progress', state.inProgress));
-  if (state.blocked.length > 0) {
-    lines.push(render('Blocked(等依赖)', state.blocked));
-  }
-  if (state.quiescent) {
-    lines.push('(运行时寂静：无 ready / 无进行中)');
-  }
-  return lines.join('\n');
 }
 
 export interface CompactionStatusEvent {
@@ -55,8 +35,6 @@ export interface AgentPipelineConfig {
   resolveModel?: (modelName: string) => LanguageModel;
   /** 压缩状态回调引用（流式通知前端） */
   compactionCallbackRef?: { current: ((event: CompactionStatusEvent) => void) | null };
-  /** TodoRuntime（Todo Runtime）——任务状态派生 / 就绪判定的单一来源 */
-  scheduler?: TodoRuntime;
 }
 
 export function getSkillStepOverrides(
@@ -161,16 +139,15 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     if (shouldInjectCanvas) {
       const todos = todoStore?.getTodosByConversation(conversationId) ?? [];
       const snapshot = buildCompactTaskSnapshot(todos, todoStore);
-      const runtimeOverlay = config.scheduler && todos.length > 0
-        ? buildRuntimeOverlay(config.scheduler)
-        : null;
-      // goal 持久化后（Phase F）画布含目标：仅活跃目标作为当前指令呈递
+      // 账本化后不再叠加全局 `[任务运行时]` overlay——该视图基于无会话过滤的
+      // getTodosByStatus，跨会话泄漏；画布只呈现会话内稳定编号清单（docs/todos-lite §4）。
+      // goal 持久化后（Phase F）画布带目标：仅当量目标作为当前执行呈递
       // （complete 后不再把旧目标当"当前要执行的"，避免命令已完成的画布）。
       const goal = sessionState.goalState;
       const goalLine = goal && goal.status !== 'complete' && goal.objective
         ? `Goal: ${goal.objective}`
         : null;
-      const body = [goalLine, snapshot, runtimeOverlay].filter(Boolean).join('\n');
+      const body = [goalLine, snapshot].filter(Boolean).join('\n');
       if (body) {
         const prefix = revisionChanged
           ? '[任务状态已更新]'
