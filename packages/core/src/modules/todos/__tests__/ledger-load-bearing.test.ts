@@ -75,45 +75,46 @@ describe('账本承重：父 todo_write 不破坏账本', () => {
     expect(after?.metadata?.result).toBe('重构完成，测试通过'); // 子 Agent 结果未被抹
   });
 
-  it('已完成 todo 豁免真替换（不参与活跃编号，不被取消）', async () => {
+  it('patch 语义：todo_write 不破坏已完成项，未列出的活跃项原样保留', async () => {
     const done = createTodo(store, { conversationId: CONV, subject: '完成项' });
     completeTodo(store, done.id, 'OK');
     const active = createTodo(store, { conversationId: CONV, subject: '进行项' });
-    createTodo(store, { conversationId: CONV, subject: '待办项' });
+    const pending = createTodo(store, { conversationId: CONV, subject: '待办项' });
 
-    // 父真替换只列 active（进行项）+ 一个新项；完成项历史、进行项保留，待办项未列 → 取消
+    // 活跃编号按 createdAt ASC：进行项=1、待办项=2（完成项不占编号）。
+    // patch：只更新进行项（index 1 → in_progress）+ 新增；完成项历史保留，未列出的待办项原样保留。
     await execute({
       todos: [
-        { index: 1, status: 'in_progress' }, // 进行项（createdAt 排序第一）
+        { index: 1, status: 'in_progress' },
         { subject: '新任务', status: 'pending' },
       ],
     });
 
     const remaining = store.getTodosByConversation(CONV);
-    expect(remaining.some(t => t.id === done.id)).toBe(true); // 完成项保留
-    expect(remaining.find(t => t.id === done.id)?.status).toBe('completed');
-    expect(remaining.find(t => t.id === active.id)?.status).toBe('in_progress'); // 已列 in_progress 保留
+    expect(remaining.find(t => t.id === done.id)?.status).toBe('completed'); // 已完成历史保留
+    expect(remaining.find(t => t.id === active.id)?.status).toBe('in_progress'); // 已列 → 更新
+    expect(remaining.find(t => t.id === pending.id)?.status).toBe('pending'); // 未列出 → 保留
+    expect(remaining.some(t => t.subject === '新任务' && t.status === 'pending')).toBe(true);
   });
 
-  it('真替换：未列出的活跃待办被取消，in_progress 与已完成保留', async () => {
+  it('patch 语义：只更新入参引用的项，其他活跃项不被抹掉', async () => {
     const pending = createTodo(store, { conversationId: CONV, subject: '旧待办' });
     const doing = createTodo(store, { conversationId: CONV, subject: '进行中' });
     updateTodoStatus(store, doing.id, 'in_progress');
     const doneItem = createTodo(store, { conversationId: CONV, subject: '已完成' });
     completeTodo(store, doneItem.id, 'ok');
 
-    // 只列 doing（index 指向进行项）+ 新任务；旧待办(未列 pending)应被取消
-    // 活跃编号按 createdAt ASC：旧待办=1，进行中=2
+    // 只更新进行项（index 引用）+ 新增新任务；旧待办未提及 → 保持 pending
     await execute({
       todos: [
-        { index: 2, status: 'in_progress' }, // 进行中（排名第 2）
+        { index: 2, status: 'in_progress' }, // 进行中（活跃编号第 2）
         { subject: '新任务', status: 'pending' },
       ],
     });
 
     const remaining = store.getTodosByConversation(CONV);
-    expect(remaining.find(t => t.id === pending.id)?.status).toBe('cancelled'); // 未列 pending → 取消
-    expect(remaining.find(t => t.id === doing.id)?.status).toBe('in_progress'); // 已列 in_progress 保留
+    expect(remaining.find(t => t.id === pending.id)?.status).toBe('pending'); // 未提及 → 保留
+    expect(remaining.find(t => t.id === doing.id)?.status).toBe('in_progress'); // 已列 → 更新保留
     expect(remaining.find(t => t.id === doneItem.id)?.status).toBe('completed'); // 已完成历史保留
     expect(remaining.some(t => t.subject === '新任务' && t.status === 'pending')).toBe(true);
   });

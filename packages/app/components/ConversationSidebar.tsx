@@ -170,7 +170,7 @@ export interface ConversationItem {
   projectId: string | null;
   createdAt: string;
   updatedAt: string;
-  runStatus?: 'running' | 'paused_approval' | 'completed' | 'failed' | null;
+  runStatus?: 'running' | 'paused_approval' | 'completed' | 'exhausted' | 'failed' | null;
   /** 上下文水位百分比 (0-100) */
   contextUsage?: number | null;
   /** 当前估算总 token 数 */

@@ -864,7 +864,7 @@ export interface TodoStore {
 /**
  * Agent run status state machine
  */
-export type AgentRunStatus = 'running' | 'paused_approval' | 'completed' | 'failed';
+export type AgentRunStatus = 'running' | 'paused_approval' | 'completed' | 'exhausted' | 'failed';
 
 /**
  * Agent run entity — one row per conversation, updated in place
@@ -877,6 +877,8 @@ export interface AgentRun {
   toolsUsed: string[];
   error: string | null;
   pendingApprovalId: string | null;
+  /** 终止原因（completed/exhausted/failed 时由统一收尾器写入）；null = 仍在运行或未标注 */
+  stopReason: string | null;
   startedAt: string;
   updatedAt: string;
 }
@@ -914,6 +916,9 @@ export interface AgentRunStore {
 
   /** Mark run as failed */
   failRun(conversationId: string, error: string): void;
+
+  /** Mark run as exhausted (resource/step/budget limit hit) with a stop reason */
+  exhaustRun(conversationId: string, reason: string): void;
 
   /** Pause run for approval */
   pauseForApproval(conversationId: string, approvalId: string): void;

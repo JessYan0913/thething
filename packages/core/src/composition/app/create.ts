@@ -159,6 +159,16 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     dataStore,
   })
 
+  // ── Goal 水合（Phase F）：goals 表已持久化的活跃目标接入 sessionState。
+  //    放在 createSessionState 之后、stopWhen/画布/goal 工具构造之前，
+  //    双引擎（Web route / Connector agent-handler）都经 createAgent 共享此水合。
+  const { loadGoal, isResumableGoal } = await import('../../modules/goal')
+  const persistedGoal = loadGoal(dataStore, conversationId)
+  if (persistedGoal && isResumableGoal(persistedGoal)) {
+    sessionState.goalState = persistedGoal
+    logger.debug('AgentCreate', `Goal hydrated: status=${persistedGoal.status} objective="${persistedGoal.objective.slice(0, 40)}"`)
+  }
+
   // ============================================================
   // 并行加载 wiki + project context + 技能偏好/使用统计
   // ============================================================
@@ -294,7 +304,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
   const todoScheduler = createTodoRuntime({
     store: sessionState.todoStore,
     conversationId,
-    pendingArchiveRetries: () => sessionState.pendingArchiveRetries,
   });
   const { tools, mcpRegistry, isSharedMcpRegistry, connectorToolNames } = await loadAllTools({
     conversationId,

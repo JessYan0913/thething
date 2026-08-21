@@ -2,7 +2,7 @@
  * Todo Tools
  *
  * Tools for todo management:
- * - todo_write: Full-list replace (preferred entry point for planning/progress)
+ * - todo_write: Update/create tasks by index (patch semantics; preferred for planning/progress)
  * - todo_create_batch: Create multiple todos with dependency declarations (blockedBy)
  * - todo_delete: Soft-delete (cancel) a todo
  * - todo_list: Inspect the task list (snapshot), or get a single todo's full details (id)
@@ -64,7 +64,7 @@ export function createTodoTools(store: TodoStore, conversationId = 'default'): T
 export function createTodoToolsForConversation(
   store: TodoStore,
   conversationId: string,
-  opts: { onTodoCompleted?: (todoId: string) => void; scheduler: import('../todo-runtime').TodoRuntime },
+  opts: { scheduler: import('../todo-runtime').TodoRuntime },
 ): TodoTools {
   return {
     todo_write: createTodoWriteToolForConversation(store, conversationId, opts),
@@ -90,7 +90,7 @@ export type TodoToolName = typeof TODO_TOOL_NAMES[keyof typeof TODO_TOOL_NAMES];
  * Tool descriptions for display
  */
 export const TODO_TOOL_DESCRIPTIONS: Record<TodoToolName, string> = {
-  [TODO_TOOL_NAMES.TODO_WRITE]: 'Create and update the full task list (full-list replace)',
+  [TODO_TOOL_NAMES.TODO_WRITE]: 'Create and update the task list (patch semantics: only referenced items change)',
   [TODO_TOOL_NAMES.TODO_DELETE]: 'Cancel a todo (soft-delete)',
   [TODO_TOOL_NAMES.TODO_LIST]: 'List todos (compact snapshot) or get a single todo\'s full details',
   [TODO_TOOL_NAMES.TODO_CREATE_BATCH]: 'Create multiple todos at once with dependency declarations',

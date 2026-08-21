@@ -10,9 +10,10 @@ import type { TodoRuntime, TransitionError } from '../todo-runtime';
  * TodoWriteTool - 任务清单管理（主入口，方案 C：agent 自管）
  *
  * 方案 C 核心：agent 凭**语义**管理任务清单，机器不判重、不去重。
- * - 定位用**快照序号**（1-based，对应清单里每项前面的 [#N]），不传 id、不按标题自动映射。
- * - **真替换**：清单之外未列出的活跃待办（pending/failed）会被软取消；in_progress 恒保留。
- *   —— 这让 agent 每轮传"它想保留的完整活跃清单"即可自然收敛，无需发明任何身份。
+ * - 定位用**快照序号**（1-based，对应列表里每项 [#N]），不传 id、不按标题自动映射。
+ * - **patch 语义**：本调用只**变更入参里引用到的项**；未提及的 todo 保持原状。
+ *   —— 不再有"未列出即取消"（True-Replace 已废除）。要取消某项用 `index + status:'cancelled'`
+ *      （或 todo_delete）。
  * - **显式 merge**：agent 发现两个编号是同一件事（如 [#1]调研X、[#3]写X）→ merge 合一。
  * - 机器零自动去重：两个字面相同标题也会并存，由 agent 用序号引用或 merge 化解。
  */
@@ -52,9 +53,9 @@ const TodoMergeSchema = z.object({
 });
 
 export const todoWriteToolSchema = z.object({
-  /** 目标活跃任务清单（真替换：清单外未列出的活跃待办会被取消；in_progress 恒保留） */
+  /** 本调用要变更的项（patch 语义：只动入参引用的项；未提及的保持原状） */
   todos: z.array(TodoWriteItemSchema).max(20)
-    .describe('The ACTIVE task list you want to keep. Existing active tasks not referenced here (by index) are CANCELLED, except any currently in_progress. So pass the FULL set of tasks you want to remain, plus the ones you are advancing/completing. Completed/failed/cancelled history is preserved automatically.'),
+    .describe('The changes to apply to the task list. Each item references an existing active task by its [#N] index (to update it), or omits index and provides a subject to CREATE a new task. Unlisted tasks are left untouched — this is a PATCH, not a full replacement. To cancel a task, reference it by index with status "cancelled" (or use todo_delete). Completed/failed/cancelled history is preserved automatically.'),
   /** 合并重复项：把"其实是同一件事"的两个活跃任务合一 */
   merge: z.array(TodoMergeSchema).max(5).optional()
     .describe('Explicitly merge tasks that are really the same work (semantic duplicates). Use when two active tasks describe the same thing — e.g. [#1] "调研 write" and [#3] "写 write" are one task.'),
@@ -81,17 +82,6 @@ export type TodoWriteToolOutput = {
   success: false;
   error: string;
 };
-
-/** 子任务独立上下文范式：仅 completed 视为子任务完结，触发 prepareStep 边界重建（failed 不触发归档） */
-function notifyTodoCompleted(
-  opts: { onTodoCompleted?: (id: string) => void } | undefined,
-  id: string,
-  status: TodoStatus,
-): void {
-  if (status === 'completed' && opts?.onTodoCompleted) {
-    opts.onTodoCompleted(id);
-  }
-}
 
 /** 确定性的规划质量检查（lint 式返回值反馈，不阻断执行）。 */
 function collectPlanWarnings(
@@ -236,14 +226,13 @@ function applyStatusTransition(
  *
  * @param store - The todo store
  * @param conversationId - The conversation ID to associate todos with
- * @param opts - onTodoCompleted 在子任务标记 completed 时触发（子任务独立上下文范式）；
- *   scheduler（必填）供状态翻转经 TodoRuntime 强校验（模型决策、系统执行分层）。
+ * @param opts - scheduler 供状态翻转经 TodoRuntime 强校验（模型决策、系统执行分层）。
  * @returns The tool definition
  */
 export function createTodoWriteToolForConversation(
   store: TodoStore,
   conversationId: string,
-  opts: { onTodoCompleted?: (todoId: string) => void; scheduler: TodoRuntime },
+  opts: { scheduler: TodoRuntime },
 ) {
   return tool({
     description: `Create and update the task list for the current session. The PREFERRED tool for task planning — use it to decompose complex work.
@@ -253,12 +242,12 @@ When the user's request is complex — a problem that benefits from being split 
 How to reference tasks (方案 C — you manage the list by semantics, no ids):
 - Every active task is shown with a bracket number like [#3]. Reference a task by that number in \`index\`.
 - \`index\` + \`status\`/fields → update that task. Omit \`index\` and provide \`subject\` → create a new task.
-- TRUE-REPLACE: this list is the full active set you want. Active tasks (pending/failed) you do NOT reference by index are CANCELLED; a task currently in_progress is never auto-cancelled. So re-issue, by index, every active task you want to keep, plus update the one you're working on.
+- PATCH semantics: this call only changes the tasks you reference. Tasks you DON'T mention are left exactly as they are — no automatic cancellation. To cancel a task, reference it by index with status "cancelled" (or use todo_delete). So: update progress/state explicitly, and cancel explicitly — nothing vanishes silently.
 - SEMANTIC DUPLICATES: if two active tasks are really the same work even with different titles (e.g. [#1] "调研 write" and [#3] "写 write"), merge them: \`merge\` with keepIndex and dropIndices. The dropped one is cancelled and folded in. This is how you keep the list clean by judgment — the system never dedupes for you.
-- Keep exactly one item in_progress at a time; update the list right after each step finishes.
-- Mark at most ONE todo completed (or failed) per call. To close several, call this tool once per todo.
+- Keep exactly one item in_progress at a time; update the list right after each work step so the canvas stays honest.
+- Mark at MOST one task completed (or failed) per call. To close several, call this tool once per todo.
 - Close the loop: when a task is done, mark it completed with a result (what was done + how verified); when it fails, record why. Do not create the list and stop updating it until the final answer.
-- Skip it only for trivial single-step tasks, pure Q&A, or casual chat.
+- Skip it only for trivial single-step tasks, pure Q&A, or chat.
 
 For dependency graphs (blockedBy), use todo_create_batch instead.`,
     inputSchema: todoWriteToolSchema,
@@ -316,7 +305,6 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
               if (updated.status === 'completed' && isCompletionTransition(item.status, target, false)) {
                 logger.info('TodoWrite', `[path-a-complete] todoId=${updated.id}`);
               }
-              notifyTodoCompleted(opts, updated.id, updated.status);
             }
           } else {
             // 新建（无 index 且 subject 必填）
@@ -361,7 +349,6 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
             if (final.status === 'completed' && isCompletionTransition(item.status, undefined, true)) {
               logger.info('TodoWrite', `[path-a-complete] todoId=${final.id}`);
             }
-            notifyTodoCompleted(opts, final.id, final.status);
           }
         }
 
@@ -400,8 +387,6 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
               },
             });
             logger.info('TodoWrite', `[merge] drop todoId=${drop.id} (${drop.subject}) -> keep todoId=${keep.id}`);
-            // 若被合并的项恰是 in_progress → 结束它，避免面板残留
-            notifyTodoCompleted(opts, drop.id, 'cancelled');
           }
 
           store.updateTodo({
@@ -411,16 +396,8 @@ For dependency graphs (blockedBy), use todo_create_batch instead.`,
           logger.info('TodoWrite', `[merge] keep todoId=${keep.id}${m.subject ? ` -> "${m.subject}"` : ''}, dropped=[${dropIds.join(', ')}]`);
         }
 
-        // Phase 3: 真替换——未列出的活跃待办（pending/failed）软取消；in_progress 恒保留
-        for (const t of existing) {
-          if ((t.status === 'pending' || t.status === 'failed') && !touchedIds.has(t.id)) {
-            const cancel = applyStatusTransition(store, opts.scheduler, t, 'cancelled', { cancelReason: 'todo_write' });
-            if ('error' in cancel) {
-              return { success: false as const, error: `${cancel.error} (re-read the latest snapshot and retry)` };
-            }
-            logger.info('TodoWrite', `[title-reconcile-cancelled] todoId=${t.id} subject="${t.subject}"`);
-          }
-        }
+        // Phase 3: （patch 语义）无整表取消——未提及的 todo 原样保留。
+        // 取消走显式 `index + status:'cancelled'` 或 todo_delete。
 
         // 输出最新活跃编号快照，供 agent 下一轮继续引用
         const after = store.getTodosByConversation(conversationId);

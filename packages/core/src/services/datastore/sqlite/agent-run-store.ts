@@ -15,6 +15,7 @@ interface AgentRunRow {
   tools_used: string;
   error: string | null;
   pending_approval_id: string | null;
+  stop_reason: string | null;
   started_at: string;
   updated_at: string;
 }
@@ -36,6 +37,7 @@ function mapRow(row: AgentRunRow): AgentRun {
     toolsUsed: JSON.parse(row.tools_used),
     error: row.error,
     pendingApprovalId: row.pending_approval_id,
+    stopReason: row.stop_reason,
     startedAt: row.started_at,
     updatedAt: row.updated_at,
   };
@@ -56,6 +58,7 @@ export class SQLiteAgentRunStore implements AgentRunStore {
   private updateRunStmt: SqliteStatement;
   private getRunStmt: SqliteStatement;
   private completeRunStmt: SqliteStatement;
+  private exhaustRunStmt: SqliteStatement;
   private failRunStmt: SqliteStatement;
   private pauseStmt: SqliteStatement;
   private resumeStmt: SqliteStatement;
@@ -81,6 +84,11 @@ export class SQLiteAgentRunStore implements AgentRunStore {
 
     this.completeRunStmt = db.prepare(`
       UPDATE agent_runs SET status = 'completed', updated_at = datetime('now')
+      WHERE conversation_id = ?
+    `);
+
+    this.exhaustRunStmt = db.prepare(`
+      UPDATE agent_runs SET status = 'exhausted', stop_reason = ?, updated_at = datetime('now')
       WHERE conversation_id = ?
     `);
 
@@ -144,6 +152,10 @@ export class SQLiteAgentRunStore implements AgentRunStore {
 
   completeRun(conversationId: string): void {
     this.completeRunStmt.run(conversationId);
+  }
+
+  exhaustRun(conversationId: string, reason: string): void {
+    this.exhaustRunStmt.run(reason, conversationId);
   }
 
   failRun(conversationId: string, error: string): void {

@@ -159,9 +159,6 @@ export interface AgentExecutionContext {
   /** 已解析的内部 todo ID（模型面用编号/标题，由 agent-tool 解析后填入；Path B 状态同步用） */
   todoId?: string;
 
-  /** 子Agent 完成归档队列：todoId → result 文本（与 sessionState.pendingArchiveRetries 同一引用，路径 B 归档入队用） */
-  pendingArchiveRetries?: Map<string, string>;
-
   /** 模型提供者（用于创建子代理模型） */
   provider?: (modelName: string) => LanguageModel;
 
@@ -285,9 +282,6 @@ export interface AgentToolConfig {
 
   /** 任务 ID */
   todoId?: string;
-
-  /** 子Agent 完成归档队列（路径 B 归档入队，与 sessionState.pendingArchiveRetries 同一引用） */
-  pendingArchiveRetries?: Map<string, string>;
 
   /** 工作目录 */
   cwd?: string;

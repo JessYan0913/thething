@@ -180,8 +180,6 @@ export type TodoRuntime = {
 export function createTodoRuntime(deps: {
   store: TodoStore;
   conversationId: string;
-  /** 直播针到归档重试队列（sessionState.pendingArchiveRetries）。缺省 = 空队列。 */
-  pendingArchiveRetries?: () => ArrayLike<unknown> | Map<string, unknown>;
   /** 是否强制「同一时刻仅一个 in_progress」（方案 C 单进行中约束）。默认 true。 */
   enforceSingleInProgress?: boolean;
 }): TodoRuntime {
@@ -208,14 +206,6 @@ export function createTodoRuntime(deps: {
     return todo.claimedBy !== null && todo.claimedBy !== undefined;
   }
 
-  function archiveQueueSize(): number {
-    const q = deps.pendingArchiveRetries?.();
-    if (!q) return 0;
-    if (q instanceof Map) return q.size;
-    if (typeof (q as ArrayLike<unknown>).length === 'number') return (q as ArrayLike<unknown>).length;
-    return 0;
-  }
-
   function getReadyTodos(): Todo[] {
     return store.getAvailableTodos();
   }
@@ -236,14 +226,8 @@ export function createTodoRuntime(deps: {
     const completed = store.getTodosByStatus('completed');
     const cancelled = store.getTodosByStatus('cancelled');
 
-    const q = deps.pendingArchiveRetries?.();
-    if (q instanceof Map) {
-      for (const key of q.keys()) pendingRetryIds.push(String(key));
-    } else if (q) {
-      // ArrayLike of Map-like — we can't enumerate uniformly, so leave ids empty for array form.
-    }
-
-    const quiescent = ready.length === 0 && inProgress.length === 0 && archiveQueueSize() === 0;
+    // One Canvas 之后不再有内存归档队列；quiescent 只由 ready / in_progress 决定。
+    const quiescent = ready.length === 0 && inProgress.length === 0;
 
     return {
       ready,
@@ -268,8 +252,7 @@ export function createTodoRuntime(deps: {
 
   function isQuiescent(): boolean {
     return getReadyTodos().length === 0
-      && store.getTodosByStatus('in_progress').length === 0
-      && archiveQueueSize() === 0;
+      && store.getTodosByStatus('in_progress').length === 0;
   }
 
   /** 统一终局判定视图。requiresCompletionAudit 需调用方结合 goal/latch 计算，此处只给原始派生态。 */

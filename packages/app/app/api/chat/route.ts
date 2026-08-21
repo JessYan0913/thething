@@ -12,7 +12,10 @@ import {
   fingerprintMessage,
   sanitizeToolErrorInputs,
   isOutputTruncated,
-  settleInProgressTodos,
+  finalizeRun,
+  startConversationRun,
+  commitAssistantMessages,
+  endConversationRun,
   indexActiveTodos,
   renderIndexedActiveLine,
   renderIndexedActiveList,
@@ -151,12 +154,11 @@ export async function POST(request: Request) {
       headMessageId = store.messageStore.commitUserMessage(conversationId, message);
     }
     const activeBranch = store.branchStore.getBranch(activeBranchId) ?? currentBranch;
-    store.conversationRunStore.createRun({
+    startConversationRun(store, {
       id: runId,
       conversationId,
       branchId: activeBranch.id,
       anchorMessageId: headMessageId,
-      expectedTipId: headMessageId,
       model: modelName ?? null,
       agentType: agentType ?? null,
     });
@@ -473,8 +475,20 @@ export async function POST(request: Request) {
 
         if (newAssistantMessages.length === 0 && !continuationUpdated) {
           unregisterAbortController(conversationId, runId);
-          store.agentRunStore.completeRun(conversationId);
-          store.conversationRunStore.finishRun(runId, { status: 'failed', error: 'No assistant messages produced' });
+          // 统一收尾：即便没有产出 assistant 消息，也落下 agent_runs 终态 + 归位 todo。
+          // 无输出是"完成但话没说出来"，沿用现 completeRun 语义 → forcedReason 'done'。
+          try {
+            await finalizeRun({
+              dataStore: store,
+              conversationId,
+              sessionState,
+              maxSteps: context.behavior?.maxStepsPerSession ?? 50,
+              forcedReason: 'done',
+            });
+          } catch (e) {
+            console.warn('[Chat API] finalizeRun (no assistant) error:', e);
+          }
+          endConversationRun(store, runId, { status: 'failed', error: 'No assistant messages produced' });
           console.warn(
             `[Chat API] Stream produced no valid assistant messages, skipping save.\n` +
             `  Conversation: ${conversationId}\n` +
@@ -508,14 +522,11 @@ export async function POST(request: Request) {
           }
         }
 
-        // 普通轮次锚定在本轮 user；审批续跑则锚定在已保存的工具 output 版本。
-        // head 已移走时 appendMessages 的 CAS 会让迟到结果成为无害孤儿分支。
-        const headMoved = store.messageStore.appendMessages(
-          conversationId, newAssistantMessages, resultAnchorId,
+        // 普通 -> 本轮 user；审批续跑则锚定在已保存的工具 output 版本。
+        // head 已移走时 commitAssistantMessages 的 CAS 会让迟到结果成为无害孤儿分支。
+        const { headMoved, resultTipId } = commitAssistantMessages(
+          store, conversationId, newAssistantMessages, resultAnchorId,
         );
-        const resultTipId = headMoved
-          ? store.branchStore.getProjection(conversationId).activeTipId
-          : newAssistantMessages.at(-1)?.id ?? null;
 
         // 记录本段结果（手动续写：单段执行，无续写循环判定）
         outcome.completedMessages = completedMessages;
@@ -526,12 +537,34 @@ export async function POST(request: Request) {
         outcome.aborted = aborted;
         outcome.truncated = truncated;
 
-        // ── 终态收尾 ──
+        // ── 终态收尾（统一收尾器）──
+        // 每个退出路径（aborted / truncated / 正常 / 无输出）都经 finalizeRun 归位 agent_runs
+        // 终态 + settle todo。agent_runs 的终态由此处唯一推导；conversation_runs 的结账
+        // 统一走共享的 endConversationRun（派生终态见 run-conversation.ts）。
         unregisterAbortController(conversationId, runId);
-        store.agentRunStore.completeRun(conversationId);
+        try {
+          await finalizeRun({
+            dataStore: store,
+            conversationId,
+            sessionState,
+            maxSteps: context.behavior?.maxStepsPerSession ?? 50,
+            truncated,
+            forcedReason: aborted ? 'aborted' : undefined,
+            pushTodoUpdate: (todos) => {
+              controller.enqueue(JSON.stringify({
+                type: 'data-todo-update',
+                id: `todo-settle-${runId}`,
+                data: { todos },
+              }));
+            },
+          });
+        } catch (e) {
+          // 收尾失败不影响本轮主流程落库（guard 幂等 + settle 有内部 try/catch）
+          console.warn('[Chat API] finalizeRun error:', e);
+        }
 
         if (aborted) {
-          store.conversationRunStore.finishRun(runId, {
+          endConversationRun(store, runId, {
             status: 'aborted',
             error: 'Output stream aborted by user',
           });
@@ -542,7 +575,7 @@ export async function POST(request: Request) {
           // 输出被截断 → 不按"完成"收尾（复用 failed+error，零 schema 迁移）：
           // 半截答案不再进库当最终答案（静默截断事故的病根）。前端收到 data-truncated
           // 显示"继续"按钮，用户点继续 = 发一条"继续"消息，agent 作为新的一轮回复。
-          store.conversationRunStore.finishRun(runId, {
+          endConversationRun(store, runId, {
             status: 'failed',
             error: 'output_truncated',
           });
@@ -558,39 +591,10 @@ export async function POST(request: Request) {
           return;
         }
 
-        store.conversationRunStore.finishRun(runId, {
-          status: headMoved ? 'committed' : 'superseded',
-          resultTipId,
-        });
+        endConversationRun(store, runId, { headMoved, resultTipId });
         console.log(
           `[Storage] Appended ${newAssistantMessages.length} assistant messages after ${resultAnchorId} (headMoved=${headMoved})`,
         );
-
-        // ── 收尾闸门：一轮正常结束但仍有未落账的 in_progress todo（模型漏标 completed 的
-        //    "面板没更新"幻影）→ 发一次只开放 todo_write 的小 LLM 调用让其结账，再推一次
-        //    data-todo-update 刷新面板。仅在正常结束（非中止/非截断）时跑。 ──
-        const todoWriteTool = (tools as Record<string, any> | undefined)?.['todo_write'];
-        if (todoWriteTool && model) {
-          try {
-            const settled = await settleInProgressTodos({
-              todoStore: store.todoStore,
-              conversationId,
-              model,
-              todoWriteTool,
-            });
-            if (settled.triggered) {
-              const todos = store.todoStore.getTodosByConversation(conversationId);
-              controller.enqueue(JSON.stringify({
-                type: 'data-todo-update',
-                id: `todo-settle-${runId}`,
-                data: { todos },
-              }));
-            }
-          } catch (e) {
-            // 收尾闸门失败不影响本轮主流程落库
-            console.warn('[Chat API] settle-gate error:', e);
-          }
-        }
 
         const costSummary = sessionState.costTracker.getSummary();
         console.log(
@@ -615,7 +619,7 @@ export async function POST(request: Request) {
           },
         });
       } catch (err) {
-        store.conversationRunStore.finishRun(runId, {
+        endConversationRun(store, runId, {
           status: abortController.signal.aborted ? 'aborted' : 'failed',
           error: err instanceof Error ? err.message : String(err),
         });
@@ -874,13 +878,27 @@ export async function POST(request: Request) {
                 `  Messages: ${finalMessages.length}`,
               );
               // 失败路径不会走 onEnd：必须在此收尾运行记录，
-              // 否则 conversation_runs/agent_runs 永远停在 'running'（已观测到泄漏）
+              // 否则 conversation_runs/agent_runs 永远停在 'running'（已观测到泄漏）。
+              // 经统一收尾器，CONTEXT_BUDGET_EXCEEDED → exhausted(budget_exception)，
+              // 其余异常 → failed(error)——两条路径都 settle todo + 落 agent_runs 终态。
               unregisterAbortController(conversationId, runId);
-              store.conversationRunStore.finishRun(runId, {
-                status: 'failed',
+              const isBudgetException = errStr.startsWith('CONTEXT_BUDGET_EXCEEDED:');
+              try {
+                await finalizeRun({
+                  dataStore: store,
+                  conversationId,
+                  sessionState,
+                  maxSteps: context.behavior?.maxStepsPerSession ?? 50,
+                  forcedReason: isBudgetException ? 'budget_exception' : 'error',
+                  errorMessage: errStr.slice(0, 500),
+                });
+              } catch (e) {
+                console.warn('[Chat API] finalizeRun (stream error) error:', e);
+              }
+              endConversationRun(store, runId, {
+                status: abortController.signal.aborted ? 'aborted' : 'failed',
                 error: errStr.slice(0, 500),
               });
-              store.agentRunStore.failRun(conversationId, errStr.slice(0, 500));
               controller.error(error);
             }
           },

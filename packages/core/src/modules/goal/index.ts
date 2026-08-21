@@ -32,6 +32,7 @@ export {
   continueFromMaxTurns,
   checkMaxTurns,
   shouldContinue,
+  isResumableGoal,
   formatGoalStatusLabel,
   formatGoalElapsed,
   getActiveElapsedMs,

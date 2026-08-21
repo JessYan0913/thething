@@ -9,7 +9,7 @@ import { logger } from '../../../primitives/logger';
 import { extractMessageText } from './message-store';
 
 // 当前 schema 版本。doctor 诊断用 user_version 与其比对。
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * Ensure the database schema is up-to-date.
@@ -556,6 +556,47 @@ function ensureSchemaVersion(db: SqliteDatabase): void {
       backfill();
     }
     logger.debug('Schema', `Migrated to v19: added message_text search mirror (${backfillRows.length} messages scanned)`);
+  }
+
+  if (currentVersion < 20) {
+    // v20: agent_runs 扩展终止状态 —— 新增 'exhausted' + stop_reason 列。
+    // SQLite 无法 ALTER CHECK 约束，须重建表：新建 agent_runs_new（CHECK 含 exhausted、
+    // 加 stop_reason TEXT），拷贝现有行后 DROP/RENAME。事务内完成保证原子。
+    const arCols = (db.pragma('table_info(agent_runs)') as { name: string }[]).map((c) => c.name);
+    if (!arCols.includes('stop_reason')) {
+      const migrate = db.transaction(() => {
+        db.exec(`
+          CREATE TABLE agent_runs_new (
+            conversation_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'running'
+              CHECK(status IN ('running', 'paused_approval', 'completed', 'exhausted', 'failed')),
+            step_count INTEGER DEFAULT 0,
+            accumulated_text TEXT DEFAULT '',
+            tools_used TEXT DEFAULT '[]',
+            error TEXT,
+            pending_approval_id TEXT,
+            stop_reason TEXT,
+            started_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+          );
+
+          INSERT INTO agent_runs_new (
+            conversation_id, status, step_count, accumulated_text, tools_used, error,
+            pending_approval_id, started_at, updated_at
+          )
+          SELECT
+            conversation_id, status, step_count, accumulated_text, tools_used, error,
+            pending_approval_id, started_at, updated_at
+          FROM agent_runs;
+
+          DROP TABLE agent_runs;
+          ALTER TABLE agent_runs_new RENAME TO agent_runs;
+        `);
+      });
+      migrate();
+    }
+    logger.debug('Schema', 'Migrated to v20: agent_runs extended with exhausted status + stop_reason');
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`);

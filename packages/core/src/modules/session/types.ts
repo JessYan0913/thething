@@ -48,8 +48,6 @@ export interface SessionStateOptions {
   compactionEnabled?: boolean;
   /** 注入的压缩函数（从 composition 层传入，打破 session→compaction 耦合） */
   compact?: (messages: import('ai').ModelMessage[]) => Promise<CompactionResult>;
-  /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
-  enableSubtaskArchiving?: boolean;
   /** AppContext 快照中的权限规则 */
   permissionRules?: readonly PermissionRule[];
   /** 来自 BehaviorConfig.extraSensitivePaths */
@@ -106,24 +104,6 @@ export interface SessionState {
   fallbackModels?: LanguageModelV3[];
   /** DataStore 引用（用于 Layer 3 摘要持久化） */
   dataStore?: DataStore;
-  /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
-  consecutiveReasoningOnlySteps: number;
-
-  /** 上一步骤的 todo revision 快照，用于 ContextInjector 变更检测 */
-  lastTodoRevision: number;
-
-  /** 自上次 todo 变更以来的步数，用于 ContextInjector 无活动提醒 */
-  stepsSinceTodoMutation: number;
-
-  /** 已完成子任务待归档标记（todo-write 标记 completed/failed 时设置，prepareStep 消费触发边界重建；子任务独立上下文范式） */
-  pendingArchiveTodoId: string | null;
-
-  /** 当前子任务在 messages 中的起始锚点（上下文构建器在边界重建时设置，归档器按此切片提取子任务消息链） */
-  subtaskStartMessageIndex: number;
-
-  /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
-  enableSubtaskArchiving: boolean;
-
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
 
@@ -142,11 +122,8 @@ export interface SessionState {
   /** 会话级压缩步数计数器（跨 API 调用持久），用于 TTL 老化 */
   compactionStepCounter: { current: number };
 
-  /** 归档失败待重试队列：todoId → 已渲染子任务文本（首败缓存，下一轮 prepareStep 重试一次，最多一次） */
-  pendingArchiveRetries: Map<string, string>;
-
-  /** Completion Audit 注入 latch：quiescent 后注入一次；新 todo/新用户消息/新 ready 出现时清除 */
-  completionAuditInjected?: boolean;
+  /** 闸门受控终止标志：pipeline 在预算超限时置位（One Canvas 闸门不再抛异常杀流），finalize 据此读 exhausted(context_budget) */
+  exhaustFlag?: 'context_budget' | 'adaptive';
 
   /** 上次请求预算估算结果（含策略触发线），供 onStepEnd 推送前端 + 校准配对 + 写库使用 */
   lastEstimation?: import('../compaction/request-budget').RequestBudgetEstimation;

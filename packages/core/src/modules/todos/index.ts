@@ -93,10 +93,7 @@ export {
   createTodoBatchCreateToolForConversation,
 } from './todo-tools';
 
-// 收尾闸门（段末未收尾 in_progress 的结账）
-export { settleInProgressTodos } from './todo-settle';
-
-// TodoRuntime（Todo Runtime 状态机/派生就绪/quiescence）+ Metadata V2 访问器
+// TodoRuntime（Todo Runtime 状态机 + 派生就绪/quiescence）+ Metadata V2 访问器
 export {
   createTodoRuntime,
   TODO_TRANSITIONS,

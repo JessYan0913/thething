@@ -10,14 +10,12 @@ const CONV = 'conv-1';
 
 function makeScheduler(opts?: {
   enforceSingleInProgress?: boolean;
-  archiveQueue?: Map<string, string>;
 }): { store: TodoStore; scheduler: TodoRuntime } {
   const store = new InMemoryTodoStore(new HighWaterMarkImpl());
   const scheduler = createTodoRuntime({
     store,
     conversationId: CONV,
     enforceSingleInProgress: opts?.enforceSingleInProgress ?? true,
-    pendingArchiveRetries: () => opts?.archiveQueue ?? new Map(),
   });
   return { store, scheduler };
 }
@@ -177,13 +175,7 @@ describe('Quiescent ≠ 完成', () => {
     expect(scheduler.isQuiescent()).toBe(false);
   });
 
-  it('待归档队列非空 → quiescent=false', () => {
-    const queue = new Map([['todo-1', 'rendered text']]);
-    const { store, scheduler } = makeScheduler({ archiveQueue: queue });
-    createTodo(store, { conversationId: CONV, subject: 'A' });
-    expect(scheduler.isQuiescent()).toBe(false);
   });
-});
 
 describe('Metadata V2 访问器缺省值', () => {
   it('无 metadata 时访问器返回安全默认', () => {
@@ -232,14 +224,14 @@ describe('todo_write + scheduler 集成（完全严格）', () => {
     expect(store.getTodosByStatus('in_progress')).toHaveLength(1);
   });
 
-  it('真替换取消未列出的 pending（经 scheduler.cancelTodo）', async () => {
+  it('patch 语义：未列出的 pending 保持原状（无自动取消）', async () => {
     const { store, scheduler } = makeScheduler();
     const { createTodoWriteToolForConversation } = await import('../todo-tools/todo-write-tool');
     const execute = createTodoWriteToolForConversation(store, CONV, { scheduler }).execute! as any;
     await execute({ todos: [{ subject: 'A', status: 'pending' }] });
     await execute({ todos: [{ subject: 'B', status: 'pending' }] });
     const all = store.getTodosByConversation(CONV);
-    expect(all.find(t => t.subject === 'A')?.status).toBe('cancelled');
+    expect(all.find(t => t.subject === 'A')?.status).toBe('pending'); // 未提及 → 保留
     expect(all.find(t => t.subject === 'B')?.status).toBe('pending');
   });
 });
@@ -288,13 +280,7 @@ describe('quiescenceReason（V3）', () => {
     expect(s.quiescenceReason).toBeNull();
   });
 
-  it('待归档队列非空 → 非 quiescent，quiescenceReason=null', () => {
-    const queue = new Map([['todo-1', 't']]);
-    const { store, scheduler } = makeScheduler({ archiveQueue: queue });
-    createTodo(store, { conversationId: CONV, subject: 'A' });
-    expect(scheduler.getRuntimeState().quiescenceReason).toBeNull();
   });
-});
 
 describe('getTaskFinishState（V3）', () => {
   it('返回统一终局视图（quiescent/reason/归档/就绪/进行中）', () => {

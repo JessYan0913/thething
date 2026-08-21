@@ -7,7 +7,7 @@ import type { TodoStore } from '../types';
 
 const CONV = 'conv-1';
 
-describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
+describe('todo_write (方案C：index 定位 + patch 语义 + merge)', () => {
   let store: TodoStore;
   let execute: (input: unknown) => Promise<any>;
 
@@ -79,9 +79,9 @@ describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
     expect(store.getTodosByConversation(CONV)).toHaveLength(before);
   });
 
-  // ---- 真替换：未列即取消；in_progress 恒保留 ----
+  // ---- patch 语义：未提及的项原样保留 ----
 
-  it('true-replace cancels unlisted active pending/failed, keeps in_progress and listed', async () => {
+  it('patch: unlisted active todos are left untouched (no auto-cancel)', async () => {
     await execute({
       todos: [
         { subject: 'A', status: 'in_progress' },
@@ -90,25 +90,35 @@ describe('todo_write (方案C：index 定位 + 真替换 + merge)', () => {
       ],
     });
 
-    // 只引用 A(1) 保留 + 新增 D；B(2)、C(3) 未列出 → 应被取消
+    // 只引用 A(1) 更新 + 新增 D；B(2)、C(3) 未列出 → 原样保留（不取消）
     await execute({ todos: [{ index: 1, status: 'in_progress' }, { subject: 'D', status: 'pending' }] });
 
     const all = store.getTodosByConversation(CONV);
-    expect(all.find(t => t.subject === 'A')?.status).toBe('in_progress'); // 已列出+in_progress，保留
+    expect(all.find(t => t.subject === 'A')?.status).toBe('in_progress'); // 已列出 → 更新
     expect(all.find(t => t.subject === 'D')?.status).toBe('pending'); // 新增
-    expect(all.find(t => t.subject === 'B')?.status).toBe('cancelled'); // 未列出→取消
-    expect(all.find(t => t.subject === 'C')?.status).toBe('cancelled'); // 未列出→取消
+    expect(all.find(t => t.subject === 'B')?.status).toBe('pending'); // 未列出 → 保留
+    expect(all.find(t => t.subject === 'C')?.status).toBe('pending'); // 未列出 → 保留
   });
 
-  it('in_progress is never auto-cancelled even if not referenced', async () => {
+  it('explicit cancel: index + status cancelled ends a task', async () => {
+    await execute({ todos: [{ subject: 'A', status: 'pending' }, { subject: 'B', status: 'pending' }] });
+
+    await execute({ todos: [{ index: 1, status: 'cancelled' }] });
+
+    const all = store.getTodosByConversation(CONV);
+    expect(all.find(t => t.subject === 'A')?.status).toBe('cancelled');
+    expect(all.find(t => t.subject === 'B')?.status).toBe('pending'); // 未提及 → 保留
+  });
+
+  it('no auto-cancellation when nothing is referenced', async () => {
     await execute({ todos: [{ subject: 'A', status: 'in_progress' }, { subject: 'B', status: 'pending' }] });
 
-    // 不引用任何 index，只新增 D → A(in_progress) 必须保留，B(pending) 被取消
+    // 不引用任何 index，只新增 D → A、B 都保持原状
     await execute({ todos: [{ subject: 'D', status: 'pending' }] });
 
     const all = store.getTodosByConversation(CONV);
-    expect(all.find(t => t.subject === 'A')?.status).toBe('in_progress'); // 恒保留
-    expect(all.find(t => t.subject === 'B')?.status).toBe('cancelled');
+    expect(all.find(t => t.subject === 'A')?.status).toBe('in_progress');
+    expect(all.find(t => t.subject === 'B')?.status).toBe('pending');
   });
 
   // ---- merge：语义重复合一 ----

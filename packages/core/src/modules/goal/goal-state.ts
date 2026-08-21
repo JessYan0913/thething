@@ -161,6 +161,17 @@ export function shouldContinue(goal: GoalState | null): boolean {
 }
 
 /**
+ * 可恢复的目标：仅 active/paused 在会话恢复时水合成 sessionState.goalState。
+ * terminal（complete/budget_limited/max_turns）与 blocked 不水合——
+ * 避免把上一次 run 的终局误读成下一次 run 立即触发的停因（如 budget_limited
+ * → goal_budget 一跳即停），让模型在新 run 中凭画布自行重建目标。
+ */
+export function isResumableGoal(goal: GoalState | null): boolean {
+  if (!goal) return false
+  return goal.status === 'active' || goal.status === 'paused'
+}
+
+/**
  * 格式化目标状态标签
  */
 export function formatGoalStatusLabel(status: GoalStatus): string {

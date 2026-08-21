@@ -198,6 +198,7 @@ export {
   continueFromMaxTurns,
   checkMaxTurns,
   shouldContinue,
+  isResumableGoal,
   formatGoalStatusLabel,
   formatGoalElapsed,
   getActiveElapsedMs,
@@ -267,7 +268,7 @@ export type {
   QuiescenceReason,
   TaskFinishState,
 } from './modules/todos';
-export { settleInProgressTodos } from './modules/todos/todo-settle';
+export { createTodoWriteToolForConversation } from './modules/todos/todo-tools/todo-write-tool';
 export { indexActiveTodos, resolveActiveByIndex, resolveTodoReference, isActiveStatus } from './modules/todos/snapshot-index';
 export { renderIndexedActiveList, renderIndexedActiveLine } from './modules/todos/todo-tools/todo-snapshot';
 export {
@@ -280,6 +281,12 @@ export type {
   TodoUpdateInput,
   TodoClaimResult,
 } from './modules/todos/types';
+
+// ============================================================
+// Run Finalization（统一 Run 收尾）
+// ============================================================
+export { finalizeRun, determineRunStatus, deriveStopReason, downgradeUnsettledInProgress } from './modules/agent-control/run-finalization';
+export type { StopReason, AgentRunStatus, RunFinalizationState, FinalizeRunOptions } from './modules/agent-control/run-finalization';
 
 // ============================================================
 // Extensions Layer（白名单导出）
@@ -343,6 +350,18 @@ export type { FeishuWsClientConfig } from './modules/connector/inbound/feishu-ws
 export {
   InboundEventProcessor,
 } from './modules/connector/inbound/inbound-processor';
+
+// Run Conversation（双引擎共享 run 台账骨架，Phase E）
+export {
+  startConversationRun,
+  commitAssistantMessages,
+  endConversationRun,
+} from './composition/run-conversation';
+export type {
+  StartConversationRunInput,
+  CommitAssistantMessagesResult,
+  EndConversationRunInput,
+} from './composition/run-conversation';
 
 // Inbound Agent 编排（从 composition/inbound 导出）
 export {

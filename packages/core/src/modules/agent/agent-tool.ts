@@ -63,7 +63,6 @@ export async function executeAgentTask({
       scheduler: config.scheduler,
       executionMode: config.executionMode ?? 'agent',
       todoId: todoId ?? config.todoId,
-      pendingArchiveRetries: config.pendingArchiveRetries,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,

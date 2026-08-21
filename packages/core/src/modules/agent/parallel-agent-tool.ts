@@ -377,7 +377,6 @@ async function executeSingleTask(
         taskInput.todo && config.todoStore && config.conversationId
           ? resolveTodoReference(config.todoStore, config.conversationId, taskInput.todo)
           : (config.todoId ?? undefined),
-      pendingArchiveRetries: config.pendingArchiveRetries,
       provider: config.provider,
       modelAliases: config.modelAliases,
       cwd,

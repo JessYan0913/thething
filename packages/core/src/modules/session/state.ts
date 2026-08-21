@@ -105,7 +105,6 @@ export async function createSessionState(
     activeSkills: new Set<string>(),
     loadedSkills: new Map<string, Skill>(),
     contentReplacementState: createContentReplacementState(),
-    consecutiveReasoningOnlySteps: 0,
     goalState: null,
     compactionConfig: compactionCfg,
     compactModel: undefined,
@@ -114,16 +113,9 @@ export async function createSessionState(
     telemetry,
     contextLedger,
     compactionStepCounter,
-    pendingArchiveRetries: new Map<string, string>(),
     compactionView: createCompactionView(telemetry),
     compactionTracker,
     lastEstimation: undefined,
-    lastTodoRevision: 0,
-    stepsSinceTodoMutation: 0,
-    pendingArchiveTodoId: null,
-    subtaskStartMessageIndex: 0,
-    enableSubtaskArchiving: options?.enableSubtaskArchiving ?? true,
-    completionAuditInjected: false,
 
     async compact(messages: import('ai').ModelMessage[]): Promise<CompactionResult> {
       if (!compactionEnabled) {

@@ -144,10 +144,10 @@ export interface PipelineContext {
   };
   conversationId: string;
   layout: ResolvedLayout;
-  /** 连续纯推理步数（无工具调用、无文本输出），用于检测推理循环 */
-  consecutiveReasoningOnlySteps: number;
   /** 当前活跃目标（null 表示无目标） */
   goalState: GoalState | null;
+  /** 闸门受控终止标志：预算超限时置位，finalize 据此落 exhausted 终态 */
+  exhaustFlag?: 'context_budget' | 'adaptive';
   /** prepareStep 最近一次请求预算估算结果（含策略触发线），供 onStepEnd 推送前端 + 校准配对 */
   lastEstimation?: RequestBudgetEstimation | null;
   /** 更新会话上下文水位到数据库。pipeline 每步估算后调用。 */
@@ -170,35 +170,9 @@ export interface PipelineContext {
     sessionCostUsd?: number;
   }) => void;
 
-  /** 上一步骤的 todo revision 快照，用于 ContextInjector 变更检测 */
-  lastTodoRevision: number;
-
-  /** 自上次 todo 变更以来的步数，用于 ContextInjector 无活动提醒 */
-  stepsSinceTodoMutation: number;
-
-  /** 任务存储，用于 ContextInjector 读取任务快照 */
+  /** 任务存储，用于 One Canvas 读取任务快照 */
   todoStore: TodoStore;
 
-  /** 摘要/归档模型（归档器子任务提炼用） */
-  compactModel?: import('@ai-sdk/provider').LanguageModelV3;
-  /** 备用模型列表（归档器提炼失败时回退） */
-  fallbackModels?: import('@ai-sdk/provider').LanguageModelV3[];
-
-  /** 已完成子任务待归档标记（todo-write 标记 completed/failed 时设置，prepareStep 消费触发边界重建） */
-  pendingArchiveTodoId: string | null;
-
-  /** 当前子任务在 messages 中的起始锚点（归档器按此切片提取子任务消息链） */
-  subtaskStartMessageIndex: number;
-
-  /** 是否启用子任务归档（LLM 提炼 facts），默认 true；关闭时只保留 result 字符串 */
-  enableSubtaskArchiving: boolean;
-
-  /** 归档失败待重试队列：todoId → 已渲染子任务文本（首败缓存，下一轮 prepareStep 重试一次，最多一次） */
-  pendingArchiveRetries: Map<string, string>;
-
-  /** Completion Audit 注入 latch：quiescent 后注入一次；新 todo/新用户消息/新 ready 出现时清除 */
-  completionAuditInjected?: boolean;
-
-  /** 遥测收集器（任务拆分 / 视图命中率等） */
+  /** 遥测收集器 */
   telemetry: import('../compaction/compaction-telemetry').CompactionTelemetry;
 }

@@ -19,6 +19,8 @@ import type { InboundEvent } from '../../modules/connector/inbound/types'
 import type { InboundEventResult, InboundEventHandler } from '../../modules/connector/inbound/inbound-processor'
 import type { AppContext, CreateAgentOptions, CreateAgentResult } from '../app/types'
 import { finalizeAgentRun } from '../finalize'
+import { finalizeRun } from '../../modules/agent-control/run-finalization'
+import { startConversationRun, commitAssistantMessages, endConversationRun } from '../run-conversation'
 import { getPrimaryWikiDir } from '../../modules/wiki'
 import { ConnectorRegistry } from '../../modules/connector/registry'
 import type { ConnectorModelConfig } from '../../modules/connector/types'
@@ -290,6 +292,19 @@ const RECENT_EVENT_TTL_MS = 10 * 60 * 1000
 const recentEventIds = new Map<string, number>()
 const conversationLocks = new Map<string, Promise<void>>()
 
+/**
+ * finalizeRun 的最小 sessionState 桩：配合 forcedReason 使用（forcedReason 优先，
+ * 推导分支不读这些字段）。审批超时/拒绝这类"刻意取消"路径没有真实 harness 现场，
+ * 但要让 finalizeRun 跑通统一收尾，故传入空壳。
+ */
+const stubSessionState = {
+  turnCount: 0,
+  aborted: false,
+  costTracker: { isOverBudget: false },
+  denialTracker: { isThresholdExceeded: () => false },
+  goalState: null,
+}
+
 const LOCAL_FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file'])
 const LOCAL_FILE_APPROVAL_SCOPE = 'scope:local-file-tools'
 
@@ -384,7 +399,15 @@ export class AgentInboundHandler implements InboundEventHandler {
     setSuspendedStateExpiredCallback((conversationId, state) => {
       try {
         store.agentRunStore.resumeFromApproval(conversationId)
-        store.agentRunStore.completeRun(conversationId)
+        // 审批超时 = 刻意取消 → 收尾为 completed(done)，不标 exhausted；
+        // 同时归位未落账的 in_progress todo（无 model → 优雅跳过 settle）。
+        void finalizeRun({
+          dataStore: store,
+          conversationId,
+          sessionState: stubSessionState,
+          maxSteps: 50,
+          forcedReason: 'done',
+        })
       } catch { /* run 状态可能已结束 */ }
       const tools = [...new Set(state.pendingApprovals.map(item => item.toolName))].join(', ')
       void responder.respond(state.replyAddress, {
@@ -433,9 +456,16 @@ export class AgentInboundHandler implements InboundEventHandler {
         // ── 审批回复：拒绝 ──
         if (isResume && isDeny) {
           clearSuspendedState(conversationId)
-          // 恢复 agent run 状态并标记完成（拒绝后不继续执行）
+          // 恢复 agent run 状态并标记完成（拒绝后不继续执行）；
+          // 经统一收尾器 → completed(done)，并归位未落账的 in_progress todo（无 model → 优雅跳过 settle）。
           store.agentRunStore.resumeFromApproval(conversationId)
-          store.agentRunStore.completeRun(conversationId)
+          await finalizeRun({
+            dataStore: store,
+            conversationId,
+            sessionState: stubSessionState,
+            maxSteps: 50,
+            forcedReason: 'done',
+          })
           const denyMsg: UIMessage = {
             id: nanoid(),
             role: 'user',
@@ -484,6 +514,19 @@ export class AgentInboundHandler implements InboundEventHandler {
       try {
         const conversationId = await this.conversationResolver.resolve(event)
         const store = this.config.context.runtime.dataStore
+        // 统一收尾：异常路径落下 agent_runs 终态 failed(error)，不悬挂 run（此前 Connector 出错不落终态）。
+        try {
+          await finalizeRun({
+            dataStore: store,
+            conversationId,
+            sessionState: stubSessionState,
+            maxSteps: 50,
+            forcedReason: 'error',
+            errorMessage: errorMsg,
+          })
+        } catch {
+          // 收尾失败不影响错误汇报主流程
+        }
         const existingMessages = store.messageStore.getMessagesByConversation(conversationId)
         if (existingMessages.length > 0) {
           const errorAssistantMsg: UIMessage = {
@@ -520,13 +563,11 @@ export class AgentInboundHandler implements InboundEventHandler {
     // can append approval prompts without losing the user message.
     const branch = store.branchStore?.ensureMainBranch(conversationId)
     const anchorMessageId = store.messageStore.commitUserMessage(conversationId, userMessage)
-    const runId = nanoid()
-    store.conversationRunStore?.createRun({
-      id: runId,
+    const runId = startConversationRun(store, {
+      id: nanoid(),
       conversationId,
       branchId: store.branchStore?.getProjection(conversationId).activeBranchId ?? branch?.id ?? null,
       anchorMessageId,
-      expectedTipId: anchorMessageId,
       model: this.config.modelConfig?.modelName ?? null,
       agentType: event.agentType ?? null,
     })
@@ -584,13 +625,11 @@ export class AgentInboundHandler implements InboundEventHandler {
     const anchorMessageId = store.messageStore.appendMessages(conversationId, [approvalReplyMsg])
       ? approvalReplyMsg.id
       : store.branchStore?.getProjection(conversationId).activeTipId ?? null
-    const runId = nanoid()
-    store.conversationRunStore?.createRun({
-      id: runId,
+    const runId = startConversationRun(store, {
+      id: nanoid(),
       conversationId,
       branchId: store.branchStore?.getProjection(conversationId).activeBranchId ?? branch?.id ?? null,
       anchorMessageId,
-      expectedTipId: anchorMessageId,
       model: this.config.modelConfig?.modelName ?? null,
       agentType: event.agentType ?? 'approval-resume',
     })
@@ -906,13 +945,8 @@ export class AgentInboundHandler implements InboundEventHandler {
             ...toolApprovalParts,
           ],
         }
-        const headMoved = store.messageStore.appendMessages(conversationId, [approvalAskMsg], anchorMessageId ?? undefined)
-        store.conversationRunStore?.finishRun(runId, {
-          status: headMoved ? 'committed' : 'superseded',
-          resultTipId: headMoved
-            ? store.branchStore?.getProjection(conversationId).activeTipId ?? approvalAskMsg.id
-            : approvalAskMsg.id,
-        })
+        const { headMoved, resultTipId } = commitAssistantMessages(store, conversationId, [approvalAskMsg], anchorMessageId ?? undefined)
+        endConversationRun(store, runId, { headMoved, resultTipId })
 
         await dispose().catch((err: Error) => logger.error('AgentDispose', 'Error:', err))
 
@@ -990,17 +1024,13 @@ export class AgentInboundHandler implements InboundEventHandler {
       parts: [...messageParts, { type: 'text', text: finalResponse }],
     }
 
-    const headMoved = store.messageStore.appendMessages(
+    const { headMoved, resultTipId } = commitAssistantMessages(
+      store,
       conversationId,
       [assistantMessage],
       anchorMessageId ?? undefined,
     )
-    store.conversationRunStore?.finishRun(runId, {
-      status: headMoved ? 'committed' : 'superseded',
-      resultTipId: headMoved
-        ? store.branchStore?.getProjection(conversationId).activeTipId ?? assistantMessage.id
-        : assistantMessage.id,
-    })
+    endConversationRun(store, runId, { headMoved, resultTipId })
 
     const messagesToSave = this.filterInjectedMessages(uiMessagesForSave)
     const finalMessages = [...messagesToSave, assistantMessage]
@@ -1008,6 +1038,19 @@ export class AgentInboundHandler implements InboundEventHandler {
     // ── 后台：记忆提取 / 标题生成 / 成本持久化 / 资源清理 ──
     const wikiBaseDir = getPrimaryWikiDir(this.config.context.layout)
     const memoryLimits = this.config.context.behavior?.memory
+    // 统一收尾：落下 agent_runs 终态（达轮次上限→exhausted(step_limit)，自然结束→completed(done)）
+    // + 归位未落账的 in_progress todo（Connector 此前从不 settle，是长任务残留的病根之一）。
+    try {
+      await finalizeRun({
+        dataStore: store,
+        conversationId,
+        sessionState,
+        maxSteps: maxRounds,
+        forcedReason: reachedRoundLimit ? 'step_limit' : 'done',
+      })
+    } catch (e) {
+      logger.warn('AgentInboundHandler', `finalizeRun failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
     await finalizeAgentRun({
       dataStore: store,
       messages: finalMessages,

@@ -15,7 +15,7 @@
 //   5. 返回更新后的消息列表
 
 import { getServerRuntime, getServerContext, getModelConfig } from '@/lib/runtime';
-import { createAgent, finalizeAgentRun } from '@the-thing/core';
+import { createAgent, finalizeAgentRun, finalizeRun, startConversationRun, commitAssistantMessages, endConversationRun } from '@the-thing/core';
 import type { ModelMessage } from 'ai';
 import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
@@ -58,13 +58,11 @@ export async function POST(request: Request) {
       store.branchStore.ensureMainBranch(conversationId);
       store.messageStore.appendMessages(conversationId, [approvalReplyMsg]);
       const activeBranch = store.branchStore.getProjection(conversationId).activeBranchId;
-      const resumedRunId = nanoid();
-      store.conversationRunStore.createRun({
-        id: resumedRunId,
+      const resumedRunId = startConversationRun(store, {
+        id: nanoid(),
         conversationId,
         branchId: activeBranch,
         anchorMessageId: approvalReplyMsg.id,
-        expectedTipId: approvalReplyMsg.id,
         model: getModelConfig().modelName ?? null,
         agentType: 'approval-resume',
       });
@@ -158,16 +156,22 @@ export async function POST(request: Request) {
       };
 
       const messagesToSave = [...uiMessagesForSave, assistantMsg];
-      const headMoved = store.messageStore.appendMessages(conversationId, [assistantMsg], approvalReplyMsg.id);
-      store.conversationRunStore.finishRun(resumedRunId, {
-        status: headMoved ? 'committed' : 'superseded',
-        resultTipId: headMoved
-          ? store.branchStore.getProjection(conversationId).activeTipId
-          : assistantMsg.id,
-      });
+      const { headMoved, resultTipId } = commitAssistantMessages(store, conversationId, [assistantMsg], approvalReplyMsg.id);
+      endConversationRun(store, resumedRunId, { headMoved, resultTipId });
 
-      // 7a. 收尾：成本持久化 + 标题生成 + MCP 断开
-      store.agentRunStore.completeRun(conversationId);
+      // 7a. 收尾：成本持久化 + 标题生成 + MCP 断开 +
+      //     统一收尾（agent_runs 终态 + 归位未落账的 in_progress todo）
+      try {
+        await finalizeRun({
+          dataStore: store,
+          conversationId,
+          sessionState,
+          maxSteps: 50,
+          forcedReason: 'done',
+        });
+      } catch (err: unknown) {
+        console.error('[SuspendedApprove] finalizeRun:', err);
+      }
 
       try {
         await finalizeAgentRun({
@@ -215,7 +219,20 @@ export async function POST(request: Request) {
 
       store.suspendedStateStore.clearSuspendedState(conversationId);
       store.agentRunStore.resumeFromApproval(conversationId);
-      store.agentRunStore.completeRun(conversationId);
+      // 拒绝 = 刻意取消 → 收尾为 completed(done)，不标 exhausted（无 model → 优雅跳过 settle）
+      await finalizeRun({
+        dataStore: store,
+        conversationId,
+        sessionState: {
+          turnCount: 0,
+          aborted: false,
+          costTracker: { isOverBudget: false },
+          denialTracker: { isThresholdExceeded: () => false },
+          goalState: null,
+        },
+        maxSteps: 50,
+        forcedReason: 'done',
+      });
 
       console.log(
         `[SuspendedApprove] DENY: conversation=${conversationId}`,

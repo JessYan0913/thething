@@ -7,7 +7,6 @@ import { resolveToolsForAgent } from './tool-resolver';
 import { resolveModelForAgent } from './model-resolver';
 import { buildSubAgentPrompt, buildContextPrompt } from './context-builder';
 import { completeTodo, failTodo, updateTodoStatus } from '../../modules/todos';
-import { triggerArchiveForTodos } from '../agent-control/archiver';
 import { logger } from '../../primitives/logger';
 
 // ============================================================
@@ -303,21 +302,14 @@ export async function executeRoutedAgent(
 
     // 12. 完成任务（如果有）。同步完成（设计指令：消除 fire-and-forget 竞态）——
     //    确保 todo 状态在父 Agent 下一步 prepareStep 读取前已落库。
-    //    路径 B：completeTodo 直接写库，不经 todo-write-tool，故不触发边界归档（pendingArchiveTodoId
-    //    单槽由 todo-write 驱动）；归档经 triggerArchiveForTodos 以 result 入队 pendingArchiveRetries（§5.2 接线）。
+    //    One Canvas：子任务完成结果经 metadata.result 自然携带，下一轮画布展示（无边界整段重建）。
     if (todoStore && todoId) {
-      // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool，故不触发边界归档）
+      // 可观测：路径 B 完成（executor 直接写库，不经 todo-write-tool）
       logger.info('SubAgent', `[path-b-complete] todoId=${todoId}`);
       if (scheduler) {
         scheduler.completeTodo(todoId, result.summary);
       } else {
         completeTodo(todoStore, todoId, result.summary);
-      }
-      // 路径 B 归档（设计 §5.2）：子Agent 完成，以 metadata.result 为输入入队 pendingArchiveRetries，
-      // 下一轮 prepareStep 经 retryPendingArchives 提炼 facts。agent 与 parallel_agent 共用此点，
-      // 一个接线点覆盖两条路径（triggerArchiveForTodos 内部过滤：仅 completed + 有 result + 无 facts 才入队）。
-      if (context.pendingArchiveRetries) {
-        triggerArchiveForTodos([todoId], todoStore, context.pendingArchiveRetries);
       }
     }
 
