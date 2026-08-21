@@ -127,14 +127,13 @@ export function TodoPanel({
     });
   }, [todos]);
 
-  // 方案 C：面板编号须与台账/快照一致——仅活跃任务（pending/in_progress/failed）
-  // 按 createdAt ASC 定序编号；已完成/取消等历史不编号、不暴露内部 id。
-  const activeIndexMap = React.useMemo(() => {
-    const active = todos
-      .filter((t) => ['pending', 'in_progress', 'failed'].includes(t.status))
-      .sort((a, b) => a.createdAt - b.createdAt);
+  // 方案 C：面板编号须与台账/快照一致（core snapshot-index.ts 的稳定编号）——
+  // 对**全量**清单（含已完成/取消等终态行）按创建序编全局稳定号，永不重排、不复用；
+  // 编号只随「新行创建」追加，状态流转/完成/取消不使其他行前移、已收尾行保留历史编号。
+  const indexMap = React.useMemo(() => {
+    const all = [...todos].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
     const map = new Map<string, number>();
-    active.forEach((t, i) => map.set(t.id, i + 1));
+    all.forEach((t, i) => map.set(t.id, i + 1));
     return map;
   }, [todos]);
 
@@ -199,7 +198,7 @@ export function TodoPanel({
             allDone && "opacity-60",
           )}>
             {sortedTodos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} index={activeIndexMap.get(todo.id)} />
+              <TodoItem key={todo.id} todo={todo} index={indexMap.get(todo.id)} />
             ))}
           </div>
         </CollapsibleContent>
