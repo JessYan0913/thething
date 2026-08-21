@@ -364,7 +364,28 @@ export function createGrepTool(options: { cwd: string }) {
         result.note = `结果已截断：显示 ${matches.length} / ${limited.length} 条匹配（per-file 上限 ${effectivePerFileLimit}）。使用更具体的 pattern 或 include 参数缩小范围。`;
       }
 
-      return JSON.stringify(result, null, 2);
+      return result;
     },
-  });
+
+  // 以纯文本形式发送给模型,避免 matches 结构经 JSON 序列化时的转义开销。
+  // 模型面只需紧凑文本(file:line: content)；(UI 渲染层仍用 GrepResult 组件)。
+  // 见 docs/compaction-redesign.md
+  toModelOutput: ({ output }) => {
+    if (!output || typeof output !== 'object') {
+      return { type: 'text' as const, value: '' };
+    }
+    const r = output as Record<string, unknown>;
+
+    if (r.error === true) {
+      const message = typeof r.message === 'string' ? r.message : 'grep failed';
+      const filePath = typeof r.path === 'string' ? r.path : '';
+      return { type: 'text' as const, value: `❌ ${message}${filePath ? ` (${filePath})` : ''}` };
+    }
+
+    const formatted = typeof r.formattedOutput === 'string' ? r.formattedOutput : '';
+    const note = typeof r.note === 'string' ? r.note : '';
+    const value = `${formatted}${note ? `\n${note}` : ''}`;
+    return { type: 'text' as const, value };
+  },
+});
 }

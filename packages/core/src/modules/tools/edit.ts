@@ -307,6 +307,33 @@ export function createEditFileTool(options: EditFileToolOptions = {}) {
         };
       });
     },
+
+    // 以纯文本形式发送给模型,避免 diff 经 JSON 序列化时的转义开销。
+    // diff 可能很大(大段替换),模型面截断到安全上限并提示续读。
+    // 见 docs/compaction-redesign.md
+    toModelOutput: ({ output }) => {
+      if (!output || typeof output !== 'object') {
+        return { type: 'text' as const, value: '' };
+      }
+      const r = output as Record<string, unknown>;
+
+      if (r.error === true) {
+        const message = typeof r.message === 'string' ? r.message : 'edit failed';
+        const filePath = typeof r.path === 'string' ? r.path : '';
+        return { type: 'text' as const, value: `❌ ${message}${filePath ? ` (${filePath})` : ''}` };
+      }
+
+      const filePath = typeof r.path === 'string' ? r.path : '';
+      const diff = typeof r.diff === 'string' ? r.diff : '';
+      const summary = typeof r.summary === 'string' ? r.summary : '';
+      const MAX_DIFF_CHARS = 6000;
+      const truncated = diff.length > MAX_DIFF_CHARS;
+      const diffText = truncated
+        ? `${diff.slice(0, MAX_DIFF_CHARS)}\n… [diff truncated: ${diff.length} total chars, use read to inspect the result]`
+        : diff;
+      const value = `${filePath}${summary ? `\n${summary}` : ''}\n\n${diffText}`;
+      return { type: 'text' as const, value };
+    },
   });
 }
 

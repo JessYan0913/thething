@@ -482,6 +482,24 @@ export function createTodoToolForConversation(
         };
       }
     },
+
+    // 以纯文本形式发送给模型,避免 todos 数组经 JSON 序列化时的转义开销。
+    // 模型面只需紧凑快照文本(snapshot 已含物化 #N)；(画布/复刻消费结构化字段)。
+    // 见 docs/compaction-redesign.md
+    toModelOutput: ({ output }) => {
+      if (!output || typeof output !== 'object') {
+        return { type: 'text' as const, value: '' };
+      }
+      const r = output as Record<string, unknown>;
+
+      if (r.success === false) {
+        const message = typeof r.error === 'string' ? r.error : 'todo operation failed';
+        return { type: 'text' as const, value: `❌ ${message}` };
+      }
+
+      const snapshot = typeof r.snapshot === 'string' ? r.snapshot : '';
+      return { type: 'text' as const, value: snapshot || '(todos updated)' };
+    },
   });
 }
 

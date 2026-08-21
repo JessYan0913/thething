@@ -252,5 +252,29 @@ export function createWriteFileTool(options: FileToolOptions = {}) {
 
     return result;
   },
+
+    // 以纯文本形式发送给模型,避免 diff/结构字段经 JSON 序列化时的转义开销。
+    // diff 全文保留给 UI 渲染层（WriteFileResult），模型面只给一行摘要。
+    // 见 docs/compaction-redesign.md
+    toModelOutput: ({ output }) => {
+      if (!output || typeof output !== 'object') {
+        return { type: 'text' as const, value: '' };
+      }
+      const r = output as Record<string, unknown>;
+
+      if (r.error === true) {
+        const message = typeof r.message === 'string' ? r.message : 'write failed';
+        const filePath = typeof r.path === 'string' ? r.path : '';
+        return { type: 'text' as const, value: `❌ ${message}${filePath ? ` (${filePath})` : ''}` };
+      }
+
+      const filePath = typeof r.path === 'string' ? r.path : '';
+      const size = typeof r.size === 'number' ? r.size : 0;
+      const mode = typeof r.mode === 'string' ? r.mode : 'overwrite';
+      const created = r.created === true ? ' (new file)' : '';
+      const summary = typeof r.summary === 'string' ? r.summary : '';
+      const value = `Wrote ${size} bytes to ${filePath} (mode: ${mode})${created}${summary ? `\n${summary}` : ''}`;
+      return { type: 'text' as const, value };
+    },
   });
 }

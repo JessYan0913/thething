@@ -31,18 +31,18 @@ afterAll(async () => {
 
 function runGrep(args: any) {
   const tool = createGrepTool({ cwd: dir });
-  return tool.execute!(args, {} as any) as Promise<string>;
+  return tool.execute!(args, {} as any) as Promise<Record<string, unknown>>;
 }
 
 function runGlob(args: any) {
   const tool = createGlobTool({ cwd: dir });
-  return tool.execute!(args, {} as any) as Promise<string>;
+  return tool.execute!(args, {} as any) as Promise<Record<string, unknown>>;
 }
 
 describe('grep default compact text format', () => {
   it('returns formattedOutput text instead of a matches array', async () => {
     const raw = await runGrep({ pattern: 'target', path: dir });
-    const result = JSON.parse(raw);
+    const result = raw;
     expect(typeof result.formattedOutput).toBe('string');
     expect(result.matches).toBeUndefined();
     // 紧凑格式:file: 行 + 缩进的 line: content
@@ -52,11 +52,11 @@ describe('grep default compact text format', () => {
 
   it('caps matches per file and notes the omitted count', async () => {
     const raw = await runGrep({ pattern: 'target', path: dir, perFileLimit: 5 });
-    const result = JSON.parse(raw);
+    const result = raw;
     // many.ts 有 30 处命中,应只保留 5 条 + "more matches" 提示
     expect(result.formattedOutput).toContain('more matches in this file');
     // 该文件在输出里的 "  N: " 行不超过 perFileLimit
-    const manyLines = result.formattedOutput
+    const manyLines = String(result.formattedOutput)
       .split('\n')
       .filter((l: string) => /^  \d+: .*target/.test(l));
     // one.ts 贡献 1 条 + many.ts 5 条 = 6
@@ -65,7 +65,7 @@ describe('grep default compact text format', () => {
 
   it('still supports multi-line context format when context > 0', async () => {
     const raw = await runGrep({ pattern: 'target_only', path: dir, context: 1 });
-    const result = JSON.parse(raw);
+    const result = raw;
     expect(typeof result.formattedOutput).toBe('string');
     expect(result.formattedOutput).toContain('---');
   });
@@ -74,7 +74,7 @@ describe('grep default compact text format', () => {
 describe('glob default limit', () => {
   it('defaults to 200 and truncates a 250-file dir', async () => {
     const raw = await runGlob({ pattern: 'gen/*.txt' });
-    const result = JSON.parse(raw);
+    const result = raw;
     expect(result.count).toBe(200);
     expect(result.truncated).toBe(true);
     expect(result.totalCount).toBe(250);
@@ -82,7 +82,7 @@ describe('glob default limit', () => {
 
   it('honors an explicit higher limit', async () => {
     const raw = await runGlob({ pattern: 'gen/*.txt', limit: 300 });
-    const result = JSON.parse(raw);
+    const result = raw;
     expect(result.count).toBe(250);
     expect(result.truncated).toBe(false);
   });

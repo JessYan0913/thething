@@ -97,5 +97,20 @@ export function createGoalTool(opts: {
         }
       }
     },
+    // 以纯文本形式发送给模型，避免 goal 对象经 JSON 序列化时的转义开销。
+    // 模型面只需 message（一次性）；结构化 goal 保留给画布消费。
+    // 见 docs/compaction-redesign.md
+    toModelOutput: ({ output }) => {
+      if (!output || typeof output !== 'object') {
+        return { type: 'text' as const, value: '' }
+      }
+      const r = output as Record<string, unknown>
+      if (r.success === false) {
+        const message = typeof r.message === 'string' ? r.message : 'goal operation failed'
+        return { type: 'text' as const, value: `❌ ${message}` }
+      }
+      const message = typeof r.message === 'string' ? r.message : ''
+      return { type: 'text' as const, value: message || '(goal updated)' }
+    },
   })
 }

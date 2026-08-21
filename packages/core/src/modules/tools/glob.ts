@@ -57,7 +57,28 @@ export function createGlobTool(options: { cwd: string }) {
         result.hasMore = true;
       }
 
-      return JSON.stringify(result, null, 2);
+      return result;
     },
-  });
+
+  // 以纯文本形式发送给模型,避免 files 数组经 JSON 序列化时的转义开销。
+  // 模型面只需路径清单文本；(UI 渲染层仍用 GlobResult 组件)。
+  // 见 docs/compaction-redesign.md
+  toModelOutput: ({ output }) => {
+    if (!output || typeof output !== 'object') {
+      return { type: 'text' as const, value: '' };
+    }
+    const r = output as Record<string, unknown>;
+
+    if (r.error === true) {
+      const message = typeof r.message === 'string' ? r.message : 'glob failed';
+      const filePath = typeof r.path === 'string' ? r.path : '';
+      return { type: 'text' as const, value: `❌ ${message}${filePath ? ` (${filePath})` : ''}` };
+    }
+
+    const files = Array.isArray(r.files) ? (r.files as string[]) : [];
+    const note = typeof r.note === 'string' ? r.note : '';
+    const value = `${files.join('\n')}${note ? `\n${note}` : ''}`;
+    return { type: 'text' as const, value };
+  },
+});
 }

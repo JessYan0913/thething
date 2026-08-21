@@ -99,11 +99,11 @@ export function createWebFetchTool() {
         clearTimeout(timeout);
 
         if (!response.ok) {
-          return JSON.stringify({
+          return {
             success: false,
             url,
             error: `HTTP ${response.status}: ${response.statusText}`,
-          });
+          };
         }
 
         const contentType = response.headers.get('content-type') ?? '';
@@ -121,7 +121,7 @@ export function createWebFetchTool() {
           truncated = true;
         }
 
-        return JSON.stringify({
+        return {
           success: true,
           url,
           title,
@@ -129,17 +129,39 @@ export function createWebFetchTool() {
           content,
           truncated,
           originalLength,
-        }, null, 2);
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : '抓取失败';
         logger.error('WebFetch', `Failed to fetch ${url}:`, error);
-        
-        return JSON.stringify({
+
+        return {
           success: false,
           url,
           error: message.includes('abort') ? '请求超时（30秒）' : message,
-        });
+        };
       }
+    },
+
+    // 以纯文本形式发送给模型,避免 content 经 JSON 序列化时的转义开销。
+    // 模型面只需纯净文本；(UI 渲染层仍用 WebFetchResult 组件)。
+    // 见 docs/compaction-redesign.md
+    toModelOutput: ({ output }) => {
+      if (!output || typeof output !== 'object') {
+        return { type: 'text' as const, value: '' };
+      }
+      const r = output as Record<string, unknown>;
+
+      if (r.success === false) {
+        const message = typeof r.error === 'string' ? r.error : 'web fetch failed';
+        const url = typeof r.url === 'string' ? r.url : '';
+        return { type: 'text' as const, value: `❌ ${message}${url ? ` (${url})` : ''}` };
+      }
+
+      const url = typeof r.url === 'string' ? r.url : '';
+      const title = typeof r.title === 'string' ? r.title : '';
+      const content = typeof r.content === 'string' ? r.content : '';
+      const header = url ? `${title ? `${title}\n` : ''}${url}\n\n` : '';
+      return { type: 'text' as const, value: header + content };
     },
   });
 }
