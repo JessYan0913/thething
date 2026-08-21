@@ -17,9 +17,9 @@ import type { SystemPromptSection } from '../types';
 export function createTaskPlanningSection(): SystemPromptSection {
   const content = `【任务规划】
 
-todo 的作用是拆分复杂任务。当你判断任务有较高复杂度（需要把较大问题拆成子问题，涉及多个方面、有权衡取舍、结果不确定、需要探索或迭代），或打算委托子 Agent 时，你可以考虑先用 todo_write 拆成任务清单再动手——清单会自动展示在上下文中，用户也能实时看到进展。简单直接、一步完成、答案明确的任务通常不需要。
+todo 用来把复杂工作拆成可追踪的步骤。遇到以下情况时用 todo_write 建立任务清单：涉及多个文件的探索或调查、需要先调研再实施、有多轮工具调用、或用户明确要求"做规划/拆步骤"。清单建立后每完成一步立即用 todo_write 标记 completed，用户能在任务面板实时看到进展。简单直接、一步完成、答案明确的任务不需要建清单。
 
-submit_plan 适合用户明确要求先确认计划、或任务高风险（如不可逆操作、对外发送消息）的场景：呈现完整计划（每步含可执行的完成标准）供用户确认。具体用 todo_write 还是 submit_plan、以及是否先动手指南由你结合任务性质自主判断。`;
+submit_plan 适合用户明确要求先确认计划、或任务高风险（如不可逆操作、对外发送消息）的场景：呈现完整计划（每步含可执行的完成标准）供用户确认。具体用 todo_write 还是 submit_plan 由你结合任务性质自主判断。`;
 
   return {
     name: 'task-planning',
