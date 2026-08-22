@@ -185,9 +185,6 @@ export interface AgentExecutionContext {
 
   /** 子 Agent 总 token 预算上限（超出后停止执行） */
   maxTotalTokens?: number;
-
-  /** 子 Agent 输出预算上限 tokens（传给 provider 的 max_tokens；缺省回落默认） */
-  maxOutputTokens?: number;
 }
 
 // ============================================================
@@ -315,9 +312,6 @@ export interface AgentToolConfig {
 
   /** 子 Agent 总 token 预算上限（超出后停止执行） */
   maxTotalTokens?: number;
-
-  /** 子 Agent 输出预算上限 tokens（传给 provider 的 max_tokens；缺省回落默认） */
-  maxOutputTokens?: number;
 }
 
 export interface AgentTaskExecutionOptions {
@@ -415,8 +409,6 @@ export interface LoadToolsConfig {
   parentMessages?: UIMessage[]
   /** 压缩配置（透传给子 Agent 做 Layer 2 压缩） */
   compactionConfig?: CompactionConfig
-  /** 子 Agent 输出预算上限 tokens（父 Agent 传入，缺省回落默认） */
-  maxOutputTokens?: number
   /** 子 Agent 总 token 预算上限（随模型上下文伸缩，create.ts loadAllTools 计算传入） */
   maxTotalTokens?: number
   /** 预加载的 MCP 配置（来自 AppContext 快照） */
