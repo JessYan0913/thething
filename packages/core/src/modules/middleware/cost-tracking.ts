@@ -4,6 +4,7 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
 } from '@ai-sdk/provider';
+import { logger } from '../../primitives/logger';
 import type { CostTracker } from '../session/cost';
 
 function extractOutputTokens(value: unknown): number {
@@ -45,6 +46,8 @@ export function costTrackingMiddleware(costTracker: CostTracker): LanguageModelV
       if (result.usage) {
         const { inputTokens, cachedReadTokens } = extractInputUsage(result.usage.inputTokens);
         const outputTokens = extractOutputTokens(result.usage.outputTokens);
+        // TEMP 诊断：观察上游原始 usage 的 cacheRead，判断"面板命中低"是没上报还是真没缓存
+        logger.info('CacheProbe', `gen raw.inputTokens=${JSON.stringify(result.usage.inputTokens)} → cache=${cachedReadTokens} input=${inputTokens}`);
         costTracker.accumulateFromUsage(inputTokens, outputTokens, cachedReadTokens);
       }
 
@@ -72,6 +75,8 @@ export function costTrackingMiddleware(costTracker: CostTracker): LanguageModelV
           if (finalUsage) {
             const { inputTokens, cachedReadTokens } = extractInputUsage(finalUsage.inputTokens);
             const outputTokens = extractOutputTokens(finalUsage.outputTokens);
+            // TEMP 诊断：观察上游原始 usage 的 cacheRead，判断"面板命中低"是没上报还是真没缓存
+            logger.info('CacheProbe', `stream raw.inputTokens=${JSON.stringify(finalUsage.inputTokens)} → cache=${cachedReadTokens} input=${inputTokens}`);
             costTracker.accumulateFromUsage(inputTokens, outputTokens, cachedReadTokens);
           }
         },

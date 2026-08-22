@@ -120,3 +120,26 @@ describe('costTrackingMiddleware', () => {
     });
   });
 });
+
+describe('CostTracker ledger semantics (面板命中率口径)', () => {
+  it('reportCompaction is a no-op: never rewrites the monotonic token/cost ledger', () => {
+    const tracker = createTracker();
+    tracker.accumulateFromUsage(1000, 200, 800);
+    tracker.accumulateFromUsage(500, 10, 300);
+    const before = {
+      inputTokens: tracker.inputTokens, // 1500
+      cachedReadTokens: tracker.cachedReadTokens, // 1100
+      outputTokens: tracker.outputTokens, // 210
+      totalCost: tracker.totalCost,
+    };
+
+    tracker.reportCompaction(900);
+
+    // 压缩执行不再清零 cachedReadTokens / 扣减 inputTokens——成本账本是生命周期
+    // 单调累计（窗口语义由 TokenBudgetTracker 单独维护），否则面板命中率被压成 0%
+    expect(tracker.inputTokens).toBe(before.inputTokens);
+    expect(tracker.cachedReadTokens).toBe(before.cachedReadTokens);
+    expect(tracker.outputTokens).toBe(before.outputTokens);
+    expect(tracker.totalCost).toBe(before.totalCost);
+  });
+});

@@ -101,13 +101,16 @@ export class CostTracker {
   }
 
   /**
-   * 压缩钩子：与 TokenBudgetTracker.reportCompaction 同步。
-   * 压缩后 context prefix 失效，旧 cache read 计数不能再累积进新 session 的
-   * 命中率（否则 inputTokens 扣、cachedReadTokens 残留 → 命中率虚高接近 100%）。
+   * 压缩钩子：与 TokenBudgetTracker.reportCompaction 保持调用契约（管线照旧触发），
+   * 但 CostTracker 是生命周期成本账本，不承载"上下文窗口"语义——isOverBudget 只看
+   * _totalCost（单调累计，绝不下调）。面板"缓存命中率"由 cachedReadTokens/
+   * (inputTokens+cachedReadTokens) 推导，旧代码在此把 cachedReadTokens 清零并扣减
+   * inputTokens，导致每次压缩执行后命中率被压成 0（实测逐步真实命中 94-99%，
+   * 面板却显示 14.77%，见 08-21 CacheProbe 诊断）。窗口语义由 TokenBudgetTracker
+   * （session/token-budget.ts）单独维护，成本账本不随压缩改写。
    */
   reportCompaction(tokensFreed: number): void {
-    this._inputTokens = Math.max(0, this._inputTokens - tokensFreed);
-    this._cachedReadTokens = 0;
+    void tokensFreed; // no-op：成本账本单调累计，压缩只改窗口水位
   }
 
   /**
