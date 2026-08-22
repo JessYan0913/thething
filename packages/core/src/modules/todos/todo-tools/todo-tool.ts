@@ -187,7 +187,44 @@ function applyToTodo(store: TodoStore, scheduler: TodoRuntime, todo: Todo, statu
   }
 }
 
-/** 校验 dependsOnSteps 引用合法（1-based，仅前向） */
+/**
+ * 修复模型把 add 的 items 数组序列化成 JSON 字符串（甚至截断的字符串）的问题。
+ *
+ * 对齐 ask_user_question 的 repair 先例（tools/ask-user-question.ts）：模型（尤其
+ * 弱模型）在输出 `{"action":"add","items":[{...},{...}]}` 时，偶尔会把 items 整体
+ * 序列化成字符串 `"[{...},{...}]"`。zod 对 `items: z.array()` 校验失败 → SDK 抛出
+ * InvalidToolInputError → 模型只看到笼统的 "An error occurred."，无从自我修复，
+ * 只能盲试两次后放弃（实测 2026-08-22：面板一直空白）。
+ *
+ * 时机：experimental_repairToolCall 在校验失败时被调用；此函数把字符串 items
+ * parse 回数组（容错截断），返回修复后的 input JSON 文本；无法修复时返回 null。
+ */
+export function repairTodoRawInput(rawInput: string): string | null {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(rawInput);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== 'object') return null;
+  const action = (obj as { action?: unknown }).action;
+  if (action !== 'add') return null; // 只有 add 带 items 数组
+  const items = (obj as { items?: unknown }).items;
+  if (typeof items !== 'string') return null;
+  // 实际观测：模型输出的数组字符串可能被截断（缺少收尾括号），依次尝试补全
+  for (const suffix of ['', ']', '}]', '"}]']) {
+    try {
+      const parsed = JSON.parse(items + suffix);
+      if (!Array.isArray(parsed)) return null;
+      return JSON.stringify({ ...(obj as object), items: parsed });
+    } catch {
+      // 尝试下一个补全
+    }
+  }
+  return null;
+}
+
+/** 校验参数名 dependsOnSteps 引用是否合法（1 基，仅前向） */
 function validateDependsOnSteps(items: Array<{ subject: string; dependsOnSteps?: number[] }>): string | null {
   for (let i = 0; i < items.length; i++) {
     const deps = items[i].dependsOnSteps ?? [];

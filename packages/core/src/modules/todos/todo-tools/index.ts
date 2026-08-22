@@ -82,6 +82,9 @@ export function getTodoToolNames(): TodoToolName[] {
 // Re-export single tool
 export { createTodoToolForConversation } from './todo-tool';
 
+// Re-export 输入修复（模型把 items 数组序列化成字符串时，供 repairToolCall 使用）
+export { repairTodoRawInput } from './todo-tool';
+
 // Re-export schema
 export { todoToolSchema } from './todo-tool';
 export type { TodoToolInput } from './todo-tool';

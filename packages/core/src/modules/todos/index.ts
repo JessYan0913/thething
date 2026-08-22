@@ -87,6 +87,9 @@ export {
 // Individual tool creator（单 todo 工具）
 export { createTodoToolForConversation } from './todo-tools';
 
+// todo 工具输入修复（模型把 items 数组序列化成字符串时，供 repairToolCall 使用）
+export { repairTodoRawInput } from './todo-tools';
+
 // TodoRuntime（Todo Runtime 状态机 + 派生就绪/quiescence）+ Metadata V2 访问器
 export {
   createTodoRuntime,

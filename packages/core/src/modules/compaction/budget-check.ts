@@ -13,7 +13,10 @@ import { deriveBudget, targetTokensFor, messageTargetTokensFor, DEFAULT_TARGET_P
 import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from './types';
 
 const CORE_TOOLS = new Set(['bash', 'read_file', 'write_file', 'edit_file', 'grep', 'glob']);
-const OPTIONAL_TOOL_PRIORITY = ['mcp_*', 'connector_*', 'web_fetch', 'research', 'todo_*', 'ask_user_question'];
+// 注意：todo 是收敛后的单工具名（无下划线；旧的四工具面 todo_write/todo_create_batch/todo_delete/todo_list
+// 已退役，见 todos/todo-tools/index.ts）。若写 'todo_*' 前缀则永远匹配不到新工具名，工具裁剪时 todo 会
+// 失去"高价值可选工具"的保留优先级（掉到第三步按 token 预算兜底添加）。
+const OPTIONAL_TOOL_PRIORITY = ['mcp_*', 'connector_*', 'web_fetch', 'research', 'todo', 'ask_user_question'];
 const TOOL_BUDGET_RATIO = 0.10;
 
 export interface InitialBudgetCheckResult {
@@ -38,13 +41,10 @@ export async function checkInitialBudget(
     model?: LanguageModelV3;
     fallbackModels?: LanguageModelV3[];
     contextLimit?: number;
-    /** per-model outputTokens（ModelEntry.outputTokens）——动态 outputReserve */
-    outputTokens?: number;
   },
 ): Promise<InitialBudgetCheckResult> {
   const contextLimit = context?.contextLimit;
-  const outputTokens = context?.outputTokens;
-  const initialEstimation = await estimateRequestBudget(messages, instructions, tools, modelName, contextLimit, outputTokens);
+  const initialEstimation = await estimateRequestBudget(messages, instructions, tools, modelName, contextLimit);
   const actions: string[] = [];
 
   logger.debug('Budget', `Model: ${modelName}, Limit: ${initialEstimation.modelLimit}`);
@@ -72,7 +72,7 @@ export async function checkInitialBudget(
     if (lifecycleResult.tokensFreed > 0) {
       currentMessages = lifecycleResult.messages;
       actions.push(`Layer 2: freed ${lifecycleResult.tokensFreed} tokens`);
-      currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit, outputTokens);
+      currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
       logger.debug('Budget', `After Layer 2: ${currentEstimation.totalTokens} tokens`);
       if (!currentEstimation.shouldTrigger) {
         return { passed: true, estimation: currentEstimation, actions, adjustedMessages: currentMessages };
@@ -99,7 +99,7 @@ export async function checkInitialBudget(
         ),
       });
       actions.push(`Emergency compression applied (Layer 2.5→3→truncation)`);
-      currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit, outputTokens);
+      currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
       logger.debug('Budget', `After emergency compression: ${currentEstimation.totalTokens} tokens`);
       if (!currentEstimation.shouldTrigger) {
         return { passed: true, estimation: currentEstimation, actions, adjustedMessages: currentMessages };
@@ -117,7 +117,7 @@ export async function checkInitialBudget(
     if (removed > 0) {
       currentTools = filtered;
       actions.push(`Tool filter: removed ${removed} tools`);
-      currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit, outputTokens);
+      currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
       logger.debug('Budget', `After tool filter: ${currentEstimation.totalTokens} tokens`);
       if (!currentEstimation.shouldTrigger) {
         return { passed: true, estimation: currentEstimation, actions, adjustedTools: currentTools, adjustedMessages: currentMessages };
@@ -164,7 +164,7 @@ export async function checkInitialBudget(
     currentTools = minimalTools;
     actions.push(`Extreme mode: core tools only + minimal messages`);
 
-    currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit, outputTokens);
+    currentEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
     logger.debug('Budget', `After extreme mode: ${currentEstimation.totalTokens} tokens`);
 
     if (!currentEstimation.exceedsLimitWithBuffer) {
@@ -173,7 +173,7 @@ export async function checkInitialBudget(
   }
 
   // 所有策略已用尽(含校准 buffer 仍超窗口 = 硬不变量失败)
-  const finalEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit, outputTokens);
+  const finalEstimation = await estimateRequestBudget(currentMessages, instructions, currentTools, modelName, contextLimit);
   logger.debug('Budget', `Final: ${finalEstimation.totalTokens} tokens (${finalEstimation.utilizationPercent.toFixed(1)}%) - ${finalEstimation.exceedsLimitWithBuffer ? 'EXCEEDS' : 'OK'}`);
 
   return {

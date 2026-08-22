@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryTodoStore } from '../store';
-import { createTodoToolForConversation, todoToolSchema } from '../todo-tools/todo-tool';
+import { createTodoToolForConversation, repairTodoRawInput, todoToolSchema } from '../todo-tools/todo-tool';
 import { createTodoRuntime } from '../todo-runtime';
 import type { TodoStore } from '../types';
 
@@ -329,5 +329,44 @@ describe('todo 单工具（action: list/add/update/delete/clear）', () => {
     await execute({ action: 'add', items: [{ subject: 'Mine' }] });
 
     expect(store.getTodosByConversation('other-conv')).toHaveLength(1);
+  });
+});
+
+describe('repairTodoRawInput（模型把 items 数组序列化成字符串）', () => {
+  it('把 items 字符串 parse 回数组', () => {
+    const raw = JSON.stringify({
+      action: 'add',
+      items: '[{"subject":"分析布局缺点","status":"in_progress"},{"subject":"提出方案","status":"pending"}]',
+    });
+    const repaired = repairTodoRawInput(raw);
+    expect(repaired).not.toBeNull();
+    const parsed = JSON.parse(repaired!) as { action: string; items: unknown[] };
+    expect(parsed.action).toBe('add');
+    expect(Array.isArray(parsed.items)).toBe(true);
+    expect(parsed.items).toHaveLength(2);
+  });
+
+  it('items 字符串被截断时也能补全', () => {
+    const raw = JSON.stringify({
+      action: 'add',
+      items: '[{"subject":"a","status":"in_progress"},{"subject":"b","status":"pending"',
+    });
+    const repaired = repairTodoRawInput(raw);
+    expect(repaired).not.toBeNull();
+    const parsed = JSON.parse(repaired!) as { items: unknown[] };
+    expect(parsed.items).toHaveLength(2);
+  });
+
+  it('非 add 动作或 items 已是数组时不干预', () => {
+    const nonAdd = JSON.stringify({ action: 'update', id: '#1', status: 'completed' });
+    expect(repairTodoRawInput(nonAdd)).toBeNull();
+
+    const alreadyArray = JSON.stringify({ action: 'add', items: [{ subject: 'a' }] });
+    expect(repairTodoRawInput(alreadyArray)).toBeNull();
+  });
+
+  it('无法解析的输入返回 null', () => {
+    expect(repairTodoRawInput('{invalid json')).toBeNull();
+    expect(repairTodoRawInput('{"action":"add","items":123}')).toBeNull();
   });
 });

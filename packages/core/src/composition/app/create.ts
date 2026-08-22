@@ -14,7 +14,7 @@ import type { CreateAgentOptions, CreateAgentResult } from './types'
 import { resolveAgentConfig } from './resolve-agent-config'
 import { createSessionState } from '../../modules/session'
 import { createLanguageModel, createModelProvider } from '../../services/model'
-import { getModelOutputTokens, getModelContextLimit } from '../../services/model/capabilities'
+import { getModelContextLimit } from '../../services/model/capabilities'
 import { createAgentPipeline, createDefaultStopConditions } from '../../modules/agent-control'
 import { catchAllApproval } from '../../modules/agent-control/tool-approval'
 import type { ApprovalRuntimeContext } from '../../modules/agent-control/tool-approval'
@@ -24,6 +24,7 @@ import { loadAllTools } from '../../modules/agent/tools'
 import { createTodoRuntime } from '../../modules/todos/todo-runtime'
 import { filterToolNames } from '../../modules/agent/tool-resolver'
 import { repairAskUserQuestionRawInput } from '../../modules/tools'
+import { repairTodoRawInput } from '../../modules/todos'
 import { checkInitialBudget } from '../../modules/compaction/budget-check'
 import { formatEstimationResult } from '../../modules/compaction/token-counter'
 import { compactBeforeStep } from '../../modules/compaction'
@@ -328,8 +329,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     parentMessages: messagesWithAttachments,
     // 子 Agent Layer 2 压缩配置（尊重 modules.compaction 开关）
     compactionConfig: modules.compaction ? compactionCfg : undefined,
-    // 子 Agent 输出预算上限（模型条目 outputTokens，缺省回落默认）
-    maxOutputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     // 子 Agent 总预算上限：随模型上下文伸缩。getModelContextLimit 解析（session 的
     // maxContextTokens 作 override 保证与父 Agent 同一上下文口径），× 倍数构成累计成本阀。
     maxTotalTokens:
@@ -381,7 +380,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       conversationId,
       model: modelInstance,
       contextLimit: sessionOptions.maxContextTokens,
-      outputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     },
   )
 
@@ -513,8 +511,6 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     instructions,
     tools: finalTools,
     contextLimit: sessionOptions.maxContextTokens,
-    // 动态 outputReserve：预算与每模型 maxOutputTokens 一致（ModelEntry.outputTokens，缺省 8000）
-    outputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
     triggerPercent: compactionCfg.contextWindow.triggerPercent,
     resolveModel: resolveStepModel,
     compactionCallbackRef: options.compactionCallbackRef,
@@ -556,9 +552,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     model: wrappedModel,
     instructions,
     tools: finalTools,
-    // 输出预算上限：模型条目声明了 outputTokens 时跟随，否则回落默认。
-    // 缺省时不设则 provider 用默认上限，thinking 模型推理 token 可能挤爆输出 → 静默截断。
-    maxOutputTokens: getModelOutputTokens(modelConfig.modelName, modelConfig.models),
+    // 输出上限交由 provider 默认（2026-08-22 学 pi：maxTokens 0 = 不设上限）。
+    // 不再传 maxOutputTokens——per-step 输出截断由 provider 默认 + run 终态
+    // output_truncated（重开 run 继续）兜底；输出越长的收益 > 推理 token 挤占的风险。
     runtimeContext: approvalRuntimeContext,
     toolApproval: catchAllApproval as unknown as import('ai').ToolApprovalConfiguration<ChatToolsType, ApprovalRuntimeContext>,
     prepareStep: prepareStep as import('ai').PrepareStepFunction<ChatToolsType, ApprovalRuntimeContext>,
@@ -570,6 +566,11 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
     // 这里尝试把字符串 parse/补全回数组。（refineToolInput 只在校验成功后执行，
     // 对该失败路径无效。）
     experimental_repairToolCall: async ({ toolCall }) => {
+      if (toolCall.toolName === 'todo') {
+        const repaired = repairTodoRawInput(toolCall.input);
+        if (repaired == null) return null;
+        return { ...toolCall, input: repaired };
+      }
       if (toolCall.toolName !== 'ask_user_question') return null;
       const repaired = repairAskUserQuestionRawInput(toolCall.input);
       if (repaired == null) return null;
@@ -586,7 +587,9 @@ export async function createAgent(options: CreateAgentOptions): Promise<CreateAg
       }
 
       // 当 todo 工具执行后，推送任务清单快照到流，前端无需轮询
-      if (toolCall.toolName.startsWith('todo_') && conversationId) {
+      // 注意：todo 是收敛后的单工具名（无下划线，见 todos/todo-tools/index.ts），
+      // 旧 'todo_*' 前缀已退役，这里精确匹配 'todo'。
+      if (toolCall.toolName === 'todo' && conversationId) {
         try {
           const todos = dataStore.todoStore.getTodosByConversation(conversationId);
           const writer = (options.writerRef as { current: SubAgentStreamWriter | null } | undefined)?.current;
