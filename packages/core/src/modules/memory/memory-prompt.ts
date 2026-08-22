@@ -29,7 +29,6 @@ export const MEMORY_GUIDELINES_PROMPT = `## 用户记忆
   - 单值属性填 \`dimension\`（如 \`display-format\`、\`language\`）；多值属性可不填
   - 尽量提供 \`source\`：记录来源（用户原话或上下文），便于归因
 - 用 \`delete_memory\` 删除不再准确的记忆（用 id）
-- 显式记忆（用户说"记住"）必须立即写入，不可遗漏
 - **写入前先判断冲突类型**：看下方"你记住的用户信息"中是否有同 dimension 的旧条目
   - 单值属性（同一 dimension 只能有一个有效值，如回复格式、常用语言）：先 \`delete_memory\` 删旧条目，再写新条目
   - 多值属性（可以同时成立的偏好，如喜欢的食物、感兴趣的话题）：直接追加，保留旧条目
