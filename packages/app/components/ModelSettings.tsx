@@ -37,7 +37,8 @@ import {
 interface ProviderModel {
   id: string
   contextLimit?: number
-  outputTokens?: number
+  /** 深度思考(enableThinking):provider 下发 reasoningEffort */
+  enableThinking?: boolean
 }
 
 interface ProviderEntry {
@@ -102,7 +103,7 @@ interface ModelAddState {
   editingId: string | null
   id: string
   contextLimit?: number
-  outputTokens?: number
+  enableThinking?: boolean
 }
 
 export default function ModelSettings() {
@@ -332,7 +333,13 @@ export default function ModelSettings() {
   // ── 模型增删(供应商卡片内) ──────────────────────────
 
   const openEditModel = useCallback((providerIndex: number, model: ProviderModel) => {
-    setModelAdd({ providerIndex, editingId: model.id, id: model.id, contextLimit: model.contextLimit, outputTokens: model.outputTokens })
+    setModelAdd({
+      providerIndex,
+      editingId: model.id,
+      id: model.id,
+      contextLimit: model.contextLimit,
+      enableThinking: model.enableThinking,
+    })
     setModelError(null)
     setFetchedModels([])
     setFetchError(null)
@@ -362,7 +369,7 @@ export default function ModelSettings() {
       const entry: ProviderModel = {
         id,
         ...(modelAdd.contextLimit ? { contextLimit: Number(modelAdd.contextLimit) } : {}),
-        ...(modelAdd.outputTokens ? { outputTokens: Number(modelAdd.outputTokens) } : {}),
+        ...(modelAdd.enableThinking ? { enableThinking: true } : {}),
       }
       const models = modelAdd.editingId
         ? p.models.map(m => m.id === modelAdd.editingId ? entry : m)
@@ -377,7 +384,7 @@ export default function ModelSettings() {
       oldId && backgroundModel === oldId ? id : backgroundModel,
     )
     if (keepOpen) {
-      setModelAdd(prev => prev ? { ...prev, editingId: null, id: "", contextLimit: undefined, outputTokens: undefined } : prev)
+      setModelAdd(prev => prev ? { ...prev, editingId: null, id: "", contextLimit: undefined, enableThinking: undefined } : prev)
     } else {
       setModelAdd(null)
     }
@@ -479,11 +486,14 @@ export default function ModelSettings() {
                           )}
                           {model.contextLimit ? (
                             <span className="text-[10px] text-muted-foreground shrink-0">
-                              {Math.round(model.contextLimit / 1000)}k{model.outputTokens ? ` · out ${Math.round(model.outputTokens / 1000)}k` : ''}
+                              {Math.round(model.contextLimit / 1000)}k
                             </span>
-                          ) : model.outputTokens ? (
-                            <span className="text-[10px] text-muted-foreground shrink-0">out {Math.round(model.outputTokens / 1000)}k</span>
                           ) : null}
+                          {model.enableThinking && (
+                            <span className="text-[10px] text-purple-600 dark:text-purple-400 shrink-0">
+                              {t("models.thinkingBadge")}
+                            </span>
+                          )}
                         </div>
                         <div className="shrink-0 flex items-center gap-1">
                           {defaultModel !== model.id && (
@@ -711,18 +721,16 @@ export default function ModelSettings() {
                 />
               </div>
 
-              {/* Output tokens limit（per-model maxOutputTokens，缺省 8000；预算/截断检测用） */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">{t("models.outputTokens.title")}</label>
-                <Input
-                  type="number"
-                  value={modelAdd.outputTokens ?? ""}
-                  onChange={(e) => setModelAdd(prev => prev ? { ...prev, outputTokens: e.target.value ? Number(e.target.value) : undefined } : prev)}
-                  placeholder={t("models.outputTokens.placeholder")}
-                  className="font-mono text-xs"
-                  min={0}
+              {/* 深度思考 (enableThinking)：provider 下发 reasoningEffort */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={modelAdd.enableThinking ?? false}
+                  onChange={(e) => setModelAdd(prev => prev ? { ...prev, enableThinking: e.target.checked ? true : undefined } : prev)}
+                  className="size-3.5"
                 />
-              </div>
+                <span className="text-xs">{t("models.enableThinking.title")}</span>
+              </label>
 
               {modelError && (
                 <div className="flex items-center gap-1.5 text-xs text-red-500">

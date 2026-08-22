@@ -75,10 +75,10 @@
       "title": "Context Limit (optional)",
       "placeholder": "e.g. 128000"
     },
-    "outputTokens": {
-      "title": "Output Limit (tokens, optional)",
-      "placeholder": "e.g. 8000"
+    "enableThinking": {
+      "title": "Deep thinking (enableThinking)"
     },
+    "thinkingBadge": "Thinking",
     "providerEdit": {
       "addTitle": "Add Provider",
       "editTitle": "Edit Provider",

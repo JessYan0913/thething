@@ -89,6 +89,7 @@ export function getModelConfig(modelId?: string): {
   modelName?: string;
   models?: ModelEntry[];
   contextLimit?: number;
+  enableThinking?: boolean;
 } {
   const configDir = path.join(os.homedir(), '.thething');
   const freshConfig = loadGlobalConfig(configDir) || G.cachedGlobalConfig;
@@ -111,6 +112,7 @@ export function getModelConfig(modelId?: string): {
     modelName,
     models,
     contextLimit: entry?.contextLimit,
+    enableThinking: entry?.enableThinking,
   };
 }
 

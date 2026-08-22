@@ -75,10 +75,10 @@
       "title": "コンテキスト長(任意)",
       "placeholder": "例: 128000"
     },
-    "outputTokens": {
-      "title": "出力上限 tokens(任意)",
-      "placeholder": "例: 8000"
+    "enableThinking": {
+      "title": "高度な思考 (enableThinking)"
     },
+    "thinkingBadge": "思考",
     "providerEdit": {
       "addTitle": "プロバイダーを追加",
       "editTitle": "プロバイダーを編集",
