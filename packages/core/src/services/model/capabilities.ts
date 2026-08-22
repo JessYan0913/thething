@@ -65,25 +65,12 @@ export function getModelContextLimit(
 }
 
 /**
- * 获取输出预留 Token 数
+ * 获取输出预留 Token 数（纯预算估算值，不是 provider 上限）。
+ * 学 pi：输出上限交给 provider 默认（模型未声明则不发送 maxOutputTokens）；
+ * 此处只给预算闸门一个"预留输出空间"的规划数，避免输入填满窗口、模型无地写答案。
  */
-export function getDefaultOutputTokens(outputOverride?: number): number {
-  if (outputOverride && outputOverride > 0) {
-    return outputOverride;
-  }
+export function getDefaultOutputTokens(): number {
   return DEFAULT_OUTPUT_TOKENS;
-}
-
-/**
- * 按模型条目解析输出预算上限（传给 provider 的 max_tokens）。
- * 模型条目声明了 outputTokens 时跟随；否则回落默认输出上限。
- */
-export function getModelOutputTokens(
-  modelName?: string,
-  models?: Array<{ id: string; outputTokens?: number }>,
-): number {
-  const entry = models?.find((m) => m.id === modelName);
-  return entry?.outputTokens ?? getDefaultOutputTokens();
 }
 
 /**
@@ -91,11 +78,11 @@ export function getModelOutputTokens(
  */
 export function getModelCapabilities(
   modelName: string,
-  options?: { contextLimitOverride?: number; outputOverride?: number; modelSpec?: ModelSpec }
+  options?: { contextLimitOverride?: number; modelSpec?: ModelSpec }
 ): ModelCapabilities {
   return {
     contextLimit: getModelContextLimit(modelName, options?.contextLimitOverride, options?.modelSpec),
-    defaultOutputTokens: getDefaultOutputTokens(options?.outputOverride),
+    defaultOutputTokens: getDefaultOutputTokens(),
   };
 }
 
@@ -105,9 +92,9 @@ export function getModelCapabilities(
  */
 export function getEffectiveContextBudget(
   modelName: string,
-  options?: { contextLimitOverride?: number; outputOverride?: number; modelSpec?: ModelSpec }
+  options?: { contextLimitOverride?: number; modelSpec?: ModelSpec }
 ): number {
   const contextLimit = getModelContextLimit(modelName, options?.contextLimitOverride, options?.modelSpec);
-  const outputReserve = Math.min(getDefaultOutputTokens(options?.outputOverride), 20_000);
+  const outputReserve = Math.min(getDefaultOutputTokens(), 20_000);
   return contextLimit - outputReserve;
 }

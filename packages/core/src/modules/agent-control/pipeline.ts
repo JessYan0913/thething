@@ -28,8 +28,6 @@ export interface AgentPipelineConfig {
   instructions?: string;
   tools?: Record<string, Tool>;
   contextLimit?: number;
-  /** per-model outputTokens（ModelEntry.outputTokens）——动态 outputReserve，预算与模型实际输出能力一致 */
-  outputTokens?: number;
   triggerPercent?: number;
   /** 将模型名解析为已经套好遥测/成本中间件的实际模型。 */
   resolveModel?: (modelName: string) => LanguageModel;
@@ -103,19 +101,6 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
     stepsSinceMutation += 1;
     const revisionChanged = currentRevision !== lastTodoRevision;
 
-    // usage 真值校准配对(见 compaction-redesign.md L0):上一步估算 ↔ 本步真实 usage。
-    if (steps.length > 0) {
-      const lastUsage = steps[steps.length - 1]?.usage?.inputTokens;
-      const lastEstForCalibration = sessionState.lastEstimation;
-      if (lastUsage && lastEstForCalibration) {
-        recordUsageSample(
-          sessionState.model,
-          lastEstForCalibration.totalTokens - lastEstForCalibration.outputReserve,
-          lastUsage,
-        );
-      }
-    }
-
     // ── L3 压缩（确定性摘要；每步调用，无旁路、无预检）──
     sessionState.compactionTracker.recordAttempt();
     const compactResult = await sessionState.compact(messages as import('ai').ModelMessage[]);
@@ -132,6 +117,29 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
       sessionState.tokenBudget.reportCompaction(compactResult, triggerWatermark);
       sessionState.costTracker.reportCompaction(compactResult.tokensFreed ?? 0);
       config.compactionCallbackRef?.current?.({ status: 'end', triggerWatermark, tokensFreed: compactResult.tokensFreed ?? 0 });
+    }
+
+    // usage 真值锚点（见 compaction-redesign.md L0 锚定语义）：用最近一步的 provider 真实
+    // usage 作预算基线（inputTokens 已含至该步的完整 prompt，outputTokens 为该步输出，现已入上下文）。
+    // 若本步刚执行过压缩则锚点已过期（最近 usage 反映的是压缩前上下文），回退全量重估。
+    // 锚定态下跳过校准配对：锚定估算由同一 usage 反推，喂样自证会把 EMA drift 拉向 1.0，污染校准器。
+    const lastStep = steps[steps.length - 1];
+    const lastStepUsage = lastStep?.usage;
+    const anchorUsage = !compactResult.executed && lastStepUsage && typeof lastStepUsage.inputTokens === 'number' && lastStepUsage.inputTokens > 0
+      ? { inputTokens: lastStepUsage.inputTokens, outputTokens: lastStepUsage.outputTokens ?? 0 }
+      : undefined;
+
+    // usage 真值校准配对(见 compaction-redesign.md L0):上一步估算 ↔ 本步真实 usage。
+    if (steps.length > 0 && !anchorUsage) {
+      const lastUsage = lastStep?.usage?.inputTokens;
+      const lastEstForCalibration = sessionState.lastEstimation;
+      if (lastUsage && lastEstForCalibration) {
+        recordUsageSample(
+          sessionState.model,
+          lastEstForCalibration.totalTokens - lastEstForCalibration.outputReserve,
+          lastUsage,
+        );
+      }
     }
 
     // ── One Canvas：唯一模型可见任务状态（至多一条 user 消息，内容全来自持久化 store）──
@@ -189,7 +197,7 @@ export function createAgentPipeline<TOOLS extends ToolSet>(config: AgentPipeline
         config.tools,
         sessionState.model,
         config.contextLimit,
-        config.outputTokens,
+        anchorUsage,
       );
       logger.info('Context', formatContextBar(estimation, estimation.modelLimit));
       sessionState.tokenBudget.recordEstimate(estimation.totalTokens - estimation.outputReserve);

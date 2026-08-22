@@ -21,6 +21,7 @@
 import type { Tool } from 'ai';
 import {
   estimateFullRequest,
+  estimateMessagesTokens,
   type FullRequestEstimation,
 } from './token-counter';
 import { getEstimatorInfra } from './tokenizer';
@@ -59,16 +60,48 @@ export async function estimateRequestBudget(
   tools: Record<string, Tool>,
   modelName: string,
   contextLimitOverride?: number,
-  /** per-model outputTokens（ModelEntry.outputTokens）——动态 outputReserve，使预算与模型实际输出能力一致 */
-  outputTokensOverride?: number,
+  /**
+   * provider 真实 usage 锚点（本 run 内上游 step 的 usage，见 pipeline 步级闸门）。
+   * 传入时以真值为基线：inputTokens 已含至最后一条 assistant 的完整 prompt（含指令与工具），
+   * 加 outputTokens（该 assistant 自身输出，现已是上下文的一部分），仅对锚点之后的尾巴做
+   * 本地估算；tokenizerBuffer 置 0（真值无需漂移缓冲，避免双计）。不传则沿用全量重估 ×
+   * 校准 buffer（原路径）。messages 中无 assistant 时回退原路径。
+   */
+  anchorUsage?: { inputTokens: number; outputTokens: number },
 ): Promise<RequestBudgetEstimation> {
-  const base = await estimateFullRequest(messages, instructions, tools, modelName, contextLimitOverride, outputTokensOverride);
+  const base = await estimateFullRequest(messages, instructions, tools, modelName, contextLimitOverride);
+
+  // 锚定模式：messagesTokens 用真值分解替换局部估算（inputTokens 含指令/工具，
+  // 减去估算份额即 history 的真值跨度），totalTokens 同源重算。
+  let anchored = false;
+  let messagesTokens = base.messagesTokens;
+  let totalTokens = base.totalTokens;
+  if (anchorUsage && anchorUsage.inputTokens > 0) {
+    let lastAssistantIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        lastAssistantIdx = i;
+        break;
+      }
+    }
+    if (lastAssistantIdx !== -1) {
+      anchored = true;
+      const trailingTokens = await estimateMessagesTokens(messages.slice(lastAssistantIdx + 1), modelName);
+      const anchoredInputSpan = anchorUsage.inputTokens - base.instructionsTokens - base.toolsTokens;
+      messagesTokens = Math.max(0, anchoredInputSpan) + anchorUsage.outputTokens + trailingTokens;
+      totalTokens = messagesTokens + base.instructionsTokens + base.toolsTokens + base.outputReserve;
+    }
+  }
+
   const { calibrator } = getEstimatorInfra();
   const bufferRatio = calibrator.getTokenizerBufferRatio(modelName);
-  const baseTokens = base.messagesTokens + base.instructionsTokens + base.toolsTokens;
-  const tokenizerBuffer = Math.max(0, Math.round(baseTokens * bufferRatio));
-  const totalTokensWithBuffer = base.totalTokens + tokenizerBuffer;
+  const baseTokens = messagesTokens + base.instructionsTokens + base.toolsTokens;
+  const tokenizerBuffer = anchored ? 0 : Math.max(0, Math.round(baseTokens * bufferRatio));
+  const totalTokensWithBuffer = totalTokens + tokenizerBuffer;
+  const exceedsLimit = totalTokens > base.modelLimit;
   const exceedsLimitWithBuffer = totalTokensWithBuffer > base.modelLimit;
+  const availableBudget = base.modelLimit - totalTokens;
+  const utilizationPercent = (totalTokens / base.modelLimit) * 100;
 
   const policy = deriveBudget(base.modelLimit, base.outputReserve, modelName);
   const shouldTrigger = totalTokensWithBuffer >= policy.triggerTokens;
@@ -76,6 +109,11 @@ export async function estimateRequestBudget(
 
   return {
     ...base,
+    messagesTokens,
+    totalTokens,
+    availableBudget,
+    exceedsLimit,
+    utilizationPercent,
     tokenizerBuffer,
     totalTokensWithBuffer,
     exceedsLimitWithBuffer,

@@ -67,32 +67,17 @@ describe('22.8k 小窗口 + 大工具 schema（主动触发，非等 100%）', (
     expect(est.exceedsLimit).toBe(false); // 未超窗口，但达触发线 → 主动升档
   });
 
-  it('动态 outputReserve: per-model outputTokens 使预算与模型输出能力一致', async () => {
-    const base = await estimateRequestBudget(
+  it('outputReserve 恒为扁平默认（8000）：学 pi 后输出上限交由 provider 默认，预算预留不再随 per-model 配置伸缩', async () => {
+    const est = await estimateRequestBudget(
       [{ role: 'user', content: 'hi' } as never],
       'sys',
       {},
       'unknown-model',
       128_000,
     );
-    // 缺省 → 默认输出上限 8000
-    expect(base.outputReserve).toBe(8_000);
-
-    const big = await estimateRequestBudget(
-      [{ role: 'user', content: 'hi' } as never],
-      'sys',
-      {},
-      'unknown-model',
-      128_000,
-      16_000, // per-model outputTokens（如 thinking 模型配大输出）
-    );
-    // 预算跟随每模型配置：预留 16000
-    expect(big.outputReserve).toBe(16_000);
-    // 窗口坐标系下 trigger 含 outputReserve；输入触发线 = trigger − outputReserve。
-    // 预留增大 → effectiveBudget 变小 → 输入触发线更低（更早为输出留空间）
-    expect(big.triggerTokens - big.outputReserve).toBeLessThan(
-      base.triggerTokens - base.outputReserve,
-    );
+    expect(est.outputReserve).toBe(8_000);
+    // 触发线 = trigger − outputReserve 之输入部分，随模型上下文伸缩而非 per-model 输出配置
+    expect(est.triggerTokens - est.outputReserve).toBeGreaterThan(0);
   });
 
   it('budget-check: 大 schema 触发工具过滤（不再因 128k 魔法阈值放行）', async () => {

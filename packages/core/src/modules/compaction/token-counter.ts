@@ -348,10 +348,8 @@ export async function estimateFullRequest(
   tools: Record<string, Tool>,
   modelName: string,
   contextLimitOverride?: number,
-  /** per-model outputTokens（ModelEntry.outputTokens，缺省用默认输出上限）——动态 outputReserve */
-  outputTokensOverride?: number,
 ): Promise<FullRequestEstimation> {
-  const caps = getModelCapabilities(modelName, { contextLimitOverride, outputOverride: outputTokensOverride });
+  const caps = getModelCapabilities(modelName, { contextLimitOverride });
 
   // 并行计算各部分（使用正确的 tokenizer）
   const [messagesTokens, instructionsTokens, toolsTokens] = await Promise.all([
@@ -360,10 +358,10 @@ export async function estimateFullRequest(
     estimateToolsTokens(tools, modelName),
   ]);
 
-  // 输出预留 = 模型默认输出上限（flat）。注：真正的"动态 outputReserve"（§10.4.1）
-  // 应取 per-model outputTokens 配置并按窗口夹取（reserve=min(modelOutput, availableWindow)），
-  // 需要把 models 配置穿进估算层；此前试过的"窗口比例 15%"会低估输出能力、把触发点后移，
-  // 反而让截断风险回来，已回滚。见 docs/context-usage-redesign.md §14 Phase 3 后续。
+  // 输出预留 = 固定估算值（DEFAULT_OUTPUT_TOKENS），纯规划用途、不是 provider 上限：
+  // 上限交给 provider 默认（pi 范式），此处只保证预算闸门给模型留出输出空间。
+  // 此前试过的"窗口比例 15%"会低估输出能力、把触发点后移，反而让截断风险回来，已回滚。
+  // 见 docs/context-usage-redesign.md §14 Phase 3 后续。
   const outputReserve = caps.defaultOutputTokens;
   const totalTokens = messagesTokens + instructionsTokens + toolsTokens + outputReserve;
   const modelLimit = caps.contextLimit;

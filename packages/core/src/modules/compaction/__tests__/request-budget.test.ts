@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { estimateRequestBudget } from '../request-budget';
+import { estimateMessagesTokens } from '../token-counter';
 import { getEstimatorInfra, resetCalibration, recordUsageSample } from '../tokenizer';
 
 // 清理校准状态，避免测试间污染
@@ -128,5 +129,74 @@ describe('estimateRequestBudget', () => {
     const estimatedWithBuffer = final.totalTokensWithBuffer - final.outputReserve;
     expect(estimatedWithBuffer / base).toBeGreaterThan(1.15);
     expect(estimatedWithBuffer / base).toBeLessThan(1.26);
+  });
+});
+
+// ============================================================
+// usage 锚点（pi 学来的锚定语义）：provider 真值基线代替全量重估 × 校准 buffer
+// ============================================================
+describe('estimateRequestBudget (usage 锚点)', () => {
+  it('anchored: 以真值 usage 为基线，tokenizerBuffer 置 0，锚点后尾巴本地估算叠加', async () => {
+    const tail = { role: 'user' as const, content: 'continue the work' };
+    const msgs: import('ai').ModelMessage[] = [
+      { role: 'user' as const, content: 'summarize this file' },
+      { role: 'assistant' as const, content: 'here is the summary' },
+      tail,
+    ];
+    const inputTokens = 5000;
+    const outputTokens = 300;
+
+    const est = await estimateRequestBudget(
+      msgs, 'sys', {}, 'unknown-model', undefined,
+      { inputTokens, outputTokens },
+    );
+
+    // messagesTokens = 真值中扣除指令/工具后的 history 跨度 + 该 assistant 自身输出 + 尾巴
+    const trailing = await estimateMessagesTokens([tail], 'unknown-model');
+    const expectedMessages = Math.max(0, inputTokens - est.instructionsTokens - est.toolsTokens) + outputTokens + trailing;
+    expect(est.messagesTokens).toBe(expectedMessages);
+    expect(est.totalTokens).toBe(expectedMessages + est.instructionsTokens + est.toolsTokens + est.outputReserve);
+    // 锚定态无漂移缓冲：真值基线不需要
+    expect(est.tokenizerBuffer).toBe(0);
+    expect(est.totalTokensWithBuffer).toBe(est.totalTokens);
+    expect(est.exceedsLimitWithBuffer).toBe(est.exceedsLimit);
+  });
+
+  it('anchored: 校准 drift 再高也不叠加 tokenizerBuffer（避免同一 usage 自证双重放大）', async () => {
+    // 制造高位漂移（1.6 顶格）
+    recordUsageSample('unknown-model', 1000, 1600);
+    getEstimatorInfra().tokenCache.clear();
+
+    const msgs: import('ai').ModelMessage[] = [
+      { role: 'user' as const, content: 'hello' },
+      { role: 'assistant' as const, content: 'world' },
+    ];
+    const est = await estimateRequestBudget(
+      msgs, 'sys', {}, 'unknown-model', undefined,
+      { inputTokens: 4000, outputTokens: 100 },
+    );
+
+    expect(est.tokenizerBuffer).toBe(0);
+    expect(est.totalTokensWithBuffer).toBe(est.totalTokens);
+    // 锚定总量 = input + output + 指令/工具 + outputReserve（无尾巴）
+    expect(est.totalTokens).toBe(
+      Math.max(0, 4000 - est.instructionsTokens - est.toolsTokens) + 100 + est.instructionsTokens + est.toolsTokens + est.outputReserve,
+    );
+  });
+
+  it('anchored: 消息中无 assistant 时回退原路径（仍走校准 buffer，不被锚点劫持）', async () => {
+    recordUsageSample('unknown-model', 1000, 1300);
+    getEstimatorInfra().tokenCache.clear();
+
+    const msgs = [{ role: 'user' as const, content: 'hello world' }];
+    const est = await estimateRequestBudget(
+      msgs, 'instructions', {}, 'unknown-model', undefined,
+      { inputTokens: 10, outputTokens: 5 },
+    );
+
+    const baseTokens = est.messagesTokens + est.instructionsTokens + est.toolsTokens;
+    expect(est.tokenizerBuffer).toBe(Math.round(baseTokens * 0.3));
+    expect(est.tokenizerBuffer).toBeGreaterThan(0);
+    expect(est.totalTokensWithBuffer).toBe(est.totalTokens + est.tokenizerBuffer);
   });
 });

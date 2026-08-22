@@ -75,8 +75,9 @@ export const EMERGENCY_TARGET_PERCENT = 0.6;
 /** 压缩目标中"消息"部分的下限（防止小窗口下消息预算为 0 → 全历史摘要化/过度压缩） */
 export const MIN_MESSAGE_BUDGET_TOKENS = 2000;
 
-// 注：动态 outputReserve（§10.4.1）的正确实现 = reserve = min(per-model outputTokens, availableWindow)。
-// 需把 models 配置穿进估算层（estimateRequestBudget/estimateFullRequest 加 outputTokens 参数）。
+// 注：outputReserve = 固定默认值（DEFAULT_OUTPUT_TOKENS），纯预算估算、不是 provider 上限。
+// 2026-08-22 起学 pi：输出上限交给 provider 默认（模型未声明则不发送 maxOutputTokens），
+// 输出截断（finishReason=length）由 run 终态 output_truncated 兜底，不再在配置层设硬顶。
 // 曾试过"窗口比例 15%"：低估模型输出能力、把触发点后移，反而让截断风险回来——已回滚。
 
 /**
