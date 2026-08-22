@@ -307,6 +307,8 @@ export async function POST(request: Request) {
         modelName: chatModelConfig.modelName,
         models: chatModelConfig.models,
         includeUsage: true,
+        // ② enableThinking 配置入口：模型条目勾选"深度思考"后 provider 下发 reasoningEffort
+        ...(chatModelConfig.enableThinking ? { enableThinking: true } : {}),
       },
       // 模型条目声明了 contextLimit 时跟随该模型的上下文窗口
       ...(chatModelConfig.contextLimit ? { session: { maxContextTokens: chatModelConfig.contextLimit } } : {}),
@@ -418,6 +420,8 @@ export async function POST(request: Request) {
     type SegmentOutcome = {
       aborted: boolean;
       truncated: boolean;
+      /** ① 截断批次毒化：末步 finishReason='length' 且含工具调用 → 该批调用作废（见 core stopOnTruncatedToolBatch） */
+      batchPoisoned: boolean;
       completedMessages: UIMessage[];
       lastAssistant: UIMessage | undefined;
       headMoved: boolean;
@@ -426,11 +430,14 @@ export async function POST(request: Request) {
     };
 
     // onEnd 回调：流结束时把新 assistant 消息挂到本轮消息（默认锚点）之后。
-    // 手动续写语义（无自动续写循环，一段即止）：
-    // - 截断（finishReason='length'）→ run 标记 failed(output_truncated) + 推 data-truncated，
-    //   前端显示"继续"按钮，用户点继续 = 发一条"继续"消息 → 新的一轮回复（独立 assistant 消息）；
+    // 续写语义（2026-08-22 学 pi 一次性 compact-and-retry）：
+    // - 首个截断段（finishReason='length'）在 options.deferFinalize 下 deferfinalize——
+    //   消息照常 commit，但 run 不落终态、不推 data-truncated，由外层自动续写一段；
+    // - 二次截断 → run 标记 failed(output_truncated) + 推 data-truncated，
+    //   前端显示"继续"按钮，用户点继续 = 发一条"继续"消息 → 新的一轮回复；
     // - 正常完成 → committed/superseded + finalize；
     // - 停止（isAborted）→ aborted（修复"停止后仍 committed"旧 bug）。
+    //   aborted 不 defer：停止必须立即终态化。
     const createOnEnd = (
       inputMessageCount: number,
       inputContinuation: UIMessage | undefined,
@@ -438,6 +445,7 @@ export async function POST(request: Request) {
       resolveDone: () => void,
       controller: ReadableStreamDefaultController<string>,
       defaultAnchorId: string,
+      options?: { deferFinalize?: boolean },
     ) => async ({ messages: completedMessages, isAborted, finishReason }: {
       messages: UIMessage[];
       isAborted?: boolean;
@@ -528,7 +536,7 @@ export async function POST(request: Request) {
           store, conversationId, newAssistantMessages, resultAnchorId,
         );
 
-        // 记录本段结果（手动续写：单段执行，无续写循环判定）
+        // 记录本段结果（供外层 auto-retry/手动续写判定）
         outcome.completedMessages = completedMessages;
         outcome.lastAssistant = newAssistantMessages.at(-1);
         outcome.headMoved = headMoved;
@@ -536,6 +544,17 @@ export async function POST(request: Request) {
         const truncated = !aborted && isOutputTruncated(finishReason);
         outcome.aborted = aborted;
         outcome.truncated = truncated;
+
+        // ③ 一次性 compact-and-retry：首个截断段 deferfinalize——消息已 commit（上面），
+        // run 保持 running（不 finalizeRun/endConversationRun），也不推 data-truncated；
+        // 外层自动续写段（重载历史 + 合成 user 续写）统一收尾，二次截断才走下方
+        // output_truncated + 手动"继续"兜底。aborted 不 defer：停止必须立即终态化。
+        if (options?.deferFinalize && truncated && !aborted) {
+          console.log(
+            `[Chat API] Segment truncated (batchPoisoned=${outcome.batchPoisoned}), deferring finalize for auto-retry`,
+          );
+          return;
+        }
 
         // ── 终态收尾（统一收尾器）──
         // 每个退出路径（aborted / truncated / 正常 / 无输出）都经 finalizeRun 归位 agent_runs
@@ -575,6 +594,7 @@ export async function POST(request: Request) {
           // 输出被截断 → 不按"完成"收尾（复用 failed+error，零 schema 迁移）：
           // 半截答案不再进库当最终答案（静默截断事故的病根）。前端收到 data-truncated
           // 显示"继续"按钮，用户点继续 = 发一条"继续"消息，agent 作为新的一轮回复。
+          // 文案区分截断批次毒化（①）：工具调用批次被截断作废时提醒用户“继续”不补工具。
           endConversationRun(store, runId, {
             status: 'failed',
             error: 'output_truncated',
@@ -583,7 +603,11 @@ export async function POST(request: Request) {
             controller.enqueue(JSON.stringify({
               type: 'data-truncated',
               id: `trunc-${runId}`,
-              data: { message: '输出被截断，已停在这里。点击"继续"从断点续写。' },
+              data: {
+                message: outcome.batchPoisoned
+                  ? '输出在工具调用批次中被截断，该批工具调用已作废。点击"继续"从断点续写。'
+                  : '输出被截断，已停在这里。点击"继续"从断点续写。',
+              },
             }));
           } catch {
             // 不影响主流程
@@ -643,19 +667,30 @@ export async function POST(request: Request) {
                 segmentMessages: UIMessage[],
                 inputContinuation: UIMessage | undefined,
                 defaultAnchorId: string,
+                deferFinalize = false,
               ): Promise<SegmentOutcome & { controllerClosed: boolean }> => {
                 let resolveDone!: () => void;
                 const done = new Promise<void>((resolve) => { resolveDone = resolve; });
                 const outcome: SegmentOutcome = {
                   aborted: false,
                   truncated: false,
+                  batchPoisoned: false,
                   completedMessages: [],
                   lastAssistant: undefined,
                   headMoved: false,
                   outputTokens: 0,
                 };
 
-                const pushContextUsage = (stepEvent: { usage?: import('ai').LanguageModelUsage }) => {
+                const pushContextUsage = (stepEvent: {
+                  usage?: import('ai').LanguageModelUsage;
+                  finishReason?: string;
+                  toolCalls?: unknown[];
+                }) => {
+                  // ① 截断批次毒化：末步 length + 含工具调用 → 该批次已作废
+                  // （见 core stopOnTruncatedToolBatch 的语义）
+                  if (stepEvent.finishReason === 'length' && (stepEvent.toolCalls?.length ?? 0) > 0) {
+                    outcome.batchPoisoned = true;
+                  }
                   if (!stepEvent.usage) return;
                   outcome.outputTokens += stepEvent.usage.outputTokens ?? 0;
                   sessionState.tokenBudget.accumulate(stepEvent.usage);
@@ -728,6 +763,7 @@ export async function POST(request: Request) {
                       resolveDone,
                       controller,
                       defaultAnchorId,
+                      { deferFinalize },
                     ),
                     // onStepEnd 在 finish-step chunk 之前触发，直接入流
                     onStepEnd: pushContextUsage,
@@ -763,6 +799,7 @@ export async function POST(request: Request) {
                           resolveDone,
                           controller,
                           defaultAnchorId,
+                          { deferFinalize },
                         ),
                         onStepEnd: pushContextUsage,
                       });
@@ -836,13 +873,13 @@ export async function POST(request: Request) {
                 }
               };
 
-              // ── 手动续写：一段即止 ──
-              // 不再自动续写。截断时 onEnd 标记 output_truncated + 推 data-truncated，
-              // 前端显示"继续"按钮；用户点继续 = 发一条"继续"消息 → 新的一轮回复。
+              // ── 段执行：首截断 auto-retry 一次（③），二次截断才手动续写 ──
               let segmentMessages = finalMessages;
               let inputContinuation: UIMessage | undefined = isAssistantContinuation ? finalMessages.at(-1) : undefined;
               let defaultAnchorId = headMessageId;
               let anyControllerClosed = false;
+              // ③ 一次性 compact-and-retry：只自动重试一次（首个截断段）
+              let anyRetried = false;
 
               // 每 5s 推一次 keep-alive ping，防止代理/负载均衡因空闲超时切断 SSE 连接
               const keepAliveTimer = setInterval(() => {
@@ -853,8 +890,56 @@ export async function POST(request: Request) {
                 }
               }, 5_000);
 
-              const outcome = await runStreamSegment(segmentMessages, inputContinuation, defaultAnchorId);
+              const outcome = await runStreamSegment(
+                segmentMessages,
+                inputContinuation,
+                defaultAnchorId,
+                // ③ 首段可 deferfinalize：非 assistant 续跑段才允许自动重试
+                !inputContinuation,
+              );
               anyControllerClosed = outcome.controllerClosed;
+
+              // ③ 一次性 compact-and-retry：首个截断段 deferfinalize（不落终态、run 仍 running、
+              // 不推 data-truncated）→ 重载历史（已在 onEnd commit）+ 追加合成 user 续写，重跑一段。
+              // 二次截断走默认路径 output_truncated + 手动"继续"兜底。assistant 续跑段（工具审批等）
+              // 不自动重试——截断即终止，保持手动控制。
+              if (
+                outcome.truncated &&
+                !outcome.aborted &&
+                !inputContinuation &&
+                !anyRetried
+              ) {
+                anyRetried = true;
+                try {
+                  // 消息已 commit（onEnd 写了），从库重载历史（含截断的半截 assistant 消息）
+                  const historyAfterFirst = store.messageStore.getMessagesByConversation(conversationId);
+                  // 续写文案：批次毒化（length+工具调用作废）时向模型说明工具批次已作废未执行
+                  const continueText = outcome.batchPoisoned
+                    ? '上一步的输出在工具调用批次中被截断，被截断的工具调用已作废、未执行。'
+                      + '请基于已完成的内容继续回复，不要重复已输出的部分；如确需工具请重新发起完整调用。'
+                    : '请继续完成刚才的回复（不要重复前面内容）。';
+                  const syntheticUser: UIMessage = {
+                    id: nanoid(),
+                    role: 'user',
+                    parts: [{ type: 'text', text: continueText }],
+                  };
+                  const retryMessages = [...historyAfterFirst, syntheticUser];
+                  const retryAnchorId = outcome.lastAssistant?.id ?? defaultAnchorId;
+                  console.log(
+                    `[Chat API] Auto compact-and-retry: ${segmentMessages.length} → ${retryMessages.length} msgs (single-segment retry, anchor=${retryAnchorId.slice(0, 8)}…)`,
+                  );
+                  const retryOutcome = await runStreamSegment(
+                    retryMessages,
+                    undefined,
+                    retryAnchorId,
+                    false, // 重试段不再 deferfinalize：截断即终态（output_truncated + 手动继续）
+                  );
+                  anyControllerClosed ||= retryOutcome.controllerClosed;
+                } catch (retryErr) {
+                  // 重试段失败：终态由下方统一 catch 兜底（finalizeRun + endConversationRun）
+                  console.error('[Chat API] Auto compact-and-retry failed:', retryErr);
+                }
+              }
 
               clearInterval(keepAliveTimer);
               console.log(`[Chat API] Agent stream complete (truncated=${outcome.truncated})`);

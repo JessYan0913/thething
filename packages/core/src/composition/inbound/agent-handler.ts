@@ -51,13 +51,17 @@ import { ConnectorResponder } from '../../modules/connector/inbound/responder/re
  * 同时检查 step.content、step.toolCalls、step.toolResults 以兼容不同版本的 AI SDK
  */
 function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
-  const reasoningTexts: string[] = []
-  const callsByToolCallId: Record<string, { toolName: string; input: unknown; dynamic?: boolean }> = {}
+  // 全局配对表：toolCallId → 调用信息(含所属 step 序号，供按步发射)。
+  // result/error 可能落在与 call 不同的 step(跨步配对)，故结果表保持全局。
+  const callsByToolCallId: Record<string, { toolName: string; input: unknown; dynamic?: boolean; stepIndex: number }> = {}
   const resultsByToolCallId: Record<string, { output: unknown }> = {}
   const errorsByToolCallId: Record<string, { error: unknown }> = {}
+  // 每步的 reasoning 文本（按步分组，保持内容原文顺序）
+  const reasoningByStep: string[][] = []
 
-  for (const step of steps) {
-    const stepObj = step as Record<string, unknown>
+  for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+    const stepObj = steps[stepIndex] as Record<string, unknown>
+    reasoningByStep[stepIndex] = []
 
     // 1. 从 step.content 中提取（AI SDK 通常把 LLM 输出放这里）
     const content = (stepObj.content ?? []) as unknown[]
@@ -65,9 +69,9 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
       const itemObj = item as Record<string, unknown>
 
       if (itemObj.type === 'reasoning' && typeof itemObj.text === 'string') {
-        reasoningTexts.push(itemObj.text)
+        reasoningByStep[stepIndex].push(itemObj.text)
       } else if (itemObj.type === 'reasoningText' && typeof itemObj.text === 'string') {
-        reasoningTexts.push(itemObj.text)
+        reasoningByStep[stepIndex].push(itemObj.text)
       }
 
       const toolCallId = itemObj.toolCallId as string | undefined
@@ -78,6 +82,7 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
           toolName: itemObj.toolName as string,
           input: itemObj.input,
           dynamic: itemObj.dynamic as boolean | undefined,
+          stepIndex,
         }
       } else if (itemObj.type === 'tool-result') {
         resultsByToolCallId[toolCallId] = { output: itemObj.result ?? itemObj.output }
@@ -109,44 +114,53 @@ function stepsToMessageParts(steps: unknown[]): UIMessage['parts'] {
         toolName: c.toolName as string,
         input: c.input ?? c.args,
         dynamic: c.dynamic as boolean | undefined,
+        stepIndex,
       }
     }
   }
 
   const parts: UIMessage['parts'] = []
 
-  for (const text of reasoningTexts) {
-    parts.push({ type: 'reasoning', text } as UIMessage['parts'][number])
-  }
+  for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+    // 每步开头一个 step-start 边界：与 SDK 自身 stream 的 start-step 事件对齐，
+    // 供发送前 step 级舍弃（slimAssistantMessage/trimStepsToFit）识别步边界。
+    parts.push({ type: 'step-start' } as UIMessage['parts'][number])
 
-  for (const [toolCallId, call] of Object.entries(callsByToolCallId)) {
-    const isError = toolCallId in errorsByToolCallId
-    const hasResult = toolCallId in resultsByToolCallId
-
-    if (!isError && !hasResult) {
-      logger.warn('stepsToMessageParts', `Skipping incomplete tool call: ${toolCallId} ${call.toolName}`)
-      continue
+    for (const text of reasoningByStep[stepIndex]) {
+      parts.push({ type: 'reasoning', text } as UIMessage['parts'][number])
     }
 
-    const base = call.dynamic
-      ? { type: 'dynamic-tool' as const, toolName: call.toolName, toolCallId }
-      : { type: `tool-${call.toolName}` as const, toolCallId }
+    for (const [toolCallId, call] of Object.entries(callsByToolCallId)) {
+      if (call.stepIndex !== stepIndex) continue
 
-    if (isError) {
-      parts.push({
-        ...base,
-        input: call.input ?? null,
-        output: null,
-        state: 'output-error',
-        errorText: String(errorsByToolCallId[toolCallId].error ?? 'Unknown error'),
-      } as unknown as UIMessage['parts'][number])
-    } else if (hasResult) {
-      parts.push({
-        ...base,
-        input: call.input ?? null,
-        output: resultsByToolCallId[toolCallId].output ?? null,
-        state: 'output-available',
-      } as UIMessage['parts'][number])
+      const isError = toolCallId in errorsByToolCallId
+      const hasResult = toolCallId in resultsByToolCallId
+
+      if (!isError && !hasResult) {
+        logger.warn('stepsToMessageParts', `Skipping incomplete tool call: ${toolCallId} ${call.toolName}`)
+        continue
+      }
+
+      const base = call.dynamic
+        ? { type: 'dynamic-tool' as const, toolName: call.toolName, toolCallId }
+        : { type: `tool-${call.toolName}` as const, toolCallId }
+
+      if (isError) {
+        parts.push({
+          ...base,
+          input: call.input ?? null,
+          output: null,
+          state: 'output-error',
+          errorText: String(errorsByToolCallId[toolCallId].error ?? 'Unknown error'),
+        } as unknown as UIMessage['parts'][number])
+      } else if (hasResult) {
+        parts.push({
+          ...base,
+          input: call.input ?? null,
+          output: resultsByToolCallId[toolCallId].output ?? null,
+          state: 'output-available',
+        } as UIMessage['parts'][number])
+      }
     }
   }
 
@@ -166,7 +180,9 @@ function sanitizeMessagesForConversion(messages: UIMessage[]): UIMessage[] {
 
     const sanitizedParts: UIMessage['parts'] = []
     for (const part of msg.parts) {
-      if (part.type === 'text' || part.type === 'reasoning') {
+      // step-start 是步边界标记（无 state 字段），必须原样放行——
+      // 否则走下面 !state 分支被当作"不完整工具调用"丢弃，恢复路径上 step 级舍弃失效。
+      if (part.type === 'text' || part.type === 'reasoning' || part.type === 'step-start') {
         sanitizedParts.push(part)
         continue
       }
